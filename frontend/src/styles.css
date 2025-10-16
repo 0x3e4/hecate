@@ -1,0 +1,157 @@
+:root {
+  color-scheme: dark light;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #090b10;
+  color: #f5f7fa;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+.page {
+  padding: 2rem;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+}
+
+.card h2 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tag.low {
+  background-color: rgba(0, 128, 0, 0.25);
+  color: #8fffb0;
+}
+
+.tag.medium {
+  background-color: rgba(255, 165, 0, 0.25);
+  color: #ffd08f;
+}
+
+.tag.high {
+  background-color: rgba(220, 20, 60, 0.25);
+  color: #ffa3a3;
+}
+
+.tag.unknown {
+  background-color: rgba(128, 128, 128, 0.25);
+  color: #d1d5db;
+}
+
+.vuln-card {
+  background: rgba(8, 10, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.vuln-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.vuln-id {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.vuln-aliases {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  background: rgba(92, 132, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+}
+
+.vuln-title {
+  margin: 1rem 0 0.75rem;
+}
+
+.vuln-title a {
+  text-decoration: none;
+  color: #f5f7fa;
+}
+
+.vuln-title a:hover {
+  color: #9cb7ff;
+}
+
+.vuln-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.meta-value {
+  margin-top: 0.2rem;
+  font-weight: 600;
+}
+
+.vuln-summary {
+  margin: 0.5rem 0 0.75rem;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.55;
+}
+
+.vuln-ai {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.muted {
+  color: rgba(255, 255, 255, 0.45);
+}
