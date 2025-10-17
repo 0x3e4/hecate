@@ -292,39 +292,54 @@ def _extract_products(record: dict[str, Any]) -> list[str]:
     )
 
     products: list[str] = []
-    seen: set[str] = set()
+    seen_ids: set[str] = set()
+    label_counts: dict[str, int] = {}
 
-    def add_product(name: str | None, version: str | None = None) -> None:
+    def add_product(name: str | None, version: str | None = None, identifier: str | None = None) -> None:
         if not name:
             return
         label = name.strip()
         if not label:
             return
-        if version:
-            version_clean = str(version).strip()
-            if version_clean:
-                label = f"{label} ({version_clean})"
-        if label not in seen:
-            seen.add(label)
-            products.append(label)
+        version_clean = str(version).strip() if version else ""
+        if version_clean:
+            label = f"{label} ({version_clean})"
+
+        if identifier:
+            if identifier in seen_ids:
+                return
+            seen_ids.add(identifier)
+        else:
+            count = label_counts.get(label, 0)
+            label_counts[label] = count + 1
+            if count:
+                label = f"{label} #{count + 1}"
+
+        products.append(label)
 
     if isinstance(products_raw, list):
         for entry in products_raw:
             if isinstance(entry, str):
                 add_product(entry)
             elif isinstance(entry, dict):
+                version_hint = entry.get("product_version") or entry.get("version")
+                entry_id = entry.get("id")
                 if isinstance(entry.get("name"), str):
-                    add_product(entry.get("name"), entry.get("version"))
+                    add_product(entry.get("name"), version_hint, entry_id)
                 product_obj = entry.get("product")
                 if isinstance(product_obj, dict):
                     add_product(
                         product_obj.get("name"),
-                        product_obj.get("version") or product_obj.get("product_version"),
+                        product_obj.get("version")
+                        or product_obj.get("product_version")
+                        or version_hint,
+                        entry_id or product_obj.get("id"),
                     )
     elif isinstance(products_raw, dict):
         add_product(
             products_raw.get("name"),
             products_raw.get("version") or products_raw.get("product_version"),
+            products_raw.get("id"),
         )
     elif isinstance(products_raw, str):
         add_product(products_raw)

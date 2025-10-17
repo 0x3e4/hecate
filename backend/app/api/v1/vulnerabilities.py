@@ -1,8 +1,13 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.schemas.vulnerability import VulnerabilityDetail, VulnerabilityPreview, VulnerabilityQuery
+from app.schemas.vulnerability import (
+    PagedVulnerabilityResponse,
+    VulnerabilityDetail,
+    VulnerabilityPreview,
+    VulnerabilityQuery,
+)
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 
 router = APIRouter()
@@ -26,6 +31,24 @@ async def trigger_refresh(
     """
     await service.trigger_refresh(payload)
     return {"status": "scheduled"}
+
+
+@router.get("", response_model=PagedVulnerabilityResponse)
+async def list_vulnerabilities(
+    search: str | None = Query(default=None, description="Keyword search across CVE/EUVD/GHSA"),
+    vendorFilters: list[str] = Query(default_factory=list),
+    productFilters: list[str] = Query(default_factory=list),
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> PagedVulnerabilityResponse:
+    query = VulnerabilityQuery(
+        searchTerm=search,
+        vendorFilters=vendorFilters,
+        productFilters=productFilters,
+        limit=limit,
+    )
+    return await service.search_paginated(query, limit=limit, offset=offset)
 
 
 @router.get("/{identifier}", response_model=VulnerabilityDetail)

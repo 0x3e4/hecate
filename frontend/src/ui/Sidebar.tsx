@@ -31,6 +31,15 @@ export const Sidebar = () => {
           Dashboard
         </NavLink>
         <NavLink
+          to="/vulnerabilities"
+          style={({ isActive }) => ({
+            ...linkStyle,
+            backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
+          })}
+        >
+          Vulnerabilities
+        </NavLink>
+        <NavLink
           to="/audit"
           style={({ isActive }) => ({
             ...linkStyle,
@@ -38,6 +47,15 @@ export const Sidebar = () => {
           })}
         >
           Audit Log
+        </NavLink>
+        <NavLink
+          to="/stats"
+          style={({ isActive }) => ({
+            ...linkStyle,
+            backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
+          })}
+        >
+          Statistiken
         </NavLink>
       </nav>
     </aside>

@@ -3,14 +3,9 @@ import { Link } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
 import { searchVulnerabilities } from "../api/vulnerabilities";
-import { CpeFilters } from "../components/CpeFilters";
 
 export const DashboardPage = () => {
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
-  const [filters, setFilters] = useState<{ vendors: string[]; products: string[] }>({
-    vendors: [],
-    products: [],
-  });
   const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
@@ -20,8 +15,6 @@ export const DashboardPage = () => {
         const results = await searchVulnerabilities({
           searchTerm: null,
           limit: 20,
-          vendorFilters: filters.vendors,
-          productFilters: filters.products,
         });
         setVulnerabilities(results);
       } catch (error) {
@@ -31,28 +24,10 @@ export const DashboardPage = () => {
     };
 
     load();
-  }, [filters]);
-
-  const activeFiltersDescription = useMemo(() => {
-    const parts: string[] = [];
-    if (filters.vendors.length) {
-      parts.push(`Vendor: ${filters.vendors.join(", ")}`);
-    }
-    if (filters.products.length) {
-      parts.push(`Produkt: ${filters.products.join(", ")}`);
-    }
-    return parts.join(" | ");
-  }, [filters]);
+  }, []);
 
   return (
     <div className="page">
-      <CpeFilters onChange={setFilters} />
-      {activeFiltersDescription && (
-        <p className="muted" style={{ marginTop: "-1rem", marginBottom: "1rem" }}>
-          Aktive Filter: {activeFiltersDescription}
-        </p>
-      )}
-
       <VulnerabilityList vulnerabilities={vulnerabilities} />
       {loading && <p className="muted">Aktualisiere Ergebnisse…</p>}
     </div>
@@ -69,6 +44,8 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
   const rows = useMemo(
     () =>
       vulnerabilities.map((vuln) => {
+        const hasCve = Boolean(vuln.cveId && vuln.cveId.startsWith("CVE-"));
+        const hasSource = Boolean(vuln.sourceId && (!hasCve || vuln.sourceId !== vuln.cveId));
         const primaryId = vuln.cveId || vuln.sourceId || "Unbekannte-ID";
         const published = vuln.published ? new Date(vuln.published).toLocaleString() : "unbekannt";
         const cvss = vuln.cvssScore != null ? vuln.cvssScore.toFixed(1) : "n/a";
@@ -89,8 +66,8 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             <header className="vuln-header">
               <div>
                 <div className="vuln-id">
-                  {vuln.cveId && <span className="chip">{vuln.cveId}</span>}
-                  {vuln.sourceId && <span className="chip">{vuln.sourceId}</span>}
+                  {hasCve && <span className="chip">{vuln.cveId}</span>}
+                  {hasSource && <span className="chip">{vuln.sourceId}</span>}
                 </div>
               </div>
               <span className={`tag ${vuln.severity ?? "unknown"}`}>{vuln.severity ?? "n/a"}</span>
@@ -100,7 +77,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
               <Link to={`/vulnerabilities/${primaryId}`}>{vuln.title}</Link>
             </h3>
             <div className="external-links" style={{ marginBottom: "0.5rem" }}>
-              {vuln.cveId && (
+              {hasCve && (
                 <>
                   <a
                     href={`https://www.cve.org/CVERecord?id=${encodeURIComponent(vuln.cveId)}`}

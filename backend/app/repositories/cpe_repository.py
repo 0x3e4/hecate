@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import structlog
@@ -64,11 +65,11 @@ class CPERepository:
             {"$skip": offset},
             {"$limit": limit},
         ]
-        cursor = self.collection.aggregate(pipeline)
+        cursor = self.collection.aggregate(pipeline, allowDiskUse=True)
         items = await cursor.to_list(length=limit)
         vendors = [item.get("_id") for item in items if isinstance(item.get("_id"), str)]
 
-        count_cursor = self.collection.aggregate([{"$match": match}, {"$group": {"_id": "$vendor"}}, {"$count": "total"}])
+        count_cursor = self.collection.aggregate([{"$match": match}, {"$group": {"_id": "$vendor"}}, {"$count": "total"}], allowDiskUse=True)
         count_doc = await count_cursor.to_list(length=1)
         total = count_doc[0]["total"] if count_doc else 0
         return total, vendors
@@ -82,7 +83,14 @@ class CPERepository:
     ) -> tuple[int, list[str]]:
         match: dict[str, Any] = {"product": {"$nin": [None, "", "*"]}}
         if vendors:
-            match["vendor"] = {"$in": vendors}
+            or_conditions = []
+            for vendor in vendors:
+                if not isinstance(vendor, str) or not vendor:
+                    continue
+                pattern = f"^{re.escape(vendor)}$"
+                or_conditions.append({"vendor": {"$regex": pattern, "$options": "i"}})
+            if or_conditions:
+                match["$or"] = or_conditions
         if keyword:
             match["product"] = {"$regex": keyword, "$options": "i"}
 
@@ -93,11 +101,11 @@ class CPERepository:
             {"$skip": offset},
             {"$limit": limit},
         ]
-        cursor = self.collection.aggregate(pipeline)
+        cursor = self.collection.aggregate(pipeline, allowDiskUse=True)
         items = await cursor.to_list(length=limit)
         products = [item.get("_id") for item in items if isinstance(item.get("_id"), str)]
 
-        count_cursor = self.collection.aggregate([{"$match": match}, {"$group": {"_id": "$product"}}, {"$count": "total"}])
+        count_cursor = self.collection.aggregate([{"$match": match}, {"$group": {"_id": "$product"}}, {"$count": "total"}], allowDiskUse=True)
         count_doc = await count_cursor.to_list(length=1)
         total = count_doc[0]["total"] if count_doc else 0
         return total, products

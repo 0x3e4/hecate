@@ -1,0 +1,10 @@
+from fastapi import APIRouter, Depends
+
+from app.services.stats_service import StatsService, get_stats_service
+
+router = APIRouter()
+
+
+@router.get("/overview")
+async def get_overview(service: StatsService = Depends(get_stats_service)) -> dict:
+    return await service.get_overview()

@@ -53,6 +53,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
   poetry run python -m app.cli sync-cpe --limit 100
   ```
 - Ohne `--limit` greift `CPE_MAX_RECORDS_PER_RUN` (Default 10000) – der Sync holt in Batches weitere Datensaetze nach.
+  Wiederhole den Befehl bis `ingested: 0` angezeigt wird, um die vollständige CPE-Datenbank zu laden.
 - Hinweis: `EUVD_BASE_URL` im Backend-`.env` ist standardmaessig auf `https://euvdservices.enisa.europa.eu/api` (GET `/search`) gesetzt. Wenn du einen alternativen Endpunkt oder Proxy nutzt, passe diesen Wert entsprechend an.
 - Hinweis: Nach Schema-Aenderungen an den OpenSearch-Mappings kann ein Neuaufbau des Index erforderlich sein  
   (z. B. `curl -XDELETE http://localhost:9200/hecate-vulnerabilities` vor einem erneuten `ingest`-Durchlauf).
@@ -65,11 +66,13 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 - Passe `VITE_API_BASE_URL` (z. B. `http://backend:8000/api`) an, falls Frontend und Backend unter unterschiedlichen Hosts/Ports erreichbar sind. Der Wert wird beim Build ausgewertet.
 - API-Endpunkte:
   - `POST /api/v1/vulnerabilities/search` – OpenSearch-gestuetzte Suche inkl. Metadaten.
+  - `GET /api/v1/vulnerabilities` – Paginierte Liste (Frontend „Vulnerabilities“ Seite).
   - `GET /api/v1/vulnerabilities/{id}` – Detailansicht eines Eintrags (CVE oder EUVD-ID).
   - API-Präfix konfigurierbar über `API_PREFIX` (Standard `/api/v1`).
   - `GET /api/v1/cpe/entries` – CPE-Katalog fuer Vendor-/Produktfilter (Frontend nutzt dies fuer dynamische Filter).
   - `GET /api/v1/cpe/vendors` & `GET /api/v1/cpe/products` – Distinct-Werte fuer Such-/Dropdowns.
   - `GET /api/v1/audit/ingestion` – Audit-Log der Ingestion-Jobs (wird im Frontend unter „Audit Log“ angezeigt).
+  - `GET /api/v1/stats/overview` – Kennzahlen (Frontend „Stats“ Seite).
 
 ## Lokale Entwicklung
 - **Backend:** `cd backend && poetry install && uvicorn app.main:app --reload`

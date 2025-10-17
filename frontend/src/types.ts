@@ -72,3 +72,8 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   ingestedAt?: string | null;
   rawDocument?: Record<string, unknown> | null;
 }
+
+export interface PagedVulnerabilityResponse {
+  total: number;
+  items: VulnerabilityPreview[];
+}

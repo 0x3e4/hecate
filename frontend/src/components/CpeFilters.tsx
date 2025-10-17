@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AsyncSelect from "react-select/async";
 
 import { fetchCpeProducts, fetchCpeVendors } from "../api/cpe";
@@ -11,6 +11,7 @@ interface Props {
 export const CpeFilters = ({ onChange }: Props) => {
   const [selectedVendors, setSelectedVendors] = usePersistentState<string[]>("cpe:selectedVendors", []);
   const [selectedProducts, setSelectedProducts] = usePersistentState<string[]>("cpe:selectedProducts", []);
+  const [initialVendorOptions, setInitialVendorOptions] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
     onChange({
@@ -35,6 +36,21 @@ export const CpeFilters = ({ onChange }: Props) => {
   );
   const vendorOptionCache = useRef<Record<string, { value: string; label: string }[]>>({});
   const productOptionCache = useRef<Record<string, { value: string; label: string }[]>>({});
+
+  useEffect(() => {
+    const hydrateInitialVendors = async () => {
+      try {
+        const response = await fetchCpeVendors(null, 25);
+        const options = response.items.map((value) => ({ value, label: value }));
+        vendorOptionCache.current[""] = options;
+        setInitialVendorOptions(options);
+      } catch (error) {
+        console.error("Failed to prefetch CPE vendors", error);
+      }
+    };
+
+    hydrateInitialVendors();
+  }, []);
 
   const loadVendorOptions = async (inputValue: string) => {
     if (vendorOptionCache.current[inputValue] && vendorOptionCache.current[inputValue].length) {
@@ -88,7 +104,7 @@ export const CpeFilters = ({ onChange }: Props) => {
           <AsyncSelect
             isMulti
             cacheOptions
-            defaultOptions={defaultVendorOptions}
+            defaultOptions={initialVendorOptions}
             loadOptions={loadVendorOptions}
             value={defaultVendorOptions}
             onChange={(options) => {
