@@ -58,8 +58,9 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
         const vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
         const products = vuln.products?.length ? vuln.products.join(", ") : "—";
         const cwes = vuln.cwes?.length ? vuln.cwes.join(", ") : "—";
-        const aliases = vuln.aliases?.filter(Boolean) ?? [];
+        const aliases = buildAliasList(vuln.aliases, vuln.cveId, vuln.sourceId);
         const ghsaIds = vuln.ghsaIds ?? [];
+        const malAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("MAL-"));
 
         return (
           <article key={primaryId} className="vuln-card">
@@ -68,6 +69,11 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
                 <div className="vuln-id">
                   {hasCve && <span className="chip">{vuln.cveId}</span>}
                   {hasSource && <span className="chip">{vuln.sourceId}</span>}
+                  {aliases.map((alias) => (
+                    <span key={alias} className="chip" style={{ background: "rgba(92,132,255,0.2)" }}>
+                      {alias}
+                    </span>
+                  ))}
                 </div>
               </div>
               <span className={`tag ${vuln.severity ?? "unknown"}`}>{vuln.severity ?? "n/a"}</span>
@@ -113,6 +119,19 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
                   EUVD
                 </a>
               )}
+              {malAliases.map((alias) => (
+                <a
+                  key={alias}
+                  href={`https://osv.dev/vulnerability/${encodeURIComponent(alias)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span role="img" aria-label="OSV">
+                    🧩
+                  </span>
+                  OSV
+                </a>
+              ))}
               {ghsaIds.map((alias) => (
                 <a
                   key={alias}
@@ -188,3 +207,32 @@ const MetaItem = ({ label, value }: MetaItemProps) => (
     <span className="meta-value">{value}</span>
   </div>
 );
+
+const normalizeId = (value?: string | null) => (value ?? "").trim().toUpperCase();
+
+const buildAliasList = (aliases: string[] | undefined, cveId?: string | null, sourceId?: string | null) => {
+  const skip = new Set<string>();
+  if (cveId) skip.add(normalizeId(cveId));
+  if (sourceId) skip.add(normalizeId(sourceId));
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  (aliases ?? []).forEach((alias) => {
+    if (!alias) {
+      return;
+    }
+    const trimmed = alias.trim();
+    if (!trimmed) {
+      return;
+    }
+    const normalized = normalizeId(trimmed);
+    if (skip.has(normalized) || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    result.push(trimmed);
+  });
+
+  return result;
+};

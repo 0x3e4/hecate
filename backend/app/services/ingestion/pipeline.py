@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 
+from app.core.config import settings
 from app.models.vulnerability import VulnerabilityDocument
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
@@ -36,6 +37,16 @@ class IngestionPipeline:
         ctx = await tracker.start("euvd_ingestion")
         if modified_since is None:
             modified_since = await state_repo.get_timestamp("euvd")
+        if modified_since is None and settings.euvd_initial_backfill_since:
+            try:
+                modified_since = datetime.fromisoformat(
+                    settings.euvd_initial_backfill_since.replace("Z", "+00:00")
+                ).astimezone(UTC)
+            except ValueError:
+                log.warning(
+                    "pipeline.invalid_backfill_since",
+                    value=settings.euvd_initial_backfill_since,
+                )
 
         ingested = 0
         skipped = 0

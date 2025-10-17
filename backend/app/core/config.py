@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     euvd_timeout_seconds: int = 30
     euvd_page_size: int = 250
     euvd_rate_limit_seconds: float = 1.0
+    euvd_initial_backfill_since: str | None = None
 
     nvd_base_url: str = "https://services.nvd.nist.gov/rest/json"
     nvd_api_key: str | None = None
