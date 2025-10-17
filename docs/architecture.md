@@ -25,9 +25,9 @@
 
 ## Data Flows
 1. **Ingestion:**
-   - Scheduled job fetches CVE/CPE/EUVD data.
-   - Normalizes payload and stores canonical record in MongoDB.
-   - Indexes relevant fields (CVSS, EPSS, vendors/products, aliases, exploit flags) into OpenSearch for full-text and faceted search.
+   - APScheduler orchestrates EUVD/NVD (CVE) und CPE-Synchronisation mit Rate-Limiting (NVD max. 1 Request/6s ohne API-Key).
+   - Normalisiert Daten (CVSS, EPSS, Vendors/Products, Aliases, Exploit-Flags) und speichert sie in MongoDB.
+   - Indexiert relevante Felder in OpenSearch fuer schnelle Suche.
 2. **Asset Filtering:**
    - Users define product/application inventory.
    - Backend filters ingested vulnerabilities by matching CPE/keywords against stored inventory.

@@ -3,6 +3,7 @@ from typing import Any
 
 import structlog
 from opensearchpy import OpenSearch, RequestError
+from opensearchpy.exceptions import NotFoundError
 
 from app.core.config import settings
 
@@ -88,7 +89,29 @@ async def async_index_document(index: str, document_id: str, document: dict[str,
 async def async_search(index: str, body: dict[str, Any]) -> dict[str, Any]:
     client = get_client()
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        None,
-        lambda: client.search(index=index, body=body),
-    )
+
+    try:
+        return await loop.run_in_executor(
+            None,
+            lambda: client.search(index=index, body=body),
+        )
+    except NotFoundError:
+        ensure_vulnerability_index(index)
+        return {"hits": {"hits": [], "total": {"value": 0}}}
+
+
+async def async_get(index: str, document_id: str) -> dict[str, Any] | None:
+    client = get_client()
+    loop = asyncio.get_running_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: client.get(index=index, id=document_id),
+        )
+        return result.get("_source")
+    except NotFoundError:
+        return None
+    except Exception as exc:  # noqa: BLE001 - log and propagate None
+        log.warning("opensearch.get_failed", index=index, id=document_id, error=str(exc))
+        return None

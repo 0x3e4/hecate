@@ -7,6 +7,7 @@ import httpx
 import structlog
 
 from app.core.config import settings
+from app.services.http.rate_limiter import AsyncRateLimiter
 
 log = structlog.get_logger()
 
@@ -17,7 +18,11 @@ class NVDClient:
     Useful for fields missing in EUVD payloads.
     """
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        rate_limiter: AsyncRateLimiter | None = None,
+    ) -> None:
         headers = {
             "User-Agent": settings.ingestion_user_agent,
             "Accept": "application/json",
@@ -30,10 +35,12 @@ class NVDClient:
             timeout=settings.euvd_timeout_seconds,
             headers=headers,
         )
+        self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.nvd_rate_limit_seconds)
 
     async def fetch_cve(self, cve_id: str) -> dict[str, Any] | None:
         try:
-            response = await self._client.get(f"/cves/2.0", params={"cveId": cve_id})
+            async with self._rate_limiter.slot():
+                response = await self._client.get("/cves/2.0", params={"cveId": cve_id})
             response.raise_for_status()
         except httpx.HTTPError as exc:
             log.warning("nvd_client.fetch_failed", cve_id=cve_id, error=str(exc))

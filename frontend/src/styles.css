@@ -123,6 +123,21 @@ a {
   color: rgba(255, 255, 255, 0.7);
 }
 
+.external-links {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+
+.external-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: rgba(156, 183, 255, 0.9);
+  text-decoration: none;
+}
+
 .meta-item {
   display: flex;
   flex-direction: column;
@@ -154,4 +169,39 @@ a {
 
 .muted {
   color: rgba(255, 255, 255, 0.45);
+}
+
+select {
+  background-color: rgba(15, 18, 30, 0.85);
+  color: #f5f7fa;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+table {
+  width: 100%;
+}
+
+table th,
+table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+table thead th {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.json-block {
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: "Fira Code", "Courier New", Courier, monospace;
+  font-size: 0.85rem;
 }

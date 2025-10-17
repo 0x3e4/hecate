@@ -8,6 +8,7 @@ import httpx
 import structlog
 
 from app.core.config import settings
+from app.services.http.rate_limiter import AsyncRateLimiter
 
 log = structlog.get_logger()
 
@@ -28,11 +29,13 @@ class EUVDClient:
         timeout_seconds: int | None = None,
         page_size: int | None = None,
         client: httpx.AsyncClient | None = None,
+        rate_limiter: AsyncRateLimiter | None = None,
     ) -> None:
         self.base_url = (base_url or settings.euvd_base_url).rstrip("/")
         self.timeout = timeout_seconds or settings.euvd_timeout_seconds
         configured_page_size = page_size or settings.euvd_page_size
         self.page_size = min(configured_page_size, self.MAX_PAGE_SIZE)
+        self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.euvd_rate_limit_seconds)
         self._client = client or httpx.AsyncClient(
             base_url=self.base_url,
             timeout=self.timeout,
@@ -63,7 +66,8 @@ class EUVDClient:
                 params["fromUpdatedDate"] = modified_since.date().isoformat()
 
             try:
-                response = await self._client.get(self.SEARCH_PATH, params=params)
+                async with self._rate_limiter.slot():
+                    response = await self._client.get(self.SEARCH_PATH, params=params)
             except httpx.HTTPError as exc:
                 log.error(
                     "euvd_client.request_failed",

@@ -31,13 +31,13 @@ export const Sidebar = () => {
           Dashboard
         </NavLink>
         <NavLink
-          to="/vulnerabilities/demo"
+          to="/audit"
           style={({ isActive }) => ({
             ...linkStyle,
             backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
           })}
         >
-          Vulnerability Detail
+          Audit Log
         </NavLink>
       </nav>
     </aside>

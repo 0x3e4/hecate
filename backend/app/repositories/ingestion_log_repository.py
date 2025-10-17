@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection
+
+from app.core.config import settings
+from app.db.mongo import get_database
+
+
+class IngestionLogRepository:
+    def __init__(self, collection: AsyncIOMotorCollection) -> None:
+        self.collection = collection
+
+    @classmethod
+    async def create(cls) -> "IngestionLogRepository":
+        database = await get_database()
+        collection = database[settings.mongo_ingestion_log_collection]
+        await collection.create_index([("jobName", 1)])
+        await collection.create_index([("startedAt", -1)])
+        return cls(collection)
+
+    async def start_log(self, *, job_name: str, started_at: datetime, metadata: dict[str, Any]) -> ObjectId:
+        document = {
+            "jobName": job_name,
+            "status": "running",
+            "startedAt": started_at.astimezone(UTC),
+            "metadata": metadata,
+        }
+        result = await self.collection.insert_one(document)
+        return result.inserted_id
+
+    async def complete_log(
+        self,
+        log_id: ObjectId,
+        *,
+        started_at: datetime,
+        finished_at: datetime,
+        result: dict[str, Any],
+    ) -> None:
+        await self.collection.update_one(
+            {"_id": log_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "finishedAt": finished_at.astimezone(UTC),
+                    "durationSeconds": (finished_at - started_at).total_seconds(),
+                    "result": result,
+                }
+            },
+        )
+
+    async def fail_log(
+        self,
+        log_id: ObjectId,
+        *,
+        started_at: datetime,
+        finished_at: datetime,
+        error: str,
+    ) -> None:
+        await self.collection.update_one(
+            {"_id": log_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "finishedAt": finished_at.astimezone(UTC),
+                    "durationSeconds": (finished_at - started_at).total_seconds(),
+                    "error": error,
+                }
+            },
+        )
+
+    async def list_logs(
+        self,
+        *,
+        job_name: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        query: dict[str, Any] = {}
+        if job_name:
+            query["jobName"] = job_name
+        cursor = self.collection.find(query).sort("startedAt", -1).skip(offset).limit(limit)
+        total = await self.collection.count_documents(query)
+        items = await cursor.to_list(length=limit)
+        return total, items

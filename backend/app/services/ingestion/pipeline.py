@@ -7,7 +7,9 @@ from typing import Any
 import structlog
 
 from app.models.vulnerability import VulnerabilityDocument
+from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.euvd_client import EUVDClient
 from app.services.ingestion.normalizer import build_document
 from app.services.ingestion.nvd_client import NVDClient
@@ -29,40 +31,61 @@ class IngestionPipeline:
 
     async def ingest(self, *, modified_since: datetime | None = None, limit: int | None = None) -> dict[str, int]:
         repository = await VulnerabilityRepository.create()
+        state_repo = await IngestionStateRepository.create()
+        tracker = JobTracker(state_repo)
+        ctx = await tracker.start("euvd_ingestion")
+        if modified_since is None:
+            modified_since = await state_repo.get_timestamp("euvd")
+
         ingested = 0
         skipped = 0
+        latest_modified: datetime | None = None
 
-        async for record in self.euvd_client.list_vulnerabilities(modified_since=modified_since):
-            identifiers = _extract_identifiers(record)
-            if identifiers is None:
-                skipped += 1
-                continue
+        try:
+            async for record in self.euvd_client.list_vulnerabilities(modified_since=modified_since):
+                identifiers = _extract_identifiers(record)
+                if identifiers is None:
+                    skipped += 1
+                    continue
 
-            cve_id, source_id = identifiers
+                cve_id, source_id = identifiers
 
-            supplemental = await self.nvd_client.fetch_cve(cve_id) if _is_cve(cve_id) else None
-            document = build_document(
-                cve_id=cve_id,
-                source_id=source_id,
-                euvd_record=record,
-                supplemental_record=supplemental,
-                ingested_at=datetime.now(tz=UTC),
-            )
+                supplemental = await self.nvd_client.fetch_cve(cve_id) if _is_cve(cve_id) else None
+                document = build_document(
+                    cve_id=cve_id,
+                    source_id=source_id,
+                    euvd_record=record,
+                    supplemental_record=supplemental,
+                    ingested_at=datetime.now(tz=UTC),
+                )
 
-            await repository.upsert(document)
-            ingested += 1
+                await repository.upsert(document)
+                ingested += 1
 
-            log.info(
-                "pipeline.vulnerability_ingested",
-                cve_id=cve_id,
-                title=document.title,
-                severity=document.cvss.severity,
-            )
+                if document.modified:
+                    ts = document.modified.astimezone(UTC)
+                    if not latest_modified or ts > latest_modified:
+                        latest_modified = ts
 
-            if limit is not None and ingested >= limit:
-                break
+                log.info(
+                    "pipeline.vulnerability_ingested",
+                    cve_id=cve_id,
+                    title=document.title,
+                    severity=document.cvss.severity,
+                )
 
-        return {"ingested": ingested, "skipped": skipped}
+                if limit is not None and ingested >= limit:
+                    break
+
+            if latest_modified:
+                await state_repo.set_timestamp("euvd", latest_modified)
+
+            result = {"ingested": ingested, "skipped": skipped}
+            await tracker.finish(ctx, **result)
+            return result
+        except Exception as exc:  # noqa: BLE001
+            await tracker.fail(ctx, str(exc))
+            raise
 
     async def close(self) -> None:
         await self.euvd_client.close()

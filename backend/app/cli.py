@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from datetime import datetime
 
+from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.pipeline import run_ingestion
 
 
@@ -23,7 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        help="Command to execute (only 'ingest' supported).",
+        choices=["ingest", "sync-cpe"],
+        help="Command to execute (ingest, sync-cpe).",
     )
     parser.add_argument(
         "--since",
@@ -42,11 +44,24 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.command != "ingest":
-        parser.error("Only the 'ingest' command is currently supported.")
+    if args.command == "ingest":
+        result = asyncio.run(run_ingestion(modified_since=args.since, limit=args.limit))
+        print(f"Ingestion finished: {result}")
+    elif args.command == "sync-cpe":
+        if args.since:
+            parser.error("The --since option is not supported for sync-cpe.")
+        result = asyncio.run(run_cpe_sync_once(limit=args.limit))
+        print(f"CPE sync finished: {result}")
+    else:
+        parser.error(f"Unsupported command: {args.command}")
 
-    result = asyncio.run(run_ingestion(modified_since=args.since, limit=args.limit))
-    print(f"Ingestion finished: {result}")
+
+async def run_cpe_sync_once(limit: int | None = None) -> dict[str, int]:
+    pipeline = CPEPipeline()
+    try:
+        return await pipeline.sync(limit=limit)
+    finally:
+        await pipeline.close()
 
 
 if __name__ == "__main__":

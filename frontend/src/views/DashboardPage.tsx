@@ -3,33 +3,58 @@ import { Link } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
 import { searchVulnerabilities } from "../api/vulnerabilities";
+import { CpeFilters } from "../components/CpeFilters";
 
 export const DashboardPage = () => {
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
+  const [filters, setFilters] = useState<{ vendors: string[]; products: string[] }>({
+    vendors: [],
+    products: [],
+  });
+  const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const results = await searchVulnerabilities({ searchTerm: null, limit: 20 });
+        setLoading(true);
+        const results = await searchVulnerabilities({
+          searchTerm: null,
+          limit: 20,
+          vendorFilters: filters.vendors,
+          productFilters: filters.products,
+        });
         setVulnerabilities(results);
       } catch (error) {
         console.error("Failed to fetch vulnerabilities", error);
       }
+      setLoading(false);
     };
 
     load();
-  }, []);
+  }, [filters]);
+
+  const activeFiltersDescription = useMemo(() => {
+    const parts: string[] = [];
+    if (filters.vendors.length) {
+      parts.push(`Vendor: ${filters.vendors.join(", ")}`);
+    }
+    if (filters.products.length) {
+      parts.push(`Produkt: ${filters.products.join(", ")}`);
+    }
+    return parts.join(" | ");
+  }, [filters]);
 
   return (
     <div className="page">
-      <section className="card">
-        <h2>AI-Unterstuetzte Schwachstellen</h2>
-        <p>
-          Automatisierte Analyse basierend auf inventarisierten Produkten und EUVD/CVE-Daten.
+      <CpeFilters onChange={setFilters} />
+      {activeFiltersDescription && (
+        <p className="muted" style={{ marginTop: "-1rem", marginBottom: "1rem" }}>
+          Aktive Filter: {activeFiltersDescription}
         </p>
-      </section>
+      )}
 
       <VulnerabilityList vulnerabilities={vulnerabilities} />
+      {loading && <p className="muted">Aktualisiere Ergebnisse…</p>}
     </div>
   );
 };
@@ -55,23 +80,18 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             : "n/a";
         const vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
         const products = vuln.products?.length ? vuln.products.join(", ") : "—";
+        const cwes = vuln.cwes?.length ? vuln.cwes.join(", ") : "—";
         const aliases = vuln.aliases?.filter(Boolean) ?? [];
+        const ghsaIds = vuln.ghsaIds ?? [];
 
         return (
           <article key={primaryId} className="vuln-card">
             <header className="vuln-header">
               <div>
-                <div className="vuln-id">{primaryId}</div>
-                {aliases.length > 0 && (
-                  <div className="vuln-aliases">
-                    Aliase:{" "}
-                    {aliases.map((alias) => (
-                      <span key={alias} className="chip">
-                        {alias}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div className="vuln-id">
+                  {vuln.cveId && <span className="chip">{vuln.cveId}</span>}
+                  {vuln.sourceId && <span className="chip">{vuln.sourceId}</span>}
+                </div>
               </div>
               <span className={`tag ${vuln.severity ?? "unknown"}`}>{vuln.severity ?? "n/a"}</span>
             </header>
@@ -79,6 +99,57 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             <h3 className="vuln-title">
               <Link to={`/vulnerabilities/${primaryId}`}>{vuln.title}</Link>
             </h3>
+            <div className="external-links" style={{ marginBottom: "0.5rem" }}>
+              {vuln.cveId && (
+                <>
+                  <a
+                    href={`https://www.cve.org/CVERecord?id=${encodeURIComponent(vuln.cveId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span role="img" aria-label="CVE">
+                      🛡️
+                    </span>
+                    CVE
+                  </a>
+                  <a
+                    href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(vuln.cveId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span role="img" aria-label="NVD">
+                      🗂️
+                    </span>
+                    NVD
+                  </a>
+                </>
+              )}
+              {vuln.sourceId && (
+                <a
+                  href={`https://euvd.enisa.europa.eu/vulnerability/${encodeURIComponent(vuln.sourceId)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span role="img" aria-label="EUVD">
+                    🇪🇺
+                  </span>
+                  EUVD
+                </a>
+              )}
+              {ghsaIds.map((alias) => (
+                <a
+                  key={alias}
+                  href={`https://github.com/advisories/${alias}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span role="img" aria-label="GHSA">
+                    🔗
+                  </span>
+                  {alias}
+                </a>
+              ))}
+            </div>
 
             <div className="vuln-meta">
               <MetaItem label="Quelle" value={vuln.source ?? "EUVD"} />
@@ -93,6 +164,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             <div className="vuln-meta">
               <MetaItem label="Vendors" value={vendors} />
               <MetaItem label="Produkte" value={products} />
+              <MetaItem label="CWE" value={cwes} />
             </div>
 
             <p className="vuln-summary">{vuln.summary}</p>

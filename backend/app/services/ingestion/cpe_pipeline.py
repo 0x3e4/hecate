@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+import structlog
+
+from app.core.config import settings
+from app.repositories.cpe_repository import CPERepository
+from app.repositories.ingestion_state_repository import IngestionStateRepository
+from app.services.ingestion.job_tracker import JobTracker
+from app.services.ingestion.cpe_client import CPEClient
+
+log = structlog.get_logger()
+
+STATE_KEY = "cpe"
+
+
+class CPEPipeline:
+    def __init__(self, *, client: CPEClient | None = None) -> None:
+        self.client = client or CPEClient()
+
+    async def sync(self, limit: int | None = None) -> dict[str, int]:
+        state_repo = await IngestionStateRepository.create()
+        tracker = JobTracker(state_repo)
+        effective_limit = limit or settings.cpe_max_records_per_run
+        ctx = await tracker.start("cpe_sync", limit=effective_limit)
+        last_run = await state_repo.get_timestamp(STATE_KEY)
+        repo = await CPERepository.create()
+
+        ingested = 0
+        failures = 0
+        latest_timestamp: datetime | None = None
+
+        async for record in self.client.iter_cpe_records(last_modified_after=last_run):
+            parsed = _normalize_cpe_record(record)
+            if not parsed:
+                failures += 1
+                continue
+
+            await repo.upsert(parsed)
+            ingested += 1
+
+            if parsed.get("lastModified") and isinstance(parsed["lastModified"], datetime):
+                ts = parsed["lastModified"].astimezone(UTC)
+                if not latest_timestamp or ts > latest_timestamp:
+                    latest_timestamp = ts
+
+            if effective_limit is not None and ingested >= effective_limit:
+                break
+
+        if latest_timestamp:
+            await state_repo.set_timestamp(STATE_KEY, latest_timestamp)
+
+        result = {"ingested": ingested, "failures": failures, "limit": effective_limit}
+        try:
+            await tracker.finish(ctx, **result)
+        except Exception:  # noqa: BLE001 - logging best-effort
+            log.warning("cpe_pipeline.tracker_finish_failed")
+        log.info("cpe_pipeline.sync_complete", **result)
+        return result
+
+    async def close(self) -> None:
+        await self.client.close()
+
+
+def _normalize_cpe_record(record: dict) -> dict | None:  # type: ignore[override]
+    product_record = record.get("cpe") or record.get("cpeMatchString")
+    if not isinstance(product_record, dict):
+        product_record = {
+            key: record.get(key)
+            for key in ("cpeName", "cpe23Uri", "title", "vendor", "product", "version")
+            if record.get(key)
+        }
+    if isinstance(product_record, dict):
+        base = product_record
+    else:
+        base = record
+
+    cpe_name = base.get("cpe23Uri") or base.get("cpeName")
+    if not isinstance(cpe_name, str):
+        return None
+
+    metadata = record.get("cpeNameId") or {}
+    last_modified = None
+    if isinstance(record.get("lastModified"), str):
+        try:
+            last_modified = datetime.fromisoformat(record["lastModified"].replace("Z", "+00:00")).astimezone(UTC)
+        except ValueError:
+            last_modified = None
+
+    vendor = base.get("vendor") or _parse_cpe_uri_component(cpe_name, 3)
+    product = base.get("product") or _parse_cpe_uri_component(cpe_name, 4)
+    version = base.get("version") or _parse_cpe_uri_component(cpe_name, 5)
+
+    return {
+        "cpeName": cpe_name,
+        "title": _extract_title(record),
+        "vendor": vendor,
+        "product": product,
+        "version": version,
+        "deprecated": bool(record.get("deprecated")),
+        "cpeNameId": metadata if isinstance(metadata, dict) else None,
+        "lastModified": last_modified,
+    }
+
+
+def _extract_title(record: dict) -> str | None:
+    titles = record.get("titles")
+    if isinstance(titles, list):
+        for entry in titles:
+            if isinstance(entry, dict) and entry.get("lang", "en").lower() == "en":
+                value = entry.get("title")
+                if isinstance(value, str):
+                    return value
+    return None
+
+
+def _parse_cpe_uri_component(cpe_uri: str, index: int) -> str | None:
+    try:
+        parts = cpe_uri.split(":")
+        component = parts[index] if len(parts) > index else None
+        if component in (None, "-", "*"):
+            return None
+        return component.replace("\\", "").strip()
+    except Exception:  # noqa: BLE001
+        return None
