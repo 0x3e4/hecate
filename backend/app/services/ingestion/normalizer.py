@@ -345,3 +345,146 @@ def _extract_products(record: dict[str, Any]) -> list[str]:
         add_product(products_raw)
 
     return products
+
+
+def _select_description(entries: Any, *, lang: str = "en") -> str | None:
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict):
+                value = entry.get("value")
+                entry_lang = str(entry.get("lang") or "").lower()
+                if isinstance(value, str) and (not lang or entry_lang == lang.lower()):
+                    return value
+    return None
+
+
+def _extract_cpes_from_nvd(record: dict[str, Any]) -> list[str]:
+    cpes: list[str] = []
+    configurations = record.get("configurations")
+    if not isinstance(configurations, list):
+        return cpes
+
+    for configuration in configurations:
+        if not isinstance(configuration, dict):
+            continue
+        nodes = configuration.get("nodes")
+        if not isinstance(nodes, list):
+            continue
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            matches = node.get("cpeMatch")
+            if not isinstance(matches, list):
+                continue
+            for match in matches:
+                if isinstance(match, dict) and match.get("vulnerable"):
+                    criteria = match.get("criteria")
+                    if isinstance(criteria, str):
+                        cpes.append(criteria)
+    return cpes
+
+
+def _extract_cvss_from_nvd(metrics: Any) -> CvssScore:
+    if not isinstance(metrics, dict):
+        return CvssScore()
+
+    for metric_key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+        metric_list = metrics.get(metric_key)
+        if isinstance(metric_list, list) and metric_list:
+            metric = metric_list[0]
+            if isinstance(metric, dict):
+                cvss_data = metric.get("cvssData")
+                if isinstance(cvss_data, dict):
+                    return CvssScore(
+                        version=cvss_data.get("version"),
+                        base_score=_safe_float(cvss_data.get("baseScore")),
+                        vector=cvss_data.get("vectorString"),
+                        severity=_normalize_severity(metric.get("baseSeverity")),
+                    )
+    return CvssScore()
+
+
+def build_document_from_nvd(
+    record: dict[str, Any],
+    *,
+    ingested_at: datetime,
+) -> VulnerabilityDocument | None:
+    if not isinstance(record, dict):
+        return None
+    cve_wrapper = record.get("cve")
+    if not isinstance(cve_wrapper, dict):
+        return None
+
+    cve_id = cve_wrapper.get("id")
+    if not isinstance(cve_id, str) or not cve_id.strip():
+        return None
+
+    description = _select_description(cve_wrapper.get("descriptions")) or ""
+    title = description.split(".")[0] if description else cve_id
+    summary = description or title
+
+    references_raw = cve_wrapper.get("references") or []
+    references: list[str] = []
+    if isinstance(references_raw, list):
+        for ref in references_raw:
+            if isinstance(ref, dict):
+                url = ref.get("url")
+                if isinstance(url, str):
+                    references.append(url)
+
+    weaknesses = cve_wrapper.get("weaknesses") or []
+    cwes: list[str] = []
+    if isinstance(weaknesses, list):
+        for weakness in weaknesses:
+            if isinstance(weakness, dict):
+                descriptions = weakness.get("description")
+                value = _select_description(descriptions)
+                if isinstance(value, str):
+                    cwes.append(value)
+
+    cpes = _extract_cpes_from_nvd(record)
+
+    vendors: set[str] = set()
+    products: set[str] = set()
+    for cpe_uri in cpes:
+        vendor = _parse_cpe_uri_component(cpe_uri, 3)
+        product = _parse_cpe_uri_component(cpe_uri, 4)
+        if vendor:
+            vendors.add(vendor)
+        if product:
+            products.add(product)
+
+    published = _parse_datetime(
+        cve_wrapper.get("published"),
+        fallback=ingested_at,
+    )
+    modified = _parse_datetime(
+        cve_wrapper.get("lastModified"),
+        fallback=published,
+    )
+
+    cvss = _extract_cvss_from_nvd(cve_wrapper.get("metrics"))
+
+    document = VulnerabilityDocument(
+        cve_id=cve_id,
+        source_id=None,
+        source="NVD",
+        title=title,
+        summary=summary,
+        references=references,
+        cwes=cwes,
+        cpes=cpes,
+        aliases=[],
+        assigner=_ensure_str(cve_wrapper.get("sourceIdentifier")),
+        exploited=None,
+        epss_score=None,
+        epss_percentile=None,
+        vendors=sorted(vendors),
+        products=sorted(products),
+        cvss=cvss,
+        published=published,
+        modified=modified,
+        ingested_at=ingested_at.astimezone(UTC),
+        raw={"nvd": record},
+    )
+    return document

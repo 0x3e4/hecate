@@ -32,6 +32,31 @@ class IngestionLogRepository:
         result = await self.collection.insert_one(document)
         return result.inserted_id
 
+    async def cancel_running(self, *, job_name: str, reason: str | None = None) -> int:
+        now = datetime.now(tz=UTC)
+        cursor = self.collection.find({"jobName": job_name, "status": "running"})
+        cancelled = 0
+        async for document in cursor:
+            started_at = document.get("startedAt")
+            if isinstance(started_at, datetime):
+                started_at = started_at.astimezone(UTC)
+            else:
+                started_at = now
+
+            duration = (now - started_at).total_seconds()
+            update: dict[str, Any] = {
+                "status": "cancelled",
+                "finishedAt": now,
+                "durationSeconds": duration,
+            }
+            if reason:
+                update["error"] = reason
+
+            await self.collection.update_one({"_id": document["_id"]}, {"$set": update})
+            cancelled += 1
+
+        return cancelled
+
     async def complete_log(
         self,
         log_id: ObjectId,

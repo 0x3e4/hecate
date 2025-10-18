@@ -16,6 +16,12 @@ class IngestionLogEntry(BaseModel):
     metadata: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    overdue: bool = Field(default=False, alias="overdue", serialization_alias="overdue")
+    overdue_reason: str | None = Field(
+        default=None,
+        alias="overdueReason",
+        serialization_alias="overdueReason",
+    )
 
     model_config = {"populate_by_name": True}
 

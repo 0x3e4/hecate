@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import datetime
+from typing import Any
 
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.pipeline import run_ingestion
+from app.services.ingestion.nvd_pipeline import NVDPipeline
 
 
 def _parse_iso8601(value: str) -> datetime:
@@ -24,8 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-cpe"],
-        help="Command to execute (ingest, sync-cpe).",
+        choices=["ingest", "sync-cpe", "sync-nvd"],
+        help="Command to execute (ingest, sync-cpe, sync-nvd).",
     )
     parser.add_argument(
         "--since",
@@ -36,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=int,
         help="Limit number of vulnerabilities to ingest (useful for testing).",
+    )
+    parser.add_argument(
+        "--initial",
+        action="store_true",
+        help="Force an initial/full sync (supported for sync-cpe and sync-nvd).",
     )
     return parser
 
@@ -50,18 +57,39 @@ def main() -> None:
     elif args.command == "sync-cpe":
         if args.since:
             parser.error("The --since option is not supported for sync-cpe.")
-        result = asyncio.run(run_cpe_sync_once(limit=args.limit))
+        result = asyncio.run(run_cpe_sync_once(limit=args.limit, initial_sync=args.initial))
         print(f"CPE sync finished: {result}")
+    elif args.command == "sync-nvd":
+        if args.limit is not None:
+            parser.error("The --limit option is not supported for sync-nvd.")
+        if args.initial and args.since:
+            parser.error("Use either --initial or --since for sync-nvd, not both.")
+        result = asyncio.run(
+            run_nvd_sync_once(
+                initial_sync=args.initial,
+                modified_since=args.since,
+            )
+        )
+        print(f"NVD sync finished: {result}")
     else:
         parser.error(f"Unsupported command: {args.command}")
 
 
-async def run_cpe_sync_once(limit: int | None = None) -> dict[str, int]:
+async def run_cpe_sync_once(limit: int | None = None, *, initial_sync: bool = False) -> dict[str, int]:
     pipeline = CPEPipeline()
     try:
-        return await pipeline.sync(limit=limit)
+        return await pipeline.sync(limit=limit, initial_sync=initial_sync)
     finally:
         await pipeline.close()
+
+
+async def run_nvd_sync_once(
+    *,
+    initial_sync: bool = False,
+    modified_since: datetime | None = None,
+) -> dict[str, Any]:
+    pipeline = NVDPipeline()
+    return await pipeline.sync(initial_sync=initial_sync, modified_since=modified_since)
 
 
 if __name__ == "__main__":

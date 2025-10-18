@@ -57,6 +57,8 @@ export interface IngestionLogEntry {
   metadata?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
   error?: string | null;
+  overdue?: boolean;
+  overdueReason?: string | null;
 }
 
 export interface IngestionLogResponse {

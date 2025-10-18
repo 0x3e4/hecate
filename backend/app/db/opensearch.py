@@ -3,12 +3,33 @@ from typing import Any
 
 import structlog
 from opensearchpy import OpenSearch, RequestError
-from opensearchpy.exceptions import NotFoundError
+from opensearchpy.exceptions import NotFoundError, OpenSearchException, ConnectionError as OSConnectionError
 
 from app.core.config import settings
 
 _client: OpenSearch | None = None
+_opensearch_available: bool = True
 log = structlog.get_logger()
+
+
+def _mark_opensearch_available() -> None:
+    global _opensearch_available
+    if not _opensearch_available:
+        log.info("opensearch.recovered")
+    _opensearch_available = True
+
+
+def _mark_opensearch_unavailable(
+    *,
+    error: Exception,
+    operation: str,
+    index: str | None = None,
+    **extra: Any,
+) -> None:
+    global _opensearch_available
+    if _opensearch_available:
+        log.warning("opensearch.unavailable", operation=operation, index=index, error=str(error), **extra)
+    _opensearch_available = False
 
 
 def get_client() -> OpenSearch:
@@ -29,7 +50,12 @@ def get_client() -> OpenSearch:
 
 def ensure_vulnerability_index(index_name: str) -> None:
     client = get_client()
-    if client.indices.exists(index=index_name):
+    try:
+        if client.indices.exists(index=index_name):
+            _mark_opensearch_available()
+            return
+    except (OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(error=exc, operation="indices.exists", index=index_name)
         return
 
     body: dict[str, Any] = {
@@ -73,17 +99,22 @@ def ensure_vulnerability_index(index_name: str) -> None:
     try:
         client.indices.create(index=index_name, body=body)
         log.info("opensearch.index_created", index=index_name)
-    except RequestError as exc:
-        log.warning("opensearch.index_create_failed", index=index_name, error=str(exc))
+        _mark_opensearch_available()
+    except (RequestError, OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(error=exc, operation="indices.create", index=index_name)
 
 
 async def async_index_document(index: str, document_id: str, document: dict[str, Any]) -> None:
     client = get_client()
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: client.index(index=index, id=document_id, body=document, refresh="wait_for"),
-    )
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: client.index(index=index, id=document_id, body=document, refresh="wait_for"),
+        )
+        _mark_opensearch_available()
+    except (OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(error=exc, operation="index", index=index, document_id=document_id)
 
 
 async def async_search(index: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -91,12 +122,17 @@ async def async_search(index: str, body: dict[str, Any]) -> dict[str, Any]:
     loop = asyncio.get_running_loop()
 
     try:
-        return await loop.run_in_executor(
+        result = await loop.run_in_executor(
             None,
             lambda: client.search(index=index, body=body),
         )
+        _mark_opensearch_available()
+        return result
     except NotFoundError:
         ensure_vulnerability_index(index)
+        return {"hits": {"hits": [], "total": {"value": 0}}}
+    except (OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(error=exc, operation="search", index=index)
         return {"hits": {"hits": [], "total": {"value": 0}}}
 
 
@@ -109,8 +145,12 @@ async def async_get(index: str, document_id: str) -> dict[str, Any] | None:
             None,
             lambda: client.get(index=index, id=document_id),
         )
+        _mark_opensearch_available()
         return result.get("_source")
     except NotFoundError:
+        return None
+    except (OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(error=exc, operation="get", index=index, document_id=document_id)
         return None
     except Exception as exc:  # noqa: BLE001 - log and propagate None
         log.warning("opensearch.get_failed", index=index, id=document_id, error=str(exc))

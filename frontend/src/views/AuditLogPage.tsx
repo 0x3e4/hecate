@@ -4,14 +4,21 @@ import { fetchIngestionLogs } from "../api/audit";
 import { IngestionLogEntry } from "../types";
 
 const JOB_LABELS: Record<string, string> = {
-  euvd_ingestion: "EUVD/NVD Ingestion",
+  euvd_ingestion: "EUVD Sync",
+  euvd_initial_sync: "EUVD Initial Sync",
   cpe_sync: "CPE Sync",
+  cpe_initial_sync: "CPE Initial Sync",
+  nvd_sync: "NVD Sync",
+  nvd_initial_sync: "NVD Initial Sync",
 };
 
 const STATUS_COLOR: Record<string, string> = {
   completed: "#8fffb0",
-  running: "#ffd08f",
+  running: "#8286ffff",
   failed: "#ffa3a3",
+  timeout: "#fcd34d",
+  overdue: "#fcd34d",
+  cancelled: "#9ca3af",
 };
 
 export const AuditLogPage = () => {
@@ -42,19 +49,38 @@ export const AuditLogPage = () => {
         const duration = entry.durationSeconds != null ? `${entry.durationSeconds.toFixed(1)}s` : "-";
         const finished = entry.finishedAt ? new Date(entry.finishedAt).toLocaleString() : "-";
         const started = new Date(entry.startedAt).toLocaleString();
-        const statusColor = STATUS_COLOR[entry.status] ?? "#d1d5db";
+        const isOverdue = entry.overdue === true;
+        const statusKey = isOverdue ? "overdue" : entry.status;
+        const statusColor = STATUS_COLOR[statusKey] ?? "#d1d5db";
+        const statusLabel =
+          isOverdue && entry.status === "running" ? "running (overdue)" : entry.status;
+        const detailText =
+          entry.status === "cancelled" && entry.error != null
+            ? `Hinweis: ${entry.error}`
+            : entry.error != null
+            ? `Fehler: ${entry.error}`
+            : entry.overdueReason != null
+            ? `Hinweis: ${entry.overdueReason}`
+            : entry.result
+            ? JSON.stringify(entry.result, null, 0)
+            : "-";
+
+        const metadata = (entry.metadata ?? {}) as { label?: unknown };
+        const metaLabel =
+          typeof metadata.label === "string" && metadata.label.trim().length > 0 ? metadata.label : undefined;
+        const jobLabel = metaLabel ?? JOB_LABELS[entry.jobName] ?? entry.jobName;
 
         return (
           <tr key={entry.id}>
-            <td>{JOB_LABELS[entry.jobName] ?? entry.jobName}</td>
+            <td>{jobLabel}</td>
             <td>
-              <span style={{ color: statusColor, fontWeight: 600 }}>{entry.status}</span>
+              <span style={{ color: statusColor, fontWeight: 600 }}>{statusLabel}</span>
             </td>
             <td>{started}</td>
             <td>{finished}</td>
             <td>{duration}</td>
             <td className="muted" style={{ fontSize: "0.85rem" }}>
-              {entry.error ? `Fehler: ${entry.error}` : JSON.stringify(entry.result ?? {}, null, 0) || "-"}
+              {detailText}
             </td>
           </tr>
         );
@@ -77,8 +103,12 @@ export const AuditLogPage = () => {
             </span>
             <select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)}>
               <option value="">Alle Jobs</option>
-              <option value="euvd_ingestion">EUVD/NVD Ingestion</option>
+              <option value="euvd_ingestion">EUVD Sync</option>
+              <option value="euvd_initial_sync">EUVD Initial Sync</option>
               <option value="cpe_sync">CPE Sync</option>
+              <option value="cpe_initial_sync">CPE Initial Sync</option>
+              <option value="nvd_sync">NVD Sync</option>
+              <option value="nvd_initial_sync">NVD Initial Sync</option>
             </select>
           </label>
           {loading && <span className="muted">Aktualisiere Daten…</span>}

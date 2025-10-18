@@ -19,11 +19,18 @@ class CPEPipeline:
     def __init__(self, *, client: CPEClient | None = None) -> None:
         self.client = client or CPEClient()
 
-    async def sync(self, limit: int | None = None) -> dict[str, int]:
+    async def sync(self, limit: int | None = None, *, initial_sync: bool = False) -> dict[str, int]:
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
-        effective_limit = limit or settings.cpe_max_records_per_run
-        ctx = await tracker.start("cpe_sync", limit=effective_limit)
+        effective_limit = self._resolve_limit(limit)
+        job_name = "cpe_initial_sync" if initial_sync else "cpe_sync"
+        label = "CPE Initial Sync" if initial_sync else "CPE Sync"
+        ctx = await tracker.start(
+            job_name,
+            limit=effective_limit,
+            initial_sync=initial_sync,
+            label=label,
+        )
         last_run = await state_repo.get_timestamp(STATE_KEY)
         repo = await CPERepository.create()
 
@@ -51,7 +58,12 @@ class CPEPipeline:
         if latest_timestamp:
             await state_repo.set_timestamp(STATE_KEY, latest_timestamp)
 
-        result = {"ingested": ingested, "failures": failures, "limit": effective_limit}
+        result = {
+            "ingested": ingested,
+            "failures": failures,
+            "limit": effective_limit,
+            "initial_sync": initial_sync,
+        }
         try:
             await tracker.finish(ctx, **result)
         except Exception:  # noqa: BLE001 - logging best-effort
@@ -61,6 +73,18 @@ class CPEPipeline:
 
     async def close(self) -> None:
         await self.client.close()
+
+    @staticmethod
+    def _resolve_limit(explicit_limit: int | None) -> int | None:
+        configured_limit = settings.cpe_max_records_per_run
+        if configured_limit is not None and configured_limit <= 0:
+            configured_limit = None
+
+        if explicit_limit is None:
+            return configured_limit
+        if explicit_limit <= 0:
+            return None
+        return explicit_limit
 
 
 def _normalize_cpe_record(record: dict) -> dict | None:  # type: ignore[override]

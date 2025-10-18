@@ -30,11 +30,25 @@ class IngestionPipeline:
         self.euvd_client = euvd_client or EUVDClient()
         self.nvd_client = nvd_client or NVDClient()
 
-    async def ingest(self, *, modified_since: datetime | None = None, limit: int | None = None) -> dict[str, int]:
+    async def ingest(
+        self,
+        *,
+        modified_since: datetime | None = None,
+        limit: int | None = None,
+        initial_sync: bool = False,
+    ) -> dict[str, int]:
         repository = await VulnerabilityRepository.create()
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
-        ctx = await tracker.start("euvd_ingestion")
+        effective_limit = self._resolve_limit(limit)
+        job_name = "euvd_initial_sync" if initial_sync else "euvd_ingestion"
+        label = "EUVD Initial Sync" if initial_sync else "EUVD Sync"
+        ctx = await tracker.start(
+            job_name,
+            limit=effective_limit,
+            initial_sync=initial_sync,
+            label=label,
+        )
         if modified_since is None:
             modified_since = await state_repo.get_timestamp("euvd")
         if modified_since is None and settings.euvd_initial_backfill_since:
@@ -83,15 +97,21 @@ class IngestionPipeline:
                     cve_id=cve_id,
                     title=document.title,
                     severity=document.cvss.severity,
+                    initial_sync=initial_sync,
                 )
 
-                if limit is not None and ingested >= limit:
+                if effective_limit is not None and ingested >= effective_limit:
                     break
 
             if latest_modified:
                 await state_repo.set_timestamp("euvd", latest_modified)
 
-            result = {"ingested": ingested, "skipped": skipped}
+            result = {
+                "ingested": ingested,
+                "skipped": skipped,
+                "limit": effective_limit,
+                "initial_sync": initial_sync,
+            }
             await tracker.finish(ctx, **result)
             return result
         except Exception as exc:  # noqa: BLE001
@@ -101,6 +121,18 @@ class IngestionPipeline:
     async def close(self) -> None:
         await self.euvd_client.close()
         await self.nvd_client.close()
+
+    @staticmethod
+    def _resolve_limit(explicit_limit: int | None) -> int | None:
+        configured_limit = settings.euvd_max_records_per_run
+        if configured_limit is not None and configured_limit <= 0:
+            configured_limit = None
+
+        if explicit_limit is None:
+            return configured_limit
+        if explicit_limit <= 0:
+            return None
+        return explicit_limit
 
 
 def _extract_identifiers(record: dict[str, Any]) -> tuple[str, str | None] | None:
@@ -154,9 +186,18 @@ def _extract_cve_from_alias(data: Any) -> str | None:
     return None
 
 
-async def run_ingestion(*, modified_since: datetime | None = None, limit: int | None = None) -> dict[str, int]:
+async def run_ingestion(
+    *,
+    modified_since: datetime | None = None,
+    limit: int | None = None,
+    initial_sync: bool = False,
+) -> dict[str, int]:
     pipeline = IngestionPipeline()
     try:
-        return await pipeline.ingest(modified_since=modified_since, limit=limit)
+        return await pipeline.ingest(
+            modified_since=modified_since,
+            limit=limit,
+            initial_sync=initial_sync,
+        )
     finally:
         await pipeline.close()

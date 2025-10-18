@@ -27,11 +27,11 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
-        get_scheduler().start()
+        await get_scheduler().start()
 
     @app.on_event("shutdown")
     async def _shutdown_scheduler() -> None:  # pragma: no cover - wiring code
-        get_scheduler().shutdown()
+        await get_scheduler().shutdown()
 
     return app
 
