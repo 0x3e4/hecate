@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { fetchIngestionLogs } from "../api/audit";
 import { IngestionLogEntry } from "../types";
@@ -54,16 +54,32 @@ export const AuditLogPage = () => {
         const statusColor = STATUS_COLOR[statusKey] ?? "#d1d5db";
         const statusLabel =
           isOverdue && entry.status === "running" ? "running (overdue)" : entry.status;
-        const detailText =
-          entry.status === "cancelled" && entry.error != null
-            ? `Hinweis: ${entry.error}`
-            : entry.error != null
-            ? `Fehler: ${entry.error}`
-            : entry.overdueReason != null
-            ? `Hinweis: ${entry.overdueReason}`
-            : entry.result
-            ? JSON.stringify(entry.result, null, 0)
-            : "-";
+        const cancelledNote = entry.status === "cancelled" && entry.error != null ? entry.error : undefined;
+        const errorText = entry.error != null && entry.status !== "cancelled" ? entry.error : undefined;
+        const hintText = entry.overdueReason ?? (cancelledNote ? `Job abgebrochen: ${cancelledNote}` : undefined);
+        const progressJson = entry.progress ? JSON.stringify(entry.progress, null, 2) : undefined;
+        const resultJson = entry.result ? JSON.stringify(entry.result, null, 2) : undefined;
+
+        let detailNode: ReactNode = "-";
+        if (errorText) {
+          detailNode = `Fehler: ${errorText}`;
+        } else if (hintText) {
+          detailNode = `Hinweis: ${hintText}`;
+        } else if (progressJson) {
+          detailNode = (
+            <details>
+              <summary style={{ cursor: "pointer" }}>Fortschritt anzeigen</summary>
+              <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{progressJson}</pre>
+            </details>
+          );
+        } else if (resultJson) {
+          detailNode = (
+            <details>
+              <summary style={{ cursor: "pointer" }}>Details anzeigen</summary>
+              <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{resultJson}</pre>
+            </details>
+          );
+        }
 
         const metadata = (entry.metadata ?? {}) as { label?: unknown };
         const metaLabel =
@@ -80,7 +96,7 @@ export const AuditLogPage = () => {
             <td>{finished}</td>
             <td>{duration}</td>
             <td className="muted" style={{ fontSize: "0.85rem" }}>
-              {detailText}
+              {detailNode}
             </td>
           </tr>
         );

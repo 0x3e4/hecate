@@ -32,6 +32,12 @@ class IngestionLogRepository:
         result = await self.collection.insert_one(document)
         return result.inserted_id
 
+    async def update_progress(self, log_id: ObjectId, progress: dict[str, Any]) -> None:
+        await self.collection.update_one(
+            {"_id": log_id},
+            {"$set": {"progress": progress, "lastProgressAt": datetime.now(tz=UTC)}},
+        )
+
     async def cancel_running(self, *, job_name: str, reason: str | None = None) -> int:
         now = datetime.now(tz=UTC)
         cursor = self.collection.find({"jobName": job_name, "status": "running"})
@@ -73,7 +79,8 @@ class IngestionLogRepository:
                     "finishedAt": finished_at.astimezone(UTC),
                     "durationSeconds": (finished_at - started_at).total_seconds(),
                     "result": result,
-                }
+                },
+                "$unset": {"progress": "", "lastProgressAt": ""},
             },
         )
 
@@ -93,7 +100,8 @@ class IngestionLogRepository:
                     "finishedAt": finished_at.astimezone(UTC),
                     "durationSeconds": (finished_at - started_at).total_seconds(),
                     "error": error,
-                }
+                },
+                "$unset": {"progress": "", "lastProgressAt": ""},
             },
         )
 

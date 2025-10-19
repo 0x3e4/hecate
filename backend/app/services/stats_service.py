@@ -16,6 +16,7 @@ class StatsService:
     async def _fetch_vulnerability_stats(self) -> dict[str, Any]:
         query = {
             "size": 0,
+            "track_total_hits": True,
             "aggs": {
                 "by_source": {
                     "terms": {

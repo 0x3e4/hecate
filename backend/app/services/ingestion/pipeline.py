@@ -9,6 +9,7 @@ import structlog
 from app.core.config import settings
 from app.models.vulnerability import VulnerabilityDocument
 from app.repositories.ingestion_state_repository import IngestionStateRepository
+from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.euvd_client import EUVDClient
@@ -41,6 +42,12 @@ class IngestionPipeline:
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
         effective_limit = self._resolve_limit(limit)
+        if initial_sync and effective_limit is not None:
+            log.info(
+                "pipeline.initial_sync_unbounded",
+                configured_limit=effective_limit,
+            )
+            effective_limit = None
         job_name = "euvd_initial_sync" if initial_sync else "euvd_ingestion"
         label = "EUVD Initial Sync" if initial_sync else "EUVD Sync"
         ctx = await tracker.start(
@@ -49,25 +56,62 @@ class IngestionPipeline:
             initial_sync=initial_sync,
             label=label,
         )
-        if modified_since is None:
-            modified_since = await state_repo.get_timestamp("euvd")
-        if modified_since is None and settings.euvd_initial_backfill_since:
+        user_supplied_since = modified_since is not None
+        configured_since: datetime | None = None
+        if settings.vulnerability_initial_backfill_since:
             try:
-                modified_since = datetime.fromisoformat(
-                    settings.euvd_initial_backfill_since.replace("Z", "+00:00")
+                configured_since = datetime.fromisoformat(
+                    settings.vulnerability_initial_backfill_since.replace("Z", "+00:00")
                 ).astimezone(UTC)
             except ValueError:
                 log.warning(
                     "pipeline.invalid_backfill_since",
-                    value=settings.euvd_initial_backfill_since,
+                    value=settings.vulnerability_initial_backfill_since,
+                )
+        requested_since = modified_since
+        if not user_supplied_since:
+            if modified_since is None:
+                modified_since = await state_repo.get_timestamp("euvd")
+                requested_since = modified_since
+            if modified_since is None and configured_since is not None:
+                modified_since = configured_since
+                requested_since = configured_since
+
+        local_total_before = await repository.count(source="EUVD")
+        remote_total: int | None = None
+        run_full = False
+        if initial_sync and not user_supplied_since:
+            try:
+                remote_total = await self.euvd_client.total_results()
+            except RuntimeError as exc:
+                log.warning("pipeline.euvd_total_failed", error=str(exc))
+            if remote_total is not None and remote_total > local_total_before:
+                run_full = True
+                if configured_since is not None:
+                    modified_since = configured_since
+                    requested_since = configured_since
+                else:
+                    modified_since = None
+                    requested_since = None
+                log.info(
+                    "pipeline.euvd_full_resync",
+                    remote_total=remote_total,
+                    local_total_before=local_total_before,
+                    since=requested_since,
                 )
 
         ingested = 0
         skipped = 0
+        processed = 0
         latest_modified: datetime | None = None
+
+        progress_interval = 500
+        last_progress_log = datetime.now(tz=UTC)
+        log_repo: IngestionLogRepository | None = None
 
         try:
             async for record in self.euvd_client.list_vulnerabilities(modified_since=modified_since):
+                processed += 1
                 identifiers = _extract_identifiers(record)
                 if identifiers is None:
                     skipped += 1
@@ -103,14 +147,57 @@ class IngestionPipeline:
                 if effective_limit is not None and ingested >= effective_limit:
                     break
 
+                now = datetime.now(tz=UTC)
+                if (
+                    processed % progress_interval == 0
+                    or (now - last_progress_log).total_seconds() >= 60
+                ):
+                    progress_payload = {
+                        "processed": processed,
+                        "ingested": ingested,
+                        "skipped": skipped,
+                        "limit": effective_limit,
+                        "remote_total": remote_total,
+                    }
+                    await state_repo.update_state(
+                        f"job:{ctx.name}",
+                        {
+                            "status": "running",
+                            "progress": progress_payload,
+                            "last_progress_at": now,
+                        },
+                    )
+                    if ctx.log_id is not None:
+                        if log_repo is None:
+                            log_repo = await IngestionLogRepository.create()
+                        await log_repo.update_progress(ctx.log_id, progress_payload)
+                    log.info(
+                        "pipeline.euvd_progress",
+                        processed=processed,
+                        ingested=ingested,
+                        skipped=skipped,
+                        limit=effective_limit,
+                        initial_sync=initial_sync,
+                    )
+                    last_progress_log = now
+
             if latest_modified:
                 await state_repo.set_timestamp("euvd", latest_modified)
+
+            local_total_after = await repository.count(source="EUVD")
 
             result = {
                 "ingested": ingested,
                 "skipped": skipped,
                 "limit": effective_limit,
                 "initial_sync": initial_sync,
+                "processed": processed,
+                "since": requested_since,
+                "latest_modified": latest_modified,
+                "local_total_before": local_total_before,
+                "local_total_after": local_total_after,
+                "remote_total": remote_total,
+                "run_full": run_full,
             }
             await tracker.finish(ctx, **result)
             return result

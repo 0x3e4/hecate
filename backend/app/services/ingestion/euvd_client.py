@@ -109,6 +109,34 @@ class EUVDClient:
     async def close(self) -> None:
         await self._client.aclose()
 
+    async def total_results(self, *, modified_since: datetime | None = None) -> int:
+        params: dict[str, Any] = {
+            "page": 0,
+            "size": 1,
+            "fromScore": 0,
+            "toScore": 10,
+        }
+        if modified_since:
+            params["fromUpdatedDate"] = modified_since.date().isoformat()
+
+        try:
+            async with self._rate_limiter.slot():
+                response = await self._client.get(self.SEARCH_PATH, params=params)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            log.error("euvd_client.total_failed", error=str(exc))
+            raise RuntimeError("Failed to fetch EUVD total results.") from exc
+
+        payload = response.json()
+        total = payload.get("total")
+        if not isinstance(total, int):
+            total = payload.get("totalElements")
+        if isinstance(total, int):
+            return total
+
+        log.warning("euvd_client.total_missing", keys=list(payload.keys())[:5])
+        return 0
+
 
 async def iter_euvd_records(modified_since: datetime | None = None) -> AsyncIterator[dict[str, Any]]:
     client = EUVDClient()

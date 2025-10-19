@@ -14,6 +14,7 @@ class IngestionLogEntry(BaseModel):
     finished_at: datetime | None = Field(default=None, alias="finishedAt", serialization_alias="finishedAt")
     duration_seconds: float | None = Field(default=None, alias="durationSeconds", serialization_alias="durationSeconds")
     metadata: dict[str, Any] | None = None
+    progress: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
     overdue: bool = Field(default=False, alias="overdue", serialization_alias="overdue")

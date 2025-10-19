@@ -55,6 +55,7 @@ export interface IngestionLogEntry {
   finishedAt?: string | null;
   durationSeconds?: number | null;
   metadata?: Record<string, unknown> | null;
+  progress?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
   error?: string | null;
   overdue?: boolean;

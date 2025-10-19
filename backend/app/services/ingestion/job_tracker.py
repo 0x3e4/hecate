@@ -66,6 +66,7 @@ class JobTracker:
                 "finished_at": finished_at,
                 "duration_seconds": (finished_at - ctx.started_at).total_seconds(),
                 "result": result,
+                "progress": None,
             },
         )
         if ctx.log_id is not None:
@@ -86,6 +87,7 @@ class JobTracker:
                 "finished_at": finished_at,
                 "duration_seconds": (finished_at - ctx.started_at).total_seconds(),
                 "error": error,
+                "progress": None,
             },
         )
         if ctx.log_id is not None:
