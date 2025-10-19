@@ -1,63 +1,48 @@
 import { NavLink } from "react-router-dom";
 
-const linkStyle: React.CSSProperties = {
-  display: "block",
-  padding: "0.75rem 1.25rem",
-  borderRadius: "8px",
-  color: "rgba(255,255,255,0.85)",
-  textDecoration: "none",
-  marginBottom: "0.5rem",
-  fontWeight: 500
+type SidebarProps = {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 };
 
-export const Sidebar = () => {
+const navItems = [
+  { to: "/", label: "Dashboard", shortLabel: "D" },
+  { to: "/vulnerabilities", label: "Vulnerabilities", shortLabel: "V" },
+  { to: "/audit", label: "Audit Log", shortLabel: "A" },
+  { to: "/stats", label: "Statistiken", shortLabel: "S" },
+];
+
+export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
   return (
-    <aside
-      style={{
-        width: "260px",
-        padding: "2rem 1.5rem",
-        background: "#05070d",
-        borderRight: "1px solid rgba(255, 255, 255, 0.08)"
-      }}
-    >
-      <nav>
-        <NavLink
-          to="/"
-          style={({ isActive }) => ({
-            ...linkStyle,
-            backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
-          })}
-        >
-          Dashboard
-        </NavLink>
-        <NavLink
-          to="/vulnerabilities"
-          style={({ isActive }) => ({
-            ...linkStyle,
-            backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
-          })}
-        >
-          Vulnerabilities
-        </NavLink>
-        <NavLink
-          to="/audit"
-          style={({ isActive }) => ({
-            ...linkStyle,
-            backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
-          })}
-        >
-          Audit Log
-        </NavLink>
-        <NavLink
-          to="/stats"
-          style={({ isActive }) => ({
-            ...linkStyle,
-            backgroundColor: isActive ? "rgba(92,132,255,0.15)" : "transparent"
-          })}
-        >
-          Statistiken
-        </NavLink>
+    <aside className={`app-sidebar${collapsed ? " collapsed" : ""}`}>
+      <nav className="sidebar-nav">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            title={item.label}
+            aria-label={item.label}
+            className={({ isActive }) =>
+              `sidebar-link${isActive ? " active" : ""}`
+            }
+          >
+            <span className="sidebar-link-short">{item.shortLabel}</span>
+            <span className="sidebar-link-text">{item.label}</span>
+          </NavLink>
+        ))}
       </nav>
+      <button
+        type="button"
+        className="sidebar-collapse-button"
+        onClick={onToggleCollapse}
+        aria-pressed={collapsed}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        <span aria-hidden="true" className="sidebar-collapse-icon">
+          {collapsed ? "⮞" : "⮜"}
+        </span>
+        <span className="sidebar-collapse-label">{collapsed ? "Expand" : "Collapse"}</span>
+      </button>
     </aside>
   );
 };

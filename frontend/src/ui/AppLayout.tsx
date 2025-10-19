@@ -1,15 +1,21 @@
+import { useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 
 export const AppLayout = () => {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#080a12" }}>
-      <Sidebar />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div className="app-shell">
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
+      />
+      <div className="app-main">
         <Header />
-        <main style={{ flex: 1 }}>
+        <main className="app-content">
           <Outlet />
         </main>
       </div>
