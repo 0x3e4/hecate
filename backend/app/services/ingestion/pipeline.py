@@ -11,6 +11,7 @@ from app.models.vulnerability import VulnerabilityDocument
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.euvd_client import EUVDClient
 from app.services.ingestion.normalizer import build_document
@@ -39,6 +40,7 @@ class IngestionPipeline:
         initial_sync: bool = False,
     ) -> dict[str, int]:
         repository = await VulnerabilityRepository.create()
+        asset_catalog = await AssetCatalogService.create()
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
         effective_limit = self._resolve_limit(limit)
@@ -120,13 +122,29 @@ class IngestionPipeline:
                 cve_id, source_id = identifiers
 
                 supplemental = await self.nvd_client.fetch_cve(cve_id) if _is_cve(cve_id) else None
-                document = build_document(
+                document, product_version_map = build_document(
                     cve_id=cve_id,
                     source_id=source_id,
                     euvd_record=record,
                     supplemental_record=supplemental,
                     ingested_at=datetime.now(tz=UTC),
                 )
+                try:
+                    catalog_result = await asset_catalog.record_assets(
+                        vendors=document.vendors,
+                        product_versions=product_version_map,
+                        cpes=document.cpes,
+                    )
+                    document = document.model_copy(
+                        update={
+                            "vendor_slugs": catalog_result.vendor_slugs,
+                            "product_slugs": catalog_result.product_slugs,
+                            "product_versions": catalog_result.version_strings or document.product_versions,
+                            "product_version_ids": catalog_result.version_ids,
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001 - log and continue
+                    log.warning("pipeline.asset_catalog_update_failed", cve_id=cve_id, error=str(exc))
 
                 await repository.upsert(document)
                 ingested += 1

@@ -78,6 +78,10 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "exploited": {"type": "boolean"},
                 "epss_score": {"type": "float"},
                 "epss_percentile": {"type": "float"},
+                "vendor_slugs": {"type": "keyword"},
+                "product_slugs": {"type": "keyword"},
+                "product_versions": {"type": "keyword"},
+                "product_version_ids": {"type": "keyword"},
                 "vendors": {"type": "keyword"},
                 "products": {"type": "keyword"},
                 "cvss": {

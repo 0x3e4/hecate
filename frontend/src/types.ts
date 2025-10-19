@@ -10,6 +10,7 @@ export interface VulnerabilityPreview {
   epssPercentile?: number | null;
   vendors?: string[];
   products?: string[];
+  productVersions?: string[];
   assigner?: string | null;
   exploited?: boolean | null;
   published?: string | null;
@@ -24,27 +25,11 @@ export interface VulnerabilityQuery {
   cpeFilters?: string[];
   vendorFilters?: string[];
   productFilters?: string[];
+  vendorSlugs?: string[];
+  productSlugs?: string[];
+  versionFilters?: string[];
   severity?: string[];
   limit?: number;
-}
-
-export interface CpeEntry {
-  cpeName: string;
-  title?: string | null;
-  vendor?: string | null;
-  product?: string | null;
-  version?: string | null;
-  deprecated?: boolean;
-}
-
-export interface CpeQueryResponse {
-  total: number;
-  items: CpeEntry[];
-}
-
-export interface CpeValueListResponse {
-  total: number;
-  items: string[];
 }
 
 export interface IngestionLogEntry {
@@ -74,9 +59,44 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   modified?: string | null;
   ingestedAt?: string | null;
   rawDocument?: Record<string, unknown> | null;
+  productVersionIds?: string[];
 }
 
 export interface PagedVulnerabilityResponse {
   total: number;
   items: VulnerabilityPreview[];
+}
+
+export interface CatalogVendor {
+  slug: string;
+  name: string;
+  aliases: string[];
+}
+
+export interface CatalogVendorListResponse {
+  total: number;
+  items: CatalogVendor[];
+}
+
+export interface CatalogProduct {
+  slug: string;
+  name: string;
+  vendorSlugs: string[];
+  aliases: string[];
+}
+
+export interface CatalogProductListResponse {
+  total: number;
+  items: CatalogProduct[];
+}
+
+export interface CatalogVersion {
+  id: string;
+  value: string;
+  productSlug: string;
+}
+
+export interface CatalogVersionListResponse {
+  total: number;
+  items: CatalogVersion[];
 }

@@ -20,6 +20,10 @@ class SchedulerManager:
         self._bootstrapped = False
         self._bootstrap_task: asyncio.Task[None] | None = None
 
+    @property
+    def bootstrapped(self) -> bool:
+        return self._bootstrapped
+
     async def start(self) -> None:
         if not settings.scheduler_enabled:
             log.info("scheduler.disabled")
@@ -104,6 +108,10 @@ def get_scheduler() -> SchedulerManager:
 
 
 async def _scheduled_cpe_sync() -> None:
+    manager = get_scheduler()
+    if settings.ingestion_bootstrap_on_startup and not manager.bootstrapped:
+        log.info("scheduler.cpe_sync_skipped_initial_sync_incomplete")
+        return
     await _execute_cpe_sync(limit=None, initial_sync=False)
 
 
@@ -124,6 +132,10 @@ async def _execute_cpe_sync(*, limit: int | None, initial_sync: bool) -> None:
         await pipeline.close()
 
 async def _scheduled_nvd_sync() -> None:
+    manager = get_scheduler()
+    if settings.ingestion_bootstrap_on_startup and not manager.bootstrapped:
+        log.info("scheduler.nvd_sync_skipped_initial_sync_incomplete")
+        return
     await _execute_nvd_sync(initial_sync=False)
 
 
@@ -142,6 +154,10 @@ async def _execute_nvd_sync(*, initial_sync: bool) -> None:
         log.exception(event, error=str(exc))
 
 async def _scheduled_euvd_ingestion() -> None:
+    manager = get_scheduler()
+    if settings.ingestion_bootstrap_on_startup and not manager.bootstrapped:
+        log.info("scheduler.euvd_ingestion_skipped_initial_sync_incomplete")
+        return
     await _execute_euvd_ingestion(limit=None, initial_sync=False)
 
 

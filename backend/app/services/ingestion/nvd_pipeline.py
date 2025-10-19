@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.nvd_client import NVDClient
 from app.services.ingestion.normalizer import build_document_from_nvd
@@ -29,6 +30,7 @@ class NVDPipeline:
         modified_since: datetime | None = None,
     ) -> dict[str, Any]:
         repository = await VulnerabilityRepository.create()
+        asset_catalog = await AssetCatalogService.create()
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
 
@@ -94,10 +96,28 @@ class NVDPipeline:
 
         try:
             async for record in self.client.iter_cves(last_modified_start=last_run):
-                document = build_document_from_nvd(record, ingested_at=datetime.now(tz=UTC))
-                if document is None:
+                result = build_document_from_nvd(record, ingested_at=datetime.now(tz=UTC))
+                if result is None:
                     skipped_invalid += 1
                     continue
+                document, product_version_map = result
+
+                try:
+                    catalog_result = await asset_catalog.record_assets(
+                        vendors=document.vendors,
+                        product_versions=product_version_map,
+                        cpes=document.cpes,
+                    )
+                    document = document.model_copy(
+                        update={
+                            "vendor_slugs": catalog_result.vendor_slugs,
+                            "product_slugs": catalog_result.product_slugs,
+                            "product_versions": catalog_result.version_strings or document.product_versions,
+                            "product_version_ids": catalog_result.version_ids,
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("nvd_pipeline.asset_catalog_update_failed", cve_id=document.cve_id, error=str(exc))
 
                 inserted = await repository.upsert_from_nvd(document, nvd_raw=record)
                 if inserted:

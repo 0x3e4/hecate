@@ -72,7 +72,7 @@ def build_document(
     euvd_record: dict[str, Any],
     supplemental_record: dict[str, Any] | None,
     ingested_at: datetime,
-) -> VulnerabilityDocument:
+) -> tuple[VulnerabilityDocument, dict[str, set[str]]]:
     title = euvd_record.get("title") or euvd_record.get("summary") or cve_id
     summary = (
         euvd_record.get("summary")
@@ -150,7 +150,9 @@ def build_document(
     epss_score, epss_percentile = _parse_epss(euvd_record.get("epss"))
 
     vendors = _extract_vendors(euvd_record)
-    products = _extract_products(euvd_record)
+    product_version_map = _extract_products(euvd_record)
+    products = list(product_version_map.keys())
+    product_versions = sorted({version for versions in product_version_map.values() for version in versions})
 
     published = _parse_datetime(
         euvd_record.get("published")
@@ -162,8 +164,16 @@ def build_document(
     modified = _parse_datetime(
         euvd_record.get("modified")
         or euvd_record.get("last_modified")
+        or euvd_record.get("lastModified")
+        or euvd_record.get("updated")
+        or euvd_record.get("updated_at")
+        or euvd_record.get("updatedAt")
         or euvd_record.get("updatedDate")
-        or euvd_record.get("lastModified"),
+        or euvd_record.get("dateUpdated")
+        or euvd_record.get("modificationDate")
+        or euvd_record.get("last_update")
+        or euvd_record.get("lastUpdate")
+        or euvd_record.get("last_update_date"),
         fallback=published,
     )
 
@@ -184,7 +194,7 @@ def build_document(
                         )
                         break
 
-    return VulnerabilityDocument(
+    document = VulnerabilityDocument(
         cve_id=cve_id,
         source_id=source_id,
         source=euvd_record.get("source", "EUVD"),
@@ -200,12 +210,14 @@ def build_document(
         epss_percentile=epss_percentile,
         vendors=vendors,
         products=products,
+        product_versions=product_versions,
         cvss=cvss,
         published=published,
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),
         raw={"euvd": euvd_record, "supplemental": supplemental_record},
     )
+    return document, product_version_map
 
 
 def _ensure_str(value: Any) -> str | None:
@@ -253,6 +265,11 @@ def _extract_vendors(record: dict[str, Any]) -> list[str]:
         record.get("vendors")
         or record.get("vendor")
         or record.get("enisaIdVendor")
+        or record.get("affectedVendors")
+        or record.get("affected_vendors")
+        or record.get("impactedVendors")
+        or record.get("impacted_vendors")
+        or record.get("vendorList")
         or []
     )
 
@@ -283,39 +300,37 @@ def _extract_vendors(record: dict[str, Any]) -> list[str]:
     return names
 
 
-def _extract_products(record: dict[str, Any]) -> list[str]:
+def _extract_products(record: dict[str, Any]) -> dict[str, set[str]]:
     products_raw = (
         record.get("products")
         or record.get("product")
         or record.get("enisaIdProduct")
+        or record.get("affectedProducts")
+        or record.get("affected_products")
+        or record.get("impactedProducts")
+        or record.get("impacted_products")
+        or record.get("productList")
         or []
     )
 
-    products: list[str] = []
-    seen_ids: set[str] = set()
-    label_counts: dict[str, int] = {}
+    products: dict[str, set[str]] = {}
+    seen_entries: set[tuple[str, str | None]] = set()
 
-    def add_product(name: str | None, version: str | None = None, identifier: str | None = None) -> None:
+    def add_product(name: str | None, version: str | None = None) -> None:
         if not name:
             return
         label = name.strip()
         if not label:
             return
-        version_clean = str(version).strip() if version else ""
+        version_clean = _normalize_version(version)
+        key = (label.lower(), version_clean)
+        if key in seen_entries:
+            return
+        seen_entries.add(key)
+
+        product_versions = products.setdefault(label, set())
         if version_clean:
-            label = f"{label} ({version_clean})"
-
-        if identifier:
-            if identifier in seen_ids:
-                return
-            seen_ids.add(identifier)
-        else:
-            count = label_counts.get(label, 0)
-            label_counts[label] = count + 1
-            if count:
-                label = f"{label} #{count + 1}"
-
-        products.append(label)
+            product_versions.add(version_clean)
 
     if isinstance(products_raw, list):
         for entry in products_raw:
@@ -323,9 +338,8 @@ def _extract_products(record: dict[str, Any]) -> list[str]:
                 add_product(entry)
             elif isinstance(entry, dict):
                 version_hint = entry.get("product_version") or entry.get("version")
-                entry_id = entry.get("id")
                 if isinstance(entry.get("name"), str):
-                    add_product(entry.get("name"), version_hint, entry_id)
+                    add_product(entry.get("name"), version_hint)
                 product_obj = entry.get("product")
                 if isinstance(product_obj, dict):
                     add_product(
@@ -333,18 +347,32 @@ def _extract_products(record: dict[str, Any]) -> list[str]:
                         product_obj.get("version")
                         or product_obj.get("product_version")
                         or version_hint,
-                        entry_id or product_obj.get("id"),
                     )
     elif isinstance(products_raw, dict):
         add_product(
             products_raw.get("name"),
             products_raw.get("version") or products_raw.get("product_version"),
-            products_raw.get("id"),
         )
     elif isinstance(products_raw, str):
         add_product(products_raw)
 
     return products
+
+
+def _normalize_version(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = str(value).strip()
+    if not normalized or normalized in {"*", "-"}:
+        return None
+    return normalized
+
+
+def _humanize_label(value: str | None) -> str | None:
+    if not value:
+        return None
+    label = value.replace("_", " ").strip()
+    return label or None
 
 
 def _select_description(entries: Any, *, lang: str = "en") -> str | None:
@@ -408,7 +436,7 @@ def build_document_from_nvd(
     record: dict[str, Any],
     *,
     ingested_at: datetime,
-) -> VulnerabilityDocument | None:
+) -> tuple[VulnerabilityDocument, dict[str, set[str]]] | None:
     if not isinstance(record, dict):
         return None
     cve_wrapper = record.get("cve")
@@ -445,14 +473,20 @@ def build_document_from_nvd(
     cpes = _extract_cpes_from_nvd(record)
 
     vendors: set[str] = set()
-    products: set[str] = set()
+    product_version_map: dict[str, set[str]] = {}
     for cpe_uri in cpes:
         vendor = _parse_cpe_uri_component(cpe_uri, 3)
         product = _parse_cpe_uri_component(cpe_uri, 4)
-        if vendor:
-            vendors.add(vendor)
-        if product:
-            products.add(product)
+        version = _parse_cpe_uri_component(cpe_uri, 5)
+        vendor_label = _humanize_label(vendor)
+        product_label = _humanize_label(product)
+        version_value = _normalize_version(version)
+        if vendor_label:
+            vendors.add(vendor_label)
+        if product_label:
+            product_versions = product_version_map.setdefault(product_label, set())
+            if version_value:
+                product_versions.add(version_value)
 
     published = _parse_datetime(
         cve_wrapper.get("published"),
@@ -480,11 +514,12 @@ def build_document_from_nvd(
         epss_score=None,
         epss_percentile=None,
         vendors=sorted(vendors),
-        products=sorted(products),
+        products=list(product_version_map.keys()),
+        product_versions=sorted({version for versions in product_version_map.values() for version in versions}),
         cvss=cvss,
         published=published,
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),
         raw={"nvd": record},
     )
-    return document
+    return document, product_version_map

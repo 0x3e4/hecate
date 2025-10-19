@@ -57,6 +57,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             : "n/a";
         const vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
         const products = vuln.products?.length ? vuln.products.join(", ") : "—";
+        const versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : "—";
         const cwes = vuln.cwes?.length ? vuln.cwes.join(", ") : "—";
         const aliases = buildAliasList(vuln.aliases, vuln.cveId, vuln.sourceId);
         const ghsaIds = vuln.ghsaIds ?? [];
@@ -80,7 +81,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             </header>
 
             <h3 className="vuln-title">
-              <Link to={`/vulnerabilities/${primaryId}`}>{vuln.title}</Link>
+              <Link to={`/vulnerability/${primaryId}`}>{vuln.title}</Link>
             </h3>
             <div className="external-links" style={{ marginBottom: "0.5rem" }}>
               {hasCve && (
@@ -105,6 +106,16 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
                     </span>
                     NVD
                   </a>
+                  <a
+                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.cveId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span role="img" aria-label="Wazuh">
+                      🌐
+                    </span>
+                    Wazuh
+                  </a> 
                 </>
               )}
               {vuln.sourceId && (
@@ -160,6 +171,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
             <div className="vuln-meta">
               <MetaItem label="Vendors" value={vendors} />
               <MetaItem label="Produkte" value={products} />
+              <MetaItem label="Versionen" value={versions} />
               <MetaItem label="CWE" value={cwes} />
             </div>
 

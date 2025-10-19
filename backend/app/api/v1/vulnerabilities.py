@@ -38,6 +38,9 @@ async def list_vulnerabilities(
     search: str | None = Query(default=None, description="Keyword search across CVE/EUVD/GHSA"),
     vendorFilters: list[str] = Query(default_factory=list),
     productFilters: list[str] = Query(default_factory=list),
+    vendorSlugs: list[str] = Query(default_factory=list),
+    productSlugs: list[str] = Query(default_factory=list),
+    versionFilters: list[str] = Query(default_factory=list),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
@@ -46,6 +49,9 @@ async def list_vulnerabilities(
         searchTerm=search,
         vendorFilters=vendorFilters,
         productFilters=productFilters,
+        vendorSlugs=vendorSlugs,
+        productSlugs=productSlugs,
+        versionFilters=versionFilters,
         limit=limit,
     )
     return await service.search_paginated(query, limit=limit, offset=offset)

@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter } from "react-router-dom";
 
 import { AppLayout } from "./ui/AppLayout";
 import { DashboardPage } from "./views/DashboardPage";
@@ -14,7 +14,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardPage /> },
       { path: "vulnerabilities", element: <VulnerabilityListPage /> },
-      { path: "vulnerabilities/:cveId", element: <VulnerabilityDetailPage /> },
+      { path: "vulnerability/:cveId", element: <VulnerabilityDetailPage /> },
+      { path: "vulnerability", element: <Navigate to="/vulnerabilities" replace /> },
       { path: "audit", element: <AuditLogPage /> },
       { path: "stats", element: <StatsPage /> }
     ]

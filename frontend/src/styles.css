@@ -235,6 +235,11 @@ a {
   color: #ffa3a3;
 }
 
+.tag.critical {
+  background-color: rgba(255, 107, 107, 0.3);
+  color: #ffd1d1;
+}
+
 .tag.unknown {
   background-color: rgba(128, 128, 128, 0.25);
   color: #d1d5db;
