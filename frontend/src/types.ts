@@ -11,6 +11,7 @@ export interface VulnerabilityPreview {
   vendors?: string[];
   products?: string[];
   productVersions?: string[];
+  rejected?: boolean;
   assigner?: string | null;
   exploited?: boolean | null;
   published?: string | null;
@@ -29,6 +30,7 @@ export interface VulnerabilityQuery {
   productSlugs?: string[];
   versionFilters?: string[];
   severity?: string[];
+  includeRejected?: boolean;
   limit?: number;
 }
 

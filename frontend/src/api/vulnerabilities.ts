@@ -36,6 +36,13 @@ export const listVulnerabilities = async (
       });
       return;
     }
+    if (typeof value === "boolean") {
+      if (value) {
+        const paramKey = key === "searchTerm" ? "search" : key;
+        searchParams.set(paramKey, "true");
+      }
+      return;
+    }
     if (value === "") {
       return;
     }

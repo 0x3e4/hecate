@@ -74,6 +74,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "cwes": {"type": "keyword"},
                 "cpes": {"type": "keyword"},
                 "aliases": {"type": "keyword"},
+                "rejected": {"type": "boolean"},
                 "assigner": {"type": "keyword"},
                 "exploited": {"type": "boolean"},
                 "epss_score": {"type": "float"},

@@ -204,6 +204,7 @@ def build_document(
         cwes=[cwe for cwe in cwes if isinstance(cwe, str)],
         cpes=[cpe for cpe in cpes if isinstance(cpe, str)],
         aliases=[alias for alias in aliases if isinstance(alias, str)],
+        rejected=_determine_rejected(euvd_record, supplemental_record),
         assigner=assigner,
         exploited=exploited,
         epss_score=epss_score,
@@ -258,6 +259,52 @@ def _parse_epss(value: Any) -> tuple[float | None, float | None]:
         percentile = _safe_float(raw_percentile)
 
     return score, percentile
+
+
+def _determine_rejected(*records: Any) -> bool:
+    def _value_signals_rejected(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"rejected", "reject"}:
+                return True
+        return False
+
+    def _text_signals_rejected(value: Any) -> bool:
+        if isinstance(value, str):
+            return "** REJECT" in value.upper()
+        return False
+
+    def _record_signals_rejected(record: Any, depth: int = 0) -> bool:
+        if depth > 3 or not isinstance(record, dict):
+            return False
+
+        for key in ("rejected", "isRejected"):
+            if key in record and _value_signals_rejected(record[key]):
+                return True
+
+        for key in ("status", "state", "vulnStatus", "vulnerabilityStatus"):
+            candidate = record.get(key)
+            if _value_signals_rejected(candidate):
+                return True
+            if isinstance(candidate, dict):
+                for nested in candidate.values():
+                    if _value_signals_rejected(nested):
+                        return True
+
+        for text_key in ("description", "summary", "shortDescription", "title", "notes", "message"):
+            if _text_signals_rejected(record.get(text_key)):
+                return True
+
+        for nested_key in ("cve", "cveMetadata", "metadata", "details"):
+            nested = record.get(nested_key)
+            if isinstance(nested, dict) and _record_signals_rejected(nested, depth + 1):
+                return True
+
+        return False
+
+    return any(_record_signals_rejected(record) for record in records if isinstance(record, dict))
 
 
 def _extract_vendors(record: dict[str, Any]) -> list[str]:
@@ -509,6 +556,7 @@ def build_document_from_nvd(
         cwes=cwes,
         cpes=cpes,
         aliases=[],
+        rejected=_determine_rejected(record, cve_wrapper),
         assigner=_ensure_str(cve_wrapper.get("sourceIdentifier")),
         exploited=None,
         epss_score=None,

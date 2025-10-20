@@ -41,6 +41,11 @@ async def list_vulnerabilities(
     vendorSlugs: list[str] = Query(default_factory=list),
     productSlugs: list[str] = Query(default_factory=list),
     versionFilters: list[str] = Query(default_factory=list),
+    include_rejected: bool = Query(
+        default=False,
+        alias="includeRejected",
+        description="Include rejected CVE records in the response.",
+    ),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
@@ -53,6 +58,7 @@ async def list_vulnerabilities(
         productSlugs=productSlugs,
         versionFilters=versionFilters,
         limit=limit,
+        includeRejected=include_rejected,
     )
     return await service.search_paginated(query, limit=limit, offset=offset)
 
