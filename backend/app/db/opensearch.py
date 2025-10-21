@@ -122,7 +122,7 @@ async def async_index_document(index: str, document_id: str, document: dict[str,
         _mark_opensearch_unavailable(error=exc, operation="index", index=index, document_id=document_id)
 
 
-async def async_search(index: str, body: dict[str, Any]) -> dict[str, Any]:
+async def async_search(index: str, body: dict[str, Any], *, suppress_exceptions: bool = True) -> dict[str, Any]:
     client = get_client()
     loop = asyncio.get_running_loop()
 
@@ -137,8 +137,13 @@ async def async_search(index: str, body: dict[str, Any]) -> dict[str, Any]:
         ensure_vulnerability_index(index)
         return {"hits": {"hits": [], "total": {"value": 0}}}
     except (OSConnectionError, OpenSearchException) as exc:
-        _mark_opensearch_unavailable(error=exc, operation="search", index=index)
-        return {"hits": {"hits": [], "total": {"value": 0}}}
+        if isinstance(exc, RequestError):
+            log.warning("opensearch.request_error", operation="search", index=index, error=str(exc))
+        else:
+            _mark_opensearch_unavailable(error=exc, operation="search", index=index)
+        if suppress_exceptions:
+            return {"hits": {"hits": [], "total": {"value": 0}}}
+        raise
 
 
 async def async_get(index: str, document_id: str) -> dict[str, Any] | None:

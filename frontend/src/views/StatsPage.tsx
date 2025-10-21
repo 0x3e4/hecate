@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   CatalogSample,
@@ -12,6 +12,7 @@ export const StatsPage = () => {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const showSkeleton = loading && !stats;
 
   useEffect(() => {
     const load = async () => {
@@ -39,10 +40,10 @@ export const StatsPage = () => {
           Überblick über ingestierte Schwachstellen, Quellen und die abgeleitete Asset-Datenbank.
         </p>
 
-        {loading && <p className="muted">Lade Daten…</p>}
+        {showSkeleton && <StatsSkeleton />}
         {error && <p className="muted">{error}</p>}
 
-        {stats && (
+        {!showSkeleton && stats && (
           <>
             <SummaryGrid stats={stats} />
 
@@ -77,6 +78,117 @@ export const StatsPage = () => {
     </div>
   );
 };
+
+type SkeletonBlockProps = {
+  height: number | string;
+  width?: number | string;
+  style?: CSSProperties;
+};
+
+const SkeletonBlock = ({ height, width = "100%", style }: SkeletonBlockProps) => (
+  <div className="skeleton" style={{ height, width, ...style }} aria-hidden="true" />
+);
+
+const StatsSkeleton = () => (
+  <>
+    <div
+      style={{
+        display: "grid",
+        gap: "1rem",
+        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+      }}
+    >
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            borderRadius: "12px",
+            padding: "1rem 1.25rem",
+            border: "1px solid rgba(255,255,255,0.05)",
+            display: "grid",
+            gap: "0.85rem",
+          }}
+        >
+          <SkeletonBlock height="0.8rem" width="45%" />
+          <SkeletonBlock height="2.3rem" width="70%" />
+        </div>
+      ))}
+    </div>
+
+    <div style={{ display: "grid", gap: "1.5rem" }}>
+      <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div
+            key={index}
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              borderRadius: "12px",
+              padding: "1.25rem",
+              border: "1px solid rgba(255,255,255,0.06)",
+              display: "grid",
+              gap: "1rem",
+            }}
+          >
+            <SkeletonBlock height="1rem" width="40%" />
+            <SkeletonBlock height="160px" />
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "12px",
+          padding: "1.25rem",
+          border: "1px solid rgba(255,255,255,0.06)",
+          display: "grid",
+          gap: "1rem",
+        }}
+      >
+        <SkeletonBlock height="1rem" width="45%" />
+        <SkeletonBlock height="200px" />
+      </div>
+
+      <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div
+            key={index}
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              borderRadius: "12px",
+              padding: "1.25rem",
+              border: "1px solid rgba(255,255,255,0.06)",
+              display: "grid",
+              gap: "0.85rem",
+            }}
+          >
+            <SkeletonBlock height="1rem" width="50%" />
+            <SkeletonBlock height="110px" />
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "12px",
+          padding: "1.25rem",
+          border: "1px solid rgba(255,255,255,0.06)",
+          display: "grid",
+          gap: "1.25rem",
+        }}
+      >
+        <SkeletonBlock height="1rem" width="35%" />
+        <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonBlock key={index} height="64px" />
+          ))}
+        </div>
+      </div>
+    </div>
+  </>
+);
 
 const SummaryGrid = ({ stats }: { stats: StatsResponse }) => (
   <div
