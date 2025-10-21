@@ -44,9 +44,9 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
   const rows = useMemo(
     () =>
       vulnerabilities.map((vuln) => {
-        const hasCve = Boolean(vuln.cveId && vuln.cveId.startsWith("CVE-"));
-        const hasSource = Boolean(vuln.sourceId && (!hasCve || vuln.sourceId !== vuln.cveId));
-        const primaryId = vuln.cveId || vuln.sourceId || "Unbekannte-ID";
+        const hasCve = Boolean(vuln.vulnId && vuln.vulnId.startsWith("CVE-"));
+        const hasSource = Boolean(vuln.sourceId && (!hasCve || vuln.sourceId !== vuln.vulnId));
+        const primaryId = vuln.vulnId || vuln.sourceId || "Unbekannte-ID";
         const published = vuln.published ? new Date(vuln.published).toLocaleString() : "unbekannt";
         const cvss = vuln.cvssScore != null ? vuln.cvssScore.toFixed(1) : "n/a";
         const epss = vuln.epssScore != null ? vuln.epssScore.toFixed(2) : "n/a";
@@ -59,16 +59,27 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
         const products = vuln.products?.length ? vuln.products.join(", ") : "—";
         const versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : "—";
         const cwes = vuln.cwes?.length ? vuln.cwes.join(", ") : "—";
-        const aliases = buildAliasList(vuln.aliases, vuln.cveId, vuln.sourceId);
+        const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
         const ghsaIds = vuln.ghsaIds ?? [];
         const malAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("MAL-"));
+        const exploitedHighlight = vuln.exploited
+          ? {
+              background: "linear-gradient(315deg, rgba(255,82,82,0.2), rgba(255,82,82,0.05))",
+              borderColor: "rgba(255,82,82,0.35)",
+              boxShadow: "0 12px 24px rgba(255,82,82,0.12)",
+            }
+          : undefined;
 
         return (
-          <article key={primaryId} className="vuln-card">
+          <article
+            key={primaryId}
+            className="vuln-card"
+            style={exploitedHighlight}
+          >
             <header className="vuln-header">
               <div>
                 <div className="vuln-id">
-                  {hasCve && <span className="chip">{vuln.cveId}</span>}
+                  {hasCve && <span className="chip">{vuln.vulnId}</span>}
                   {hasSource && <span className="chip">{vuln.sourceId}</span>}
                   {aliases.map((alias) => (
                     <span key={alias} className="chip" style={{ background: "rgba(92,132,255,0.2)" }}>
@@ -87,7 +98,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
               {hasCve && (
                 <>
                   <a
-                    href={`https://www.cve.org/CVERecord?id=${encodeURIComponent(vuln.cveId)}`}
+                    href={`https://www.cve.org/CVERecord?id=${encodeURIComponent(vuln.vulnId)}`}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -97,7 +108,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
                     CVE
                   </a>
                   <a
-                    href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(vuln.cveId)}`}
+                    href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(vuln.vulnId)}`}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -107,7 +118,7 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
                     NVD
                   </a>
                   <a
-                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.cveId)}`}
+                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.vulnId)}`}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -222,9 +233,9 @@ const MetaItem = ({ label, value }: MetaItemProps) => (
 
 const normalizeId = (value?: string | null) => (value ?? "").trim().toUpperCase();
 
-const buildAliasList = (aliases: string[] | undefined, cveId?: string | null, sourceId?: string | null) => {
+const buildAliasList = (aliases: string[] | undefined, vulnId?: string | null, sourceId?: string | null) => {
   const skip = new Set<string>();
-  if (cveId) skip.add(normalizeId(cveId));
+  if (vulnId) skip.add(normalizeId(vulnId));
   if (sourceId) skip.add(normalizeId(sourceId));
 
   const seen = new Set<string>();

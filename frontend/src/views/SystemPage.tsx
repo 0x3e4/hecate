@@ -16,21 +16,21 @@ const BACKUP_DATASETS: BackupDataset[] = [
   {
     id: "NVD",
     label: "NVD",
-    description: "Sicherung aller NVD CVE Einträge.",
+    description: "Sicherung aller NVD CVE Einträge",
     type: "vuln",
     source: "NVD"
   },
   {
     id: "EUVD",
     label: "EUVD",
-    description: "Sicherung aller EUVD Einträge.",
+    description: "Sicherung aller EUVD Einträge",
     type: "vuln",
     source: "EUVD"
   },
   {
     id: "CPE",
     label: "CPE",
-    description: "Sicherung aller NVD CPE Einträge.",
+    description: "Sicherung aller NVD CPE Einträge",
     type: "cpe"
   }
 ];
@@ -146,10 +146,9 @@ export const SystemPage = () => {
   return (
     <div className="page">
       <section className="card">
-        <h2>System & Backups</h2>
+        <h2>Backup & Restore</h2>
         <p className="muted">
-          Lade Sicherungen der Datenquellen herunter oder spiele zuvor exportierte Backups wieder ein,
-          um nach einem Datenbank-Reset schnell den alten Stand herzustellen.
+          Lade Sicherungen der Datenquellen herunter oder spiele zuvor exportierte Backups wieder ein.
         </p>
         {statusMessage && (
           <p style={{ marginTop: "0.5rem", color: "#8fffb0", fontWeight: 500 }}>{statusMessage}</p>

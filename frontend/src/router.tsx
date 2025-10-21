@@ -15,7 +15,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardPage /> },
       { path: "vulnerabilities", element: <VulnerabilityListPage /> },
-      { path: "vulnerability/:cveId", element: <VulnerabilityDetailPage /> },
+      { path: "vulnerability/:vulnId", element: <VulnerabilityDetailPage /> },
       { path: "vulnerability", element: <Navigate to="/vulnerabilities" replace /> },
       { path: "audit", element: <AuditLogPage /> },
       { path: "stats", element: <StatsPage /> },

@@ -1,5 +1,5 @@
 export interface VulnerabilityPreview {
-  cveId: string;
+  vulnId: string;
   sourceId?: string | null;
   source?: string | null;
   title: string;
@@ -23,6 +23,7 @@ export interface VulnerabilityPreview {
 
 export interface VulnerabilityQuery {
   searchTerm: string | null;
+  dqlQuery?: string | null;
   cpeFilters?: string[];
   vendorFilters?: string[];
   productFilters?: string[];

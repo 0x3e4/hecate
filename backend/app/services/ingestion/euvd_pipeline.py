@@ -14,6 +14,7 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.euvd_client import EUVDClient
+from app.services.ingestion.cisa_client import CisaKevClient
 from app.services.ingestion.normalizer import build_document
 from app.services.ingestion.nvd_client import NVDClient
 
@@ -28,9 +29,12 @@ class IngestionPipeline:
         *,
         euvd_client: EUVDClient | None = None,
         nvd_client: NVDClient | None = None,
+        kev_client: CisaKevClient | None = None,
     ) -> None:
         self.euvd_client = euvd_client or EUVDClient()
         self.nvd_client = nvd_client or NVDClient()
+        self.kev_client = kev_client or CisaKevClient()
+        self._known_exploited_cache: set[str] | None = None
 
     async def ingest(
         self,
@@ -113,6 +117,15 @@ class IngestionPipeline:
         log_repo: IngestionLogRepository | None = None
 
         try:
+            if self._known_exploited_cache is not None:
+                known_exploited_upper = self._known_exploited_cache
+            else:
+                fetched = await self.kev_client.fetch_known_exploited_cves()
+                self._known_exploited_cache = {value.upper() for value in fetched}
+                known_exploited_upper = self._known_exploited_cache
+                if known_exploited_upper:
+                    log.info("pipeline.known_exploited_loaded", count=len(known_exploited_upper))
+
             async for record in self.euvd_client.list_vulnerabilities(modified_since=modified_since):
                 processed += 1
                 identifiers = _extract_identifiers(record)
@@ -146,6 +159,11 @@ class IngestionPipeline:
                     )
                 except Exception as exc:  # noqa: BLE001 - log and continue
                     log.warning("pipeline.asset_catalog_update_failed", cve_id=cve_id, error=str(exc))
+
+                if not document.exploited:
+                    normalized_id = (document.cve_id or "").strip().upper()
+                    if normalized_id and normalized_id in known_exploited_upper:
+                        document = document.model_copy(update={"exploited": True})
 
                 inserted = await repository.upsert(document)
                 if inserted:
@@ -233,6 +251,7 @@ class IngestionPipeline:
     async def close(self) -> None:
         await self.euvd_client.close()
         await self.nvd_client.close()
+        await self.kev_client.close()
 
     @staticmethod
     def _resolve_limit(explicit_limit: int | None) -> int | None:

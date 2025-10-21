@@ -36,6 +36,11 @@ async def trigger_refresh(
 @router.get("", response_model=PagedVulnerabilityResponse)
 async def list_vulnerabilities(
     search: str | None = Query(default=None, description="Keyword search across CVE/EUVD/GHSA"),
+    dql: str | None = Query(
+        default=None,
+        alias="dqlQuery",
+        description="Raw OpenSearch query (DQL syntax). Overrides the keyword search when present.",
+    ),
     vendorFilters: list[str] = Query(default_factory=list),
     productFilters: list[str] = Query(default_factory=list),
     vendorSlugs: list[str] = Query(default_factory=list),
@@ -52,6 +57,7 @@ async def list_vulnerabilities(
 ) -> PagedVulnerabilityResponse:
     query = VulnerabilityQuery(
         searchTerm=search,
+        dqlQuery=dql,
         vendorFilters=vendorFilters,
         productFilters=productFilters,
         vendorSlugs=vendorSlugs,
