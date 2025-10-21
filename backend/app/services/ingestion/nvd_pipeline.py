@@ -84,9 +84,9 @@ class NVDPipeline:
                     since=requested_since,
                 )
 
-        ingested_new = 0
-        updated_existing = 0
-        skipped_invalid = 0
+        ingested = 0
+        updated = 0
+        skipped = 0
         processed_total = 0
         last_progress_log = datetime.now(tz=UTC)
         progress_interval = 5000
@@ -98,7 +98,7 @@ class NVDPipeline:
             async for record in self.client.iter_cves(last_modified_start=last_run):
                 result = build_document_from_nvd(record, ingested_at=datetime.now(tz=UTC))
                 if result is None:
-                    skipped_invalid += 1
+                    skipped += 1
                     continue
                 document, product_version_map = result
 
@@ -121,9 +121,9 @@ class NVDPipeline:
 
                 inserted = await repository.upsert_from_nvd(document, nvd_raw=record)
                 if inserted:
-                    ingested_new += 1
+                    ingested += 1
                 else:
-                    updated_existing += 1
+                    updated += 1
                 processed_total += 1
 
                 if document.modified:
@@ -138,9 +138,10 @@ class NVDPipeline:
                 ):
                     progress_payload = {
                         "processed": processed_total,
-                        "ingested_new": ingested_new,
-                        "updated_existing": updated_existing,
-                        "skipped_invalid": skipped_invalid,
+                        "ingested": ingested,
+                        "updated": updated,
+                        "skipped": skipped,
+                        "limit": None,
                         "remote_total": remote_total,
                     }
                     await state_repo.update_state(
@@ -158,9 +159,10 @@ class NVDPipeline:
                     log.info(
                         "nvd_pipeline.progress",
                         processed=processed_total,
-                        ingested_new=ingested_new,
-                        updated_existing=updated_existing,
-                        skipped_invalid=skipped_invalid,
+                        ingested=ingested,
+                        updated=updated,
+                        skipped=skipped,
+                        limit=None,
                         remote_total=remote_total,
                         initial_sync=initial_sync,
                     )
@@ -171,9 +173,10 @@ class NVDPipeline:
 
             local_total_after = await repository.count(source="NVD")
             result = {
-                "ingested_new": ingested_new,
-                "updated_existing": updated_existing,
-                "skipped_invalid": skipped_invalid,
+                "ingested": ingested,
+                "updated": updated,
+                "skipped": skipped,
+                "limit": None,
                 "initial_sync": initial_sync,
                 "run_full": run_full,
                 "local_total_before": local_total_before,

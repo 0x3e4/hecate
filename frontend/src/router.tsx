@@ -6,6 +6,7 @@ import { VulnerabilityDetailPage } from "./views/VulnerabilityDetailPage";
 import { AuditLogPage } from "./views/AuditLogPage";
 import { VulnerabilityListPage } from "./views/VulnerabilityListPage";
 import { StatsPage } from "./views/StatsPage";
+import { SystemPage } from "./views/SystemPage";
 
 export const router = createBrowserRouter([
   {
@@ -17,7 +18,8 @@ export const router = createBrowserRouter([
       { path: "vulnerability/:cveId", element: <VulnerabilityDetailPage /> },
       { path: "vulnerability", element: <Navigate to="/vulnerabilities" replace /> },
       { path: "audit", element: <AuditLogPage /> },
-      { path: "stats", element: <StatsPage /> }
+      { path: "stats", element: <StatsPage /> },
+      { path: "system", element: <SystemPage /> }
     ]
   }
 ]);

@@ -10,6 +10,7 @@ const navItems = [
   { to: "/vulnerabilities", label: "Vulnerabilities", shortLabel: "V" },
   { to: "/audit", label: "Audit Log", shortLabel: "A" },
   { to: "/stats", label: "Statistiken", shortLabel: "S" },
+  { to: "/system", label: "System", shortLabel: "SYS" },
 ];
 
 export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {

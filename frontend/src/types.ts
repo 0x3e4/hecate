@@ -102,3 +102,12 @@ export interface CatalogVersionListResponse {
   total: number;
   items: CatalogVersion[];
 }
+
+export interface BackupRestoreSummary {
+  dataset: "vulnerabilities" | "cpe";
+  source?: string | null;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  total: number;
+}

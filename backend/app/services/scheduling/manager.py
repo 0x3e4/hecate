@@ -8,7 +8,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 from app.services.ingestion.cpe_pipeline import CPEPipeline
-from app.services.ingestion.pipeline import run_ingestion
+from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 
 log = structlog.get_logger()

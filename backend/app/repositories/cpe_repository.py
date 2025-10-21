@@ -28,9 +28,9 @@ class CPERepository:
         await collection.create_index([("lastModified", DESCENDING)])
         return cls(collection)
 
-    async def upsert(self, document: dict[str, Any]) -> None:
+    async def upsert(self, document: dict[str, Any]) -> bool:
         try:
-            await self.collection.update_one(
+            result = await self.collection.update_one(
                 {"cpeName": document["cpeName"]},
                 {"$set": document},
                 upsert=True,
@@ -38,6 +38,7 @@ class CPERepository:
         except PyMongoError as exc:
             log.warning("cpe_repository.upsert_failed", cpe=document.get("cpeName"), error=str(exc))
             raise
+        return result.matched_count == 0
 
     async def update_many(self, documents: list[dict[str, Any]]) -> dict[str, int]:
         success = 0

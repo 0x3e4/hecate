@@ -103,6 +103,7 @@ class IngestionPipeline:
                 )
 
         ingested = 0
+        updated = 0
         skipped = 0
         processed = 0
         latest_modified: datetime | None = None
@@ -146,8 +147,11 @@ class IngestionPipeline:
                 except Exception as exc:  # noqa: BLE001 - log and continue
                     log.warning("pipeline.asset_catalog_update_failed", cve_id=cve_id, error=str(exc))
 
-                await repository.upsert(document)
-                ingested += 1
+                inserted = await repository.upsert(document)
+                if inserted:
+                    ingested += 1
+                else:
+                    updated += 1
 
                 if document.modified:
                     ts = document.modified.astimezone(UTC)
@@ -173,6 +177,7 @@ class IngestionPipeline:
                     progress_payload = {
                         "processed": processed,
                         "ingested": ingested,
+                        "updated": updated,
                         "skipped": skipped,
                         "limit": effective_limit,
                         "remote_total": remote_total,
@@ -193,6 +198,7 @@ class IngestionPipeline:
                         "pipeline.euvd_progress",
                         processed=processed,
                         ingested=ingested,
+                        updated=updated,
                         skipped=skipped,
                         limit=effective_limit,
                         initial_sync=initial_sync,
@@ -206,6 +212,7 @@ class IngestionPipeline:
 
             result = {
                 "ingested": ingested,
+                "updated": updated,
                 "skipped": skipped,
                 "limit": effective_limit,
                 "initial_sync": initial_sync,
