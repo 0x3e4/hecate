@@ -47,7 +47,7 @@ class NVDClient:
                 response = await self._client.get("/cves/2.0", params={"cveId": cve_id})
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            log.warning("nvd_client.fetch_failed", cve_id=cve_id, error=str(exc))
+            log.warning("nvd_client.fetch_failed", vuln_id=cve_id, error=str(exc))
             return None
 
         payload = response.json()
@@ -57,7 +57,7 @@ class NVDClient:
             if isinstance(entry, Mapping):
                 return dict(entry)
 
-        log.warning("nvd_client.no_data", cve_id=cve_id)
+        log.warning("nvd_client.no_data", vuln_id=cve_id)
         return None
 
     async def total_results(self) -> int:

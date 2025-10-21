@@ -195,7 +195,7 @@ def build_document(
                         break
 
     document = VulnerabilityDocument(
-        cve_id=cve_id,
+        vuln_id=cve_id,
         source_id=source_id,
         source=euvd_record.get("source", "EUVD"),
         title=title,
@@ -547,8 +547,8 @@ def build_document_from_nvd(
     cvss = _extract_cvss_from_nvd(cve_wrapper.get("metrics"))
 
     document = VulnerabilityDocument(
-        cve_id=cve_id,
-        source_id=None,
+        vuln_id=cve_id,
+        source_id=cve_id,
         source="NVD",
         title=title,
         summary=summary,

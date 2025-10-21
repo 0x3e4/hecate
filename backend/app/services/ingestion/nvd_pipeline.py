@@ -134,10 +134,10 @@ class NVDPipeline:
                         }
                     )
                 except Exception as exc:  # noqa: BLE001
-                    log.warning("nvd_pipeline.asset_catalog_update_failed", cve_id=document.cve_id, error=str(exc))
+                    log.warning("nvd_pipeline.asset_catalog_update_failed", vuln_id=document.vuln_id, error=str(exc))
 
                 if not document.exploited:
-                    normalized_id = (document.cve_id or "").strip().upper()
+                    normalized_id = (document.vuln_id or "").strip().upper()
                     if normalized_id and normalized_id in known_exploited_upper:
                         document = document.model_copy(update={"exploited": True})
 

@@ -110,13 +110,13 @@ class StatsService:
                 "total_cves": {
                     "filter": {
                         "wildcard": {
-                            "cve_id.keyword": "CVE-*",
+                            "vuln_id.keyword": "CVE-*",
                         }
                     },
                     "aggs": {
                         "unique": {
                             "cardinality": {
-                                "field": "cve_id.keyword",
+                                "field": "vuln_id.keyword",
                                 "precision_threshold": 40000,
                             }
                         },
@@ -126,13 +126,13 @@ class StatsService:
                     "filter": {
                         "bool": {
                             "must": [{"term": {field("source"): "EUVD"}}],
-                            "must_not": [{"wildcard": {"cve_id.keyword": "CVE-*"}}],
+                            "must_not": [{"wildcard": {"vuln_id.keyword": "CVE-*"}}],
                         }
                     },
                     "aggs": {
                         "unique": {
                             "cardinality": {
-                                "field": "cve_id.keyword",
+                                "field": "vuln_id.keyword",
                                 "precision_threshold": 40000,
                             }
                         },

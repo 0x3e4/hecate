@@ -65,7 +65,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
         },
         "mappings": {
             "properties": {
-                "cve_id": {"type": "keyword"},
+                "vuln_id": {"type": "keyword"},
                 "source_id": {"type": "keyword"},
                 "source": {"type": "keyword"},
                 "title": {"type": "text", "analyzer": "english"},

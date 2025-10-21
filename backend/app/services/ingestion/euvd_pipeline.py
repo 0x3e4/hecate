@@ -158,10 +158,10 @@ class IngestionPipeline:
                         }
                     )
                 except Exception as exc:  # noqa: BLE001 - log and continue
-                    log.warning("pipeline.asset_catalog_update_failed", cve_id=cve_id, error=str(exc))
+                    log.warning("pipeline.asset_catalog_update_failed", vuln_id=cve_id, error=str(exc))
 
                 if not document.exploited:
-                    normalized_id = (document.cve_id or "").strip().upper()
+                    normalized_id = (document.vuln_id or "").strip().upper()
                     if normalized_id and normalized_id in known_exploited_upper:
                         document = document.model_copy(update={"exploited": True})
 
@@ -178,7 +178,7 @@ class IngestionPipeline:
 
                 log.info(
                     "pipeline.vulnerability_ingested",
-                    cve_id=cve_id,
+                    vuln_id=cve_id,
                     title=document.title,
                     severity=document.cvss.severity,
                     initial_sync=initial_sync,

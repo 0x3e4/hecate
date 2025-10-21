@@ -46,7 +46,7 @@ class BackupService:
                     "backup.skip_invalid_vulnerability",
                     source=normalized_source,
                     error=str(exc),
-                    identifier=payload.get("cve_id") or payload.get("source_id"),
+                    identifier=payload.get("vuln_id") or payload.get("source_id"),
                 )
                 continue
             items.append(document.model_dump(mode="python"))
@@ -72,7 +72,7 @@ class BackupService:
                     "backup.restore_vulnerability_validation_failed",
                     source=normalized_source,
                     error=str(exc),
-                    identifier=item.get("cve_id") or item.get("source_id"),
+                    identifier=item.get("vuln_id") or item.get("source_id"),
                 )
                 skipped += 1
                 continue
@@ -82,7 +82,7 @@ class BackupService:
                     "backup.restore_vulnerability_source_mismatch",
                     expected=normalized_source,
                     actual=document.source,
-                    identifier=document.cve_id,
+                    identifier=document.vuln_id,
                 )
                 skipped += 1
                 continue
@@ -94,7 +94,7 @@ class BackupService:
                     "backup.restore_vulnerability_failed",
                     source=normalized_source,
                     error=str(exc),
-                    identifier=document.cve_id,
+                    identifier=document.vuln_id,
                 )
                 skipped += 1
                 continue
