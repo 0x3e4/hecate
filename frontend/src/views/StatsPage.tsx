@@ -7,6 +7,7 @@ import {
   TimelinePoint,
   fetchStatsOverview,
 } from "../api/stats";
+import { SkeletonBlock } from "../components/Skeleton";
 
 export const StatsPage = () => {
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -78,16 +79,6 @@ export const StatsPage = () => {
     </div>
   );
 };
-
-type SkeletonBlockProps = {
-  height: number | string;
-  width?: number | string;
-  style?: CSSProperties;
-};
-
-const SkeletonBlock = ({ height, width = "100%", style }: SkeletonBlockProps) => (
-  <div className="skeleton" style={{ height, width, ...style }} aria-hidden="true" />
-);
 
 const StatsSkeleton = () => (
   <>

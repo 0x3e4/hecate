@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
 import { searchVulnerabilities } from "../api/vulnerabilities";
+import { SkeletonBlock } from "../components/Skeleton";
 
 export const DashboardPage = () => {
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
@@ -28,18 +29,19 @@ export const DashboardPage = () => {
 
   return (
     <div className="page">
-      <VulnerabilityList vulnerabilities={vulnerabilities} />
-      {loading && <p className="muted">Aktualisiere Ergebnisse…</p>}
+      <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} />
     </div>
   );
 };
 
 interface VulnerabilityListProps {
   vulnerabilities: VulnerabilityPreview[];
+  loading: boolean;
 }
 
-const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
+const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps) => {
   const hasResults = vulnerabilities.length > 0;
+  const showSkeleton = loading && !hasResults;
 
   const rows = useMemo(
     () =>
@@ -207,10 +209,59 @@ const VulnerabilityList = ({ vulnerabilities }: VulnerabilityListProps) => {
   return (
     <section className="card">
       <h2>Neueste Treffer</h2>
-      {hasResults ? rows : <p>Keine Daten geladen.</p>}
+      {showSkeleton ? (
+        <DashboardSkeleton />
+      ) : hasResults ? (
+        rows
+      ) : (
+        <p>Keine Daten geladen.</p>
+      )}
+      {loading && hasResults && (
+        <p className="muted" style={{ marginTop: "0.75rem" }}>
+          Aktualisiere Ergebnisse…
+        </p>
+      )}
     </section>
   );
 };
+
+const DashboardSkeleton = () => (
+  <div style={{ display: "grid", gap: "1rem" }}>
+    {Array.from({ length: 3 }).map((_, index) => (
+      <article
+        key={index}
+        className="vuln-card"
+        style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(8,10,18,0.6)" }}
+      >
+        <div className="vuln-header" style={{ alignItems: "center" }}>
+          <div style={{ flex: 1 }}>
+            <SkeletonBlock height="0.85rem" width="80%" />
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+              {Array.from({ length: 3 }).map((_, chipIndex) => (
+                <SkeletonBlock key={chipIndex} height="1.25rem" width="90px" radius={999} />
+              ))}
+            </div>
+          </div>
+          <SkeletonBlock height="1.2rem" width="70px" radius={999} />
+        </div>
+
+        <SkeletonBlock height="1.4rem" width="65%" style={{ margin: "1.25rem 0 0.75rem" }} />
+
+        <div style={{ display: "grid", gap: "0.65rem", marginBottom: "0.75rem" }}>
+          {Array.from({ length: 2 }).map((_, metaRow) => (
+            <div key={metaRow} style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
+              {Array.from({ length: 4 }).map((_, metaIndex) => (
+                <SkeletonBlock key={metaIndex} height="1.2rem" width="140px" />
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <SkeletonBlock height="4.5rem" />
+      </article>
+    ))}
+  </div>
+);
 
 const formatBoolean = (value?: boolean | null) => {
   if (value == null) {

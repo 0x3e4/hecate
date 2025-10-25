@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { fetchIngestionLogs } from "../api/audit";
 import { IngestionLogEntry } from "../types";
+import { SkeletonBlock } from "../components/Skeleton";
 
 const JOB_LABELS: Record<string, string> = {
   euvd_ingestion: "EUVD Sync",
@@ -104,6 +105,9 @@ export const AuditLogPage = () => {
     [logs]
   );
 
+  const showSkeleton = loading && logs.length === 0;
+  const isEmptyState = !loading && logs.length === 0;
+
   return (
     <div className="page">
       <section className="card">
@@ -142,13 +146,50 @@ export const AuditLogPage = () => {
                 <th>Ergebnis / Fehler</th>
               </tr>
             </thead>
-            <tbody>{rows}</tbody>
+            <tbody>
+              {showSkeleton && <AuditSkeletonRows rows={6} />}
+              {!showSkeleton && rows}
+              {isEmptyState && (
+                <tr>
+                  <td colSpan={6} style={{ padding: "1.5rem 0", textAlign: "center", color: "rgba(255,255,255,0.45)" }}>
+                    Keine Einträge vorhanden.
+                  </td>
+                </tr>
+              )}
+            </tbody>
           </table>
         </div>
       </section>
     </div>
   );
 };
+
+const AuditSkeletonRows = ({ rows }: { rows: number }) => (
+  <>
+    {Array.from({ length: rows }).map((_, index) => (
+      <tr key={`audit-skeleton-${index}`}>
+        <td>
+          <SkeletonBlock height="0.85rem" width="75%" />
+        </td>
+        <td>
+          <SkeletonBlock height="1.1rem" width="80px" radius={999} />
+        </td>
+        <td>
+          <SkeletonBlock height="0.85rem" width="80%" />
+        </td>
+        <td>
+          <SkeletonBlock height="0.85rem" width="70%" />
+        </td>
+        <td>
+          <SkeletonBlock height="0.85rem" width="60px" />
+        </td>
+        <td>
+          <SkeletonBlock height="0.85rem" />
+        </td>
+      </tr>
+    ))}
+  </>
+);
 
 const tableStyle: React.CSSProperties = {
   width: "100%",

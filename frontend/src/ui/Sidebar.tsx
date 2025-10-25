@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { LuLayoutDashboard, LuShieldAlert, LuLogs, LuFileChartColumnIncreasing, LuSettings } from "react-icons/lu";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -6,11 +7,11 @@ type SidebarProps = {
 };
 
 const navItems = [
-  { to: "/", label: "Dashboard", shortLabel: "D" },
-  { to: "/vulnerabilities", label: "Vulnerabilities", shortLabel: "V" },
-  { to: "/audit", label: "Audit Log", shortLabel: "A" },
-  { to: "/stats", label: "Statistiken", shortLabel: "S" },
-  { to: "/system", label: "System", shortLabel: "SYS" },
+  { to: "/", label: "Dashboard", shortLabel: LuLayoutDashboard },
+  { to: "/vulnerabilities", label: "Vulnerabilities", shortLabel: LuShieldAlert },
+  { to: "/audit", label: "Audit Log", shortLabel: LuLogs },
+  { to: "/stats", label: "Statistiken", shortLabel: LuFileChartColumnIncreasing },
+  { to: "/system", label: "System", shortLabel: LuSettings },
 ];
 
 export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
