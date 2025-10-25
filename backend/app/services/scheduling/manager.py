@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -10,6 +11,7 @@ from app.core.config import settings
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
+from app.repositories.ingestion_state_repository import IngestionStateRepository
 
 log = structlog.get_logger()
 
@@ -80,12 +82,27 @@ class SchedulerManager:
 
     async def _run_bootstrap_jobs(self) -> None:
         log.info("scheduler.initial_sync_start")
-        euvd_task = asyncio.create_task(_initial_euvd_ingestion(), name="bootstrap-euvd")
-        cpe_task = asyncio.create_task(_initial_cpe_sync(), name="bootstrap-cpe")
-        nvd_task = asyncio.create_task(_initial_nvd_sync(), name="bootstrap-nvd")
+        job_configs = (
+            ("euvd", "euvd_initial_sync", _initial_euvd_ingestion, "bootstrap-euvd"),
+            ("cpe", "cpe_initial_sync", _initial_cpe_sync, "bootstrap-cpe"),
+            ("nvd", "nvd_initial_sync", _initial_nvd_sync, "bootstrap-nvd"),
+        )
 
-        results = await asyncio.gather(euvd_task, cpe_task, nvd_task, return_exceptions=True)
-        for label, result in zip(("euvd", "cpe", "nvd"), results, strict=True):
+        tasks: list[tuple[str, asyncio.Task[None]]] = []
+        for label, job_name, job_fn, task_name in job_configs:
+            completed = await _initial_sync_already_completed(job_name)
+            if completed:
+                log.info(f"scheduler.initial_sync_{label}_already_completed")
+                continue
+            tasks.append((label, asyncio.create_task(job_fn(), name=task_name)))
+
+        if not tasks:
+            log.info("scheduler.initial_sync_already_completed")
+            self._bootstrapped = True
+            return
+
+        results = await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
+        for (label, _), result in zip(tasks, results, strict=True):
             if isinstance(result, asyncio.CancelledError):
                 raise result
             if isinstance(result, Exception):
@@ -181,3 +198,22 @@ async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> N
             else "scheduler.euvd_initial_sync_failed"
         )
         log.exception(event, error=str(exc))
+
+
+async def _initial_sync_already_completed(job_name: str) -> bool:
+    """Return True if the given initial sync job finished successfully before."""
+
+    try:
+        state_repo = await IngestionStateRepository.create()
+        state: dict[str, Any] | None = await state_repo.get_state(f"job:{job_name}")
+    except Exception as exc:  # noqa: BLE001 - bootstrap should continue even if lookup fails
+        log.warning(
+            "scheduler.initial_sync_state_check_failed",
+            job=job_name,
+            error=str(exc),
+        )
+        return False
+
+    if not state:
+        return False
+    return state.get("status") == "completed"

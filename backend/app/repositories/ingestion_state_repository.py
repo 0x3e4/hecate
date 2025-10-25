@@ -30,6 +30,12 @@ class IngestionStateRepository:
             return ts
         return None
 
+    async def get_state(self, key: str) -> dict[str, Any] | None:
+        doc = await self.collection.find_one({"_id": key})
+        if not doc:
+            return None
+        return doc
+
     async def set_timestamp(self, key: str, ts: datetime) -> None:
         await self.collection.update_one(
             {"_id": key},
