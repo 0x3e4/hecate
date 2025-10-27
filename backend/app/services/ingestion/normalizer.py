@@ -309,8 +309,56 @@ def _merge_unique_strings(*value_lists: Any) -> list[str]:
     return merged
 
 
+def _canonical_metric_key(key: Any) -> str:
+    if not isinstance(key, str):
+        return "other"
+    lowered = key.lower()
+    if "v40" in lowered or lowered.endswith("v4"):
+        return "v40"
+    if "v30" in lowered:
+        return "v30"
+    if "v31" in lowered:
+        return "v31"
+    if "v3" in lowered:
+        return "v31"
+    if "v2" in lowered:
+        return "v20"
+    return "other"
+
+
+def _prepare_cvss_metric_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    sanitized = copy.deepcopy(entry)
+    data_source = sanitized.get("cvssData")
+    if isinstance(data_source, dict):
+        sanitized["data"] = copy.deepcopy(data_source)
+    else:
+        synthesized: dict[str, Any] = {}
+        for field in (
+            "version",
+            "baseScore",
+            "baseSeverity",
+            "vectorString",
+            "attackVector",
+            "attackComplexity",
+            "privilegesRequired",
+            "userInteraction",
+            "scope",
+            "confidentialityImpact",
+            "integrityImpact",
+            "availabilityImpact",
+        ):
+            value = sanitized.get(field)
+            if value is not None:
+                synthesized[field] = value
+        if synthesized:
+            sanitized["data"] = synthesized
+    sanitized.pop("cvssData", None)
+    sanitized.pop("cvss_data", None)
+    return sanitized
+
+
 def _merge_cvss_metrics(*metric_sets: Any) -> dict[str, list[dict[str, Any]]]:
-    merged: dict[str, list[dict[str, Any]]] = {}
+    canonical: dict[str, list[dict[str, Any]]] = {}
     seen: dict[str, set[str]] = {}
     for metric_set in metric_sets:
         if not isinstance(metric_set, dict):
@@ -318,24 +366,28 @@ def _merge_cvss_metrics(*metric_sets: Any) -> dict[str, list[dict[str, Any]]]:
         for key, entries in metric_set.items():
             if not isinstance(entries, list):
                 continue
-            bucket = merged.setdefault(key, [])
-            bucket_seen = seen.setdefault(key, set())
             for entry in entries:
                 if not isinstance(entry, dict):
                     continue
-                serialized = json.dumps(entry, sort_keys=True, default=str)
+                canonical_key = _canonical_metric_key(key)
+                sanitized_entry = _prepare_cvss_metric_entry(entry)
+                serialized = json.dumps(sanitized_entry, sort_keys=True, default=str)
+                bucket = canonical.setdefault(canonical_key, [])
+                bucket_seen = seen.setdefault(canonical_key, set())
                 if serialized in bucket_seen:
                     continue
                 bucket_seen.add(serialized)
-                bucket.append(copy.deepcopy(entry))
-    return merged
+                bucket.append(sanitized_entry)
+
+    return {key: [copy.deepcopy(entry) for entry in entries] for key, entries in canonical.items()}
 
 
 def _cvss_metric_key_from_version(version: Any) -> str | None:
     if isinstance(version, str):
-        digits = version.replace(".", "").strip()
-        if digits.isdigit():
-            return f"cvssMetricV{digits}"
+        normalized = version.replace("CVSS:", "").strip()
+        digits = normalized.replace(".", "")
+        if digits:
+            return _canonical_metric_key(f"cvssMetricV{digits}")
     return None
 
 
@@ -391,7 +443,7 @@ def _extract_cvss_metrics_from_euvd(record: Any) -> dict[str, list[dict[str, Any
 
     metrics: dict[str, list[dict[str, Any]]] = {}
     for version, entry in collected:
-        key = _cvss_metric_key_from_version(version) or "cvssMetricOther"
+        key = _cvss_metric_key_from_version(version) or "other"
         metrics.setdefault(key, []).append(entry)
 
     return _merge_cvss_metrics(metrics)

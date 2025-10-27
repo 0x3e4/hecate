@@ -7,16 +7,21 @@ interface CvssMetricDisplayProps {
   showScores?: boolean;
 }
 
+const HIDDEN_VALUES = new Set(["NOT DEFINED", "NOT_DEFINED", "X"]);
+
 const formatEnumValue = (value: string | null | undefined): string => {
   if (!value) {
     return "";
   }
-  return value
-    .toString()
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  const normalized = value.toString().replace(/_/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  const upper = normalized.replace(/\s+/g, " ").toUpperCase();
+  if (HIDDEN_VALUES.has(upper)) {
+    return "";
+  }
+  return upper;
 };
 
 const formatScore = (value: number | null | undefined): string => {
@@ -35,9 +40,13 @@ export const CvssMetricDisplay = ({
   if (!metric) {
     return (
       <div className={`cvss-card ${compact ? "compact" : ""}`}>
-        <div className="cvss-score-ring">
+        <div className="cvss-details">
+          <div className="cvss-empty">Keine CVSS-Daten verfügbar.</div>
+        </div>
+        <div className="cvss-score-ring severity-unknown">
           <span className="cvss-score-value">—</span>
           <span className="cvss-score-label">Keine Daten</span>
+          <span className="cvss-score-version">CVSS</span>
         </div>
       </div>
     );
@@ -55,58 +64,79 @@ export const CvssMetricDisplay = ({
     { label: "Integrity Impact", value: metric.integrityImpact },
     { label: "Availability Impact", value: metric.availabilityImpact },
   ];
-  const visibleAttributes = attributes.filter((attribute) => !!formatEnumValue(attribute.value));
+  if (metric.additionalAttributes) {
+    attributes.push(...metric.additionalAttributes);
+  }
+
+  const visibleAttributes = attributes
+    .map((attribute) => {
+      const displayValue = formatEnumValue(attribute.value ?? null);
+      return displayValue
+        ? {
+            label: attribute.label,
+            value: attribute.value,
+            displayValue,
+          }
+        : null;
+    })
+    .filter((entry): entry is { label: string; value: string | null | undefined; displayValue: string } => entry !== null);
+
+  const visibleItems = compact ? visibleAttributes.slice(0, 4) : visibleAttributes;
   const showVectorInfo = showVector && Boolean(metric.vectorString);
   const showSubscores = showScores && (metric.exploitabilityScore != null || metric.impactScore != null);
+  const hasAnyDetails = visibleAttributes.length > 0 || showSubscores || showVectorInfo;
 
   return (
     <div className={`cvss-card ${compact ? "compact" : ""}`}>
+      <div className="cvss-details">
+        {hasAnyDetails ? (
+          <>
+            {visibleItems.length > 0 && (
+              <div className="cvss-badge-grid">
+                {visibleItems.map((attribute) => {
+                  const normalizedValue =
+                    attribute.displayValue.toLowerCase().replace(/\s+/g, "_") || "unknown";
+                  return (
+                    <div key={attribute.label} className="cvss-badge-row">
+                      <span className="cvss-badge-label">{attribute.label}</span>
+                      <span className="cvss-badge-value" data-level={normalizedValue}>
+                        {attribute.displayValue}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {showSubscores && (
+              <div className="cvss-subscores">
+                {metric.exploitabilityScore != null && (
+                  <span className="cvss-subscore">
+                    Exploitability: {formatScore(metric.exploitabilityScore)}
+                  </span>
+                )}
+                {metric.impactScore != null && (
+                  <span className="cvss-subscore">Impact: {formatScore(metric.impactScore)}</span>
+                )}
+              </div>
+            )}
+
+            {showVectorInfo && (
+              <div className="cvss-vector">
+                <span className="cvss-badge-label">Vector</span>
+                <code>{metric.vectorString}</code>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="cvss-empty">{compact ? "Keine CVSS-Details" : "Keine Detaildaten vorhanden."}</div>
+        )}
+      </div>
+
       <div className={`cvss-score-ring severity-${severityClass}`}>
         <span className="cvss-score-value">{formatScore(metric.baseScore)}</span>
         <span className="cvss-score-label">{severityLabel}</span>
         <span className="cvss-score-version">{metric.label}</span>
-      </div>
-
-      <div className="cvss-details">
-        {visibleAttributes.length > 0 && (
-          <div className="cvss-badge-grid">
-            {visibleAttributes.map((attribute) => {
-              const normalizedValue = (attribute.value ?? "")
-                .toString()
-                .trim()
-                .toLowerCase()
-                .replace(/\s+/g, "_");
-              return (
-                <div key={attribute.label} className="cvss-badge-row">
-                  <span className="cvss-badge-label">{attribute.label}</span>
-                  <span className="cvss-badge-value" data-level={normalizedValue}>
-                    {formatEnumValue(attribute.value)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {showSubscores && (
-          <div className="cvss-subscores">
-            {metric.exploitabilityScore != null && (
-              <span className="cvss-subscore">
-                Exploitability: {formatScore(metric.exploitabilityScore)}
-              </span>
-            )}
-            {metric.impactScore != null && (
-              <span className="cvss-subscore">Impact: {formatScore(metric.impactScore)}</span>
-            )}
-          </div>
-        )}
-
-        {showVectorInfo && (
-          <div className="cvss-vector">
-            <span className="cvss-badge-label">Vector</span>
-            <code>{metric.vectorString}</code>
-          </div>
-        )}
       </div>
     </div>
   );

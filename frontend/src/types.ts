@@ -23,6 +23,8 @@ export interface CvssMetric {
   baseScore?: number | null;
   vectorString?: string | null;
   cvssData?: CvssVectorData | null;
+  data?: CvssVectorData | null;
+  version?: string | null;
   [key: string]: unknown;
 }
 
