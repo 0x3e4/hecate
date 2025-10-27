@@ -6,6 +6,8 @@ import { searchVulnerabilities } from "../api/vulnerabilities";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { getPublishedDisplay } from "../utils/published";
+import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
+import { getPreferredCvssMetric } from "../utils/cvss";
 
 export const DashboardPage = () => {
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
@@ -65,9 +67,11 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
         const vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
         const products = vuln.products?.length ? vuln.products.join(", ") : "—";
         const versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : "—";
-        const cwes = vuln.cwes?.length ? vuln.cwes.join(", ") : "—";
+        const cweList = vuln.cwes ?? [];
+        const cwes = cweList.length ? cweList.join(", ") : "—";
         const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
         const ghsaIds = vuln.ghsaIds ?? [];
+        const preferredCvss = getPreferredCvssMetric(vuln.cvssMetrics ?? null);
         const malAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("MAL-"));
         const pysecAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("PYSEC-"));
         const exploitedHighlight = vuln.exploited
@@ -210,7 +214,27 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
               <MetaItem label="CWE" value={cwes} />
             </div>
 
-            <p className="vuln-summary">{vuln.summary}</p>
+            <div className={`vuln-summary ${preferredCvss ? "cvss-summary" : ""}`}>
+              {preferredCvss ? (
+                <CvssMetricDisplay
+                  metric={preferredCvss}
+                  compact
+                  showVector={false}
+                  showScores={false}
+                />
+              ) : (
+                <p>{vuln.summary}</p>
+              )}
+              {cweList.length > 0 && (
+                <div className="cvss-summary-cwes">
+                  {cweList.map((cwe) => (
+                    <span key={cwe} className="chip cwe-chip">
+                      {cwe}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {vuln.aiAssessment ? (
               <div className="vuln-ai">

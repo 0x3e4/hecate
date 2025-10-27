@@ -343,8 +343,269 @@ a {
 
 .vuln-summary {
   margin: 0.5rem 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vuln-summary p {
+  margin: 0;
   color: rgba(255, 255, 255, 0.85);
   line-height: 1.55;
+}
+
+.cvss-summary {
+  gap: 0.5rem;
+}
+
+.cvss-summary-cwes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cvss-summary .cwe-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cvss-section {
+  margin: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.cvss-tabs {
+  display: inline-flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cvss-tab {
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease, color 0.2s ease;
+}
+
+.cvss-tab:hover {
+  background: rgba(92, 132, 255, 0.18);
+  color: #f5f7fa;
+}
+
+.cvss-tab.active {
+  background: rgba(92, 132, 255, 0.22);
+  border-color: rgba(92, 132, 255, 0.45);
+  color: #f5f7fa;
+}
+
+.cvss-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: 14px;
+  background: rgba(20, 24, 36, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
+}
+
+.cvss-card.compact {
+  padding: 0.6rem 0.85rem;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.cvss-score-ring {
+  min-width: 108px;
+  min-height: 108px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-align: center;
+  background: rgba(92, 132, 255, 0.12);
+  border: 3px solid rgba(92, 132, 255, 0.3);
+  box-shadow: inset 0 0 0 5px rgba(92, 132, 255, 0.12);
+}
+
+.cvss-card.compact .cvss-score-ring {
+  min-width: 82px;
+  min-height: 82px;
+  box-shadow: inset 0 0 0 4px rgba(92, 132, 255, 0.12);
+}
+
+.cvss-score-ring.severity-critical {
+  background: rgba(255, 82, 82, 0.18);
+  border-color: rgba(255, 82, 82, 0.5);
+  box-shadow: inset 0 0 0 6px rgba(255, 82, 82, 0.12);
+}
+
+.cvss-score-ring.severity-high {
+  background: rgba(255, 138, 76, 0.18);
+  border-color: rgba(255, 138, 76, 0.5);
+  box-shadow: inset 0 0 0 6px rgba(255, 138, 76, 0.12);
+}
+
+.cvss-score-ring.severity-medium {
+  background: rgba(255, 193, 7, 0.18);
+  border-color: rgba(255, 193, 7, 0.5);
+  box-shadow: inset 0 0 0 6px rgba(255, 193, 7, 0.12);
+}
+
+.cvss-score-ring.severity-low {
+  background: rgba(102, 187, 106, 0.18);
+  border-color: rgba(102, 187, 106, 0.5);
+  box-shadow: inset 0 0 0 6px rgba(102, 187, 106, 0.12);
+}
+
+.cvss-score-ring.severity-unknown {
+  background: rgba(92, 132, 255, 0.12);
+  border-color: rgba(92, 132, 255, 0.35);
+}
+
+.cvss-score-value {
+  font-size: 2.3rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cvss-card.compact .cvss-score-value {
+  font-size: 1.8rem;
+}
+
+.cvss-score-label {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cvss-score-version {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cvss-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 220px;
+}
+
+.cvss-badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.cvss-card.compact .cvss-badge-grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.4rem 0.75rem;
+}
+
+.cvss-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cvss-badge-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.55);
+  margin-right: 0.5rem;
+}
+
+.cvss-badge-value {
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cvss-badge-value[data-level="critical"],
+.cvss-badge-value[data-level="high"] {
+  background: rgba(255, 82, 82, 0.2);
+  color: #ffeaea;
+}
+
+.cvss-badge-value[data-level="medium"] {
+  background: rgba(255, 193, 7, 0.2);
+  color: #fff5d6;
+}
+
+.cvss-badge-value[data-level="low"] {
+  background: rgba(102, 187, 106, 0.2);
+  color: #e1f6e3;
+}
+
+.cvss-badge-value[data-level="network"],
+.cvss-badge-value[data-level="adjacent"],
+.cvss-badge-value[data-level="physical"],
+.cvss-badge-value[data-level="local"] {
+  background: rgba(92, 132, 255, 0.22);
+  color: #dfe7ff;
+}
+
+.cvss-badge-value[data-level="none"] {
+  background: rgba(92, 132, 255, 0.15);
+  color: #edf1ff;
+}
+
+.cvss-subscores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.cvss-subscore {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+}
+
+.cvss-vector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+}
+
+.cvss-vector code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.3rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.85);
+  overflow-x: auto;
 }
 
 .vuln-ai {

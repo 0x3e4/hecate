@@ -70,6 +70,16 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _normalize_decimal_string(value: Any) -> Any:
+    if isinstance(value, str):
+        candidate = value.replace(",", ".")
+        match = re.search(r"-?\d+(?:\.\d+)?", candidate)
+        if match:
+            return match.group(0)
+        return candidate.strip()
+    return value
+
+
 def _normalize_severity(value: Any) -> str | None:
     if isinstance(value, str):
         return value.lower()
@@ -271,7 +281,8 @@ def _parse_epss(value: Any) -> tuple[float | None, float | None]:
     if isinstance(value, (int, float)):
         score = float(value)
     elif isinstance(value, str):
-        numbers = [float(match) for match in re.findall(r"\d+(?:\.\d+)?", value)]
+        normalized = value.replace(",", ".")
+        numbers = [float(match) for match in re.findall(r"\d+(?:\.\d+)?", normalized)]
         if numbers:
             score = numbers[0]
             if len(numbers) > 1:
@@ -279,8 +290,8 @@ def _parse_epss(value: Any) -> tuple[float | None, float | None]:
     elif isinstance(value, dict):
         raw_score = value.get("score") or value.get("epssScore")
         raw_percentile = value.get("percentile") or value.get("epssPercentile")
-        score = _safe_float(raw_score)
-        percentile = _safe_float(raw_percentile)
+        score = _safe_float(_normalize_decimal_string(raw_score))
+        percentile = _safe_float(_normalize_decimal_string(raw_percentile))
 
     return score, percentile
 

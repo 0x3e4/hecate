@@ -1,3 +1,33 @@
+export interface CvssVectorData {
+  version?: string | null;
+  vectorString?: string | null;
+  baseScore?: number | null;
+  baseSeverity?: string | null;
+  attackVector?: string | null;
+  attackComplexity?: string | null;
+  privilegesRequired?: string | null;
+  userInteraction?: string | null;
+  scope?: string | null;
+  confidentialityImpact?: string | null;
+  integrityImpact?: string | null;
+  availabilityImpact?: string | null;
+  [key: string]: unknown;
+}
+
+export interface CvssMetric {
+  source?: string | null;
+  type?: string | null;
+  exploitabilityScore?: number | null;
+  impactScore?: number | null;
+  baseSeverity?: string | null;
+  baseScore?: number | null;
+  vectorString?: string | null;
+  cvssData?: CvssVectorData | null;
+  [key: string]: unknown;
+}
+
+export type CvssMetrics = Record<string, CvssMetric[]>;
+
 export interface VulnerabilityPreview {
   vulnId: string;
   sourceId?: string | null;
@@ -19,6 +49,7 @@ export interface VulnerabilityPreview {
   ghsaIds?: string[];
   cwes?: string[];
   aiAssessment?: Record<string, unknown> | null;
+  cvssMetrics?: CvssMetrics | null;
 }
 
 export interface VulnerabilityQuery {
