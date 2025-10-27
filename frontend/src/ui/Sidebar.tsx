@@ -7,31 +7,36 @@ type SidebarProps = {
 };
 
 const navItems = [
-  { to: "/", label: "Dashboard", shortLabel: LuLayoutDashboard },
-  { to: "/vulnerabilities", label: "Vulnerabilities", shortLabel: LuShieldAlert },
-  { to: "/audit", label: "Audit Log", shortLabel: LuLogs },
-  { to: "/stats", label: "Statistiken", shortLabel: LuFileChartColumnIncreasing },
-  { to: "/system", label: "System", shortLabel: LuSettings },
+  { to: "/", label: "Dashboard", icon: LuLayoutDashboard },
+  { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
+  { to: "/audit", label: "Audit Log", icon: LuLogs },
+  { to: "/stats", label: "Statistiken", icon: LuFileChartColumnIncreasing },
+  { to: "/system", label: "System", icon: LuSettings },
 ];
 
 export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
   return (
     <aside className={`app-sidebar${collapsed ? " collapsed" : ""}`}>
       <nav className="sidebar-nav">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            title={item.label}
-            aria-label={item.label}
-            className={({ isActive }) =>
-              `sidebar-link${isActive ? " active" : ""}`
-            }
-          >
-            <span className="sidebar-link-short">{item.shortLabel}</span>
-            <span className="sidebar-link-text">{item.label}</span>
-          </NavLink>
-        ))}
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              title={item.label}
+              aria-label={item.label}
+              className={({ isActive }) =>
+                `sidebar-link${isActive ? " active" : ""}`
+              }
+            >
+              <span className="sidebar-link-short">
+                <Icon aria-hidden="true" focusable="false" />
+              </span>
+              <span className="sidebar-link-text">{item.label}</span>
+            </NavLink>
+          );
+        })}
       </nav>
       <button
         type="button"

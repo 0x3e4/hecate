@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import copy
+import json
 from typing import Any
 
 from dateutil import parser
@@ -12,7 +14,12 @@ from app.models.vulnerability import CvssScore, VulnerabilityDocument
 log = structlog.get_logger()
 
 
-def _parse_datetime(value: Any, *, fallback: datetime | None = None) -> datetime:
+def _parse_datetime(
+    value: Any,
+    *,
+    fallback: datetime | None = None,
+    allow_none: bool = False,
+) -> datetime | None:
     if isinstance(value, datetime):
         return value.astimezone(UTC)
     if isinstance(value, str) and value:
@@ -23,7 +30,11 @@ def _parse_datetime(value: Any, *, fallback: datetime | None = None) -> datetime
                 return parser.parse(value).astimezone(UTC)
             except (ValueError, TypeError):
                 log.debug("normalizer.invalid_datetime", value=value)
-    return (fallback or datetime.now(tz=UTC)).astimezone(UTC)
+    if fallback is not None:
+        return fallback.astimezone(UTC)
+    if allow_none:
+        return None
+    return datetime.now(tz=UTC).astimezone(UTC)
 
 
 def _extract_cvss(data: dict[str, Any]) -> CvssScore:
@@ -94,6 +105,9 @@ def build_document(
                 if isinstance(code, str):
                     normalized_cwes.append(code)
         cwes = normalized_cwes
+    else:
+        cwes = []
+    cwes = [cwe for cwe in cwes if isinstance(cwe, str)]
 
     cpes = (
         euvd_record.get("cpes")
@@ -114,6 +128,9 @@ def build_document(
                 if isinstance(criteria, str):
                     normalized_cpes.append(criteria)
         cpes = normalized_cpes
+    else:
+        cpes = []
+    cpes = [cpe for cpe in cpes if isinstance(cpe, str)]
 
     references = (
         euvd_record.get("references")
@@ -159,7 +176,7 @@ def build_document(
         or euvd_record.get("published_at")
         or euvd_record.get("publicationDate")
         or euvd_record.get("datePublished"),
-        fallback=ingested_at,
+        allow_none=True,
     )
     modified = _parse_datetime(
         euvd_record.get("modified")
@@ -175,24 +192,30 @@ def build_document(
         or euvd_record.get("lastUpdate")
         or euvd_record.get("last_update_date"),
         fallback=published,
+        allow_none=True,
     )
 
     cvss = _extract_cvss(euvd_record)
-    if not cvss.base_score and supplemental_record:
-        nvd_metrics = (supplemental_record.get("cve") or {}).get("metrics") or {}
-        if isinstance(nvd_metrics, dict):
-            for metric_key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
-                metrics = nvd_metrics.get(metric_key)
-                if isinstance(metrics, list) and metrics:
-                    cvss_details = metrics[0].get("cvssData") or metrics[0].get("cvssData")
-                    if isinstance(cvss_details, dict):
-                        cvss = CvssScore(
-                            version=cvss_details.get("version"),
-                            base_score=_safe_float(cvss_details.get("baseScore")),
-                            vector=cvss_details.get("vectorString"),
-                            severity=_normalize_severity(cvss_details.get("baseSeverity")),
-                        )
-                        break
+    if not cvss.base_score and supplemental_record and isinstance(supplemental_record, dict):
+        supplemental_metrics = ((supplemental_record.get("cve") or {}).get("metrics"))
+        fallback_cvss = _extract_cvss_from_nvd(supplemental_metrics)
+        if fallback_cvss.base_score:
+            cvss = fallback_cvss
+
+    cvss_metrics = _merge_cvss_metrics(
+        _extract_cvss_metrics_from_euvd(euvd_record),
+        _extract_cvss_metrics_from_nvd(supplemental_record),
+    )
+
+    if supplemental_record:
+        supplemental_cve = supplemental_record.get("cve") if isinstance(supplemental_record, dict) else None
+        if isinstance(supplemental_cve, dict):
+            supplemental_cwes = _extract_cwes_from_nvd(supplemental_cve)
+            if supplemental_cwes:
+                cwes = _merge_unique_strings(cwes, supplemental_cwes)
+        supplemental_cpes = _extract_cpes_from_nvd(supplemental_record)
+        if supplemental_cpes:
+            cpes = _merge_unique_strings(cpes, supplemental_cpes)
 
     document = VulnerabilityDocument(
         vuln_id=cve_id,
@@ -201,8 +224,8 @@ def build_document(
         title=title,
         summary=summary,
         references=[ref for ref in references if isinstance(ref, str)],
-        cwes=[cwe for cwe in cwes if isinstance(cwe, str)],
-        cpes=[cpe for cpe in cpes if isinstance(cpe, str)],
+        cwes=_merge_unique_strings(cwes),
+        cpes=_merge_unique_strings(cpes),
         aliases=[alias for alias in aliases if isinstance(alias, str)],
         rejected=_determine_rejected(euvd_record, supplemental_record),
         assigner=assigner,
@@ -213,6 +236,7 @@ def build_document(
         products=products,
         product_versions=product_versions,
         cvss=cvss,
+        cvss_metrics=cvss_metrics,
         published=published,
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),
@@ -259,6 +283,134 @@ def _parse_epss(value: Any) -> tuple[float | None, float | None]:
         percentile = _safe_float(raw_percentile)
 
     return score, percentile
+
+
+def _merge_unique_strings(*value_lists: Any) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for value_list in value_lists:
+        if not value_list:
+            continue
+        for value in value_list:
+            if isinstance(value, str) and value not in seen:
+                seen.add(value)
+                merged.append(value)
+    return merged
+
+
+def _merge_cvss_metrics(*metric_sets: Any) -> dict[str, list[dict[str, Any]]]:
+    merged: dict[str, list[dict[str, Any]]] = {}
+    seen: dict[str, set[str]] = {}
+    for metric_set in metric_sets:
+        if not isinstance(metric_set, dict):
+            continue
+        for key, entries in metric_set.items():
+            if not isinstance(entries, list):
+                continue
+            bucket = merged.setdefault(key, [])
+            bucket_seen = seen.setdefault(key, set())
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                serialized = json.dumps(entry, sort_keys=True, default=str)
+                if serialized in bucket_seen:
+                    continue
+                bucket_seen.add(serialized)
+                bucket.append(copy.deepcopy(entry))
+    return merged
+
+
+def _cvss_metric_key_from_version(version: Any) -> str | None:
+    if isinstance(version, str):
+        digits = version.replace(".", "").strip()
+        if digits.isdigit():
+            return f"cvssMetricV{digits}"
+    return None
+
+
+def _extract_cvss_metrics_from_euvd(record: Any) -> dict[str, list[dict[str, Any]]]:
+    if not isinstance(record, dict):
+        return {}
+
+    collected: list[tuple[str | None, dict[str, Any]]] = []
+    queue: list[dict[str, Any]] = [record]
+    seen_ids: set[int] = set()
+
+    while queue:
+        current = queue.pop()
+        if id(current) in seen_ids:
+            continue
+        seen_ids.add(id(current))
+
+        version = current.get("baseScoreVersion") or current.get("cvssVersion") or current.get("version")
+        vector = current.get("baseScoreVector") or current.get("vectorString") or current.get("vector")
+        score = _safe_float(current.get("baseScore") or current.get("score"))
+        severity = current.get("baseSeverity") or current.get("severity")
+        source = current.get("assigner") or current.get("source")
+        metric_type = current.get("type")
+
+        entry: dict[str, Any] = {}
+        if version:
+            entry["version"] = version
+        if score is not None:
+            entry["baseScore"] = score
+        if isinstance(vector, str):
+            entry["vectorString"] = vector
+        if severity:
+            entry["baseSeverity"] = severity
+        if isinstance(source, str) and source:
+            entry["source"] = source
+        if isinstance(metric_type, str) and metric_type:
+            entry["type"] = metric_type
+        if entry:
+            collected.append((version if isinstance(version, str) else None, entry))
+
+        scores = current.get("scores")
+        if isinstance(scores, list):
+            for candidate in scores:
+                if isinstance(candidate, dict):
+                    queue.append(candidate)
+
+        nested_vulns = current.get("enisaIdVulnerability")
+        if isinstance(nested_vulns, list):
+            for candidate in nested_vulns:
+                vulnerability = candidate.get("vulnerability") if isinstance(candidate, dict) else None
+                if isinstance(vulnerability, dict):
+                    queue.append(vulnerability)
+
+    metrics: dict[str, list[dict[str, Any]]] = {}
+    for version, entry in collected:
+        key = _cvss_metric_key_from_version(version) or "cvssMetricOther"
+        metrics.setdefault(key, []).append(entry)
+
+    return _merge_cvss_metrics(metrics)
+
+
+def _extract_cvss_metrics_from_nvd(record: Any) -> dict[str, list[dict[str, Any]]]:
+    if not isinstance(record, dict):
+        return {}
+
+    metrics_source: Any
+    if "cve" in record and isinstance(record["cve"], dict):
+        metrics_source = record["cve"].get("metrics")
+    else:
+        metrics_source = record.get("metrics")
+
+    if not isinstance(metrics_source, dict):
+        return {}
+
+    cleaned: dict[str, list[dict[str, Any]]] = {}
+    for key, entries in metrics_source.items():
+        if not isinstance(entries, list):
+            continue
+        sanitized: list[dict[str, Any]] = []
+        for entry in entries:
+            if isinstance(entry, dict):
+                sanitized.append(copy.deepcopy(entry))
+        if sanitized:
+            cleaned[key] = sanitized
+
+    return _merge_cvss_metrics(cleaned)
 
 
 def _determine_rejected(*records: Any) -> bool:
@@ -434,47 +586,89 @@ def _select_description(entries: Any, *, lang: str = "en") -> str | None:
 
 
 def _extract_cpes_from_nvd(record: dict[str, Any]) -> list[str]:
-    cpes: list[str] = []
     configurations = record.get("configurations")
     if not isinstance(configurations, list):
-        return cpes
+        return []
 
-    for configuration in configurations:
-        if not isinstance(configuration, dict):
-            continue
-        nodes = configuration.get("nodes")
-        if not isinstance(nodes, list):
-            continue
+    collected: list[str] = []
+
+    def walk_nodes(nodes: list[Any]) -> None:
         for node in nodes:
             if not isinstance(node, dict):
                 continue
             matches = node.get("cpeMatch")
-            if not isinstance(matches, list):
-                continue
-            for match in matches:
-                if isinstance(match, dict) and match.get("vulnerable"):
-                    criteria = match.get("criteria")
-                    if isinstance(criteria, str):
-                        cpes.append(criteria)
-    return cpes
+            if isinstance(matches, list):
+                for match in matches:
+                    if not isinstance(match, dict):
+                        continue
+                    if match.get("vulnerable"):
+                        criteria = match.get("criteria")
+                        if isinstance(criteria, str):
+                            collected.append(criteria)
+                        else:
+                            fallback = match.get("cpeName") or match.get("matchCriteriaId")
+                            if isinstance(fallback, str):
+                                collected.append(fallback)
+            nested_nodes = node.get("nodes")
+            if isinstance(nested_nodes, list):
+                walk_nodes(nested_nodes)
+
+    for configuration in configurations:
+        if isinstance(configuration, dict):
+            nodes = configuration.get("nodes")
+            if isinstance(nodes, list):
+                walk_nodes(nodes)
+
+    return _merge_unique_strings(collected)
+
+
+def _extract_cwes_from_nvd(cve_wrapper: dict[str, Any]) -> list[str]:
+    if not isinstance(cve_wrapper, dict):
+        return []
+
+    weaknesses = cve_wrapper.get("weaknesses") or []
+    if not isinstance(weaknesses, list):
+        return []
+
+    collected: list[str] = []
+    for weakness in weaknesses:
+        if not isinstance(weakness, dict):
+            continue
+        descriptions = weakness.get("description") or weakness.get("descriptions")
+        if isinstance(descriptions, list):
+            for entry in descriptions:
+                if isinstance(entry, dict):
+                    value = entry.get("value")
+                    if isinstance(value, str):
+                        collected.append(value)
+        elif isinstance(descriptions, str):
+            collected.append(descriptions)
+
+    return _merge_unique_strings(collected)
 
 
 def _extract_cvss_from_nvd(metrics: Any) -> CvssScore:
     if not isinstance(metrics, dict):
         return CvssScore()
 
-    for metric_key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+    for metric_key in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
         metric_list = metrics.get(metric_key)
         if isinstance(metric_list, list) and metric_list:
             metric = metric_list[0]
             if isinstance(metric, dict):
-                cvss_data = metric.get("cvssData")
+                cvss_data = metric.get("cvssData") or metric
                 if isinstance(cvss_data, dict):
+                    severity = (
+                        cvss_data.get("baseSeverity")
+                        or metric.get("baseSeverity")
+                        or cvss_data.get("severity")
+                        or metric.get("severity")
+                    )
                     return CvssScore(
                         version=cvss_data.get("version"),
-                        base_score=_safe_float(cvss_data.get("baseScore")),
-                        vector=cvss_data.get("vectorString"),
-                        severity=_normalize_severity(metric.get("baseSeverity")),
+                        base_score=_safe_float(cvss_data.get("baseScore") or metric.get("baseScore")),
+                        vector=cvss_data.get("vectorString") or metric.get("vectorString"),
+                        severity=_normalize_severity(severity),
                     )
     return CvssScore()
 
@@ -507,15 +701,7 @@ def build_document_from_nvd(
                 if isinstance(url, str):
                     references.append(url)
 
-    weaknesses = cve_wrapper.get("weaknesses") or []
-    cwes: list[str] = []
-    if isinstance(weaknesses, list):
-        for weakness in weaknesses:
-            if isinstance(weakness, dict):
-                descriptions = weakness.get("description")
-                value = _select_description(descriptions)
-                if isinstance(value, str):
-                    cwes.append(value)
+    cwes = _extract_cwes_from_nvd(cve_wrapper)
 
     cpes = _extract_cpes_from_nvd(record)
 
@@ -537,14 +723,16 @@ def build_document_from_nvd(
 
     published = _parse_datetime(
         cve_wrapper.get("published"),
-        fallback=ingested_at,
+        allow_none=True,
     )
     modified = _parse_datetime(
         cve_wrapper.get("lastModified"),
         fallback=published,
+        allow_none=True,
     )
 
     cvss = _extract_cvss_from_nvd(cve_wrapper.get("metrics"))
+    cvss_metrics = _extract_cvss_metrics_from_nvd(record)
 
     document = VulnerabilityDocument(
         vuln_id=cve_id,
@@ -565,6 +753,7 @@ def build_document_from_nvd(
         products=list(product_version_map.keys()),
         product_versions=sorted({version for versions in product_version_map.values() for version in versions}),
         cvss=cvss,
+        cvss_metrics=cvss_metrics,
         published=published,
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),

@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
 import { searchVulnerabilities } from "../api/vulnerabilities";
 import { SkeletonBlock } from "../components/Skeleton";
+import { ReservedBadge } from "../components/ReservedBadge";
+import { getPublishedDisplay } from "../utils/published";
 
 export const DashboardPage = () => {
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
@@ -49,7 +51,10 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
         const hasCve = Boolean(vuln.vulnId && vuln.vulnId.startsWith("CVE-"));
         const hasSource = Boolean(vuln.sourceId && (!hasCve || vuln.sourceId !== vuln.vulnId));
         const primaryId = vuln.vulnId || vuln.sourceId || "Unbekannte-ID";
-        const published = vuln.published ? new Date(vuln.published).toLocaleString() : "unbekannt";
+        const { text: published, isReserved: isPublishedReserved } = getPublishedDisplay(
+          vuln.published,
+          "datetime"
+        );
         const cvss = vuln.cvssScore != null ? vuln.cvssScore.toFixed(1) : "n/a";
         const epss = vuln.epssScore != null ? vuln.epssScore.toFixed(2) : "n/a";
         const epssPercentileValue = vuln.epssPercentile ?? null;
@@ -64,6 +69,7 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
         const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
         const ghsaIds = vuln.ghsaIds ?? [];
         const malAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("MAL-"));
+        const pysecAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("PYSEC-"));
         const exploitedHighlight = vuln.exploited
           ? {
               background: "linear-gradient(315deg, rgba(255,82,82,0.2), rgba(255,82,82,0.05))",
@@ -156,6 +162,19 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                   OSV
                 </a>
               ))}
+              {pysecAliases.map((alias) => (
+                <a
+                  key={alias}
+                  href={`https://osv.dev/vulnerability/${encodeURIComponent(alias)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span role="img" aria-label="OSV">
+                    🧩
+                  </span>
+                  OSV
+                </a>
+              ))}
               {ghsaIds.map((alias) => (
                 <a
                   key={alias}
@@ -178,7 +197,10 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
               <MetaItem label="EPSS Perzentil" value={epssPct} />
               <MetaItem label="Exploited" value={formatBoolean(vuln.exploited)} />
               <MetaItem label="Assigner" value={vuln.assigner ?? "—"} />
-              <MetaItem label="Veröffentlicht" value={published} />
+              <MetaItem
+                label="Veröffentlicht"
+                value={isPublishedReserved ? <ReservedBadge /> : published}
+              />
             </div>
 
             <div className="vuln-meta">
@@ -272,7 +294,7 @@ const formatBoolean = (value?: boolean | null) => {
 
 interface MetaItemProps {
   label: string;
-  value: string;
+  value: ReactNode;
 }
 
 const MetaItem = ({ label, value }: MetaItemProps) => (

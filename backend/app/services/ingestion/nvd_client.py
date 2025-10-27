@@ -83,7 +83,18 @@ class NVDClient:
         last_modified_start: datetime | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         start_index = 0
-        last_modified_param = self._format_datetime(last_modified_start) if last_modified_start else None
+        last_modified_param: str | None = None
+        if last_modified_start:
+            safe_start = last_modified_start.astimezone(UTC)
+            now = datetime.now(tz=UTC)
+            if safe_start > now:
+                log.warning(
+                    "nvd_client.future_last_modified",
+                    requested=safe_start,
+                    clamped=now,
+                )
+                safe_start = now
+            last_modified_param = self._format_datetime(safe_start)
         total_results: int | None = None
 
         while True:
@@ -98,6 +109,21 @@ class NVDClient:
                 async with self._rate_limiter.slot():
                     response = await self._client.get("/cves/2.0", params=params)
                 response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code if exc.response else None
+                if status == 404 and last_modified_param:
+                    log.info(
+                        "nvd_client.no_results_for_last_mod_start",
+                        last_mod_start=last_modified_param,
+                    )
+                    return
+                log.error(
+                    "nvd_client.page_failed",
+                    start_index=start_index,
+                    error=str(exc),
+                    status=status,
+                )
+                raise RuntimeError("Failed to iterate NVD CVEs.") from exc
             except httpx.HTTPError as exc:
                 log.error("nvd_client.page_failed", start_index=start_index, error=str(exc))
                 raise RuntimeError("Failed to iterate NVD CVEs.") from exc

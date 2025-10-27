@@ -94,6 +94,94 @@ class EUVDClient:
 
             page += 1
 
+    async def fetch_single(self, identifier: str) -> dict[str, Any] | None:
+        candidate = (identifier or "").strip()
+        if not candidate:
+            return None
+
+        lookups: list[dict[str, Any]] = [
+            {"search": candidate},
+            {"queryString": candidate},
+        ]
+
+        for params_override in lookups:
+            params: dict[str, Any] = {
+                "page": 0,
+                "size": min(self.page_size, 20),
+                "fromScore": 0,
+                "toScore": 10,
+            }
+            params.update(params_override)
+
+            try:
+                async with self._rate_limiter.slot():
+                    response = await self._client.get(self.SEARCH_PATH, params=params)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                log.warning(
+                    "euvd_client.fetch_single_failed",
+                    identifier=identifier,
+                    params=params,
+                    error=str(exc),
+                )
+                continue
+
+            payload = response.json()
+            items = self._extract_items(payload)
+            if not items:
+                continue
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if self._matches_identifier(item, candidate):
+                    return item
+
+        return None
+
+    @staticmethod
+    def _matches_identifier(record: dict[str, Any], identifier: str) -> bool:
+        needle = identifier.strip().lower()
+        if not needle:
+            return False
+
+        id_candidates = [
+            record.get("id"),
+            record.get("euvdId"),
+            record.get("enisaUuid"),
+            record.get("uuid"),
+            record.get("sourceId"),
+            record.get("cveNumber"),
+            record.get("cve"),
+            record.get("cveId"),
+            record.get("cve_id"),
+        ]
+        for candidate in id_candidates:
+            if isinstance(candidate, str) and candidate.strip().lower() == needle:
+                return True
+
+        alias_sources = [
+            record.get("aliases"),
+            record.get("alias"),
+            record.get("references"),
+        ]
+        for source in alias_sources:
+            for alias in EUVDClient._iter_alias_values(source):
+                if alias.lower() == needle:
+                    return True
+        return False
+
+    @staticmethod
+    def _iter_alias_values(source: Any) -> list[str]:
+        values: list[str] = []
+        if isinstance(source, str):
+            values = [part.strip() for part in source.splitlines() if part.strip()]
+        elif isinstance(source, list):
+            values = [str(item).strip() for item in source if str(item).strip()]
+        elif isinstance(source, dict):
+            values = [str(value).strip() for value in source.values() if str(value).strip()]
+        return values
+
     @staticmethod
     def _extract_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
         if "content" in payload and isinstance(payload["content"], list):

@@ -11,6 +11,7 @@ const JOB_LABELS: Record<string, string> = {
   cpe_initial_sync: "CPE Initial Sync",
   nvd_sync: "NVD Sync",
   nvd_initial_sync: "NVD Initial Sync",
+  manual_refresh: "Manueller Refresh",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -129,6 +130,7 @@ export const AuditLogPage = () => {
               <option value="cpe_initial_sync">CPE Initial Sync</option>
               <option value="nvd_sync">NVD Sync</option>
               <option value="nvd_initial_sync">NVD Initial Sync</option>
+              <option value="manual_refresh">Manueller Refresh</option>
             </select>
           </label>
           {loading && <span className="muted">Aktualisiere Daten…</span>}

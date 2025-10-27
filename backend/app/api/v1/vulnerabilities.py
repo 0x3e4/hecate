@@ -7,6 +7,8 @@ from app.schemas.vulnerability import (
     VulnerabilityDetail,
     VulnerabilityPreview,
     VulnerabilityQuery,
+    VulnerabilityRefreshRequest,
+    VulnerabilityRefreshResponse,
 )
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 
@@ -21,16 +23,15 @@ async def search_vulnerabilities(
     return await service.search(query)
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=VulnerabilityRefreshResponse)
 async def trigger_refresh(
-    payload: dict[str, Any],
+    payload: VulnerabilityRefreshRequest,
     service: VulnerabilityService = Depends(get_vulnerability_service),
-) -> dict[str, str]:
+) -> VulnerabilityRefreshResponse:
     """
     Trigger vulnerability feed refresh.
     """
-    await service.trigger_refresh(payload)
-    return {"status": "scheduled"}
+    return await service.trigger_refresh(payload)
 
 
 @router.get("", response_model=PagedVulnerabilityResponse)
