@@ -87,8 +87,18 @@ class BackupService:
                 skipped += 1
                 continue
 
+            change_context = {
+                "job_name": f"backup_restore_{normalized_source.lower()}",
+                "job_label": "Backup Restore",
+                "metadata": {
+                    "source": normalized_source,
+                    "identifier": document.vuln_id,
+                    "source_id": document.source_id,
+                },
+            }
+
             try:
-                was_inserted = await self.vulnerability_repo.upsert(document)
+                was_inserted = await self.vulnerability_repo.upsert(document, change_context=change_context)
             except Exception as exc:  # noqa: BLE001 - surface as skipped
                 log.error(
                     "backup.restore_vulnerability_failed",

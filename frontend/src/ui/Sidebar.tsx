@@ -9,8 +9,8 @@ type SidebarProps = {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LuLayoutDashboard },
   { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
-  { to: "/audit", label: "Audit Log", icon: LuLogs },
   { to: "/stats", label: "Statistiken", icon: LuFileChartColumnIncreasing },
+  { to: "/audit", label: "Audit Log", icon: LuLogs },
   { to: "/system", label: "System", icon: LuSettings },
 ];
 

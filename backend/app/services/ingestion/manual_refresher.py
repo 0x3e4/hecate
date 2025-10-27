@@ -166,7 +166,18 @@ class ManualRefresher:
                     vuln_id=document.vuln_id,
                     error=str(exc),
                 )
-            inserted = await repository.upsert(document)
+            change_context = {
+                "job_name": "manual_refresh",
+                "job_label": "Manual Refresh",
+                "metadata": {
+                    "trigger": "manual",
+                    "provider": "EUVD",
+                    "identifier": original_identifier,
+                    "resolved_vuln_id": document.vuln_id,
+                    "resolved_source_id": document.source_id,
+                },
+            }
+            inserted = await repository.upsert(document, change_context=change_context)
             message = None
             if document.published is None:
                 message = "EUVD record ingested without published date; marked as reserved."
@@ -201,7 +212,22 @@ class ManualRefresher:
                         vuln_id=document.vuln_id,
                         error=str(exc),
                     )
-                inserted = await repository.upsert_from_nvd(document, nvd_raw=nvd_record)
+                change_context = {
+                    "job_name": "manual_refresh",
+                    "job_label": "Manual Refresh",
+                    "metadata": {
+                        "trigger": "manual",
+                        "provider": "NVD",
+                        "identifier": original_identifier,
+                        "resolved_vuln_id": document.vuln_id,
+                        "resolved_source_id": document.source_id,
+                    },
+                }
+                inserted = await repository.upsert_from_nvd(
+                    document,
+                    nvd_raw=nvd_record,
+                    change_context=change_context,
+                )
                 message = None
                 if document.published is None:
                     message = "NVD record missing published date; stored as reserved."
@@ -218,7 +244,18 @@ class ManualRefresher:
             original_identifier=original_identifier,
             ingested_at=ingested_at,
         )
-        inserted = await repository.upsert(placeholder)
+        change_context = {
+            "job_name": "manual_refresh",
+            "job_label": "Manual Refresh",
+            "metadata": {
+                "trigger": "manual",
+                "provider": "placeholder",
+                "identifier": original_identifier,
+                "resolved_vuln_id": placeholder.vuln_id,
+                "resolved_source_id": placeholder.source_id,
+            },
+        }
+        inserted = await repository.upsert(placeholder, change_context=change_context)
         return VulnerabilityRefreshStatus(
             identifier=original_identifier,
             provider="placeholder",

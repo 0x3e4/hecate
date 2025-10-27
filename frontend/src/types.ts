@@ -30,6 +30,22 @@ export interface CvssMetric {
 
 export type CvssMetrics = Record<string, CvssMetric[]>;
 
+export interface VulnerabilityChangeField {
+  name: string;
+  previous?: unknown | null;
+  current?: unknown | null;
+}
+
+export interface VulnerabilityChangeEntry {
+  changedAt: string;
+  jobName: string;
+  jobLabel?: string | null;
+  changeType: "insert" | "update";
+  fields: VulnerabilityChangeField[];
+  snapshot?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface VulnerabilityPreview {
   vulnId: string;
   sourceId?: string | null;
@@ -96,6 +112,7 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   ingestedAt?: string | null;
   rawDocument?: Record<string, unknown> | null;
   productVersionIds?: string[];
+  changeHistory?: VulnerabilityChangeEntry[];
 }
 
 export interface PagedVulnerabilityResponse {

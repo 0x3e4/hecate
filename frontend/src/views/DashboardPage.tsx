@@ -130,14 +130,14 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                     NVD
                   </a>
                   <a
-                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.vulnId)}`}
+                    href={`https://cve.circl.lu/vuln/${encodeURIComponent(vuln.vulnId)}`}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    <span role="img" aria-label="Wazuh">
+                    <span role="img" aria-label="CIRCL">
                       🌐
                     </span>
-                    Wazuh
+                    CIRCL
                   </a> 
                 </>
               )}

@@ -111,6 +111,7 @@ class IngestionPipeline:
         skipped = 0
         processed = 0
         latest_modified: datetime | None = None
+        requested_since_iso = requested_since.isoformat() if isinstance(requested_since, datetime) else None
 
         progress_interval = 500
         last_progress_log = datetime.now(tz=UTC)
@@ -165,7 +166,27 @@ class IngestionPipeline:
                     if normalized_id and normalized_id in known_exploited_upper:
                         document = document.model_copy(update={"exploited": True})
 
-                inserted = await repository.upsert(document)
+                metadata: dict[str, Any] = {
+                    "pipeline": "EUVD",
+                    "initial_sync": initial_sync,
+                    "document_source": document.source,
+                    "vuln_id": document.vuln_id,
+                }
+                if requested_since_iso:
+                    metadata["requested_since"] = requested_since_iso
+                limit_value = ctx.metadata.get("limit")
+                if limit_value is not None:
+                    metadata["limit"] = limit_value
+                if document.source_id:
+                    metadata["source_id"] = document.source_id
+
+                change_context = {
+                    "job_name": ctx.name,
+                    "job_label": ctx.metadata.get("label"),
+                    "metadata": metadata,
+                }
+
+                inserted = await repository.upsert(document, change_context=change_context)
                 if inserted:
                     ingested += 1
                 else:
