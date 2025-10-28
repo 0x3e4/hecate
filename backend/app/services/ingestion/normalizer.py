@@ -13,6 +13,14 @@ from app.models.vulnerability import CvssScore, VulnerabilityDocument
 
 log = structlog.get_logger()
 
+CVSS_METRIC_VERSION_PREFERENCE: tuple[tuple[str, str | None], ...] = (
+    ("v40", "4.0"),
+    ("v31", "3.1"),
+    ("v30", "3.0"),
+    ("v20", "2.0"),
+    ("other", None),
+)
+
 
 def _parse_datetime(
     value: Any,
@@ -217,6 +225,8 @@ def build_document(
         _extract_cvss_metrics_from_nvd(supplemental_record),
     )
 
+    cvss = apply_inferred_cvss(cvss, cvss_metrics)
+
     if supplemental_record:
         supplemental_cve = supplemental_record.get("cve") if isinstance(supplemental_record, dict) else None
         if isinstance(supplemental_cve, dict):
@@ -388,6 +398,117 @@ def _cvss_metric_key_from_version(version: Any) -> str | None:
         if digits:
             return _canonical_metric_key(f"cvssMetricV{digits}")
     return None
+
+
+def _cvss_version_rank(value: Any) -> int:
+    if isinstance(value, str):
+        match = re.search(r"(\d)(?:\.(\d))?", value)
+        if match:
+            major = match.group(1)
+            minor = match.group(2) or "0"
+            try:
+                return int(f"{major}{minor}")
+            except ValueError:
+                return -1
+    return -1
+
+
+def _extract_metric_fields(entry: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    data = entry.get("data")
+    if isinstance(data, dict):
+        payload.update(data)
+    for field in ("version", "baseScore", "baseSeverity", "severity", "vectorString", "vector"):
+        if field not in payload and entry.get(field) is not None:
+            payload[field] = entry[field]
+    return payload
+
+
+def _infer_cvss_from_metrics(metrics: dict[str, list[dict[str, Any]]]) -> CvssScore | None:
+    if not isinstance(metrics, dict) or not metrics:
+        return None
+
+    for key, default_version in CVSS_METRIC_VERSION_PREFERENCE:
+        entries = metrics.get(key)
+        if not isinstance(entries, list) or not entries:
+            continue
+
+        best_entry: dict[str, Any] | None = None
+        best_score: float | None = None
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            fields = _extract_metric_fields(entry)
+            score = _safe_float(fields.get("baseScore") or fields.get("score"))
+            severity = fields.get("baseSeverity") or fields.get("severity")
+            vector = fields.get("vectorString") or fields.get("vector")
+            version = fields.get("version") or default_version
+
+            if score is None and severity is None and vector is None:
+                continue
+
+            if best_entry is None or (
+                score is not None
+                and (best_score is None or score > best_score)
+            ):
+                best_entry = {
+                    "version": version,
+                    "base_score": score,
+                    "vector": vector,
+                    "severity": severity,
+                }
+                best_score = score if score is not None else best_score
+
+        if best_entry is not None:
+            return CvssScore(
+                version=best_entry.get("version"),
+                base_score=best_entry.get("base_score"),
+                vector=best_entry.get("vector"),
+                severity=_normalize_severity(best_entry.get("severity")),
+            )
+
+    return None
+
+
+def apply_inferred_cvss(base: CvssScore, metrics: dict[str, list[dict[str, Any]]]) -> CvssScore:
+    inferred = _infer_cvss_from_metrics(metrics)
+    if inferred is None:
+        return base
+
+    current_rank = _cvss_version_rank(base.version)
+    inferred_rank = _cvss_version_rank(inferred.version)
+
+    adopt_base = False
+    if base.base_score is None and inferred.base_score is not None:
+        adopt_base = True
+    elif inferred.base_score is not None and inferred_rank > current_rank:
+        adopt_base = True
+
+    base_score = inferred.base_score if adopt_base else base.base_score
+    severity = (
+        inferred.severity
+        if adopt_base and inferred.severity is not None
+        else (base.severity if base.severity is not None else inferred.severity)
+    )
+    vector = (
+        inferred.vector
+        if adopt_base and inferred.vector is not None
+        else (base.vector if base.vector is not None else inferred.vector)
+    )
+
+    version = base.version
+    if adopt_base and inferred.version:
+        version = inferred.version
+    elif not version and inferred.version:
+        version = inferred.version
+
+    return CvssScore(
+        version=version,
+        base_score=base_score,
+        vector=vector,
+        severity=severity,
+    )
 
 
 def _extract_cvss_metrics_from_euvd(record: Any) -> dict[str, list[dict[str, Any]]]:
@@ -795,6 +916,7 @@ def build_document_from_nvd(
 
     cvss = _extract_cvss_from_nvd(cve_wrapper.get("metrics"))
     cvss_metrics = _extract_cvss_metrics_from_nvd(record)
+    cvss = apply_inferred_cvss(cvss, cvss_metrics)
 
     document = VulnerabilityDocument(
         vuln_id=cve_id,

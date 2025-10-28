@@ -27,8 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-cpe", "sync-nvd", "sync-kev"],
-        help="Command to execute (ingest, sync-cpe, sync-nvd, sync-kev).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev).",
     )
     parser.add_argument(
         "--since",
@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--initial",
         action="store_true",
-        help="Force an initial/full sync (supported for sync-cpe and sync-nvd).",
+        help="Force an initial/full sync (supported for ingest, sync-euvd, sync-cpe, and sync-nvd).",
     )
     return parser
 
@@ -53,8 +53,23 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "ingest":
-        result = asyncio.run(run_ingestion(modified_since=args.since, limit=args.limit))
+        result = asyncio.run(
+            run_ingestion(
+                modified_since=args.since,
+                limit=args.limit,
+                initial_sync=args.initial,
+            )
+        )
         print(f"Ingestion finished: {result}")
+    elif args.command == "sync-euvd":
+        result = asyncio.run(
+            run_ingestion(
+                modified_since=args.since,
+                limit=args.limit,
+                initial_sync=args.initial,
+            )
+        )
+        print(f"EUVD sync finished: {result}")
     elif args.command == "sync-cpe":
         if args.since:
             parser.error("The --since option is not supported for sync-cpe.")
