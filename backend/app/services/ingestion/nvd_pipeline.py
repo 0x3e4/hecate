@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import copy
 from typing import Any
 
 import structlog
@@ -14,6 +15,8 @@ from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.cisa_client import CisaKevClient
 from app.services.ingestion.nvd_client import NVDClient
 from app.services.ingestion.normalizer import build_document_from_nvd
+from app.repositories.kev_repository import KevRepository
+from app.models.vulnerability import ExploitationMetadata
 
 log = structlog.get_logger()
 
@@ -30,6 +33,7 @@ class NVDPipeline:
         self.client = client or NVDClient()
         self.kev_client = kev_client or CisaKevClient()
         self._known_exploited_cache: set[str] | None = None
+        self._kev_metadata_cache: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]] | None = None
 
     async def sync(
         self,
@@ -102,15 +106,56 @@ class NVDPipeline:
 
         log_repo: IngestionLogRepository | None = None
 
+        metadata_cache: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]] = {}
         try:
-            if self._known_exploited_cache is not None:
+            if self._kev_metadata_cache is not None:
+                metadata_cache = self._kev_metadata_cache
+                known_exploited_upper = set(metadata_cache.keys())
+            else:
+                kev_repository = await KevRepository.create()
+                loaded_metadata = await kev_repository.load_metadata_map()
+                if loaded_metadata:
+                    metadata_cache = {key.upper(): value for key, value in loaded_metadata.items()}
+                    self._kev_metadata_cache = metadata_cache
+                    known_exploited_upper = set(metadata_cache.keys())
+                    if known_exploited_upper:
+                        log.info("nvd_pipeline.known_exploited_loaded", count=len(known_exploited_upper))
+                else:
+                    fetched_catalog = await self.kev_client.fetch_catalog()
+                    if fetched_catalog is not None:
+                        temp_cache: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]] = {}
+                        for entry in fetched_catalog.vulnerabilities:
+                            if not entry.cve_id:
+                                continue
+                            metadata = ExploitationMetadata(
+                                vendor_project=entry.vendor_project,
+                                product=entry.product,
+                                vulnerability_name=entry.vulnerability_name,
+                                date_added=entry.date_added,
+                                short_description=entry.short_description,
+                                required_action=entry.required_action,
+                                due_date=entry.due_date,
+                                known_ransomware_campaign_use=entry.known_ransomware_campaign_use,
+                                notes=entry.notes,
+                                catalog_version=fetched_catalog.catalog_version,
+                                date_released=fetched_catalog.date_released,
+                            )
+                            temp_cache[entry.cve_id.upper()] = (metadata, entry.raw)
+                        if temp_cache:
+                            metadata_cache = temp_cache
+                            self._kev_metadata_cache = temp_cache
+                            known_exploited_upper = set(temp_cache.keys())
+                            log.info("nvd_pipeline.known_exploited_loaded", count=len(known_exploited_upper))
+                if not metadata_cache:
+                    fetched = await self.kev_client.fetch_known_exploited_cves()
+                    known_exploited_upper = {value.upper() for value in fetched}
+                    self._known_exploited_cache = known_exploited_upper
+                    if known_exploited_upper:
+                        log.info("nvd_pipeline.known_exploited_loaded", count=len(known_exploited_upper))
+            if not known_exploited_upper and self._known_exploited_cache is not None:
                 known_exploited_upper = self._known_exploited_cache
             else:
-                fetched = await self.kev_client.fetch_known_exploited_cves()
-                self._known_exploited_cache = {value.upper() for value in fetched}
-                known_exploited_upper = self._known_exploited_cache
-                if known_exploited_upper:
-                    log.info("nvd_pipeline.known_exploited_loaded", count=len(known_exploited_upper))
+                self._known_exploited_cache = known_exploited_upper
 
             async for record in self.client.iter_cves(last_modified_start=last_run):
                 result = build_document_from_nvd(record, ingested_at=datetime.now(tz=UTC))
@@ -136,10 +181,21 @@ class NVDPipeline:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("nvd_pipeline.asset_catalog_update_failed", vuln_id=document.vuln_id, error=str(exc))
 
-                if not document.exploited:
-                    normalized_id = (document.vuln_id or "").strip().upper()
-                    if normalized_id and normalized_id in known_exploited_upper:
-                        document = document.model_copy(update={"exploited": True})
+                normalized_id = (document.vuln_id or "").strip().upper()
+                metadata_tuple = metadata_cache.get(normalized_id) if metadata_cache else None
+                if metadata_tuple:
+                    metadata_model, raw_metadata = metadata_tuple
+                    updates: dict[str, Any] = {
+                        "exploited": True,
+                        "exploitation": metadata_model,
+                    }
+                    base_raw = copy.deepcopy(document.raw) if isinstance(document.raw, dict) else {}
+                    if raw_metadata:
+                        base_raw["kev"] = raw_metadata
+                        updates["raw"] = base_raw
+                    document = document.model_copy(update=updates)
+                elif not document.exploited and normalized_id and normalized_id in known_exploited_upper:
+                    document = document.model_copy(update={"exploited": True})
 
                 inserted = await repository.upsert_from_nvd(document, nvd_raw=record)
                 if inserted:

@@ -528,7 +528,6 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
 
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
-      <h2>Asset-Filter</h2>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>

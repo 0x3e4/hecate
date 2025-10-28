@@ -7,6 +7,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { getPublishedDisplay } from "../utils/published";
 import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
+import { ExploitationSummary } from "../components/ExploitationSummary";
 import { getPreferredCvssMetric } from "../utils/cvss";
 
 export const DashboardPage = () => {
@@ -58,12 +59,8 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
           "datetime"
         );
         const cvss = vuln.cvssScore != null ? vuln.cvssScore.toFixed(1) : "n/a";
-        const epss = vuln.epssScore != null ? vuln.epssScore.toFixed(2) : "n/a";
-        const epssPercentileValue = vuln.epssPercentile ?? null;
-        const epssPct =
-          epssPercentileValue != null
-            ? `${(epssPercentileValue > 1 ? epssPercentileValue : epssPercentileValue * 100).toFixed(1)}%`
-            : "n/a";
+        const epss =
+          vuln.epssScore != null ? `${vuln.epssScore.toFixed(2)}%` : "n/a";
         const vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
         const products = vuln.products?.length ? vuln.products.join(", ") : "—";
         const versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : "—";
@@ -198,8 +195,10 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
               <MetaItem label="Quelle" value={vuln.source ?? "EUVD"} />
               <MetaItem label="CVSS" value={cvss} />
               <MetaItem label="EPSS" value={epss} />
-              <MetaItem label="EPSS Perzentil" value={epssPct} />
-              <MetaItem label="Exploited" value={formatBoolean(vuln.exploited)} />
+              <MetaItem
+                label="Exploited"
+                value={<ExploitationSummary exploited={vuln.exploited} exploitation={vuln.exploitation} />}
+              />
               <MetaItem label="Assigner" value={vuln.assigner ?? "—"} />
               <MetaItem
                 label="Veröffentlicht"
@@ -211,7 +210,6 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
               <MetaItem label="Vendors" value={vendors} />
               <MetaItem label="Produkte" value={products} />
               <MetaItem label="Versionen" value={versions} />
-              <MetaItem label="CWE" value={cwes} />
             </div>
 
             <div className={`vuln-summary ${preferredCvss ? "cvss-summary" : ""}`}>
@@ -235,17 +233,6 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                 </div>
               )}
             </div>
-
-            {vuln.aiAssessment ? (
-              <div className="vuln-ai">
-                <strong>AI-Analyse:</strong>{" "}
-                {typeof vuln.aiAssessment.summary === "string"
-                  ? vuln.aiAssessment.summary
-                  : "Bewertung liegt vor"}
-              </div>
-            ) : (
-              <div className="vuln-ai muted">Keine AI-Einschaetzung verfuegbar.</div>
-            )}
           </article>
         );
       }),
@@ -308,13 +295,6 @@ const DashboardSkeleton = () => (
     ))}
   </div>
 );
-
-const formatBoolean = (value?: boolean | null) => {
-  if (value == null) {
-    return "unbekannt";
-  }
-  return value ? "ja" : "nein";
-};
 
 interface MetaItemProps {
   label: string;

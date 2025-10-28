@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     mongo_asset_versions_collection: str = "asset_versions"
     mongo_ingestion_state_collection: str = "ingestion_state"
     mongo_ingestion_log_collection: str = "ingestion_logs"
+    mongo_kev_collection: str = "known_exploited_vulnerabilities"
     opensearch_url: str = "http://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
@@ -47,6 +48,8 @@ class Settings(BaseSettings):
     cpe_base_url: str = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
     cpe_max_records_per_run: OptionalInt = 10000
 
+    kev_feed_url: str = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+
     ingestion_user_agent: str = "hecate-ingestion/0.1"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True
@@ -56,6 +59,7 @@ class Settings(BaseSettings):
     scheduler_euvd_interval_minutes: int = 60
     scheduler_cpe_interval_hours: int = 24
     scheduler_nvd_interval_hours: int = 24
+    scheduler_kev_interval_minutes: int = 60
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -9,6 +9,13 @@ interface CvssMetricDisplayProps {
 
 const HIDDEN_VALUES = new Set(["NOT DEFINED", "NOT_DEFINED", "X"]);
 
+const CVSS_CALCULATOR_PATHS: Record<string, string> = {
+  v40: "4-0",
+  v31: "3.1",
+  v30: "3.0",
+  v20: "2.0",
+};
+
 const formatEnumValue = (value: string | null | undefined): string => {
   if (!value) {
     return "";
@@ -29,6 +36,46 @@ const formatScore = (value: number | null | undefined): string => {
     return "—";
   }
   return value.toFixed(1);
+};
+
+const normalizeVersion = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const withoutPrefix = trimmed.startsWith("CVSS:") ? trimmed.slice(5) : trimmed;
+  return withoutPrefix;
+};
+
+const buildCvssCalculatorUrl = (metric: ParsedCvssMetric): string | null => {
+  const vector = metric.vectorString?.trim();
+  if (!vector) {
+    return null;
+  }
+  const directPath = CVSS_CALCULATOR_PATHS[metric.key];
+  if (directPath) {
+    return `https://www.first.org/cvss/calculator/${directPath}#${vector}`;
+  }
+  const normalizedVersion = normalizeVersion(metric.version);
+  if (!normalizedVersion) {
+    return null;
+  }
+  if (normalizedVersion === "4.0" || normalizedVersion === "4") {
+    return `https://www.first.org/cvss/calculator/4-0#${vector}`;
+  }
+  if (normalizedVersion === "3.1") {
+    return `https://www.first.org/cvss/calculator/3.1#${vector}`;
+  }
+  if (normalizedVersion === "3.0" || normalizedVersion === "3") {
+    return `https://www.first.org/cvss/calculator/3.0#${vector}`;
+  }
+  if (normalizedVersion === "2.0" || normalizedVersion === "2") {
+    return `https://www.first.org/cvss/calculator/2.0#${vector}`;
+  }
+  return null;
 };
 
 export const CvssMetricDisplay = ({
@@ -85,6 +132,7 @@ export const CvssMetricDisplay = ({
   const showVectorInfo = showVector && Boolean(metric.vectorString);
   const showSubscores = showScores && (metric.exploitabilityScore != null || metric.impactScore != null);
   const hasAnyDetails = visibleAttributes.length > 0 || showSubscores || showVectorInfo;
+  const vectorLink = metric ? buildCvssCalculatorUrl(metric) : null;
 
   return (
     <div className={`cvss-card ${compact ? "compact" : ""}`}>
@@ -124,7 +172,13 @@ export const CvssMetricDisplay = ({
             {showVectorInfo && (
               <div className="cvss-vector">
                 <span className="cvss-badge-label">Vector</span>
-                <code>{metric.vectorString}</code>
+                {vectorLink ? (
+                  <a href={vectorLink} target="_blank" rel="noreferrer">
+                    <code>{metric.vectorString}</code>
+                  </a>
+                ) : (
+                  <code>{metric.vectorString}</code>
+                )}
               </div>
             )}
           </>

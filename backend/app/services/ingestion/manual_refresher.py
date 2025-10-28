@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import re
+import copy
 from collections import Counter
 from datetime import UTC, datetime
-from typing import Iterable, Tuple
+from typing import Any, Iterable, Tuple
 
 import structlog
 
-from app.models.vulnerability import VulnerabilityDocument
+from app.models.vulnerability import ExploitationMetadata, VulnerabilityDocument
 from app.repositories.ingestion_log_repository import IngestionLogRepository
+from app.repositories.kev_repository import KevRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.vulnerability import VulnerabilityRefreshStatus
 from app.services.asset_catalog_service import AssetCatalogService
@@ -62,6 +64,9 @@ class ManualRefresher:
 
         repository = await VulnerabilityRepository.create()
         asset_catalog = await AssetCatalogService.create()
+        kev_repository = await KevRepository.create()
+        raw_kev_metadata = await kev_repository.load_metadata_map()
+        kev_metadata = {key.upper(): value for key, value in raw_kev_metadata.items()}
         statuses: list[VulnerabilityRefreshStatus] = []
 
         failed = False
@@ -72,6 +77,7 @@ class ManualRefresher:
                     normalized_identifier=normalized,
                     repository=repository,
                     asset_catalog=asset_catalog,
+                    kev_metadata=kev_metadata,
                 )
                 statuses.append(status)
         except Exception as exc:
@@ -120,6 +126,7 @@ class ManualRefresher:
         normalized_identifier: str,
         repository: VulnerabilityRepository,
         asset_catalog: AssetCatalogService,
+        kev_metadata: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]],
     ) -> VulnerabilityRefreshStatus:
         upper_normalized = normalized_identifier.upper()
         is_cve = CVE_PATTERN.fullmatch(upper_normalized) is not None
@@ -166,6 +173,21 @@ class ManualRefresher:
                     vuln_id=document.vuln_id,
                     error=str(exc),
                 )
+            metadata_tuple = None
+            if document.vuln_id:
+                metadata_tuple = kev_metadata.get(document.vuln_id.upper())
+            if metadata_tuple:
+                metadata_model, raw_entry = metadata_tuple
+                updates: dict[str, Any] = {
+                    "exploited": True,
+                    "exploitation": metadata_model,
+                }
+                raw_payload = copy.deepcopy(document.raw) if isinstance(document.raw, dict) else {}
+                if raw_entry:
+                    raw_payload["kev"] = raw_entry
+                updates["raw"] = raw_payload
+                document = document.model_copy(update=updates)
+
             change_context = {
                 "job_name": "manual_refresh",
                 "job_label": "Manual Refresh",
@@ -212,6 +234,21 @@ class ManualRefresher:
                         vuln_id=document.vuln_id,
                         error=str(exc),
                     )
+                metadata_tuple = None
+                if document.vuln_id:
+                    metadata_tuple = kev_metadata.get(document.vuln_id.upper())
+                if metadata_tuple:
+                    metadata_model, raw_entry = metadata_tuple
+                    updates: dict[str, Any] = {
+                        "exploited": True,
+                        "exploitation": metadata_model,
+                    }
+                    raw_payload = copy.deepcopy(document.raw) if isinstance(document.raw, dict) else {}
+                    if raw_entry:
+                        raw_payload["kev"] = raw_entry
+                    updates["raw"] = raw_payload
+                    document = document.model_copy(update=updates)
+
                 change_context = {
                     "job_name": "manual_refresh",
                     "job_label": "Manual Refresh",

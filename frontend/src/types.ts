@@ -30,6 +30,21 @@ export interface CvssMetric {
 
 export type CvssMetrics = Record<string, CvssMetric[]>;
 
+export interface KnownExploitation {
+  source?: string | null;
+  vendorProject?: string | null;
+  product?: string | null;
+  vulnerabilityName?: string | null;
+  dateAdded?: string | null;
+  shortDescription?: string | null;
+  requiredAction?: string | null;
+  dueDate?: string | null;
+  knownRansomwareCampaignUse?: string | null;
+  notes?: string | null;
+  catalogVersion?: string | null;
+  dateReleased?: string | null;
+}
+
 export interface VulnerabilityChangeField {
   name: string;
   previous?: unknown | null;
@@ -55,13 +70,13 @@ export interface VulnerabilityPreview {
   severity?: string | null;
   cvssScore?: number | null;
   epssScore?: number | null;
-  epssPercentile?: number | null;
   vendors?: string[];
   products?: string[];
   productVersions?: string[];
   rejected?: boolean;
   assigner?: string | null;
   exploited?: boolean | null;
+  exploitation?: KnownExploitation | null;
   published?: string | null;
   aliases?: string[];
   ghsaIds?: string[];

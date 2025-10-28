@@ -174,7 +174,7 @@ def build_document(
 
     assigner = _ensure_str(euvd_record.get("assigner"))
     exploited = _to_optional_bool(euvd_record.get("exploited"))
-    epss_score, epss_percentile = _parse_epss(euvd_record.get("epss"))
+    epss_score = _parse_epss(euvd_record.get("epss"))
 
     vendors = _extract_vendors(euvd_record)
     product_version_map = _extract_products(euvd_record)
@@ -241,7 +241,6 @@ def build_document(
         assigner=assigner,
         exploited=exploited,
         epss_score=epss_score,
-        epss_percentile=epss_percentile,
         vendors=vendors,
         products=products,
         product_versions=product_versions,
@@ -274,26 +273,26 @@ def _to_optional_bool(value: Any) -> bool | None:
     return None
 
 
-def _parse_epss(value: Any) -> tuple[float | None, float | None]:
-    score: float | None = None
-    percentile: float | None = None
+def _parse_epss(value: Any) -> float | None:
+    raw: float | None = None
 
     if isinstance(value, (int, float)):
-        score = float(value)
+        raw = float(value)
     elif isinstance(value, str):
         normalized = value.replace(",", ".")
         numbers = [float(match) for match in re.findall(r"\d+(?:\.\d+)?", normalized)]
         if numbers:
-            score = numbers[0]
-            if len(numbers) > 1:
-                percentile = numbers[1]
+            raw = numbers[0]
     elif isinstance(value, dict):
-        raw_score = value.get("score") or value.get("epssScore")
-        raw_percentile = value.get("percentile") or value.get("epssPercentile")
-        score = _safe_float(_normalize_decimal_string(raw_score))
-        percentile = _safe_float(_normalize_decimal_string(raw_percentile))
+        candidate = value.get("score") or value.get("epssScore")
+        raw = _safe_float(_normalize_decimal_string(candidate))
 
-    return score, percentile
+    if raw is None:
+        return None
+
+    if 0 < raw <= 1:
+        raw *= 100
+    return round(raw, 2)
 
 
 def _merge_unique_strings(*value_lists: Any) -> list[str]:
@@ -811,7 +810,6 @@ def build_document_from_nvd(
         assigner=_ensure_str(cve_wrapper.get("sourceIdentifier")),
         exploited=None,
         epss_score=None,
-        epss_percentile=None,
         vendors=sorted(vendors),
         products=list(product_version_map.keys()),
         product_versions=sorted({version for versions in product_version_map.values() for version in versions}),

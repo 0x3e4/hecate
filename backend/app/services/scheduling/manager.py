@@ -10,6 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.config import settings
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
+from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 
@@ -67,6 +68,13 @@ class SchedulerManager:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            _scheduled_kev_sync,
+            trigger=IntervalTrigger(minutes=settings.scheduler_kev_interval_minutes),
+            id="kev_sync",
+            replace_existing=True,
+        )
+
     async def shutdown(self) -> None:
         if self._bootstrap_task is not None and not self._bootstrap_task.done():
             self._bootstrap_task.cancel()
@@ -86,6 +94,7 @@ class SchedulerManager:
             ("euvd", "euvd_initial_sync", _initial_euvd_ingestion, "bootstrap-euvd"),
             ("cpe", "cpe_initial_sync", _initial_cpe_sync, "bootstrap-cpe"),
             ("nvd", "nvd_initial_sync", _initial_nvd_sync, "bootstrap-nvd"),
+            ("kev", "kev_initial_sync", _initial_kev_sync, "bootstrap-kev"),
         )
 
         tasks: list[tuple[str, asyncio.Task[None]]] = []
@@ -168,6 +177,29 @@ async def _execute_nvd_sync(*, initial_sync: bool) -> None:
         log.info(event, **result)
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.nvd_sync_failed" if not initial_sync else "scheduler.nvd_initial_sync_failed"
+        log.exception(event, error=str(exc))
+
+
+async def _scheduled_kev_sync() -> None:
+    manager = get_scheduler()
+    if settings.ingestion_bootstrap_on_startup and not manager.bootstrapped:
+        log.info("scheduler.kev_sync_skipped_initial_sync_incomplete")
+        return
+    await _execute_kev_sync(initial_sync=False)
+
+
+async def _initial_kev_sync() -> None:
+    await _execute_kev_sync(initial_sync=True)
+
+
+async def _execute_kev_sync(*, initial_sync: bool) -> None:
+    pipeline = KevPipeline()
+    try:
+        result = await pipeline.sync(initial_sync=initial_sync)
+        event = "scheduler.kev_sync_completed" if not initial_sync else "scheduler.kev_initial_sync_completed"
+        log.info(event, **result)
+    except Exception as exc:  # noqa: BLE001
+        event = "scheduler.kev_sync_failed" if not initial_sync else "scheduler.kev_initial_sync_failed"
         log.exception(event, error=str(exc))
 
 async def _scheduled_euvd_ingestion() -> None:

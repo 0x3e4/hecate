@@ -8,6 +8,7 @@ from typing import Any
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
+from app.services.ingestion.kev_pipeline import KevPipeline
 
 
 def _parse_iso8601(value: str) -> datetime:
@@ -26,8 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-cpe", "sync-nvd"],
-        help="Command to execute (ingest, sync-cpe, sync-nvd).",
+        choices=["ingest", "sync-cpe", "sync-nvd", "sync-kev"],
+        help="Command to execute (ingest, sync-cpe, sync-nvd, sync-kev).",
     )
     parser.add_argument(
         "--since",
@@ -71,6 +72,13 @@ def main() -> None:
             )
         )
         print(f"NVD sync finished: {result}")
+    elif args.command == "sync-kev":
+        if args.limit is not None:
+            parser.error("The --limit option is not supported for sync-kev.")
+        if args.since:
+            parser.error("The --since option is not supported for sync-kev.")
+        result = asyncio.run(run_kev_sync_once(initial_sync=args.initial))
+        print(f"KEV sync finished: {result}")
     else:
         parser.error(f"Unsupported command: {args.command}")
 
@@ -90,6 +98,11 @@ async def run_nvd_sync_once(
 ) -> dict[str, Any]:
     pipeline = NVDPipeline()
     return await pipeline.sync(initial_sync=initial_sync, modified_since=modified_since)
+
+
+async def run_kev_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
+    pipeline = KevPipeline()
+    return await pipeline.sync(initial_sync=initial_sync)
 
 
 if __name__ == "__main__":

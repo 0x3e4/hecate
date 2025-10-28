@@ -133,7 +133,6 @@ export const AuditLogPage = () => {
               <option value="manual_refresh">Manueller Refresh</option>
             </select>
           </label>
-          {loading && <span className="muted">Aktualisiere Daten…</span>}
         </div>
 
         <div style={{ overflowX: "auto" }}>
