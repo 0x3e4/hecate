@@ -62,6 +62,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
         "settings": {
             "number_of_shards": 1,
             "number_of_replicas": 0,
+            "index.mapping.total_fields.limit": settings.opensearch_index_total_fields_limit,
         },
         "mappings": {
             "properties": {
