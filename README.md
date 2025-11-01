@@ -88,6 +88,3 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 6. **DevEx:** CI-Pipeline, Makefile, seed scripts, Infrastructure-as-Code fuer Produktionsdeployment.
 7. **Reverse Proxy:** Externe Reverse-Proxies (z. B. Traefik/NGINX) ausserhalb dieses Repos anbinden.
 8. **Ingestion Automation:** Scheduler/Worker (z. B. Celery, APScheduler) integrieren, um CLI-Aufrufe regelmaessig auszufuehren.
-
-## Lizenz
-Interne Projektbasis. Lizenzierung kann spaeter definiert werden.
