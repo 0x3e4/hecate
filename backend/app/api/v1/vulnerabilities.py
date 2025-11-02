@@ -1,7 +1,10 @@
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.schemas.ai import (
+    AIInvestigationRequest,
+    AIInvestigationResponse,
+    AIProviderInfo,
+)
 from app.schemas.vulnerability import (
     PagedVulnerabilityResponse,
     VulnerabilityDetail,
@@ -10,6 +13,7 @@ from app.schemas.vulnerability import (
     VulnerabilityRefreshRequest,
     VulnerabilityRefreshResponse,
 )
+from app.services.ai_service import AIClient, AIProviderError, get_ai_client
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 
 router = APIRouter()
@@ -70,6 +74,11 @@ async def list_vulnerabilities(
     return await service.search_paginated(query, limit=limit, offset=offset)
 
 
+@router.get("/ai/providers", response_model=list[AIProviderInfo])
+async def list_ai_providers(ai_client: AIClient = Depends(get_ai_client)) -> list[AIProviderInfo]:
+    return ai_client.get_available_providers()
+
+
 @router.get("/{identifier}", response_model=VulnerabilityDetail)
 async def get_vulnerability(
     identifier: str,
@@ -81,4 +90,34 @@ async def get_vulnerability(
     result = await service.get_by_id(identifier)
     if result is None:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
+    return result
+
+
+@router.post("/{identifier}/ai-investigation", response_model=AIInvestigationResponse)
+async def create_ai_investigation(
+    identifier: str,
+    payload: AIInvestigationRequest,
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+    ai_client: AIClient = Depends(get_ai_client),
+) -> AIInvestigationResponse:
+    vulnerability = await service.get_by_id(identifier)
+    if vulnerability is None:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+    try:
+        result = await ai_client.analyze_vulnerability(
+            payload.provider,
+            vulnerability,
+            language=payload.language,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    assessment_payload = result.model_dump(by_alias=True)
+    persisted = await service.save_ai_assessment(identifier, assessment_payload)
+    if not persisted:
+        raise HTTPException(status_code=502, detail="Failed to persist AI assessment.")
+
     return result

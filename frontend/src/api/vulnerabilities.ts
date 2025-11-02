@@ -1,5 +1,8 @@
 import { api } from "./client";
 import {
+  AIInvestigationResponse,
+  AIProviderId,
+  AIProviderInfo,
   PagedVulnerabilityResponse,
   VulnerabilityDetail,
   VulnerabilityPreview,
@@ -51,5 +54,26 @@ export const listVulnerabilities = async (
   });
 
   const response = await api.get<PagedVulnerabilityResponse>("/v1/vulnerabilities", { params: searchParams });
+  return response.data;
+};
+
+export const getAiProviders = async (): Promise<AIProviderInfo[]> => {
+  const response = await api.get<AIProviderInfo[]>("/v1/vulnerabilities/ai/providers");
+  return response.data;
+};
+
+export const requestAiInvestigation = async (
+  identifier: string,
+  provider: AIProviderId,
+  language?: string | null
+): Promise<AIInvestigationResponse> => {
+  const payload: { provider: AIProviderId; language?: string | null } = { provider };
+  if (language) {
+    payload.language = language;
+  }
+  const response = await api.post<AIInvestigationResponse>(
+    `/v1/vulnerabilities/${encodeURIComponent(identifier)}/ai-investigation`,
+    payload
+  );
   return response.data;
 };

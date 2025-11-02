@@ -30,6 +30,28 @@ export interface CvssMetric {
 
 export type CvssMetrics = Record<string, CvssMetric[]>;
 
+export type AIProviderId = "openai" | "anthropic" | "gemini";
+
+export interface AIProviderInfo {
+  id: AIProviderId;
+  label: string;
+}
+
+export interface AIInvestigationResponse {
+  provider: AIProviderId;
+  language: string;
+  summary: string;
+  generatedAt: string;
+}
+
+export interface AIAssessment {
+  summary?: string;
+  provider?: string;
+  language?: string;
+  generatedAt?: string;
+  [key: string]: unknown;
+}
+
 export interface KnownExploitation {
   source?: string | null;
   vendorProject?: string | null;
@@ -81,7 +103,7 @@ export interface VulnerabilityPreview {
   aliases?: string[];
   ghsaIds?: string[];
   cwes?: string[];
-  aiAssessment?: Record<string, unknown> | null;
+  aiAssessment?: AIAssessment | null;
   cvssMetrics?: CvssMetrics | null;
 }
 

@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     environment: str = "development"
     openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-3-haiku-20240307"
+    google_gemini_api_key: str | None = None
+    google_gemini_model: str = "gemini-1.5-flash"
+    ai_response_language: str = "en"
     mongo_url: str = "mongodb://mongo:27017"
     mongo_db: str = "hecate"
     mongo_vulnerabilities_collection: str = "vulnerabilities"
