@@ -527,7 +527,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
   const isVersionDisabled = selectedProducts.length !== 1;
 
   return (
-    <section className="card" style={{ marginBottom: "1.5rem" }}>
+    <section className="card" style={{ marginBottom: "0rem" }}>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>

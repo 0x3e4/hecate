@@ -45,9 +45,15 @@ class KevRepository:
         if value is None:
             return None
         if isinstance(value, datetime):
-            return value.astimezone(UTC)
+            normalized = value
+            if normalized.tzinfo is None:
+                normalized = normalized.replace(tzinfo=UTC)
+            normalized = normalized.astimezone(UTC)
+            # Mongo persists datetimes with millisecond precision; align to avoid churn.
+            return normalized.replace(microsecond=(normalized.microsecond // 1000) * 1000)
         if isinstance(value, date):
-            return datetime.combine(value, datetime.min.time(), tzinfo=UTC)
+            normalized = datetime.combine(value, datetime.min.time(), tzinfo=UTC)
+            return normalized.replace(microsecond=0)
         if isinstance(value, str):
             try:
                 parsed = parser.isoparse(value)
@@ -55,7 +61,8 @@ class KevRepository:
                 return None
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=UTC)
-            return parsed.astimezone(UTC)
+            parsed = parsed.astimezone(UTC)
+            return parsed.replace(microsecond=(parsed.microsecond // 1000) * 1000)
         return None
 
     async def upsert_entry(
@@ -117,7 +124,8 @@ class KevRepository:
         if isinstance(value, datetime):
             if value.tzinfo is None:
                 value = value.replace(tzinfo=UTC)
-            return value.astimezone(UTC)
+            value = value.astimezone(UTC)
+            return value.replace(microsecond=(value.microsecond // 1000) * 1000)
         if isinstance(value, date):
             return datetime.combine(value, datetime.min.time(), tzinfo=UTC)
         if isinstance(value, list):

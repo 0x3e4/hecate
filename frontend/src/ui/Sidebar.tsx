@@ -1,5 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuShieldAlert, LuLogs, LuFileChartColumnIncreasing, LuSettings } from "react-icons/lu";
+import { useMemo } from "react";
+
+import { useSavedSearches } from "../hooks/useSavedSearches";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -15,26 +18,59 @@ const navItems = [
 ];
 
 export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
+  const { savedSearches } = useSavedSearches();
+  const location = useLocation();
+  const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
+
   return (
     <aside className={`app-sidebar${collapsed ? " collapsed" : ""}`}>
       <nav className="sidebar-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
+          const isVulnerabilitySection = item.to === "/vulnerabilities";
           return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              title={item.label}
-              aria-label={item.label}
-              className={({ isActive }) =>
-                `sidebar-link${isActive ? " active" : ""}`
-              }
-            >
-              <span className="sidebar-link-short">
-                <Icon aria-hidden="true" focusable="false" />
-              </span>
-              <span className="sidebar-link-text">{item.label}</span>
-            </NavLink>
+            <div key={item.to} className="sidebar-nav-group">
+              <NavLink
+                to={item.to}
+                title={item.label}
+                aria-label={item.label}
+                className={({ isActive }) =>
+                  `sidebar-link${isActive ? " active" : ""}`
+                }
+              >
+                <span className="sidebar-link-short">
+                  <Icon aria-hidden="true" focusable="false" />
+                </span>
+                <span className="sidebar-link-text">{item.label}</span>
+              </NavLink>
+              {isVulnerabilitySection && savedSearches.length > 0 && (
+                <div className="sidebar-subnav" aria-label="Saved vulnerability searches">
+                  {savedSearches.map((saved) => {
+                    const savedKey = normalizeSearchParams(saved.queryParams);
+                    const isActive = savedKey === currentParamsKey;
+                    const searchFragment = saved.queryParams ? `?${saved.queryParams}` : "";
+                    return (
+                      <Link
+                        key={saved.id}
+                        to={{
+                          pathname: "/vulnerabilities",
+                          search: searchFragment,
+                        }}
+                        className={`sidebar-subnav-link${isActive ? " active" : ""}`}
+                        title={saved.name}
+                        onClick={(event) => {
+                          if (isActive) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <span className="sidebar-subnav-text">{saved.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>
@@ -52,4 +88,14 @@ export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
       </button>
     </aside>
   );
+};
+
+const normalizeSearchParams = (raw: string): string => {
+  const trimmed = raw.startsWith("?") ? raw.slice(1) : raw;
+  if (!trimmed) {
+    return "";
+  }
+  const params = new URLSearchParams(trimmed);
+  const entries = Array.from(params.entries());
+  return JSON.stringify(entries);
 };

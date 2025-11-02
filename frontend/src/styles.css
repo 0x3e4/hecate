@@ -126,6 +126,59 @@ body {
   color: #f5f7fa;
 }
 
+.sidebar-nav-group {
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-left: 2.6rem;
+  margin: 0.15rem 0 0.75rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-subnav-link {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.9rem;
+  text-decoration: none;
+  padding: 0.25rem 0 0.25rem 0.6rem;
+  border-radius: 6px;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.sidebar-subnav-link:hover {
+  color: #f5f7fa;
+  background: rgba(92, 132, 255, 0.1);
+}
+
+.sidebar-subnav-link.active {
+  color: #f5f7fa;
+  background: rgba(92, 132, 255, 0.18);
+  font-weight: 600;
+}
+
+.sidebar-subnav-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-filter-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.asset-filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
 .sidebar-link-short {
   display: none;
   align-items: center;
@@ -150,6 +203,40 @@ body {
   justify-content: center;
   gap: 0;
   padding: 0.65rem 0;
+}
+
+.app-sidebar.collapsed .sidebar-subnav {
+  display: none;
+}
+
+.alert {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.alert.error {
+  color: #ffb4b6;
+}
+
+.saved-search-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 12, 0.78);
+  z-index: 60;
+  padding: 1.5rem;
+}
+
+.saved-search-dialog {
+  width: min(420px, 100%);
+  background: rgba(12, 15, 25, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 1.75rem;
+  color: #f5f7fa;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
 }
 
 .sidebar-collapse-button {

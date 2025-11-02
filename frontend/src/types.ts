@@ -169,6 +169,15 @@ export interface CatalogVersionListResponse {
   items: CatalogVersion[];
 }
 
+export interface SavedSearch {
+  id: string;
+  name: string;
+  queryParams: string;
+  dqlQuery?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BackupRestoreSummary {
   dataset: "vulnerabilities" | "cpe";
   source?: string | null;

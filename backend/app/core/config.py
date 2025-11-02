@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     mongo_ingestion_state_collection: str = "ingestion_state"
     mongo_ingestion_log_collection: str = "ingestion_logs"
     mongo_kev_collection: str = "known_exploited_vulnerabilities"
+    mongo_saved_searches_collection: str = "saved_searches"
     opensearch_url: str = "http://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
