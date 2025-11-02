@@ -80,6 +80,17 @@ class KevRepository:
             log.warning("kev_repository.lookup_failed", cve_id=entry.cve_id, error=str(exc))
             existing = None
 
+        if existing is not None:
+            normalized_existing = self._normalize_for_diff(existing)
+            normalized_payload = self._normalize_for_diff(payload)
+            differing_keys = {
+                key
+                for key in set(normalized_payload) | set(normalized_existing)
+                if normalized_payload.get(key) != normalized_existing.get(key)
+            }
+            if not differing_keys:
+                return "unchanged"
+
         try:
             await self.collection.replace_one(
                 {"_id": entry.cve_id},
@@ -91,6 +102,33 @@ class KevRepository:
             raise
 
         return "inserted" if existing is None else "updated"
+
+    @staticmethod
+    def _normalize_for_diff(document: dict[str, Any]) -> dict[str, Any]:
+        normalized: dict[str, Any] = {}
+        for key, value in document.items():
+            if key in {"_id", "catalog_version"}:
+                continue
+            normalized[key] = KevRepository._normalize_value(value)
+        return normalized
+
+    @staticmethod
+    def _normalize_value(value: Any) -> Any:
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=UTC)
+            return value.astimezone(UTC)
+        if isinstance(value, date):
+            return datetime.combine(value, datetime.min.time(), tzinfo=UTC)
+        if isinstance(value, list):
+            return [KevRepository._normalize_value(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: KevRepository._normalize_value(item)
+                for key, item in value.items()
+                if key != "catalogVersion"
+            }
+        return value
 
     async def get_entry(self, cve_id: str) -> dict[str, Any] | None:
         try:

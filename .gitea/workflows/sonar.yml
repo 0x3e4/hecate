@@ -12,14 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
-      uses: actions/checkout@v4
+      uses: actions/checkout@master
       with:
         # Disabling shallow clone is recommended for improving relevancy of reporting
         fetch-depth: 0
-    - name: Debugging - Check SonarQube Host URL
-      run: echo "SONARQUBE_HOST is ${{ secrets.SONARQUBE_HOST }}"
     - name: SonarQube Scan
-      uses: kitabisa/sonarqube-action@v1.2.0
+      uses: sonarsource/sonarqube-scan-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST }}
       with:
-        host: ${{ secrets.SONARQUBE_HOST }}
-        login: ${{ secrets.SONARQUBE_TOKEN }}
+        args: >
+          -Dsonar.projectVersion=1.0.0
+          -Dsonar.projectKey=msc-app
