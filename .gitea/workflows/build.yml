@@ -5,7 +5,7 @@ on:
   pull_request:
       types: [opened, synchronize, reopened]
 
-name: SonarQube Scan
+name: SonarQube & Trivy Scan
 jobs:
   Analysis:
     name: SonarQube Trigger
@@ -26,27 +26,20 @@ jobs:
           -Dsonar.projectVersion=0.1.0
           -Dsonar.projectKey=msc-app
   ScanDeps:
+    name: Trivy Scan Dependencies
     stage: scan
     image:
       name: aquasec/trivy
       entrypoint: [""]
-    before_script:
-      - apk add --no-cache python3
-      - trivy plugin install github.com/umax/trivy-plugin-sonarqube
     script:
-      - trivy fs
-        --security-checks=vuln
-        --vuln-type=library
-        --exit-code=0
-        --format=json
-        --output=trivy-deps-report.json
-        .
+      - trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
       - trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
     artifacts:
       paths:
         - trivy-deps-report.json
         - sonar-deps-report.json
   ScanCode:
+    name: Trivy Scan Code
     stage: scan
     image: sonarsource/sonar-scanner-cli
     needs:
