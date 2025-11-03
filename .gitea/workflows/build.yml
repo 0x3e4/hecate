@@ -30,12 +30,13 @@ jobs:
     name: Trivy Scan Dependencies
     stage: scan
     image:
-      name: aquasec/trivy
-      entrypoint: [""]
+      name: ubuntu:24.04
     steps:
     - name: Install Dependencies
       run: |
-        apk add --no-cache python3
+        apt-get update
+        apt-get install -y curl python3
+        curl -sfL https://github.com/aquasecurity/trivy/releases/download/v0.20.0/trivy_0.20.0_Linux-x86_64.tar.gz | tar -xz -C /usr/local/bin
         trivy plugin install github.com/umax/trivy-plugin-sonarqube
     - name: Scan Dependencies with Trivy
       run: |

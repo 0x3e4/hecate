@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { manualChunks } from './vite/chunk-split'
 
 export default defineConfig({
   plugins: [react()],
@@ -13,6 +14,9 @@ export default defineConfig({
     }
   },
   build: {
+     rollupOptions: {
+        output: { manualChunks },
+      },
     outDir: "dist"
   }
 });
