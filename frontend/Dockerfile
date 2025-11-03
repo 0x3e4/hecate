@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.6
-
 FROM node:24-alpine AS dev
 WORKDIR /app
 
