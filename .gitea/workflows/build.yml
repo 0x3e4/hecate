@@ -56,14 +56,23 @@ jobs:
   ScanCode:
     name: Trivy Scan Code
     stage: scan
-    image: sonarsource/sonar-scanner-cli:latest
+    image:
+      name: sonarsource/sonar-scanner-cli:11.4
     needs:
       - ScanDeps
     steps:
+      - name: Checking out
+        uses: actions/checkout@v4
       - name: Download Trivy/SonarQube Reports
         uses: actions/download-artifact@v3
         with:
           name: trivy-sonarqube-reports
+      - name: Debug environment
+        run: |
+          echo "Working directory: $(pwd)"
+          ls -al .
+          which sonar-scanner || echo "sonar-scanner not found"
+          echo "PATH=$PATH"
       - name: Run SonarScanner
         run: |
           sonar-scanner -D sonar.externalIssuesReportPaths="sonar-deps-report.json"
