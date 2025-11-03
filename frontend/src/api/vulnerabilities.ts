@@ -7,6 +7,8 @@ import {
   VulnerabilityDetail,
   VulnerabilityPreview,
   VulnerabilityQuery,
+  VulnerabilityRefreshRequest,
+  VulnerabilityRefreshResponse,
 } from "../types";
 
 export const searchVulnerabilities = async (
@@ -75,5 +77,12 @@ export const requestAiInvestigation = async (
     `/v1/vulnerabilities/${encodeURIComponent(identifier)}/ai-investigation`,
     payload
   );
+  return response.data;
+};
+
+export const triggerVulnerabilityRefresh = async (
+  payload: VulnerabilityRefreshRequest
+): Promise<VulnerabilityRefreshResponse> => {
+  const response = await api.post<VulnerabilityRefreshResponse>("/v1/vulnerabilities/refresh", payload);
   return response.data;
 };

@@ -152,6 +152,23 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   changeHistory?: VulnerabilityChangeEntry[];
 }
 
+export interface VulnerabilityRefreshRequest {
+  vulnIds?: string[];
+  sourceIds?: string[];
+}
+
+export type VulnerabilityRefreshStatus = {
+  identifier: string;
+  provider?: string | null;
+  status: "inserted" | "updated" | "skipped" | "error";
+  message?: string | null;
+};
+
+export interface VulnerabilityRefreshResponse {
+  requested: string[];
+  results: VulnerabilityRefreshStatus[];
+}
+
 export interface PagedVulnerabilityResponse {
   total: number;
   items: VulnerabilityPreview[];

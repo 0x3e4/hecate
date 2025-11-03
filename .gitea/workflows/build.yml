@@ -9,7 +9,7 @@ name: SonarQube & Trivy Scan
 
 jobs:
   Analysis:
-    name: SonarQube Trigger
+    name: SonarQube Code Analysis
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
@@ -33,6 +33,10 @@ jobs:
       name: aquasec/trivy
       entrypoint: [""]
     steps:
+    - name: Install Dependencies
+      run: |
+        apk add --no-cache python3
+        trivy plugin install github.com/umax/trivy-plugin-sonarqube
     - name: Scan Dependencies with Trivy
       run: |
         trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
