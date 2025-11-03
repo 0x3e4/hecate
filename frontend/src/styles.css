@@ -699,6 +699,11 @@ a {
   font-size: 0.72rem;
 }
 
+.cvss-vector a {
+  align-self: flex-start;
+  display: inline-flex;
+}
+
 .cvss-vector code {
   background: rgba(0, 0, 0, 0.35);
   padding: 0.3rem 0.45rem;
@@ -706,6 +711,7 @@ a {
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.85);
   overflow-x: auto;
+  display: inline-block;
 }
 
 .cvss-empty {

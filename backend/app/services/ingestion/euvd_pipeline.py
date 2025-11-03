@@ -266,8 +266,8 @@ class IngestionPipeline:
                     "metadata": metadata,
                 }
 
-                inserted = await repository.upsert(document, change_context=change_context)
-                if inserted:
+                upsert_result = await repository.upsert(document, change_context=change_context)
+                if upsert_result.inserted:
                     ingested += 1
                 else:
                     updated += 1

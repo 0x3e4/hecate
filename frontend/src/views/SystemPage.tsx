@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
 import {
   exportCpeBackup,
@@ -41,8 +41,8 @@ export const SystemPage = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [savedSearchMessage, setSavedSearchMessage] = useState<string | null>(null);
-  const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const { savedSearches, loading: savedSearchLoading, removeSavedSearch } = useSavedSearches();
@@ -95,6 +95,15 @@ export const SystemPage = () => {
     [savedSearches]
   );
 
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current !== null) {
+        window.clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleRestore = async (dataset: BackupDataset, file: File) => {
     beginAction(dataset.id);
     try {
@@ -141,16 +150,26 @@ export const SystemPage = () => {
     }
   };
 
+  const showToast = (message: string, type: "success" | "error") => {
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast({ message, type });
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 4000);
+  };
+
   const handleDeleteSavedSearch = async (search: SavedSearch) => {
-    setSavedSearchError(null);
-    setSavedSearchMessage(null);
     setDeletePendingId(search.id);
     try {
       await removeSavedSearch(search.id);
-      setSavedSearchMessage(`Suche "${search.name}" gelöscht.`);
+      showToast(`Suche "${search.name}" gelöscht.`, "success");
     } catch (error) {
       console.error("Failed to delete saved search", error);
-      setSavedSearchError(`Suche "${search.name}" konnte nicht gelöscht werden.`);
+      showToast(`Suche "${search.name}" konnte nicht gelöscht werden.`, "error");
     } finally {
       setDeletePendingId(null);
     }
@@ -232,13 +251,6 @@ export const SystemPage = () => {
         <p className="muted">
           Verwalte gespeicherte Filter für die Vulnerability-Ansicht. Gesamt: {sortedSavedSearches.length}.
         </p>
-        {savedSearchMessage && (
-          <p style={{ marginTop: "0.5rem", color: "#8fffb0", fontWeight: 500 }}>{savedSearchMessage}</p>
-        )}
-        {savedSearchError && (
-          <p style={{ marginTop: "0.5rem", color: "#ffa3a3", fontWeight: 500 }}>{savedSearchError}</p>
-        )}
-
         {savedSearchLoading && sortedSavedSearches.length === 0 ? (
           <p className="muted" style={{ marginTop: "1rem" }}>
             Lade gespeicherte Suchen …
@@ -299,6 +311,20 @@ export const SystemPage = () => {
           </div>
         )}
       </section>
+      {toast && (
+        <div style={toastContainerStyle}>
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              ...toastStyle,
+              ...(toast.type === "success" ? toastSuccessStyle : toastErrorStyle),
+            }}
+          >
+            {toast.message}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -326,4 +352,32 @@ const savedSearchCodeStyle: CSSProperties = {
   fontSize: "0.85rem",
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
+};
+
+const toastContainerStyle: CSSProperties = {
+  position: "fixed",
+  bottom: "2rem",
+  right: "2rem",
+  zIndex: 2100,
+};
+
+const toastStyle: CSSProperties = {
+  background: "rgba(15, 18, 30, 0.92)",
+  borderRadius: "10px",
+  padding: "0.75rem 1rem",
+  color: "#f5f7fa",
+  fontWeight: 600,
+  boxShadow: "0 18px 40px rgba(0, 0, 0, 0.38)",
+  border: "1px solid rgba(255, 255, 255, 0.18)",
+  minWidth: "240px",
+};
+
+const toastSuccessStyle: CSSProperties = {
+  borderColor: "rgba(92, 132, 255, 0.6)",
+  color: "#d6e4ff",
+};
+
+const toastErrorStyle: CSSProperties = {
+  borderColor: "rgba(252, 92, 101, 0.65)",
+  color: "#ffb4b6",
 };

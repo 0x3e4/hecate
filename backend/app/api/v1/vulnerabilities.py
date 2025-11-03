@@ -58,6 +58,11 @@ async def list_vulnerabilities(
         alias="includeRejected",
         description="Include rejected CVE records in the response.",
     ),
+    exploited_only: bool = Query(
+        default=False,
+        alias="exploitedOnly",
+        description="Return only vulnerabilities with known exploitation.",
+    ),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
@@ -72,6 +77,7 @@ async def list_vulnerabilities(
         versionFilters=versionFilters,
         limit=limit,
         includeRejected=include_rejected,
+        exploitedOnly=exploited_only,
     )
     return await service.search_paginated(query, limit=limit, offset=offset)
 

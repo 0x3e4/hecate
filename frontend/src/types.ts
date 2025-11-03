@@ -118,6 +118,7 @@ export interface VulnerabilityQuery {
   versionFilters?: string[];
   severity?: string[];
   includeRejected?: boolean;
+  exploitedOnly?: boolean;
   limit?: number;
 }
 
@@ -162,6 +163,7 @@ export type VulnerabilityRefreshStatus = {
   provider?: string | null;
   status: "inserted" | "updated" | "skipped" | "error";
   message?: string | null;
+  changedFields?: number | null;
 };
 
 export interface VulnerabilityRefreshResponse {

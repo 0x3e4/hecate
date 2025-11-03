@@ -98,7 +98,7 @@ class BackupService:
             }
 
             try:
-                was_inserted = await self.vulnerability_repo.upsert(document, change_context=change_context)
+                result = await self.vulnerability_repo.upsert(document, change_context=change_context)
             except Exception as exc:  # noqa: BLE001 - surface as skipped
                 log.error(
                     "backup.restore_vulnerability_failed",
@@ -109,7 +109,7 @@ class BackupService:
                 skipped += 1
                 continue
 
-            if was_inserted:
+            if result.inserted:
                 inserted += 1
             else:
                 updated += 1

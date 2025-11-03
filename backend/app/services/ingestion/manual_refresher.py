@@ -199,15 +199,16 @@ class ManualRefresher:
                     "resolved_source_id": document.source_id,
                 },
             }
-            inserted = await repository.upsert(document, change_context=change_context)
+            upsert_result = await repository.upsert(document, change_context=change_context)
             message = None
             if document.published is None:
                 message = "EUVD record ingested without published date; marked as reserved."
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="EUVD",
-                status="inserted" if inserted else "updated",
+                status="inserted" if upsert_result.inserted else "updated",
                 message=message,
+                changed_fields=upsert_result.changed_fields,
             )
 
         if nvd_record:
@@ -260,7 +261,7 @@ class ManualRefresher:
                         "resolved_source_id": document.source_id,
                     },
                 }
-                inserted = await repository.upsert_from_nvd(
+                upsert_result = await repository.upsert_from_nvd(
                     document,
                     nvd_raw=nvd_record,
                     change_context=change_context,
@@ -271,8 +272,9 @@ class ManualRefresher:
                 return VulnerabilityRefreshStatus(
                     identifier=original_identifier,
                     provider="NVD",
-                    status="inserted" if inserted else "updated",
+                    status="inserted" if upsert_result.inserted else "updated",
                     message=message,
+                    changed_fields=upsert_result.changed_fields,
                 )
 
         placeholder = self._build_reserved_document(
@@ -292,12 +294,13 @@ class ManualRefresher:
                 "resolved_source_id": placeholder.source_id,
             },
         }
-        inserted = await repository.upsert(placeholder, change_context=change_context)
+        upsert_result = await repository.upsert(placeholder, change_context=change_context)
         return VulnerabilityRefreshStatus(
             identifier=original_identifier,
             provider="placeholder",
-            status="inserted" if inserted else "updated",
+            status="inserted" if upsert_result.inserted else "updated",
             message="No upstream data available; stored as reserved placeholder.",
+            changed_fields=upsert_result.changed_fields,
         )
 
     async def _fetch_euvd_record(self, original_identifier: str, normalized_identifier: str) -> dict | None:

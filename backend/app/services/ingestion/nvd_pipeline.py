@@ -197,8 +197,8 @@ class NVDPipeline:
                 elif not document.exploited and normalized_id and normalized_id in known_exploited_upper:
                     document = document.model_copy(update={"exploited": True})
 
-                inserted = await repository.upsert_from_nvd(document, nvd_raw=record)
-                if inserted:
+                upsert_result = await repository.upsert_from_nvd(document, nvd_raw=record)
+                if upsert_result.inserted:
                     ingested += 1
                 else:
                     updated += 1
