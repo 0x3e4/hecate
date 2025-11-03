@@ -1,0 +1,55 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+      types: [opened, synchronize, reopened]
+
+name: SonarQube Scan
+jobs:
+  Analysis:
+    name: SonarQube Trigger
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@master
+      with:
+        # Disabling shallow clone is recommended for improving relevancy of reporting
+        fetch-depth: 0
+    - name: SonarQube Scan
+      uses: sonarsource/sonarqube-scan-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST }}
+      with:
+        args: >
+          -Dsonar.projectVersion=0.1.0
+          -Dsonar.projectKey=msc-app
+  ScanDeps:
+    stage: scan
+    image:
+      name: aquasec/trivy
+      entrypoint: [""]
+    before_script:
+      - apk add --no-cache python3
+      - trivy plugin install github.com/umax/trivy-plugin-sonarqube
+    script:
+      - trivy fs
+        --security-checks=vuln
+        --vuln-type=library
+        --exit-code=0
+        --format=json
+        --output=trivy-deps-report.json
+        .
+      - trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
+    artifacts:
+      paths:
+        - trivy-deps-report.json
+        - sonar-deps-report.json
+  ScanCode:
+    stage: scan
+    image: sonarsource/sonar-scanner-cli
+    needs:
+      - scan-deps
+    script:
+      - sonar-scanner -D sonar.externalIssuesReportPaths="sonar-deps-report.json"

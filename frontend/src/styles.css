@@ -707,6 +707,113 @@ a {
   color: rgba(255, 255, 255, 0.55);
 }
 
+.detail-tabs {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.detail-tabs__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.detail-tabs__tab {
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease, color 0.2s ease;
+}
+
+.detail-tabs__tab:hover {
+  background: rgba(92, 132, 255, 0.2);
+  color: #f5f7fa;
+}
+
+.detail-tabs__tab.is-active {
+  background: rgba(92, 132, 255, 0.28);
+  border-color: rgba(92, 132, 255, 0.5);
+  color: #f5f7fa;
+}
+
+.detail-tabs__panel {
+  padding: 1rem 1.15rem;
+  border-radius: 16px;
+  background: rgba(20, 24, 36, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.detail-tabs__panel .muted {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ai-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ai-analysis__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ai-analysis__controls select,
+.ai-analysis__controls button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f7fa;
+  font-size: 0.85rem;
+}
+
+.ai-analysis__controls select:disabled {
+  opacity: 0.7;
+}
+
+.ai-analysis__controls button {
+  cursor: pointer;
+  background: rgba(92, 132, 255, 0.2);
+  border-color: rgba(92, 132, 255, 0.5);
+  font-weight: 600;
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+.ai-analysis__controls button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ai-analysis__controls button:not(:disabled):hover {
+  background: rgba(92, 132, 255, 0.35);
+}
+
+.ai-analysis__error {
+  color: #b3261e;
+  font-size: 0.9rem;
+}
+
+.ai-analysis__text {
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.ai-analysis__meta {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
 .vuln-ai {
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.7);
