@@ -35,8 +35,10 @@ jobs:
     - name: Install Dependencies
       run: |
         apt-get update
-        apt-get install -y curl python3
-        curl -sfL https://github.com/aquasecurity/trivy/releases/download/v0.20.0/trivy_0.20.0_Linux-x86_64.tar.gz | tar -xz -C /usr/local/bin
+        apt-get install -y wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        apt-get install trivy
         trivy plugin install github.com/umax/trivy-plugin-sonarqube
     - name: Scan Dependencies with Trivy
       run: |

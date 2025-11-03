@@ -1,90 +1,90 @@
 # Hecate
 
-KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Plattform kombiniert Daten aus EUVD/CVE/CPE-Quellen, verknuepft sie mit lokalen Asset-Profilen und liefert KI-gestuetzte Handlungsempfehlungen ueber ein Web-Frontend und eine REST-API.
+KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Anwendung aggregiert EUVD-, NVD- und CPE-Daten, reichert sie mit KI-Unterstuetzung an und macht sie ueber ein React-Frontend sowie eine REST-API nutzbar.
 
-## Aktueller Stand (MVP Scaffold)
-- **Frontend:** React (Vite + TypeScript) Dashboard mit dynamischer EUVD-Vulnerability-Liste und API-Client.
-- **Backend:** FastAPI Skeleton mit Healthcheck, EUVD/NVD-Ingestion, Such-Endpoint und Platzhalter fuer AI-Analysen.
-- **Datastores:** Docker Compose Services fuer MongoDB (Konfiguration) und OpenSearch (Vuln Index).
-- **AI Integration:** Struktur zum Einbinden eines OpenAI-kompatiblen Clients vorbereitet.
+## Aktueller Stand
+- Vollstaendige Ingestion-Pipelines fuer EUVD, NVD, NVD-CPE und das CISA KEV-Feed inkl. Normalisierung nach MongoDB und OpenSearch.
+- APScheduler steuert periodische Jobs, fuehrt Initial-Syncs aus und protokolliert Ablaufinformationen im Audit-Log.
+- React/Vite Frontend mit Dashboard, Listen-, Detail-, Audit-, Statistik- und System-Ansichten.
+- KI-Analysen koennen ueber OpenAI-, Anthropic- oder Google-Gemini-Provider ausgelöst und gespeichert werden.
+- Asset-Katalog (Vendoren/Produkte/Versionen) wird aus ingestierten Daten aufgebaut und fuer Filter bereitgestellt.
+
+## Kernfunktionen
+- Schnelle Volltextsuche und DQL-Unterstuetzung auf dem OpenSearch-Index inkl. Relevanzsortierung.
+- Integrierte AI-Assessments mit Persistierung im Index und Audit-Events.
+- Backup- und Restore-Workflow fuer Vulnerability- und CPE-Bestaende (System-Ansicht im Frontend).
+- Gespeicherte Suchen mit Audit-Trail und direkter Integration im UI.
+- Statistiken zu Quellen, Severity, Trends und Assets (Fallback auf Mongo bei OpenSearch-Ausfaellen).
 
 ## Projektstruktur
 ```
 .
-├── backend/         # FastAPI Anwendung inkl. Dockerfile und Poetry-Setup
-├── frontend/        # React SPA (Vite) inkl. Dockerfile
+├── backend/         # FastAPI Service, Ingestion-Pipelines, Scheduler, CLI (Poetry)
+├── frontend/        # React SPA (Vite + TypeScript) inkl. Build- und Runtime-Dockerfiles
 ├── docs/            # Architektur- und Konzeptdokumente
 └── docker-compose.yml
 ```
 
-## Schnellstart
-1. Stelle sicher, dass Docker und Docker Compose installiert sind.
-2. Kopiere die Backend-Umgebungsvariablen:
+## Datenfluesse & Automatisierung
+- EUVD-Pipeline reichert Datensaetze mit NVD-, KEV- und Asset-Informationen an und pflegt Change-Historien.
+- NVD- und KEV-Syncs halten Zusatzinformationen (CVSS, Exploitation, Catalog) aktuell.
+- CPE-Pipeline baut Vendor-/Produkt-/Versions-Katalog und wird fuer Filterauflagen genutzt.
+- APScheduler startet periodische Jobs (konfigurierbar via `.env`) und markiert Initial-Syncs als abgeschlossen.
+- Audit-Service protokolliert alle Jobs, AI-Aufrufe sowie Saved-Search-Aktionen in MongoDB.
+
+## Schnellstart (Docker Compose)
+1. Abhaengigkeiten: Docker + Docker Compose.
+2. Umgebungsvariablen hinterlegen:
    ```sh
    cp backend/.env.example backend/.env
    ```
-   Passe Werte fuer Mongo/OpenSearch/AI an (falls noetig).
-3. Baue und starte den Stack:
+   Passe Mongo-, OpenSearch- und API-Schluessel nach Bedarf an.
+3. Stack bauen und starten:
    ```sh
    docker compose up --build
    ```
-4. Services:
-   - Frontend: http://localhost:3000 (Proxy zu `serve` Port 4173)
-   - Backend API: http://localhost:8000/api
+4. Standard-Endpoints:
+   - Frontend: http://localhost:3000 (Vite-Preview Port 4173)
+   - Backend API: http://localhost:8000/api/v1
    - MongoDB: mongodb://localhost:27017
    - OpenSearch: http://localhost:9200
 
-## Schwachstellen-Ingestion
-- Der Backend-CLI-Befehl zieht EUVD-Daten, reichert (falls moeglich) via NVD an und speichert Ergebnisse in MongoDB sowie OpenSearch.
-  Alle wesentlichen Metadaten (Aliases, CVSS, EPSS, Vendors/Products, Exploit-Status, Assigner) werden normalisiert abgelegt.
-- Beispielaufruf (im Backend-Verzeichnis):
-  ```sh
-  poetry run python -m app.cli ingest --since 2024-01-01T00:00:00Z
-  # oder ohne Kommando, da 'ingest' Standard ist:
-  poetry run python -m app.cli --since 2024-01-01T00:00:00Z
-  ```
-- Optionen:
-  - `--since` (optional): ISO-Zeitstempel, ab dem modifizierte Schwachstellen geladen werden.
-  - `--limit` (optional): Anzahl der Datensaetze begrenzen (fuer Tests).
-- CPE-Katalog-Synchronisation (Vendors/Produkte fuer spaetere Filter) laesst sich manuell ausloesen:
-  ```sh
-  poetry run python -m app.cli sync-cpe
-  # fuer Tests optional begrenzen:
-  poetry run python -m app.cli sync-cpe --limit 100
-  ```
-- Ohne `--limit` greift `CPE_MAX_RECORDS_PER_RUN` (Default 10000) – der Sync holt in Batches weitere Datensaetze nach.
-  Wiederhole den Befehl bis `ingested: 0` angezeigt wird, um die vollständige CPE-Datenbank zu laden.
-- Hinweis: `EUVD_BASE_URL` im Backend-`.env` ist standardmaessig auf `https://euvdservices.enisa.europa.eu/api` (GET `/search`) gesetzt. Wenn du einen alternativen Endpunkt oder Proxy nutzt, passe diesen Wert entsprechend an.
-- Hinweis: Nach Schema-Aenderungen an den OpenSearch-Mappings kann ein Neuaufbau des Index erforderlich sein  
-  (z. B. `curl -XDELETE http://localhost:9200/hecate-vulnerabilities` vor einem erneuten `ingest`-Durchlauf).
-- Hinweis: Ein APScheduler startet beim Backend-Startup automatisch (konfigurierbar via `.env`). Standard: EUVD alle 60 Minuten, CPE alle 24 Stunden.
-- Frontend-Builds lassen sich containerisiert erzeugen (nutzt das `dev`-Stage mit lokalem Source-Mount):
-  ```sh
-  docker compose run --rm --no-deps frontend-build
-  ```
-  Die gebaute Ausgabe liegt anschliessend in `frontend/dist/` auf dem Host.
-- Passe `VITE_API_BASE_URL` (z. B. `http://backend:8000/api`) an, falls Frontend und Backend unter unterschiedlichen Hosts/Ports erreichbar sind. Der Wert wird beim Build ausgewertet.
-- API-Endpunkte:
-  - `POST /api/v1/vulnerabilities/search` – OpenSearch-gestuetzte Suche inkl. Metadaten.
-  - `GET /api/v1/vulnerabilities` – Paginierte Liste (Frontend „Vulnerabilities“ Seite).
-  - `GET /api/v1/vulnerabilities/{id}` – Detailansicht eines Eintrags (CVE oder EUVD-ID).
-  - API-Präfix konfigurierbar über `API_PREFIX` (Standard `/api/v1`).
-  - `GET /api/v1/cpe/entries` – CPE-Katalog fuer Vendor-/Produktfilter (Frontend nutzt dies fuer dynamische Filter).
-  - `GET /api/v1/cpe/vendors` & `GET /api/v1/cpe/products` – Distinct-Werte fuer Such-/Dropdowns.
-  - `GET /api/v1/audit/ingestion` – Audit-Log der Ingestion-Jobs (wird im Frontend unter „Audit Log“ angezeigt).
-  - `GET /api/v1/stats/overview` – Kennzahlen (Frontend „Stats“ Seite).
-
 ## Lokale Entwicklung
 - **Backend:** `cd backend && poetry install && uvicorn app.main:app --reload`
+- **Backend-Tests/Lint:** `poetry run pytest` und `poetry run ruff check app`
 - **Frontend:** `cd frontend && npm install && npm run dev`
-- Beide Services nutzen denselben API-Pfad `/api`, im Dev-Setup proxied Vite alle API-Calls an FastAPI.
+- **Frontend-Lint:** `npm run lint`
+- Vite proxied `/api` im Dev-Modus automatisch an `http://localhost:8000`.
 
-## Nächste Schritte
-1. **Datenpipelines:** Implementiere Aufgaben zum Pullen und Normalisieren von CVE/EUVD/CPE-Daten.
-2. **Persistenz:** Schema und Repositories fuer MongoDB sowie OpenSearch-Mappings ausarbeiten.
-3. **AI-Prompting:** Prompt-Builder und Bewertungslogik inkl. konfigurierbarer Konfidenzmodelle umsetzen.
-4. **Auth-Roadmap:** Optionales Login deaktiviert lassen, spaeter lokale Nutzerverwaltung + OAuth2 hinzufuegen.
-5. **Testing & QA:** Unit-/Integrationstests, Linter-Configs (Ruff, ESLint) aktiv nutzen.
-6. **DevEx:** CI-Pipeline, Makefile, seed scripts, Infrastructure-as-Code fuer Produktionsdeployment.
-7. **Reverse Proxy:** Externe Reverse-Proxies (z. B. Traefik/NGINX) ausserhalb dieses Repos anbinden.
-8. **Ingestion Automation:** Scheduler/Worker (z. B. Celery, APScheduler) integrieren, um CLI-Aufrufe regelmaessig auszufuehren.
+## Backend-CLI
+- `poetry run python -m app.cli ingest [--since ISO] [--limit N] [--initial]`
+- `poetry run python -m app.cli sync-euvd [--since ISO] [--initial]`
+- `poetry run python -m app.cli sync-cpe [--limit N] [--initial]`
+- `poetry run python -m app.cli sync-nvd [--since ISO | --initial]`
+- `poetry run python -m app.cli sync-kev [--initial]`
+- CLI aktualisiert Daten, erzeugt Audit-Events und respektiert `CPE_MAX_RECORDS_PER_RUN` sowie Rate-Limits aus `.env`.
+
+## API-Ueberblick
+- `GET /api/v1/status/health` – Liveness Probe mit Environment-Info.
+- `POST /api/v1/vulnerabilities/search` & `GET /api/v1/vulnerabilities` – Volltextsuche, Filterung, Pagination.
+- `POST /api/v1/vulnerabilities/{id}/ai-investigation` – Fuehrt KI-Analyse aus und persistiert Ergebnis.
+- `POST /api/v1/vulnerabilities/refresh` – Manueller Refresh einzelner IDs.
+- `GET /api/v1/cpe/vendors|products|versions` – Asset-Katalog fuer Filter und UI.
+- `GET /api/v1/audit/ingestion` – Audit-Log mit Status, Dauer, Metadaten.
+- `GET /api/v1/stats/overview` – Aggregationen aus OpenSearch (mit Mongo-Fallback).
+- `GET/POST /api/v1/saved-searches` – Verwaltung gespeicherter Suchen.
+- `GET/POST /api/v1/backup/...` – Export/Import fuer Vulnerabilities (EUVD/NVD) und CPE.
+
+## Frontend
+- Dashboard zeigt aktuelle Schwachstellen mit CVSS, EPSS, Exploitation und direkten Links (CVE, EUVD, GHSA).
+- Detailseite mit AI-Assessments, Change-History, Referenzen und Asset-Bezug.
+- Vulnerability-Listing mit kombinierbaren Freitext-, Vendor-, Produkt- und Version-Filtern.
+- Audit-Log-Ansicht inkl. Statusfarben, Filterung nach Jobtypen und Detail-JSONs.
+- Stats-Seite mit Trenddiagrammen und Top-Vendor/-Produkt-Auswertungen.
+- System-Seite fuer Backups, Restore, Saved-Search-Verwaltung und Statusmeldungen.
+
+## Konfiguration
+- Backend liest Parameter aus `backend/.env` (siehe `.env.example` fuer Defaults).
+- `VITE_API_BASE_URL` setzt das Frontend beim Build; Standard `/api`.
+- Scheduler-Intervalle (`SCHEDULER_*`) und Bootstrapping koennen zur Laufzeit angepasst werden.
+- AI-Provider koennen einzeln aktiviert werden, indem API-Schluessel gesetzt werden.

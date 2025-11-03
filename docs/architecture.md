@@ -1,66 +1,88 @@
 # Hecate Architecture Overview
 
 ## Vision
-- **Topic:** KI-basierte Cyberabwehr – Automatisierte Analyse von Schwachstellen zur proaktiven Verteidigung.
-- **Goal:** Collect external vulnerability data, correlate it with local asset inventories, enrich it with AI-supported analysis, and expose results through a web GUI and external APIs.
-- **Initial auth:** Anonymous access for MVP. Future roadmap includes local accounts and OAuth2 single sign-on.
+- KI-gestuetzte Cyberabwehrplattform, die Schwachstellen aggregiert, anreichert und priorisiert.
+- Fokus auf schnelle Sichtbarkeit fuer Security-Teams ohne initialen Authentifizierungsaufwand.
+- Erweiterbarkeit fuer weitere Datenquellen, Automatisierung und Integrationen (Ticketing, Assets).
 
-## High-Level Components
-1. **Frontend (`frontend/`):** React single-page application.
-   - Provides dashboards for vulnerability lists, asset filters, enrichment summaries, and note management.
-   - Talks to backend via REST (and later WebSocket for streaming AI analysis).
-2. **Backend (`backend/`):** FastAPI service.
-   - REST API for vulnerability ingestion, asset preferences, AI-enriched assessments, and note storage.
-   - Integrates with OpenAI (or self-hosted compatible models) for context analysis.
-   - CLI/worker jobs to pull CVE/CPE data from EUVD feeds and other external sources.
-3. **Datastores:**
-   - **MongoDB:** Configuration, assets, user preferences, note metadata, ingestion state.
-   - **OpenSearch:** Indexed vulnerability documents, analysis snapshots, and AI annotations for fast querying.
-4. **Workers (future):**
-   - Background processing pipeline for enrichment, deduplication, risk scoring.
-   - Potential use of Celery or FastAPI background tasks (defined in backlog).
-5. **Infrastructure (`infra/`):**
-   - Dockerfiles for each service, `docker-compose` stack for local development.
-   - Environment variable templates and secrets management placeholders.
+## System Context
+- React Single-Page-Application konsumiert REST-APIs des FastAPI-Backends.
+- FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
+- OpenSearch dient als performanter Query-Index, MongoDB haelt Normalformdaten und Jobzustand.
+- Externe Feeds (EUVD, NVD, CISA KEV) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
 
-## Data Flows
-1. **Ingestion:**
-   - APScheduler orchestrates EUVD/NVD (CVE) und CPE-Synchronisation mit Rate-Limiting (NVD max. 1 Request/6s ohne API-Key).
-   - Normalisiert Daten (CVSS, EPSS, Vendors/Products, Aliases, Exploit-Flags) und speichert sie in MongoDB.
-   - Indexiert relevante Felder in OpenSearch fuer schnelle Suche.
-2. **Asset Filtering:**
-   - Users define product/application inventory.
-   - Backend filters ingested vulnerabilities by matching CPE/keywords against stored inventory.
-3. **AI Analysis:**
-   - Backend builds context prompts (asset details, CVE metadata, historical actions).
-   - Sends prompt to AI provider (OpenAI-compatible API).
-   - Stores AI response with status and confidence metrics.
-4. **Frontend UX:**
-   - React app fetches vulnerability list (filtered by asset profile).
-   - Displays AI assessment, allows manual overrides, links to tickets, and notes.
+## Backend Architecture
+
+### API Layer
+- Router unter `app/api/v1` kapseln funktionale Bereiche (Status, Vulnerabilities, Saved Searches, Assets, Backup, Stats, Audit).
+- Standardpraefix `/api/v1` (konfigurierbar) und CORS-Allower fuer lokale Integration.
+- Responses basieren auf pydantic-Schemas; Validierung erfolgt auf Eingabe- und Ausgabeseite.
+
+### Services & Domain
+- Service-Klasse je Anwendungsfall (`VulnerabilityService`, `StatsService`, `AssetCatalogService`, `BackupService`, `AuditService`).
+- Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + Mongo Operations.
+- Asset-Katalog wird aus ingestierten Daten abgeleitet (Vendor-/Produkt-/Versions-Slugs) und fuettert Filter-UI.
+
+### Ingestion Pipelines
+- **EUVD Pipeline:** Liest paginiert, gleicht CVE-IDs ab, reichert mit NVD- und KEV-Daten an, pflegt Change-Historie, aktualisiert OpenSearch-Index + Mongo-Dokumente.
+- **NVD Pipeline:** Aktualisiert CVSS/EPSS/Referenzen fuer bestehende Datensaetze, optional begrenzt ueber `modifiedSince`.
+- **CPE Pipeline:** Synchronisiert NVD-CPE-Katalog, erzeugt Vendor-/Produkt-/Versionseintraege und legt Slug-Metadaten in Mongo ab.
+- **KEV Pipeline:** Haelt CISA Known-Exploited-Catalog aktuell und stellt Exploitation-Metadaten fuer EUVD/NVD bereit.
+- **Manual Refresher:** Ermoeglicht gezielte Reingestion einzelner IDs (API + CLI) und protokolliert Ergebnisse.
+
+### Scheduler & Job Tracking
+- `SchedulerManager` initialisiert APScheduler (AsyncIO) mit Intervallen fuer EUVD, CPE, NVD, KEV.
+- Initial-Bootstrap laeuft beim Start einmalig und wird in `IngestionStateRepository` (Mongo) als abgeschlossen markiert.
+- `JobTracker` aktualisiert Laufzeitstatus, setzt Overdue-Flags und persistiert Fortschritt im Audit-Log.
+- Audit-Service schreibt Ereignisse in `ingestion_logs` inklusive Dauer, Ergebnis und Metadaten (Client-IP, Label).
+
+### Persistence
+- **MongoDB:** Beinhaltet Normalform-Collections (`vulnerabilities`, `cpe_catalog`, `asset_*`, `ingestion_state`, `known_exploited_vulnerabilities`, `saved_searches`, `ingestion_logs`).
+- **OpenSearch:** Index `hecate-vulnerabilities` mit normalisierten Dokumenten (IDs als CVE oder EUVD-ID). Wird fuer Such- und Filteroperationen genutzt.
+- Repositories auf Basis von Motor (Mongo) und opensearch-py kapseln Abfragen und Updates.
+- TTL-Indizes (z. B. `expires_at`) sichern optionales Aufraeumen von Zustandsdokumenten.
+
+### AI & Analysis
+- `AIClient` verwaltet verfuegbare Provider anhand gesetzter API-Schluessel.
+- Prompt-Builder erstellt Kontexte inkl. Asset- und Historieninformationen in frei waehlbarer Sprache.
+- Ergebnisse werden wieder in OpenSearch gespeichert und als Audit-Event protokolliert.
+- Fehlerbehandlung liefert 4xx bei Konfigurationsfehlern, 5xx bei Provider-Ausfaellen.
+
+### Backup & Restore
+- Backup-Service exportiert JSON-Snapshots fuer Vulnerabilities (quellenweise) und CPE-Katalog mit Metadaten (Dataset, Source, Item-Count, Timestamp).
+- Restore validiert Metadaten, schreibt Dokumente in Mongo + OpenSearch und gibt eine Zusammenfassung zurueck (inserted/updated/skipped).
+- Frontend-Systemseite nutzt diese Endpunkte fuer Self-Service-Backups.
+
+### Observability
+- `structlog` fuer strukturierte Logs, konsistent in Pipelines und Services verwendet.
+- Audit-Log dient als Betriebsfuehrer (Status, Fehlergruende, Dauer, Overdue-Hinweise).
+- Konfigurierbare `INGESTION_RUNNING_TIMEOUT_MINUTES` markiert Jobs als overdues, ohne sie abzubrechen.
+
+## Frontend Architecture
+- React 19 + Vite, Router-Struktur (`router.tsx`) spannt Dashboard, Vulnerability-Liste/-Detail, Audit, Stats und System auf.
+- API-Clients (Axios) in `src/api` kapseln REST-Aufrufe inkl. TypeScript-Typen.
+- Zustand ueber React Hooks, sparsame globale State-Verwendung; Skeleton-Komponenten fuer Loading-States.
+- Styling via CSS-Module-Ansatz (globale Styles) mit Fokus auf Kartenlayout und Dark-Theming.
+- System-Ansicht stellt Backup/Restore und Saved-Search-Management bereit; Audit-Seite zeigt detaillierte Events.
+
+## Data Flow Summary
+1. Scheduler oder CLI loest einen Ingestion-Job aus.
+2. Pipeline zieht Daten von EUVD/NVD/CISA, normalisiert sie (`build_document`), aktualisiert Mongo und OpenSearch.
+3. AssetCatalogService leitet Vendor-/Produkt-/Versionsdaten ab und aktualisiert Slugs fuer Filter.
+4. Frontend ruft Listen- und Detailendpunkte ab, optional startet AI-Assessments oder Backups.
+5. Audit-Service protokolliert alle relevanten Aktionen, Stats-Service aggregiert Kennzahlen aus OpenSearch (Fallback Mongo).
 
 ## External Integrations
-- **EUVD:** Primary CVE feed (REST/CSV).
-- **NIST NVD / CVE / CPE APIs:** Supplemental data and metadata normalization.
-- **OpenAI API:** AI summarization and risk classification (pluggable provider interface).
-- **Ticketing Integrations (future):** Placeholders for Jira/ServiceNow webhook references stored as URLs in notes.
+- **EUVD API:** Primäre Schwachstellendatenquelle (REST JSON).
+- **NVD API:** CVE-Detail- und CPE-Katalog-Synchronisation.
+- **CISA Known Exploited Vulnerabilities:** Erweitert Metadaten um Exploit-Kontext.
+- **OpenAI / Anthropic / Google Gemini:** Optionale KI-Provider fuer Zusammenfassungen und Risikohinweise.
 
-## Security and Auth Roadmap
-- MVP: No login required; read/write open within trusted environment.
-- Phase 2: Local user store with salted password hashes.
-- Phase 3: OAuth2/OpenID Connect provider integration.
-- Backend to enforce RBAC policies once auth is enabled.
-
-## Observability
-- Structured logging via Python `structlog`.
-- Request tracing (FastAPI middleware).
-- Metrics exposed via Prometheus-compatible endpoints (later milestone).
-
-## Container Topology (Local Dev)
+## Deployment Topology
 ```
 +--------------+        +----------------+        +---------------+
 | React SPA    | <----> | FastAPI Backend| <----> | MongoDB       |
-| (frontend)   |        | (backend)      |        | (config store)|
+| (frontend)   |        | (backend)      |        | (state store) |
 | :3000        |        | :8000          |        | :27017        |
 +--------------+        +----------------+        +---------------+
                                ^
@@ -68,12 +90,6 @@
                                v
                          +------------+
                          | OpenSearch |
-                         | :9200/9300 |
+                         | :9200      |
                          +------------+
 ```
-
-## Next Steps
-- Scaffold FastAPI service with initial endpoints and health checks.
-- Scaffold React app with routing and API client boilerplate.
-- Add Dockerfiles and docker-compose stack tying services together.
-- Prepare seed scripts for MongoDB collections and OpenSearch index templates.
