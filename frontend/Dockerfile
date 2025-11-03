@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 
-FROM node:22-alpine AS dev
+FROM node:24-alpine AS dev
 WORKDIR /app
 
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
@@ -18,7 +18,7 @@ COPY . .
 FROM dev AS build
 RUN npm run build
 
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 
 RUN npm install -g serve

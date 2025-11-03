@@ -44,7 +44,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
    docker compose up --build
    ```
 4. Standard-Endpoints:
-   - Frontend: http://localhost:3000 (Vite-Preview Port 4173)
+   - Frontend: http://localhost:4173
    - Backend API: http://localhost:8000/api/v1
    - MongoDB: mongodb://localhost:27017
    - OpenSearch: http://localhost:9200
