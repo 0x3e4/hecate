@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
+from pydantic import Field
 from pydantic.functional_validators import BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -69,7 +70,23 @@ class Settings(BaseSettings):
     scheduler_nvd_interval_hours: int = 24
     scheduler_kev_interval_minutes: int = 60
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
+    trusted_proxy_forward_header: str = "x-forwarded-for"
+    trusted_proxy_real_ip_header: str | None = "x-real-ip"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @property
+    def trusted_proxy_ips(self) -> list[str]:
+        value = self.trusted_proxy_ips_raw
+        if not value:
+            return []
+        items = [item.strip() for item in value.split(",")]
+        return [item for item in items if item]
 
 
 @lru_cache(maxsize=1)

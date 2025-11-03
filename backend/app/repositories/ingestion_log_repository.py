@@ -119,3 +119,34 @@ class IngestionLogRepository:
         total = await self.collection.count_documents(query)
         items = await cursor.to_list(length=limit)
         return total, items
+
+    async def insert_event(
+        self,
+        *,
+        job_name: str,
+        status: str,
+        started_at: datetime,
+        finished_at: datetime | None = None,
+        duration_seconds: float | None = None,
+        metadata: dict[str, Any] | None = None,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> ObjectId:
+        document: dict[str, Any] = {
+            "jobName": job_name,
+            "status": status,
+            "startedAt": started_at.astimezone(UTC),
+        }
+        if finished_at is not None:
+            document["finishedAt"] = finished_at.astimezone(UTC)
+        if duration_seconds is not None:
+            document["durationSeconds"] = duration_seconds
+        if metadata:
+            document["metadata"] = metadata
+        if result:
+            document["result"] = result
+        if error:
+            document["error"] = error
+
+        inserted = await self.collection.insert_one(document)
+        return inserted.inserted_id

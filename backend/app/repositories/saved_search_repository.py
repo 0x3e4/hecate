@@ -48,6 +48,16 @@ class SavedSearchRepository:
         payload["_id"] = result.inserted_id
         return payload
 
+    async def get(self, search_id: str) -> dict[str, Any] | None:
+        try:
+            object_id = ObjectId(search_id)
+        except (InvalidId, TypeError):
+            return None
+        document = await self.collection.find_one({"_id": object_id})
+        if document is None:
+            return None
+        return document
+
     async def delete(self, search_id: str) -> bool:
         try:
             object_id = ObjectId(search_id)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.schemas.ai import (
     AIInvestigationRequest,
@@ -15,6 +15,8 @@ from app.schemas.vulnerability import (
 )
 from app.services.ai_service import AIClient, AIProviderError, get_ai_client
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
+from app.services.audit_service import AuditService, get_audit_service
+from app.utils.request import get_client_ip
 
 router = APIRouter()
 
@@ -97,8 +99,10 @@ async def get_vulnerability(
 async def create_ai_investigation(
     identifier: str,
     payload: AIInvestigationRequest,
+    request: Request,
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
+    audit_service: AuditService = Depends(get_audit_service),
 ) -> AIInvestigationResponse:
     vulnerability = await service.get_by_id(identifier)
     if vulnerability is None:
@@ -119,5 +123,23 @@ async def create_ai_investigation(
     persisted = await service.save_ai_assessment(identifier, assessment_payload)
     if not persisted:
         raise HTTPException(status_code=502, detail="Failed to persist AI assessment.")
+
+    client_ip = get_client_ip(request)
+    metadata = {
+        "label": "AI-Analyse abgeschlossen",
+        "clientIp": client_ip,
+        "provider": payload.provider,
+    }
+    metadata = {key: value for key, value in metadata.items() if value}
+    result_payload = {
+        "vulnerabilityId": identifier,
+        "language": result.language,
+        "summary": result.summary,
+    }
+    await audit_service.record_event(
+        "ai_investigation",
+        metadata=metadata or None,
+        result=result_payload,
+    )
 
     return result

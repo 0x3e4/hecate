@@ -12,6 +12,9 @@ const JOB_LABELS: Record<string, string> = {
   nvd_sync: "NVD Sync",
   nvd_initial_sync: "NVD Initial Sync",
   manual_refresh: "Manueller Refresh",
+  saved_search_created: "Gespeicherte Suche erstellt",
+  saved_search_deleted: "Gespeicherte Suche gelöscht",
+  ai_investigation: "AI-Analyse",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -23,17 +26,34 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "#9ca3af",
 };
 
+const PAGE_SIZE = 50;
+
 export const AuditLogPage = () => {
   const [logs, setLogs] = useState<IngestionLogEntry[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [jobFilter, setJobFilter] = useState<string>("");
+  const [page, setPage] = useState<number>(0);
+
+  useEffect(() => {
+    if (page === 0) {
+      return;
+    }
+    const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [total, page]);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const response = await fetchIngestionLogs({ job: jobFilter || undefined, limit: 50 });
+        const response = await fetchIngestionLogs({
+          job: jobFilter || undefined,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        });
         setLogs(response.items);
         setTotal(response.total);
       } catch (error) {
@@ -43,7 +63,7 @@ export const AuditLogPage = () => {
     };
 
     load();
-  }, [jobFilter]);
+  }, [jobFilter, page]);
 
   const rows = useMemo(
     () =>
@@ -61,31 +81,52 @@ export const AuditLogPage = () => {
         const hintText = entry.overdueReason ?? (cancelledNote ? `Job abgebrochen: ${cancelledNote}` : undefined);
         const progressJson = entry.progress ? JSON.stringify(entry.progress, null, 2) : undefined;
         const resultJson = entry.result ? JSON.stringify(entry.result, null, 2) : undefined;
+        const metadata = (entry.metadata ?? {}) as { label?: unknown; clientIp?: unknown };
+        const metaClientIp =
+          typeof metadata.clientIp === "string" && metadata.clientIp.trim().length > 0
+            ? (metadata.clientIp as string)
+            : undefined;
+        const metaLabel =
+          typeof metadata.label === "string" && metadata.label.trim().length > 0 ? (metadata.label as string) : undefined;
 
-        let detailNode: ReactNode = "-";
+        const detailElements: ReactNode[] = [];
+        if (metaClientIp) {
+          detailElements.push(<span key="ip">Client IP: {metaClientIp}</span>);
+        }
+        let detailNode: ReactNode | null = null;
         if (errorText) {
-          detailNode = `Fehler: ${errorText}`;
+          detailElements.push(`Fehler: ${errorText}`);
         } else if (hintText) {
-          detailNode = `Hinweis: ${hintText}`;
+          detailElements.push(`Hinweis: ${hintText}`);
         } else if (progressJson) {
-          detailNode = (
+          detailElements.push(
             <details>
               <summary style={{ cursor: "pointer" }}>Fortschritt anzeigen</summary>
               <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{progressJson}</pre>
-            </details>
+            </details>,
           );
         } else if (resultJson) {
-          detailNode = (
+          detailElements.push(
             <details>
               <summary style={{ cursor: "pointer" }}>Details anzeigen</summary>
               <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{resultJson}</pre>
-            </details>
+            </details>,
+          );
+        }
+        if (detailElements.length === 0) {
+          detailNode = "-";
+        } else if (detailElements.length === 1) {
+          detailNode = detailElements[0];
+        } else {
+          detailNode = (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              {detailElements.map((element, index) => (
+                <div key={`detail-${entry.id}-${index}`}>{element}</div>
+              ))}
+            </div>
           );
         }
 
-        const metadata = (entry.metadata ?? {}) as { label?: unknown };
-        const metaLabel =
-          typeof metadata.label === "string" && metadata.label.trim().length > 0 ? metadata.label : undefined;
         const jobLabel = metaLabel ?? JOB_LABELS[entry.jobName] ?? entry.jobName;
 
         return (
@@ -108,21 +149,38 @@ export const AuditLogPage = () => {
 
   const showSkeleton = loading && logs.length === 0;
   const isEmptyState = !loading && logs.length === 0;
+  const hasPreviousPage = page > 0;
+  const hasNextPage = (page + 1) * PAGE_SIZE < total;
+  const pageStartIndexRaw = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const pageEndIndexRaw =
+    total === 0
+      ? 0
+      : logs.length > 0
+        ? page * PAGE_SIZE + logs.length
+        : Math.min(total, (page + 1) * PAGE_SIZE);
+  const pageStartIndex = total === 0 ? 0 : Math.min(pageStartIndexRaw, total);
+  const pageEndIndex = total === 0 ? 0 : Math.min(pageEndIndexRaw, total);
 
   return (
     <div className="page">
       <section className="card">
         <h2>Audit Log</h2>
         <p className="muted">
-          Verfolge die letzten automatischen und manuellen Datenimporte. Gesamt: {total} Einträge.
+          Logs werden bei bestimmten Ereignissen generiert, die von Interesse sein könnten. Gesamt: {total} Einträge.
         </p>
 
-        <div style={{ margin: "1rem 0", display: "flex", gap: "1rem", alignItems: "center" }}>
+        <div style={{ margin: "1rem 0", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", minWidth: "220px" }}>
             <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
               Job-Filter
             </span>
-            <select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)}>
+            <select
+              value={jobFilter}
+              onChange={(event) => {
+                setJobFilter(event.target.value);
+                setPage(0);
+              }}
+            >
               <option value="">Alle Jobs</option>
               <option value="euvd_ingestion">EUVD Sync</option>
               <option value="euvd_initial_sync">EUVD Initial Sync</option>
@@ -131,8 +189,28 @@ export const AuditLogPage = () => {
               <option value="nvd_sync">NVD Sync</option>
               <option value="nvd_initial_sync">NVD Initial Sync</option>
               <option value="manual_refresh">Manueller Refresh</option>
+              <option value="saved_search_created">Gespeicherte Suche erstellt</option>
+              <option value="saved_search_deleted">Gespeicherte Suche gelöscht</option>
+              <option value="ai_investigation">AI-Analyse</option>
             </select>
           </label>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              Zeige {total === 0 ? 0 : pageStartIndex}–{pageEndIndex} von {total}
+            </span>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={!hasPreviousPage || loading}>
+                Zurück
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => current + 1)}
+                disabled={!hasNextPage || loading}
+              >
+                Weiter
+              </button>
+            </div>
+          </div>
         </div>
 
         <div style={{ overflowX: "auto" }}>

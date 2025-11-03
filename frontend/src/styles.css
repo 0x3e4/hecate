@@ -140,12 +140,16 @@ body {
 }
 
 .sidebar-subnav-link {
+  display: flex;
+  align-items: center;
   color: rgba(255, 255, 255, 0.65);
   font-size: 0.9rem;
   text-decoration: none;
   padding: 0.25rem 0 0.25rem 0.6rem;
   border-radius: 6px;
   transition: color 0.2s ease, background 0.2s ease;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .sidebar-subnav-link:hover {
@@ -160,9 +164,12 @@ body {
 }
 
 .sidebar-subnav-text {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .asset-filter-wrapper {

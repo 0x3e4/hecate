@@ -3,9 +3,10 @@ on:
     branches:
       - main
   pull_request:
-      types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened]
 
 name: SonarQube & Trivy Scan
+
 jobs:
   Analysis:
     name: SonarQube Trigger
@@ -14,8 +15,7 @@ jobs:
     - name: Checking out
       uses: actions/checkout@master
       with:
-        # Disabling shallow clone is recommended for improving relevancy of reporting
-        fetch-depth: 0
+        fetch-depth: 0  # Disabling shallow clone for better reporting relevance
     - name: SonarQube Scan
       uses: sonarsource/sonarqube-scan-action@master
       env:
@@ -25,24 +25,33 @@ jobs:
         args: >
           -Dsonar.projectVersion=0.1.0
           -Dsonar.projectKey=msc-app
+
   ScanDeps:
     name: Trivy Scan Dependencies
     stage: scan
     image:
       name: aquasec/trivy
       entrypoint: [""]
-    script:
-      - trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
-      - trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
-    artifacts:
-      paths:
-        - trivy-deps-report.json
-        - sonar-deps-report.json
+    steps:
+    - name: Scan Dependencies with Trivy
+      run: |
+        trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
+        trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
+    - name: Upload Trivy and SonarQube Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: trivy-sonarqube-reports
+        path: |
+          trivy-deps-report.json
+          sonar-deps-report.json
+
   ScanCode:
     name: Trivy Scan Code
     stage: scan
     image: sonarsource/sonar-scanner-cli
     needs:
-      - scan-deps
-    script:
-      - sonar-scanner -D sonar.externalIssuesReportPaths="sonar-deps-report.json"
+      - ScanDeps
+    steps:
+    - name: Run SonarScanner
+      run: |
+        sonar-scanner -D sonar.externalIssuesReportPaths="sonar-deps-report.json"

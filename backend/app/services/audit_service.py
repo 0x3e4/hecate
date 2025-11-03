@@ -19,6 +19,43 @@ class AuditService:
         entries = [self._map_entry(item) for item in items]
         return IngestionLogResponse(total=total, items=entries)
 
+    async def record_event(
+        self,
+        job_name: str,
+        *,
+        status: str = "completed",
+        metadata: dict[str, Any] | None = None,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+    ) -> None:
+        now = datetime.now(tz=UTC)
+        start_time = (started_at or now).astimezone(UTC)
+
+        end_time: datetime | None
+        if finished_at is not None:
+            end_time = finished_at.astimezone(UTC)
+        elif status in {"completed", "failed", "cancelled"}:
+            end_time = now
+        else:
+            end_time = None
+
+        duration_seconds: float | None = None
+        if end_time is not None:
+            duration_seconds = (end_time - start_time).total_seconds()
+
+        await self.log_repository.insert_event(
+            job_name=job_name,
+            status=status,
+            started_at=start_time,
+            finished_at=end_time,
+            duration_seconds=duration_seconds,
+            metadata=metadata,
+            result=result,
+            error=error,
+        )
+
     def _map_entry(self, document: dict[str, Any]) -> IngestionLogEntry:
         doc = document.copy()
         if isinstance(doc.get("_id"), ObjectId):

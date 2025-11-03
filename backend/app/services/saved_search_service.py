@@ -20,6 +20,13 @@ class SavedSearchService:
         documents = await repository.list_all()
         return [self._to_schema(doc) for doc in documents]
 
+    async def get_saved_search(self, search_id: str) -> SavedSearch | None:
+        repository = await SavedSearchRepository.create()
+        document = await repository.get(search_id)
+        if not document:
+            return None
+        return self._to_schema(document)
+
     async def create_saved_search(self, payload: SavedSearchCreate) -> SavedSearch:
         repository = await SavedSearchRepository.create()
         name = payload.name.strip()

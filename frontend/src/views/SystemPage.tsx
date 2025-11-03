@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
 import {
   exportCpeBackup,
@@ -7,6 +7,8 @@ import {
   restoreVulnerabilityBackup,
   type VulnerabilitySource
 } from "../api/backup";
+import { useSavedSearches } from "../hooks/useSavedSearches";
+import type { SavedSearch } from "../types";
 
 type BackupDataset =
   | { id: "NVD" | "EUVD"; label: string; description: string; type: "vuln"; source: VulnerabilitySource }
@@ -39,7 +41,11 @@ export const SystemPage = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [savedSearchMessage, setSavedSearchMessage] = useState<string | null>(null);
+  const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
+  const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const { savedSearches, loading: savedSearchLoading, removeSavedSearch } = useSavedSearches();
 
   const beginAction = (datasetId: string) => {
     setBusyId(datasetId);
@@ -84,6 +90,11 @@ export const SystemPage = () => {
     }
   };
 
+  const sortedSavedSearches = useMemo<SavedSearch[]>(
+    () => [...savedSearches].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    [savedSearches]
+  );
+
   const handleRestore = async (dataset: BackupDataset, file: File) => {
     beginAction(dataset.id);
     try {
@@ -127,6 +138,21 @@ export const SystemPage = () => {
       setErrorMessage(message);
     } finally {
       finishAction();
+    }
+  };
+
+  const handleDeleteSavedSearch = async (search: SavedSearch) => {
+    setSavedSearchError(null);
+    setSavedSearchMessage(null);
+    setDeletePendingId(search.id);
+    try {
+      await removeSavedSearch(search.id);
+      setSavedSearchMessage(`Suche "${search.name}" gelöscht.`);
+    } catch (error) {
+      console.error("Failed to delete saved search", error);
+      setSavedSearchError(`Suche "${search.name}" konnte nicht gelöscht werden.`);
+    } finally {
+      setDeletePendingId(null);
     }
   };
 
@@ -200,6 +226,104 @@ export const SystemPage = () => {
           ))}
         </div>
       </section>
+
+      <section className="card">
+        <h2>Gespeicherte Suchen</h2>
+        <p className="muted">
+          Verwalte gespeicherte Filter für die Vulnerability-Ansicht. Gesamt: {sortedSavedSearches.length}.
+        </p>
+        {savedSearchMessage && (
+          <p style={{ marginTop: "0.5rem", color: "#8fffb0", fontWeight: 500 }}>{savedSearchMessage}</p>
+        )}
+        {savedSearchError && (
+          <p style={{ marginTop: "0.5rem", color: "#ffa3a3", fontWeight: 500 }}>{savedSearchError}</p>
+        )}
+
+        {savedSearchLoading && sortedSavedSearches.length === 0 ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            Lade gespeicherte Suchen …
+          </p>
+        ) : sortedSavedSearches.length === 0 ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            Es sind keine gespeicherten Suchen vorhanden.
+          </p>
+        ) : (
+          <div style={{ marginTop: "1rem", overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "640px" }}>
+              <thead>
+                <tr>
+                  <th style={savedSearchHeaderStyle}>Name</th>
+                  <th style={savedSearchHeaderStyle}>Suchparameter</th>
+                  <th style={savedSearchHeaderStyle}>DQL Query</th>
+                  <th style={savedSearchHeaderStyle}>Erstellt</th>
+                  <th style={savedSearchHeaderStyle}>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedSavedSearches.map((search) => (
+                  <tr key={search.id}>
+                    <td style={savedSearchCellStyle}>
+                      <strong>{search.name}</strong>
+                    </td>
+                    <td style={{ ...savedSearchCellStyle, maxWidth: "260px" }}>
+                      {search.queryParams ? (
+                        <code style={savedSearchCodeStyle}>{search.queryParams}</code>
+                      ) : (
+                        <span className="muted">-</span>
+                      )}
+                    </td>
+                    <td style={{ ...savedSearchCellStyle, maxWidth: "260px" }}>
+                      {search.dqlQuery ? (
+                        <code style={savedSearchCodeStyle}>{search.dqlQuery}</code>
+                      ) : (
+                        <span className="muted">-</span>
+                      )}
+                    </td>
+                    <td style={savedSearchCellStyle}>
+                      {new Date(search.createdAt).toLocaleString()}
+                    </td>
+                    <td style={savedSearchCellStyle}>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteSavedSearch(search)}
+                        disabled={deletePendingId === search.id}
+                        style={{ minWidth: "140px" }}
+                      >
+                        {deletePendingId === search.id ? "Löschen…" : "Suche löschen"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
+};
+
+const savedSearchHeaderStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "0.5rem 0.75rem",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+  fontWeight: 600,
+  fontSize: "0.9rem",
+};
+
+const savedSearchCellStyle: CSSProperties = {
+  padding: "0.65rem 0.75rem",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+  verticalAlign: "top",
+  fontSize: "0.9rem",
+};
+
+const savedSearchCodeStyle: CSSProperties = {
+  display: "inline-block",
+  padding: "0.25rem 0.4rem",
+  background: "rgba(255, 255, 255, 0.06)",
+  borderRadius: "0.35rem",
+  fontSize: "0.85rem",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };
