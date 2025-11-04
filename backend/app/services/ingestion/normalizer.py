@@ -23,6 +23,193 @@ CVSS_METRIC_VERSION_PREFERENCE: tuple[tuple[str, str | None], ...] = (
 )
 
 
+def _parse_cvss_vector_string(vector_string: str) -> dict[str, str]:
+    """
+    Parse a CVSS vector string and extract individual metrics.
+
+    Examples:
+        CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N
+        CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P
+        CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+
+    Returns:
+        Dictionary with metric keys and values
+    """
+    if not isinstance(vector_string, str):
+        return {}
+
+    metrics: dict[str, str] = {}
+
+    # Split by / and process each metric
+    parts = vector_string.split("/")
+
+    # First part should be CVSS:X.X
+    if parts and parts[0].startswith("CVSS:"):
+        version = parts[0].replace("CVSS:", "").strip()
+        metrics["version"] = version
+        parts = parts[1:]  # Remove the version part
+
+    # Parse the rest of the metrics
+    for part in parts:
+        if ":" not in part:
+            continue
+        key, value = part.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+
+        # Map short keys to full metric names
+        # CVSS v3.x and v2.0 metrics
+        # Note: Some keys are version-dependent and will be resolved based on context
+        key_mapping = {
+            # CVSS v3.x Base Metrics
+            "AV": "attackVector",
+            "AC": "attackComplexity",
+            "PR": "privilegesRequired",
+            "UI": "userInteraction",
+            "S": "scope",  # CVSS 3.x - in 4.0 this can also mean "safety"
+            "C": "confidentialityImpact",
+            "I": "integrityImpact",
+            "A": "availabilityImpact",
+            # CVSS v2.0 Base Metrics
+            "Au": "authentication",
+            # CVSS v3.x Temporal Metrics
+            "E": "exploitCodeMaturity",
+            "RL": "remediationLevel",
+            "RC": "reportConfidence",
+            # CVSS v3.x Environmental Metrics
+            "CR": "confidentialityRequirement",
+            "IR": "integrityRequirement",
+            "AR": "availabilityRequirement",
+            "MAV": "modifiedAttackVector",
+            "MAC": "modifiedAttackComplexity",
+            "MPR": "modifiedPrivilegesRequired",
+            "MUI": "modifiedUserInteraction",
+            "MS": "modifiedScope",
+            "MC": "modifiedConfidentialityImpact",
+            "MI": "modifiedIntegrityImpact",
+            "MA": "modifiedAvailabilityImpact",
+            # CVSS v4.0 Base Metrics
+            "AT": "attackRequirements",
+            "VC": "vulnConfidentialityImpact",
+            "VI": "vulnIntegrityImpact",
+            "VA": "vulnAvailabilityImpact",
+            "SC": "subConfidentialityImpact",
+            "SI": "subIntegrityImpact",
+            "SA": "subAvailabilityImpact",
+            # CVSS v4.0 Threat Metrics
+            "AU": "automatable",
+            # CVSS v4.0 Environmental Metrics
+            "R": "recovery",
+            "V": "valueDensity",
+            "RE": "vulnerabilityResponseEffort",
+            "U": "providerUrgency",
+            # CVSS v4.0 Supplemental Metrics (S is handled differently for v4)
+            "MSI": "modifiedSubIntegrityImpact",
+            "MSA": "modifiedSubAvailabilityImpact",
+            "MSC": "modifiedSubConfidentialityImpact",
+        }
+
+        # Map values to full names
+        value_mapping = {
+            # Attack Vector
+            "N": "NETWORK",
+            "A": "ADJACENT_NETWORK",
+            "L": "LOCAL",
+            "P": "PHYSICAL",
+            # Attack Complexity
+            "L": "LOW",
+            "H": "HIGH",
+            # Privileges Required / Authentication
+            "N": "NONE",
+            "L": "LOW",
+            "H": "HIGH",
+            "M": "MULTIPLE",
+            "S": "SINGLE",
+            # User Interaction
+            "N": "NONE",
+            "R": "REQUIRED",
+            "A": "ACTIVE",
+            "P": "PASSIVE",
+            # Scope
+            "U": "UNCHANGED",
+            "C": "CHANGED",
+            # Impact metrics
+            "N": "NONE",
+            "L": "LOW",
+            "H": "HIGH",
+            # Exploit Code Maturity
+            "X": "NOT_DEFINED",
+            "U": "UNPROVEN",
+            "P": "PROOF_OF_CONCEPT",
+            "F": "FUNCTIONAL",
+            "H": "HIGH",
+            # Remediation Level
+            "X": "NOT_DEFINED",
+            "O": "OFFICIAL_FIX",
+            "T": "TEMPORARY_FIX",
+            "W": "WORKAROUND",
+            "U": "UNAVAILABLE",
+            # Report Confidence
+            "X": "NOT_DEFINED",
+            "U": "UNKNOWN",
+            "R": "REASONABLE",
+            "C": "CONFIRMED",
+            # Requirements
+            "X": "NOT_DEFINED",
+            "L": "LOW",
+            "M": "MEDIUM",
+            "H": "HIGH",
+        }
+
+        full_key = key_mapping.get(key, key.lower())
+
+        # Context-aware value mapping based on the metric type
+        value_upper = value.upper()
+
+        # Map values based on the specific metric context
+        if full_key == "attackVector":
+            av_map = {"N": "NETWORK", "A": "ADJACENT_NETWORK", "L": "LOCAL", "P": "PHYSICAL"}
+            full_value = av_map.get(value_upper, value)
+        elif full_key == "attackComplexity":
+            ac_map = {"L": "LOW", "H": "HIGH"}
+            full_value = ac_map.get(value_upper, value)
+        elif full_key in ["privilegesRequired", "authentication"]:
+            pr_map = {"N": "NONE", "L": "LOW", "H": "HIGH", "M": "MULTIPLE", "S": "SINGLE"}
+            full_value = pr_map.get(value_upper, value)
+        elif full_key == "userInteraction":
+            ui_map = {"N": "NONE", "R": "REQUIRED", "A": "ACTIVE", "P": "PASSIVE"}
+            full_value = ui_map.get(value_upper, value)
+        elif full_key == "scope":
+            s_map = {"U": "UNCHANGED", "C": "CHANGED"}
+            full_value = s_map.get(value_upper, value)
+        elif full_key in ["confidentialityImpact", "integrityImpact", "availabilityImpact",
+                          "vulnConfidentialityImpact", "vulnIntegrityImpact", "vulnAvailabilityImpact",
+                          "subConfidentialityImpact", "subIntegrityImpact", "subAvailabilityImpact",
+                          "modifiedConfidentialityImpact", "modifiedIntegrityImpact", "modifiedAvailabilityImpact",
+                          "modifiedSubConfidentialityImpact", "modifiedSubIntegrityImpact", "modifiedSubAvailabilityImpact"]:
+            impact_map = {"N": "NONE", "L": "LOW", "H": "HIGH", "P": "PARTIAL", "C": "COMPLETE"}
+            full_value = impact_map.get(value_upper, value)
+        elif full_key == "exploitCodeMaturity":
+            e_map = {"X": "NOT_DEFINED", "U": "UNPROVEN", "P": "PROOF_OF_CONCEPT", "F": "FUNCTIONAL", "H": "HIGH"}
+            full_value = e_map.get(value_upper, value)
+        elif full_key == "remediationLevel":
+            rl_map = {"X": "NOT_DEFINED", "O": "OFFICIAL_FIX", "T": "TEMPORARY_FIX", "W": "WORKAROUND", "U": "UNAVAILABLE"}
+            full_value = rl_map.get(value_upper, value)
+        elif full_key == "reportConfidence":
+            rc_map = {"X": "NOT_DEFINED", "U": "UNKNOWN", "R": "REASONABLE", "C": "CONFIRMED"}
+            full_value = rc_map.get(value_upper, value)
+        elif full_key in ["confidentialityRequirement", "integrityRequirement", "availabilityRequirement"]:
+            req_map = {"X": "NOT_DEFINED", "L": "LOW", "M": "MEDIUM", "H": "HIGH"}
+            full_value = req_map.get(value_upper, value)
+        else:
+            # Try generic mapping, otherwise keep as-is
+            full_value = value_mapping.get(value_upper, value)
+
+        metrics[full_key] = full_value
+
+    return metrics
+
+
 def _parse_datetime(
     value: Any,
     *,
@@ -53,22 +240,37 @@ def _extract_cvss(data: dict[str, Any]) -> CvssScore:
         or data.get("cvssv2")
         or data.get("scores")
         or data.get("cvssScore")
-        or {}
     )
     if isinstance(cvss_data, list) and cvss_data:
         cvss_data = cvss_data[0]
-    if not isinstance(cvss_data, dict):
-        cvss_data = {"base_score": data.get("score") or data.get("baseScore")}
-        if "vector" not in cvss_data and data.get("vectorString"):
-            cvss_data["vector"] = data.get("vectorString")
-        if "severity" not in cvss_data and data.get("severity"):
-            cvss_data["severity"] = data.get("severity")
+
+    # If no cvss_data found, or it's an empty dict, check for EUVD flat format
+    if not cvss_data or (isinstance(cvss_data, dict) and not cvss_data):
+        # Handle EUVD format with baseScore, baseScoreVersion, baseScoreVector at top level
+        if data.get("baseScore") is not None or data.get("score") is not None:
+            cvss_data = {
+                "base_score": data.get("score") or data.get("baseScore"),
+                "version": data.get("baseScoreVersion"),
+                "vector": data.get("baseScoreVector") or data.get("vectorString"),
+                "severity": data.get("baseSeverity") or data.get("severity"),
+            }
+        else:
+            cvss_data = {}
+
+    version = cvss_data.get("version") or cvss_data.get("baseScoreVersion")
+    base_score = _safe_float(cvss_data.get("base_score") or cvss_data.get("baseScore"))
+    vector = cvss_data.get("vector") or cvss_data.get("vectorString") or cvss_data.get("baseScoreVector")
+    severity = _normalize_severity(cvss_data.get("severity") or cvss_data.get("baseSeverity"))
+
+    # Infer severity from score if not provided (common for EUVD records)
+    if not severity and base_score is not None:
+        severity = _infer_severity_from_score(base_score, version)
 
     return CvssScore(
-        version=cvss_data.get("version"),
-        base_score=_safe_float(cvss_data.get("base_score") or cvss_data.get("baseScore")),
-        vector=cvss_data.get("vector") or cvss_data.get("vectorString"),
-        severity=_normalize_severity(cvss_data.get("severity") or cvss_data.get("baseSeverity")),
+        version=version,
+        base_score=base_score,
+        vector=vector,
+        severity=severity,
     )
 
 
@@ -92,6 +294,54 @@ def _normalize_decimal_string(value: Any) -> Any:
 def _normalize_severity(value: Any) -> str | None:
     if isinstance(value, str):
         return value.lower()
+    return None
+
+
+def _infer_severity_from_score(score: float | None, version: str | None = None) -> str | None:
+    """
+    Infer CVSS severity rating from base score based on CVSS specification.
+
+    CVSS v3.x:
+    - None: 0.0
+    - Low: 0.1-3.9
+    - Medium: 4.0-6.9
+    - High: 7.0-8.9
+    - Critical: 9.0-10.0
+
+    CVSS v2.0:
+    - Low: 0.0-3.9
+    - Medium: 4.0-6.9
+    - High: 7.0-10.0
+    """
+    if score is None:
+        return None
+
+    # Determine version
+    is_v2 = version and ("2.0" in str(version) or "v2" in str(version).lower())
+
+    if is_v2:
+        # CVSS v2.0 severity ratings
+        if score == 0.0:
+            return "none"
+        elif 0.1 <= score <= 3.9:
+            return "low"
+        elif 4.0 <= score <= 6.9:
+            return "medium"
+        elif 7.0 <= score <= 10.0:
+            return "high"
+    else:
+        # CVSS v3.x severity ratings (default)
+        if score == 0.0:
+            return "none"
+        elif 0.1 <= score <= 3.9:
+            return "low"
+        elif 4.0 <= score <= 6.9:
+            return "medium"
+        elif 7.0 <= score <= 8.9:
+            return "high"
+        elif 9.0 <= score <= 10.0:
+            return "critical"
+
     return None
 
 
@@ -626,6 +876,10 @@ def _extract_cvss_metrics_from_euvd(record: Any) -> dict[str, list[dict[str, Any
         source = current.get("assigner") or current.get("source")
         metric_type = current.get("type")
 
+        # Infer severity from score if not provided (common for EUVD records)
+        if not severity and score is not None:
+            severity = _infer_severity_from_score(score, version)
+
         entry: dict[str, Any] = {}
         if version:
             entry["version"] = version
@@ -633,6 +887,12 @@ def _extract_cvss_metrics_from_euvd(record: Any) -> dict[str, list[dict[str, Any
             entry["baseScore"] = score
         if isinstance(vector, str):
             entry["vectorString"] = vector
+            # Parse the vector string to extract individual metrics
+            parsed_metrics = _parse_cvss_vector_string(vector)
+            # Add the parsed metrics to the entry
+            for metric_key, metric_value in parsed_metrics.items():
+                if metric_key != "version" and metric_key not in entry:
+                    entry[metric_key] = metric_value
         if severity:
             entry["baseSeverity"] = severity
         if isinstance(source, str) and source:

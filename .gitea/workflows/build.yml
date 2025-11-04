@@ -87,7 +87,7 @@ jobs:
       run: |
         sonar-scanner \
           -Dsonar.host.url="$SONAR_HOST_URL" \
-          -Dsonar.login="$SONAR_TOKEN" \
+          -Dsonar.token="$SONAR_TOKEN" \
           -Dsonar.projectKey=msc-app \
           -Dsonar.sources=. \
           -Dsonar.externalIssuesReportPaths="sonar-deps-report.json"
