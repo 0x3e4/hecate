@@ -60,6 +60,22 @@ class NVDClient:
         log.warning("nvd_client.no_data", vuln_id=cve_id)
         return None
 
+    async def fetch_cpe_matches(self, cve_id: str) -> list[dict[str, Any]] | None:
+        params = {"cveId": cve_id}
+        try:
+            async with self._rate_limiter.slot():
+                response = await self._client.get("/cpematch/2.0", params=params)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            log.warning("nvd_client.cpe_match_failed", vuln_id=cve_id, error=str(exc))
+            return None
+
+        payload = response.json()
+        match_strings = payload.get("matchStrings")
+        if isinstance(match_strings, list):
+            return match_strings
+        return None
+
     async def total_results(self) -> int:
         params = {"startIndex": 0, "resultsPerPage": 1}
         try:

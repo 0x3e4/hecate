@@ -20,6 +20,7 @@ class EUVDClient:
     """
 
     SEARCH_PATH = "/search"
+    DIRECT_LOOKUP_PATH = "/enisaid"
     MAX_PAGE_SIZE = 100
 
     def __init__(
@@ -99,6 +100,23 @@ class EUVDClient:
         if not candidate:
             return None
 
+        # Try direct lookup first via /api/enisaid?id={identifier}
+        try:
+            async with self._rate_limiter.slot():
+                response = await self._client.get(self.DIRECT_LOOKUP_PATH, params={"id": candidate})
+            response.raise_for_status()
+            payload = response.json()
+            if isinstance(payload, dict) and payload:
+                # Direct lookup returns a single record
+                return payload
+        except httpx.HTTPError as exc:
+            log.debug(
+                "euvd_client.direct_lookup_failed",
+                identifier=identifier,
+                error=str(exc),
+            )
+
+        # Fallback to search endpoint
         lookups: list[dict[str, Any]] = [
             {"search": candidate},
             {"queryString": candidate},
@@ -119,7 +137,7 @@ class EUVDClient:
                 response.raise_for_status()
             except httpx.HTTPError as exc:
                 log.warning(
-                    "euvd_client.fetch_single_failed",
+                    "euvd_client.fetch_single_search_failed",
                     identifier=identifier,
                     params=params,
                     error=str(exc),

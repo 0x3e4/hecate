@@ -74,6 +74,59 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "references": {"type": "keyword"},
                 "cwes": {"type": "keyword"},
                 "cpes": {"type": "keyword"},
+                "cpeConfigurations": {
+                    "type": "nested",
+                    "properties": {
+                        "nodes": {
+                            "type": "nested",
+                            "properties": {
+                                "operator": {"type": "keyword"},
+                                "negate": {"type": "boolean"},
+                                "matches": {
+                                    "type": "nested",
+                                    "properties": {
+                                        "criteria": {"type": "keyword"},
+                                        "vendor": {"type": "keyword"},
+                                        "product": {"type": "keyword"},
+                                        "versionStartIncluding": {"type": "keyword"},
+                                        "versionStartExcluding": {"type": "keyword"},
+                                        "versionEndIncluding": {"type": "keyword"},
+                                        "versionEndExcluding": {"type": "keyword"},
+                                        "versionStartNumeric": {"type": "long"},
+                                        "versionEndNumeric": {"type": "long"},
+                                        "vulnerable": {"type": "boolean"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "cpeVersionTokens": {
+                    "type": "search_as_you_type",
+                    "fields": {
+                        "keyword": {"type": "keyword"},
+                    },
+                },
+                "impactedProducts": {
+                    "type": "nested",
+                    "properties": {
+                        "vendor": {
+                            "properties": {
+                                "name": {"type": "keyword"},
+                                "slug": {"type": "keyword"},
+                            }
+                        },
+                        "product": {
+                            "properties": {
+                                "name": {"type": "keyword"},
+                                "slug": {"type": "keyword"},
+                            }
+                        },
+                        "versions": {"type": "keyword"},
+                        "environments": {"type": "keyword"},
+                        "vulnerable": {"type": "boolean"},
+                    },
+                },
                 "aliases": {"type": "keyword"},
                 "rejected": {"type": "boolean"},
                 "assigner": {"type": "keyword"},

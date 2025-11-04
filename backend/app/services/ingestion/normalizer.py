@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import copy
 import json
-from typing import Any
+from typing import Any, Mapping
 
 from dateutil import parser
 import re
 import structlog
 
 from app.models.vulnerability import CvssScore, VulnerabilityDocument
+from app.utils.strings import slugify
 
 log = structlog.get_logger()
 
@@ -100,12 +101,23 @@ def build_document(
     source_id: str | None,
     euvd_record: dict[str, Any],
     supplemental_record: dict[str, Any] | None,
+    supplemental_cpe_matches: list[dict[str, Any]] | None = None,
     ingested_at: datetime,
 ) -> tuple[VulnerabilityDocument, dict[str, set[str]]]:
-    title = euvd_record.get("title") or euvd_record.get("summary") or cve_id
+    # Title should be the CVE ID or EUVD ID, not the description
+    title = cve_id  # CVE ID if available, otherwise EUVD ID
+
+    # Summary should prioritize NVD description, then EUVD description
+    nvd_description = None
+    if supplemental_record and isinstance(supplemental_record, dict):
+        supplemental_cve = supplemental_record.get("cve")
+        if isinstance(supplemental_cve, dict):
+            nvd_description = _select_description(supplemental_cve.get("descriptions"))
+
     summary = (
-        euvd_record.get("summary")
+        nvd_description
         or euvd_record.get("description")
+        or euvd_record.get("summary")
         or euvd_record.get("shortDescription")
         or ""
     )
@@ -149,6 +161,9 @@ def build_document(
     else:
         cpes = []
     cpes = [cpe for cpe in cpes if isinstance(cpe, str)]
+    cpe_configurations: list[dict[str, Any]] = []
+    cpe_version_tokens: list[str] = []
+    impacted_products: list[dict[str, Any]] = []
 
     references = (
         euvd_record.get("references")
@@ -227,17 +242,60 @@ def build_document(
 
     cvss = apply_inferred_cvss(cvss, cvss_metrics)
 
+    if supplemental_cpe_matches:
+        cpematch_configurations, cpematch_cpes, cpematch_tokens = _collect_cpe_data_from_cpematch(
+            supplemental_cpe_matches
+        )
+        if cpematch_configurations:
+            cpe_configurations = _merge_configuration_sets(cpe_configurations, cpematch_configurations)
+        if cpematch_cpes:
+            cpes = _merge_unique_strings(cpes, cpematch_cpes)
+        if cpematch_tokens:
+            cpe_version_tokens = _merge_unique_strings(cpe_version_tokens, cpematch_tokens)
+
     if supplemental_record:
         supplemental_cve = supplemental_record.get("cve") if isinstance(supplemental_record, dict) else None
         if isinstance(supplemental_cve, dict):
             supplemental_cwes = _extract_cwes_from_nvd(supplemental_cve)
             if supplemental_cwes:
                 cwes = _merge_unique_strings(cwes, supplemental_cwes)
-        supplemental_cpes = _extract_cpes_from_nvd(supplemental_record)
+        supplemental_configurations, supplemental_cpes, supplemental_tokens = _collect_cpe_data_from_nvd(
+            supplemental_record
+        )
+        if supplemental_configurations:
+            cpe_configurations = _merge_configuration_sets(cpe_configurations, supplemental_configurations)
         if supplemental_cpes:
             cpes = _merge_unique_strings(cpes, supplemental_cpes)
+        if supplemental_tokens:
+            cpe_version_tokens = _merge_unique_strings(cpe_version_tokens, supplemental_tokens)
 
-    document = VulnerabilityDocument(
+    if cpes:
+        cpe_version_tokens = _merge_unique_strings(cpe_version_tokens, _tokens_from_cpes(cpes))
+
+    if cve_id and "2024-57254" in cve_id:
+        log.debug(
+            "normalizer.before_building_document",
+            vuln_id=cve_id,
+            cpe_configurations_count=len(cpe_configurations),
+            cpe_configurations_type=type(cpe_configurations).__name__,
+            first_config_keys=list(cpe_configurations[0].keys()) if cpe_configurations else [],
+        )
+
+    impacted_products = _build_impacted_products_payload(
+        cpe_configurations=cpe_configurations,
+        cpematch_entries=supplemental_cpe_matches,
+        cpes=cpes,
+    )
+
+    raw_payload: dict[str, Any] = {"euvd": euvd_record}
+    if supplemental_record is not None:
+        raw_payload["supplemental"] = supplemental_record
+    if supplemental_cpe_matches:
+        raw_payload["supplementalCpeMatches"] = supplemental_cpe_matches
+
+    # Store cpe_configurations as raw dicts - bypass Pydantic validation
+    # Pydantic will validate when possible but won't drop data on validation errors
+    document = VulnerabilityDocument.model_construct(
         vuln_id=cve_id,
         source_id=source_id,
         source=euvd_record.get("source", "EUVD"),
@@ -246,6 +304,9 @@ def build_document(
         references=[ref for ref in references if isinstance(ref, str)],
         cwes=_merge_unique_strings(cwes),
         cpes=_merge_unique_strings(cpes),
+        cpe_configurations=cpe_configurations,  # Pass dicts directly
+        cpe_version_tokens=_merge_unique_strings(cpe_version_tokens),
+        impacted_products=impacted_products,
         aliases=[alias for alias in aliases if isinstance(alias, str)],
         rejected=_determine_rejected(euvd_record, supplemental_record),
         assigner=assigner,
@@ -259,8 +320,18 @@ def build_document(
         published=published,
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),
-        raw={"euvd": euvd_record, "supplemental": supplemental_record},
+        raw=raw_payload,
     )
+
+    if cve_id and "2024-57254" in cve_id:
+        log.debug(
+            "normalizer.document_built",
+            vuln_id=cve_id,
+            cpe_configurations_count_before_constructor=len(cpe_configurations),
+            document_cpe_configurations_count=len(document.cpe_configurations),
+            impacted_products_count=len(impacted_products),
+        )
+
     return document, product_version_map
 
 
@@ -300,9 +371,9 @@ def _parse_epss(value: Any) -> float | None:
     if raw is None:
         return None
 
-    if 0 < raw <= 1:
-        raw *= 100
-    return round(raw, 2)
+    # EPSS scores are typically in range 0-1 (e.g., 0.8 = 80%)
+    # Store as-is without conversion
+    return round(raw, 4)
 
 
 def _merge_unique_strings(*value_lists: Any) -> list[str]:
@@ -315,6 +386,29 @@ def _merge_unique_strings(*value_lists: Any) -> list[str]:
             if isinstance(value, str) and value not in seen:
                 seen.add(value)
                 merged.append(value)
+    return merged
+
+
+def _merge_configuration_sets(
+    base: list[dict[str, Any]] | None,
+    additional: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def append_unique(candidate: dict[str, Any]) -> None:
+        serialized = json.dumps(candidate, sort_keys=True, default=str)
+        if serialized not in seen:
+            seen.add(serialized)
+            merged.append(copy.deepcopy(candidate))
+
+    for bucket in (base, additional):
+        if not bucket:
+            continue
+        for entry in bucket:
+            if isinstance(entry, dict):
+                append_unique(entry)
+
     return merged
 
 
@@ -757,6 +851,490 @@ def _humanize_label(value: str | None) -> str | None:
     return label or None
 
 
+def _normalize_token_component(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    normalized = normalized.replace(" ", "_")
+    return normalized or None
+
+
+def _normalize_cpe_component(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.replace("\\", "").strip()
+    if not cleaned or cleaned in {"*", "-"}:
+        return None
+    return cleaned
+
+
+def _parse_cpe_uri_details(value: str | None) -> dict[str, str | None]:
+    if not isinstance(value, str):
+        return {}
+    candidate = value.strip()
+    if not candidate or ":" not in candidate:
+        return {}
+
+    parts = candidate.split(":")
+    if len(parts) < 13:
+        parts.extend([""] * (13 - len(parts)))
+
+    part = _normalize_cpe_component(parts[2] if len(parts) > 2 else None)
+    vendor_raw = _normalize_cpe_component(parts[3] if len(parts) > 3 else None)
+    product_raw = _normalize_cpe_component(parts[4] if len(parts) > 4 else None)
+    version = _normalize_cpe_component(parts[5] if len(parts) > 5 else None)
+    target_sw = _normalize_cpe_component(parts[10] if len(parts) > 10 else None)
+    target_hw = _normalize_cpe_component(parts[11] if len(parts) > 11 else None)
+
+    vendor = _humanize_label(vendor_raw) or vendor_raw
+    product = _humanize_label(product_raw) or product_raw
+
+    return {
+        "part": part,
+        "vendor_raw": vendor_raw,
+        "vendor": vendor,
+        "product_raw": product_raw,
+        "product": product,
+        "version": _normalize_version(version),
+        "target_sw": target_sw,
+        "target_hw": target_hw,
+    }
+
+
+def _parse_cpe_uri_component(cpe_uri: str | None, index: int) -> str | None:
+    if not isinstance(cpe_uri, str):
+        return None
+    parsed = _parse_cpe_uri_details(cpe_uri)
+    if index == 2:
+        return parsed.get("part")
+    if index == 3:
+        return parsed.get("vendor_raw") or parsed.get("vendor")
+    if index == 4:
+        return parsed.get("product_raw") or parsed.get("product")
+    if index == 5:
+        return parsed.get("version")
+    if index == 10:
+        return parsed.get("target_sw")
+    if index == 11:
+        return parsed.get("target_hw")
+    return None
+
+
+def _decompose_version_variants(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    candidate = value.strip()
+    if not candidate:
+        return set()
+
+    tokens: set[str] = {candidate.lower()}
+    parts = re.split(r"[._-]", candidate)
+    numeric_parts: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        if not part.isdigit():
+            break
+        numeric_parts.append(str(int(part)))
+    progressive: list[str] = []
+    for part in numeric_parts:
+        progressive.append(part)
+        tokens.add(".".join(progressive).lower())
+    return {token for token in tokens if token}
+
+
+def _build_version_tokens(
+    vendor: str | None,
+    product: str | None,
+    version: str | None,
+    start_inc: str | None,
+    start_exc: str | None,
+    end_inc: str | None,
+    end_exc: str | None,
+) -> set[str]:
+    tokens: set[str] = set()
+    values = [
+        value
+        for value in (version, start_inc, start_exc, end_inc, end_exc)
+        if isinstance(value, str) and value.strip()
+    ]
+    if not values:
+        return tokens
+
+    vendor_component = _normalize_token_component(vendor)
+    product_component = _normalize_token_component(product)
+
+    for value in values:
+        variants = _decompose_version_variants(value)
+        if not variants:
+            variants = {value.strip().lower()}
+        tokens.update(variants)
+        if product_component:
+            tokens.update(f"{product_component}::{variant}" for variant in variants)
+        if vendor_component and product_component:
+            tokens.update(f"{vendor_component}::{product_component}::{variant}" for variant in variants)
+
+    return {token for token in tokens if token}
+
+
+def _encode_version_numeric(value: str | None) -> int | None:
+    """Encode a semantic version string to a single integer for range comparisons.
+
+    Uses base-10000 encoding to fit within MongoDB's 8-byte signed integer limit (2^63-1).
+    Formula: v1 * 10000^3 + v2 * 10000^2 + v3 * 10000 + v4
+
+    Max encoded value: 9999.9999.9999.9999 -> 9,999,999,999,999,999
+    MongoDB limit: 9,223,372,036,854,775,807 (2^63-1)
+
+    Version components > 9999 will be capped at 9999.
+
+    Args:
+        value: Version string (e.g., "1.2.3", "2.0.0-beta")
+
+    Returns:
+        Encoded integer or None if the value cannot be parsed
+    """
+    if not value:
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    parts = re.split(r"[._-]", candidate)
+    numeric_parts: list[int] = []
+    for part in parts:
+        if not part:
+            continue
+        match = re.match(r"(\d+)", part)
+        if not match:
+            return None
+        numeric_parts.append(int(match.group(1)))
+        if len(numeric_parts) >= 4:
+            break
+    if not numeric_parts:
+        return None
+    while len(numeric_parts) < 4:
+        numeric_parts.append(0)
+
+    encoded = 0
+    for component in numeric_parts[:4]:
+        encoded = encoded * 10000 + min(component, 9999)
+    return encoded
+
+
+def _tokens_from_cpes(cpes: list[str]) -> list[str]:
+    tokens: set[str] = set()
+    for cpe in cpes:
+        if not isinstance(cpe, str):
+            continue
+        parsed = _parse_cpe_uri_details(cpe)
+        if not parsed:
+            continue
+        vendor = parsed.get("vendor_raw") or parsed.get("vendor")
+        product = parsed.get("product_raw") or parsed.get("product")
+        version = parsed.get("version")
+        tokens.update(
+            _build_version_tokens(
+                vendor,
+                product,
+                version,
+                None,
+                None,
+                None,
+                None,
+            )
+        )
+    return sorted(tokens)
+
+
+def _normalize_display_label(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.replace("_", " ").strip()
+    return candidate or None
+
+
+def _parse_cpe_uri_for_display(cpe: str) -> tuple[str | None, str | None, str | None]:
+    if not isinstance(cpe, str) or not cpe:
+        return None, None, None
+    parts = cpe.split(":")
+    if len(parts) < 6:
+        return None, None, None
+
+    vendor_raw = parts[3].replace("\\", "").strip()
+    product_raw = parts[4].replace("\\", "").strip()
+    version_raw = parts[5].replace("\\", "").strip()
+
+    vendor = _normalize_display_label(vendor_raw)
+    product = _normalize_display_label(product_raw)
+    version = version_raw if version_raw not in {"*", "-"} else None
+
+    return vendor, product, version
+
+
+def _build_impacted_products_payload(
+    *,
+    cpe_configurations: list[dict[str, Any]],
+    cpematch_entries: list[dict[str, Any]] | None,
+    cpes: list[str],
+) -> list[dict[str, Any]]:
+    # Collect matches per configuration to determine context
+    config_groups: list[list[dict[str, Any]]] = []
+
+    def _collect_matches_from_nodes(nodes: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        collected: list[dict[str, Any]] = []
+        if not isinstance(nodes, list):
+            return collected
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_matches = node.get("matches")
+            if isinstance(node_matches, list):
+                for item in node_matches:
+                    if isinstance(item, dict):
+                        collected.append(item)
+            collected.extend(_collect_matches_from_nodes(node.get("nodes")))
+        return collected
+
+    def _has_and_with_app_and_os(nodes: list[dict[str, Any]] | None) -> bool:
+        """Check if configuration has AND operator with both app and OS nodes"""
+        if not isinstance(nodes, list) or len(nodes) < 2:
+            return False
+
+        # Check if any node has AND operator at the parent level
+        has_app = False
+        has_os = False
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            matches = node.get("matches", [])
+            for match in matches:
+                if isinstance(match, dict):
+                    part = str(match.get("part") or "").lower()
+                    if part in ("a", "h"):
+                        has_app = True
+                    elif part == "o":
+                        has_os = True
+
+        return has_app and has_os
+
+    for configuration in cpe_configurations or []:
+        if isinstance(configuration, dict):
+            nodes = configuration.get("nodes")
+            matches = _collect_matches_from_nodes(nodes)
+            if matches:
+                # Store configuration context
+                config_groups.append({
+                    "matches": matches,
+                    "is_and_context": _has_and_with_app_and_os(nodes)
+                })
+
+    if (not config_groups) and isinstance(cpematch_entries, list):
+        cpematch_configurations, _, _ = _collect_cpe_data_from_cpematch(cpematch_entries)
+        for configuration in cpematch_configurations:
+            if isinstance(configuration, dict):
+                nodes = configuration.get("nodes")
+                matches = _collect_matches_from_nodes(nodes)
+                if matches:
+                    config_groups.append({
+                        "matches": matches,
+                        "is_and_context": _has_and_with_app_and_os(nodes)
+                    })
+
+    aggregated: dict[tuple[str | None, str | None], dict[str, Any]] = {}
+    shared_environments: set[str] = set()
+
+    # Process each configuration group
+    for group in config_groups:
+        matches = group["matches"]
+        is_and_context = group["is_and_context"]
+
+        # If AND context, collect OS as environments
+        group_environments: set[str] = set()
+        if is_and_context:
+            for match in matches:
+                part_value = str(match.get("part") or "").lower()
+                if part_value == "o":
+                    vendor_label = _normalize_display_label(match.get("vendorRaw") or match.get("vendor"))
+                    product_label = _normalize_display_label(match.get("productRaw") or match.get("product"))
+                    env_label = product_label or vendor_label
+                    if env_label:
+                        group_environments.add(env_label)
+
+        # Process all matches
+        for match in matches:
+            part_value = str(match.get("part") or "").lower()
+            vendor_label = _normalize_display_label(match.get("vendorRaw") or match.get("vendor"))
+            product_label = _normalize_display_label(match.get("productRaw") or match.get("product"))
+
+            # Skip OS entries - they should only appear as environments, not as products
+            if part_value == "o":
+                continue
+
+            # Only include applications and hardware
+            if part_value not in {"a", "h"}:
+                continue
+
+            if not vendor_label or not product_label:
+                continue
+
+            vendor_slug = slugify(vendor_label)
+            product_slug = slugify(product_label)
+
+            key = (vendor_slug or vendor_label.lower(), product_slug or product_label.lower())
+            entry = aggregated.setdefault(
+                key,
+                {
+                    "vendor": {"name": vendor_label, "slug": vendor_slug or None},
+                    "product": {"name": product_label, "slug": product_slug or None},
+                    "versions": set(),
+                    "vulnerable": None,
+                    "environments": set(),
+                },
+            )
+
+            version_range = _format_version_range(match)
+            if version_range:
+                entry["versions"].add(version_range)
+
+            vulnerable_flag = match.get("vulnerable")
+            if vulnerable_flag is False:
+                entry["vulnerable"] = False
+            elif entry["vulnerable"] is None and vulnerable_flag is not False:
+                entry["vulnerable"] = True
+
+            # Add group environments to this entry
+            if group_environments:
+                entry["environments"].update(group_environments)
+
+            # Also check for target software/hardware
+            for field in ("targetSw", "targetHw", "target_sw", "target_hw"):
+                value = match.get(field)
+                if isinstance(value, str) and value.strip():
+                    env_label = _normalize_display_label(value) or value.strip()
+                    entry["environments"].add(env_label)
+
+    if not aggregated:
+        return _fallback_impacted_products_from_cpes_payload(
+            cpes=cpes,
+            shared_environments=shared_environments,
+        )
+
+    results: list[dict[str, Any]] = []
+    for entry in aggregated.values():
+        results.append(
+            {
+                "vendor": entry["vendor"],
+                "product": entry["product"],
+                "versions": sorted(entry["versions"], key=str.lower),
+                "vulnerable": entry["vulnerable"],
+                "environments": sorted(entry["environments"], key=str.lower),
+            }
+        )
+
+    return sorted(
+        results,
+        key=lambda item: (item["vendor"]["name"].lower(), item["product"]["name"].lower()),
+    )
+
+
+def _fallback_impacted_products_from_cpes_payload(
+    *,
+    cpes: list[str],
+    shared_environments: set[str],
+) -> list[dict[str, Any]]:
+    aggregated: dict[tuple[str | None, str | None], dict[str, Any]] = {}
+    for cpe in cpes:
+        vendor_label, product_label, version_label = _parse_cpe_uri_for_display(cpe)
+        if not vendor_label or not product_label:
+            continue
+
+        vendor_slug = slugify(vendor_label)
+        product_slug = slugify(product_label)
+        key = (vendor_slug or vendor_label.lower(), product_slug or product_label.lower())
+        entry = aggregated.setdefault(
+            key,
+            {
+                "vendor": {"name": vendor_label, "slug": vendor_slug or None},
+                "product": {"name": product_label, "slug": product_slug or None},
+                "versions": set(),
+                "vulnerable": True,
+                "environments": set(),
+            },
+        )
+        if version_label:
+            entry["versions"].add(version_label)
+
+    shared_sorted = sorted(shared_environments)
+    results: list[dict[str, Any]] = []
+    for entry in aggregated.values():
+        environments = (
+            sorted(entry["environments"], key=str.lower)
+            if entry["environments"]
+            else shared_sorted
+        )
+        results.append(
+            {
+                "vendor": entry["vendor"],
+                "product": entry["product"],
+                "versions": sorted(entry["versions"], key=str.lower),
+                "vulnerable": entry["vulnerable"],
+                "environments": environments,
+            }
+        )
+
+    return sorted(
+        results,
+        key=lambda item: (item["vendor"]["name"].lower(), item["product"]["name"].lower()),
+    )
+
+
+def _has_version_constraints(entry: Mapping[str, Any]) -> bool:
+    if any(
+        isinstance(entry.get(field), str) and entry[field].strip()
+        for field in (
+            "versionStartIncluding",
+            "versionStartExcluding",
+            "versionEndIncluding",
+            "versionEndExcluding",
+        )
+    ):
+        return True
+    version = entry.get("version")
+    if isinstance(version, str) and version.strip():
+        return True
+    return False
+
+
+def _format_version_range(match: Mapping[str, Any]) -> str | None:
+    start_inc = match.get("versionStartIncluding")
+    start_exc = match.get("versionStartExcluding")
+    end_inc = match.get("versionEndIncluding")
+    end_exc = match.get("versionEndExcluding")
+    exact = match.get("version")
+
+    parts: list[str] = []
+    if isinstance(start_inc, str) and start_inc.strip():
+        parts.append(f">= {start_inc.strip()}")
+    elif isinstance(start_exc, str) and start_exc.strip():
+        parts.append(f"> {start_exc.strip()}")
+
+    if isinstance(end_exc, str) and end_exc.strip():
+        parts.append(f"< {end_exc.strip()}")
+    elif isinstance(end_inc, str) and end_inc.strip():
+        parts.append(f"<= {end_inc.strip()}")
+
+    if not parts and isinstance(exact, str) and exact.strip():
+        parts.append(f"= {exact.strip()}")
+
+    if not parts:
+        return None
+
+    return ", ".join(parts)
+
+
 def _select_description(entries: Any, *, lang: str = "en") -> str | None:
     if isinstance(entries, list):
         for entry in entries:
@@ -768,41 +1346,239 @@ def _select_description(entries: Any, *, lang: str = "en") -> str | None:
     return None
 
 
-def _extract_cpes_from_nvd(record: dict[str, Any]) -> list[str]:
+def _collect_cpe_data_from_nvd(record: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    # NVD record can have configurations at top level or nested in record["cve"]["configurations"]
+    import structlog
+    log = structlog.get_logger()
+
     configurations = record.get("configurations")
     if not isinstance(configurations, list):
-        return []
+        cve_wrapper = record.get("cve")
+        if isinstance(cve_wrapper, dict):
+            configurations = cve_wrapper.get("configurations")
+            if configurations:
+                log.debug("normalizer.found_nested_configs", count=len(configurations))
+        else:
+            log.debug("normalizer.no_cve_wrapper", record_keys=list(record.keys())[:5])
+    if not isinstance(configurations, list):
+        log.debug("normalizer.no_configurations", has_record=bool(record))
+        return [], [], []
 
-    collected: list[str] = []
+    normalized_configurations: list[dict[str, Any]] = []
+    collected_criteria: list[str] = []
+    collected_tokens: set[str] = set()
 
-    def walk_nodes(nodes: list[Any]) -> None:
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            matches = node.get("cpeMatch")
-            if isinstance(matches, list):
-                for match in matches:
-                    if not isinstance(match, dict):
-                        continue
-                    if match.get("vulnerable"):
-                        criteria = match.get("criteria")
-                        if isinstance(criteria, str):
-                            collected.append(criteria)
-                        else:
-                            fallback = match.get("cpeName") or match.get("matchCriteriaId")
-                            if isinstance(fallback, str):
-                                collected.append(fallback)
-            nested_nodes = node.get("nodes")
-            if isinstance(nested_nodes, list):
-                walk_nodes(nested_nodes)
+    def normalize_node(node: Any) -> tuple[dict[str, Any] | None, list[str], set[str]]:
+        if not isinstance(node, dict):
+            return None, [], set()
+
+        operator = node.get("operator")
+        negate = bool(node.get("negate", False))
+
+        normalized: dict[str, Any] = {}
+        if isinstance(operator, str) and operator.strip():
+            normalized["operator"] = operator.strip().upper()
+        elif "operator" in node:
+            normalized["operator"] = "OR"
+        if negate:
+            normalized["negate"] = True
+
+        matches_raw = node.get("cpeMatch")
+        node_criteria: list[str] = []
+        node_tokens: set[str] = set()
+        normalized_matches: list[dict[str, Any]] = []
+        if isinstance(matches_raw, list):
+            for entry in matches_raw:
+                match_obj, match_criteria, match_tokens = _normalize_cpe_match(entry)
+                if match_obj:
+                    normalized_matches.append(match_obj)
+                    node_criteria.extend(match_criteria)
+                    node_tokens.update(match_tokens)
+        if normalized_matches:
+            normalized["matches"] = normalized_matches
+
+        children_raw = node.get("nodes")
+        normalized_children: list[dict[str, Any]] = []
+        if isinstance(children_raw, list):
+            for child in children_raw:
+                child_obj, child_criteria, child_tokens = normalize_node(child)
+                if child_obj:
+                    normalized_children.append(child_obj)
+                    node_criteria.extend(child_criteria)
+                    node_tokens.update(child_tokens)
+        if normalized_children:
+            normalized["nodes"] = normalized_children
+
+        if not normalized_matches and not normalized_children:
+            return None, node_criteria, node_tokens
+
+        if "operator" not in normalized:
+            normalized["operator"] = "OR"
+
+        return normalized, node_criteria, node_tokens
 
     for configuration in configurations:
-        if isinstance(configuration, dict):
-            nodes = configuration.get("nodes")
-            if isinstance(nodes, list):
-                walk_nodes(nodes)
+        if not isinstance(configuration, dict):
+            continue
+        nodes = configuration.get("nodes")
+        if not isinstance(nodes, list):
+            continue
+        normalized_nodes: list[dict[str, Any]] = []
+        config_criteria: list[str] = []
+        config_tokens: set[str] = set()
+        for node in nodes:
+            normalized_node, node_criteria, node_tokens = normalize_node(node)
+            if normalized_node:
+                normalized_nodes.append(normalized_node)
+                config_criteria.extend(node_criteria)
+                config_tokens.update(node_tokens)
+        if normalized_nodes:
+            normalized_configurations.append({"nodes": normalized_nodes})
+            collected_criteria.extend(config_criteria)
+            collected_tokens.update(config_tokens)
 
-    return _merge_unique_strings(collected)
+    return normalized_configurations, _merge_unique_strings(collected_criteria), sorted(collected_tokens)
+
+
+def _collect_cpe_data_from_cpematch(entries: list[dict[str, Any]] | None) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    if not isinstance(entries, list):
+        return [], [], []
+
+    normalized_matches: list[dict[str, Any]] = []
+    collected_criteria: list[str] = []
+    collected_tokens: set[str] = set()
+
+    for wrapper in entries:
+        match_entry: Any = None
+        if isinstance(wrapper, dict):
+            candidate = wrapper.get("matchString")
+            match_entry = candidate if isinstance(candidate, dict) else wrapper
+        if not isinstance(match_entry, dict):
+            continue
+        normalized_match, criteria_list, tokens = _normalize_cpe_match(match_entry)
+        if not normalized_match:
+            continue
+        normalized_matches.append(normalized_match)
+        collected_criteria.extend(criteria_list)
+        collected_tokens.update(tokens)
+
+    if not normalized_matches:
+        return [], [], []
+
+    configuration = {"nodes": [{"operator": "OR", "matches": normalized_matches}]}
+    return [configuration], _merge_unique_strings(collected_criteria), sorted(collected_tokens)
+
+
+def _normalize_cpe_match(entry: Any) -> tuple[dict[str, Any] | None, list[str], set[str]]:
+    if not isinstance(entry, dict):
+        return None, [], set()
+
+    sanitized: dict[str, Any] = {}
+    criteria = entry.get("criteria")
+    criteria_value = criteria.strip() if isinstance(criteria, str) else None
+    if not criteria_value:
+        fallback = entry.get("cpeName") or entry.get("matchCriteriaId")
+        if isinstance(fallback, str) and fallback.strip():
+            criteria_value = fallback.strip()
+    if criteria_value:
+        sanitized["criteria"] = criteria_value
+
+    match_id = entry.get("matchCriteriaId")
+    if isinstance(match_id, str) and match_id.strip():
+        sanitized["matchCriteriaId"] = match_id.strip()
+
+    cpe_name = entry.get("cpeName")
+    if isinstance(cpe_name, str) and cpe_name.strip():
+        sanitized["cpeName"] = cpe_name.strip()
+
+    sanitized["vulnerable"] = bool(entry.get("vulnerable", False))
+
+    version_fields = {
+        "version": entry.get("version"),
+        "versionStartIncluding": entry.get("versionStartIncluding"),
+        "versionStartExcluding": entry.get("versionStartExcluding"),
+        "versionEndIncluding": entry.get("versionEndIncluding"),
+        "versionEndExcluding": entry.get("versionEndExcluding"),
+    }
+    for field, value in version_fields.items():
+        normalized = _normalize_version(value)
+        if normalized:
+            sanitized[field] = normalized
+
+    parsed = _parse_cpe_uri_details(criteria_value or sanitized.get("cpeName"))
+    vendor_key = None
+    product_key = None
+    if parsed:
+        if parsed.get("part"):
+            sanitized["part"] = parsed["part"]
+        if parsed.get("vendor"):
+            sanitized["vendor"] = parsed["vendor"]
+        if parsed.get("vendor_raw"):
+            sanitized["vendorRaw"] = parsed["vendor_raw"]
+            vendor_key = parsed["vendor_raw"]
+        elif parsed.get("vendor"):
+            vendor_key = parsed["vendor"]
+        if parsed.get("product"):
+            sanitized["product"] = parsed["product"]
+        if parsed.get("product_raw"):
+            sanitized["productRaw"] = parsed["product_raw"]
+            product_key = parsed["product_raw"]
+        elif parsed.get("product"):
+            product_key = parsed["product"]
+        if parsed.get("target_sw"):
+            sanitized["targetSw"] = parsed["target_sw"]
+        if parsed.get("target_hw"):
+            sanitized["targetHw"] = parsed["target_hw"]
+        if "version" not in sanitized and parsed.get("version"):
+            sanitized["version"] = parsed["version"]
+
+    start_numeric = _encode_version_numeric(
+        sanitized.get("versionStartIncluding")
+        or sanitized.get("versionStartExcluding")
+        or sanitized.get("version")
+    )
+    end_numeric = _encode_version_numeric(
+        sanitized.get("versionEndIncluding")
+        or sanitized.get("versionEndExcluding")
+        or sanitized.get("version")
+    )
+    if start_numeric is not None:
+        sanitized["versionStartNumeric"] = start_numeric
+    if end_numeric is not None:
+        sanitized["versionEndNumeric"] = end_numeric
+
+    tokens = _build_version_tokens(
+        vendor_key,
+        product_key,
+        sanitized.get("version"),
+        sanitized.get("versionStartIncluding"),
+        sanitized.get("versionStartExcluding"),
+        sanitized.get("versionEndIncluding"),
+        sanitized.get("versionEndExcluding"),
+    )
+    if tokens:
+        sanitized["versionTokens"] = sorted(tokens)
+
+    cleaned: dict[str, Any] = {"vulnerable": sanitized.pop("vulnerable", False)}
+    for key, value in sanitized.items():
+        if value is None:
+            continue
+        if isinstance(value, (list, dict)) and not value:
+            continue
+        cleaned[key] = value
+
+    criteria_list = []
+    if isinstance(cleaned.get("criteria"), str):
+        criteria_list.append(cleaned["criteria"])
+    elif isinstance(cleaned.get("cpeName"), str):
+        criteria_list.append(cleaned["cpeName"])
+
+    return cleaned, criteria_list, tokens
+
+
+def _extract_cpes_from_nvd(record: dict[str, Any]) -> list[str]:
+    _, criteria, _ = _collect_cpe_data_from_nvd(record)
+    return criteria
 
 
 def _extract_cwes_from_nvd(cve_wrapper: dict[str, Any]) -> list[str]:
@@ -860,6 +1636,7 @@ def build_document_from_nvd(
     record: dict[str, Any],
     *,
     ingested_at: datetime,
+    cpe_matches: list[dict[str, Any]] | None = None,
 ) -> tuple[VulnerabilityDocument, dict[str, set[str]]] | None:
     if not isinstance(record, dict):
         return None
@@ -872,8 +1649,9 @@ def build_document_from_nvd(
         return None
 
     description = _select_description(cve_wrapper.get("descriptions")) or ""
-    title = description.split(".")[0] if description else cve_id
-    summary = description or title
+    # Title should be the CVE ID, summary is the description
+    title = cve_id
+    summary = description or cve_id
 
     references_raw = cve_wrapper.get("references") or []
     references: list[str] = []
@@ -886,23 +1664,39 @@ def build_document_from_nvd(
 
     cwes = _extract_cwes_from_nvd(cve_wrapper)
 
-    cpes = _extract_cpes_from_nvd(record)
+    cpe_configurations, cpes, cpe_version_tokens = _collect_cpe_data_from_nvd(record)
+    impacted_products = _build_impacted_products_payload(
+        cpe_configurations=cpe_configurations,
+        cpematch_entries=cpe_matches,
+        cpes=cpes,
+    )
+    if cpe_matches:
+        cpematch_configurations, cpematch_cpes, cpematch_tokens = _collect_cpe_data_from_cpematch(cpe_matches)
+        if cpematch_configurations:
+            cpe_configurations = _merge_configuration_sets(cpe_configurations, cpematch_configurations)
+        if cpematch_cpes:
+            cpes = _merge_unique_strings(cpes, cpematch_cpes)
+        if cpematch_tokens:
+            cpe_version_tokens = _merge_unique_strings(cpe_version_tokens, cpematch_tokens)
 
     vendors: set[str] = set()
     product_version_map: dict[str, set[str]] = {}
     for cpe_uri in cpes:
+        part = _parse_cpe_uri_component(cpe_uri, 2)  # a, h, or o
         vendor = _parse_cpe_uri_component(cpe_uri, 3)
         product = _parse_cpe_uri_component(cpe_uri, 4)
         version = _parse_cpe_uri_component(cpe_uri, 5)
         vendor_label = _humanize_label(vendor)
         product_label = _humanize_label(product)
         version_value = _normalize_version(version)
-        if vendor_label:
-            vendors.add(vendor_label)
-        if product_label:
-            product_versions = product_version_map.setdefault(product_label, set())
-            if version_value:
-                product_versions.add(version_value)
+        # Only add vendors/products from applications/hardware, not operating systems
+        if part in ("a", "h"):
+            if vendor_label:
+                vendors.add(vendor_label)
+            if product_label:
+                product_versions = product_version_map.setdefault(product_label, set())
+                if version_value:
+                    product_versions.add(version_value)
 
     published = _parse_datetime(
         cve_wrapper.get("published"),
@@ -918,7 +1712,15 @@ def build_document_from_nvd(
     cvss_metrics = _extract_cvss_metrics_from_nvd(record)
     cvss = apply_inferred_cvss(cvss, cvss_metrics)
 
-    document = VulnerabilityDocument(
+    if cpes:
+        cpe_version_tokens = _merge_unique_strings(cpe_version_tokens, _tokens_from_cpes(cpes))
+
+    raw_payload: dict[str, Any] = {"nvd": record}
+    if cpe_matches:
+        raw_payload["cpematch"] = cpe_matches
+
+    # Store cpe_configurations as raw dicts - bypass Pydantic validation
+    document = VulnerabilityDocument.model_construct(
         vuln_id=cve_id,
         source_id=cve_id,
         source="NVD",
@@ -927,6 +1729,9 @@ def build_document_from_nvd(
         references=references,
         cwes=cwes,
         cpes=cpes,
+        cpe_configurations=cpe_configurations,  # Pass dicts directly
+        cpe_version_tokens=_merge_unique_strings(cpe_version_tokens),
+        impacted_products=impacted_products,
         aliases=[],
         rejected=_determine_rejected(record, cve_wrapper),
         assigner=_ensure_str(cve_wrapper.get("sourceIdentifier")),
@@ -940,6 +1745,6 @@ def build_document_from_nvd(
         published=published,
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),
-        raw={"nvd": record},
+        raw=raw_payload,
     )
     return document, product_version_map

@@ -180,12 +180,16 @@ class IngestionPipeline:
 
                 cve_id, source_id = identifiers
 
-                supplemental = await self.nvd_client.fetch_cve(cve_id) if _is_cve(cve_id) else None
+                # EUVD pipeline should operate independently - don't fetch from NVD
+                # NVD data will be added by the separate NVD sync job
+                supplemental = None
+                supplemental_cpe_matches = None
                 document, product_version_map = build_document(
                     cve_id=cve_id,
                     source_id=source_id,
                     euvd_record=record,
                     supplemental_record=supplemental,
+                    supplemental_cpe_matches=supplemental_cpe_matches,
                     ingested_at=datetime.now(tz=UTC),
                 )
 
@@ -195,15 +199,47 @@ class IngestionPipeline:
                     if not latest_modified or ts > latest_modified:
                         latest_modified = ts
 
+                existing_doc = await repository.collection.find_one(
+                    {"_id": document.vuln_id},
+                    projection={
+                        "impacted_products": 1,
+                        "impactedProducts": 1,
+                        "cpe_configurations": 1,
+                        "cpeConfigurations": 1,
+                    },
+                )
+                existing_impacted = []
+                existing_cpe_configs = []
+                if isinstance(existing_doc, dict):
+                    existing_impacted = existing_doc.get("impacted_products") or existing_doc.get("impactedProducts") or []
+                    existing_cpe_configs = existing_doc.get("cpe_configurations") or existing_doc.get("cpeConfigurations") or []
+
                 existing_timestamps = await repository.get_timestamps(document.vuln_id)
                 if existing_timestamps:
                     existing_published = existing_timestamps.get("published")
                     existing_modified = existing_timestamps.get("modified")
                     has_reference_timestamp = document.published is not None or document.modified is not None
+                    requires_impacted_update = bool(document.impacted_products) and not existing_impacted
+                    requires_cpe_config_update = bool(document.cpe_configurations) and not existing_cpe_configs
+
+                    if cve_id and "2024-57254" in cve_id:
+                        log.debug(
+                            "pipeline.skip_check",
+                            vuln_id=cve_id,
+                            has_reference_timestamp=has_reference_timestamp,
+                            timestamps_match=_timestamps_match(existing_published, document.published) and _timestamps_match(existing_modified, document.modified),
+                            requires_impacted_update=requires_impacted_update,
+                            requires_cpe_config_update=requires_cpe_config_update,
+                            document_cpe_configs_count=len(document.cpe_configurations),
+                            existing_cpe_configs_count=len(existing_cpe_configs),
+                        )
+
                     if (
                         has_reference_timestamp
                         and _timestamps_match(existing_published, document.published)
                         and _timestamps_match(existing_modified, document.modified)
+                        and not requires_impacted_update
+                        and not requires_cpe_config_update
                     ):
                         skipped += 1
                         log.debug(
@@ -218,6 +254,7 @@ class IngestionPipeline:
                         vendors=document.vendors,
                         product_versions=product_version_map,
                         cpes=document.cpes,
+                        cpe_configurations=document.cpe_configurations,
                     )
                     document = document.model_copy(
                         update={
@@ -266,7 +303,11 @@ class IngestionPipeline:
                     "metadata": metadata,
                 }
 
-                upsert_result = await repository.upsert(document, change_context=change_context)
+                upsert_result = await repository.upsert(
+                    document,
+                    change_context=change_context,
+                    euvd_raw=record
+                )
                 if upsert_result.inserted:
                     ingested += 1
                 else:

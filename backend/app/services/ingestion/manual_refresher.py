@@ -142,8 +142,10 @@ class ManualRefresher:
         )
 
         nvd_record = None
-        if canonical_id and CVE_PATTERN.fullmatch(canonical_id) and not is_euvd:
+        nvd_cpe_matches: list[dict[str, Any]] | None = None
+        if canonical_id and CVE_PATTERN.fullmatch(canonical_id):
             nvd_record = await self._nvd_client.fetch_cve(canonical_id)
+            nvd_cpe_matches = await self._nvd_client.fetch_cpe_matches(canonical_id)
 
         if euvd_record:
             document, product_version_map = build_document(
@@ -151,6 +153,7 @@ class ManualRefresher:
                 source_id=source_id,
                 euvd_record=euvd_record,
                 supplemental_record=nvd_record,
+                supplemental_cpe_matches=nvd_cpe_matches,
                 ingested_at=ingested_at,
             )
             try:
@@ -158,7 +161,14 @@ class ManualRefresher:
                     vendors=document.vendors,
                     product_versions=product_version_map,
                     cpes=document.cpes,
+                    cpe_configurations=document.cpe_configurations,
                 )
+                if document.vuln_id and "2024-57254" in document.vuln_id:
+                    log.debug(
+                        "manual_refresher.before_model_copy",
+                        vuln_id=document.vuln_id,
+                        cpe_configurations_count=len(document.cpe_configurations),
+                    )
                 document = document.model_copy(
                     update={
                         "vendor_slugs": catalog_result.vendor_slugs,
@@ -167,6 +177,12 @@ class ManualRefresher:
                         "product_version_ids": catalog_result.version_ids,
                     }
                 )
+                if document.vuln_id and "2024-57254" in document.vuln_id:
+                    log.debug(
+                        "manual_refresher.after_model_copy",
+                        vuln_id=document.vuln_id,
+                        cpe_configurations_count=len(document.cpe_configurations),
+                    )
             except Exception as exc:  # noqa: BLE001
                 log.warning(
                     "manual_refresher.asset_catalog_update_failed",
@@ -199,7 +215,12 @@ class ManualRefresher:
                     "resolved_source_id": document.source_id,
                 },
             }
-            upsert_result = await repository.upsert(document, change_context=change_context)
+            upsert_result = await repository.upsert(
+                document,
+                change_context=change_context,
+                euvd_raw=euvd_record,
+                nvd_raw=nvd_record,
+            )
             message = None
             if document.published is None:
                 message = "EUVD record ingested without published date; marked as reserved."
@@ -212,7 +233,7 @@ class ManualRefresher:
             )
 
         if nvd_record:
-            built = build_document_from_nvd(nvd_record, ingested_at=ingested_at)
+            built = build_document_from_nvd(nvd_record, ingested_at=ingested_at, cpe_matches=nvd_cpe_matches)
             if built:
                 document, product_version_map = built
                 try:
@@ -220,6 +241,7 @@ class ManualRefresher:
                         vendors=document.vendors,
                         product_versions=product_version_map,
                         cpes=document.cpes,
+                        cpe_configurations=document.cpe_configurations,
                     )
                     document = document.model_copy(
                         update={

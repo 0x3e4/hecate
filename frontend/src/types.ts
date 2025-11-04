@@ -67,6 +67,50 @@ export interface KnownExploitation {
   dateReleased?: string | null;
 }
 
+export interface CpeMatch {
+  criteria?: string | null;
+  matchCriteriaId?: string | null;
+  cpeName?: string | null;
+  vulnerable?: boolean;
+  part?: string | null;
+  vendor?: string | null;
+  vendorRaw?: string | null;
+  product?: string | null;
+  productRaw?: string | null;
+  targetSw?: string | null;
+  targetHw?: string | null;
+  version?: string | null;
+  versionStartIncluding?: string | null;
+  versionStartExcluding?: string | null;
+  versionEndIncluding?: string | null;
+  versionEndExcluding?: string | null;
+  versionTokens?: string[];
+}
+
+export interface CpeNode {
+  operator?: string | null;
+  negate?: boolean;
+  matches?: CpeMatch[];
+  nodes?: CpeNode[];
+}
+
+export interface CpeConfiguration {
+  nodes: CpeNode[];
+}
+
+export interface ImpactedEntity {
+  name: string;
+  slug?: string | null;
+}
+
+export interface ImpactedProduct {
+  vendor: ImpactedEntity;
+  product: ImpactedEntity;
+  versions: string[];
+  vulnerable?: boolean | null;
+  environments?: string[];
+}
+
 export interface VulnerabilityChangeField {
   name: string;
   previous?: unknown | null;
@@ -105,6 +149,7 @@ export interface VulnerabilityPreview {
   cwes?: string[];
   aiAssessment?: AIAssessment | null;
   cvssMetrics?: CvssMetrics | null;
+  impactedProducts?: ImpactedProduct[];
 }
 
 export interface VulnerabilityQuery {
@@ -142,15 +187,26 @@ export interface IngestionLogResponse {
   items: IngestionLogEntry[];
 }
 
+export interface SourceEntry {
+  source: string;
+  url: string;
+  ingested_at: string;
+  raw?: Record<string, unknown> | null;
+}
+
 export interface VulnerabilityDetail extends VulnerabilityPreview {
   references?: string[];
   cwes?: string[];
   cpes?: string[];
+  cpeConfigurations?: CpeConfiguration[];
+  cpeVersionTokens?: string[];
+  impactedProducts?: ImpactedProduct[];
   modified?: string | null;
   ingestedAt?: string | null;
   rawDocument?: Record<string, unknown> | null;
   productVersionIds?: string[];
   changeHistory?: VulnerabilityChangeEntry[];
+  sources?: SourceEntry[];
 }
 
 export interface VulnerabilityRefreshRequest {

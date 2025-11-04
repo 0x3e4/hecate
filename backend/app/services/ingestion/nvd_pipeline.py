@@ -158,7 +158,16 @@ class NVDPipeline:
                 self._known_exploited_cache = known_exploited_upper
 
             async for record in self.client.iter_cves(last_modified_start=last_run):
-                result = build_document_from_nvd(record, ingested_at=datetime.now(tz=UTC))
+                cve_wrapper = record.get("cve") if isinstance(record, dict) else None
+                cve_id = cve_wrapper.get("id") if isinstance(cve_wrapper, dict) else None
+                cpe_matches = None
+                if isinstance(cve_id, str) and cve_id.strip():
+                    cpe_matches = await self.client.fetch_cpe_matches(cve_id)
+                result = build_document_from_nvd(
+                    record,
+                    ingested_at=datetime.now(tz=UTC),
+                    cpe_matches=cpe_matches,
+                )
                 if result is None:
                     skipped += 1
                     continue
@@ -169,6 +178,7 @@ class NVDPipeline:
                         vendors=document.vendors,
                         product_versions=product_version_map,
                         cpes=document.cpes,
+                        cpe_configurations=document.cpe_configurations,
                     )
                     document = document.model_copy(
                         update={

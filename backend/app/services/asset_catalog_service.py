@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Iterable
+import re
 
 import structlog
 
@@ -46,11 +47,26 @@ class AssetCatalogService:
         vendors: list[str],
         product_versions: dict[str, set[str]],
         cpes: Iterable[str],
+        cpe_configurations: Iterable[dict[str, Any]] | None = None,
     ) -> AssetCatalogResult:
         parsed_cpes = [entry for entry in (self._parse_cpe_uri(cpe) for cpe in cpes) if entry]
         vendor_slugs: list[str] = []
         vendor_key_map: dict[str, str] = {}
         sources = {"EUVD"}
+
+        product_token_map = self._build_product_token_map(cpe_configurations)
+        if product_token_map:
+            for product_key, entry in product_token_map.items():
+                label = entry.get("label") or product_key
+                tokens = entry.get("tokens") or set()
+                if not tokens:
+                    continue
+                target_label = next(
+                    (name for name in product_versions if normalize_key(name) == product_key),
+                    label,
+                )
+                bucket = product_versions.setdefault(target_label, set())
+                bucket.update(tokens)
 
         for vendor in vendors:
             alias_candidates = self._matching_cpe_vendors(vendor, parsed_cpes)
@@ -179,6 +195,76 @@ class AssetCatalogService:
         if not candidate:
             return False
         return normalize_key(candidate) == normalize_key(product_name)
+
+    @staticmethod
+    def _sanitize_version_token(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        normalized = normalized.replace("*", "x")
+        normalized = normalized.replace("_", ".").replace("-", ".")
+        normalized = re.sub(r"\s+", "", normalized)
+        if not re.fullmatch(r"[0-9xX]+(?:\.[0-9xX]+){0,5}", normalized):
+            return None
+        return normalized.lower()
+
+    @staticmethod
+    def _build_product_token_map(
+        cpe_configurations: Iterable[dict[str, Any]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        product_map: dict[str, dict[str, Any]] = {}
+        if not cpe_configurations:
+            return {}
+        for configuration in cpe_configurations:
+            if not isinstance(configuration, dict):
+                continue
+            nodes = configuration.get("nodes")
+            if isinstance(nodes, list):
+                for node in nodes:
+                    AssetCatalogService._collect_tokens_from_node(node, product_map)
+        return {key: entry for key, entry in product_map.items() if entry.get("tokens")}
+
+    @staticmethod
+    def _collect_tokens_from_node(node: Any, product_map: dict[str, dict[str, Any]]) -> None:
+        if not isinstance(node, dict):
+            return
+
+        matches = node.get("matches")
+        if isinstance(matches, list):
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                product_label = match.get("product") or match.get("productRaw")
+                if not isinstance(product_label, str) or not product_label.strip():
+                    continue
+                normalized_key = normalize_key(product_label)
+                entry = product_map.setdefault(
+                    normalized_key,
+                    {"label": product_label.strip(), "tokens": set()},
+                )
+                for field in (
+                    "version",
+                    "versionStartIncluding",
+                    "versionStartExcluding",
+                    "versionEndIncluding",
+                    "versionEndExcluding",
+                ):
+                    candidate = AssetCatalogService._sanitize_version_token(match.get(field))
+                    if candidate:
+                        entry["tokens"].add(candidate)
+                token_values = match.get("versionTokens")
+                if isinstance(token_values, list):
+                    for token in token_values:
+                        candidate = AssetCatalogService._sanitize_version_token(token)
+                        if candidate:
+                            entry["tokens"].add(candidate)
+
+        child_nodes = node.get("nodes")
+        if isinstance(child_nodes, list):
+            for child in child_nodes:
+                AssetCatalogService._collect_tokens_from_node(child, product_map)
 
     def _matching_cpe_vendors(self, vendor: str, cpe_entries: list[ParsedCPE]) -> set[str]:
         key = normalize_key(vendor)
