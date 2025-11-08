@@ -28,23 +28,28 @@ jobs:
 
   ScanDeps:
     name: Trivy Scan
-    stage: scan
-    image:
-      name: ubuntu:24.04
+    runs-on: ubuntu-latest
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
     - name: Install Dependencies
       run: |
-        apt-get update
-        apt-get install -y wget apt-transport-https gnupg lsb-release
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
         echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        apt-get update
-        apt-get install trivy
+        sudo apt-get update
+        sudo apt-get install -y trivy
         trivy plugin install github.com/umax/trivy-plugin-sonarqube
+
     - name: Scan Code with Trivy
       run: |
         trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
         trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
+
     - name: Upload Trivy and SonarQube Reports
       uses: actions/upload-artifact@v3
       with:
@@ -55,7 +60,6 @@ jobs:
 
   ScanCode:
     name: Scan Trivy Report with SonarScanner
-    stage: scan
     runs-on: ubuntu-latest
     needs:
       - ScanDeps

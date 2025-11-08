@@ -1,0 +1,67 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/app:/app/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+      - opensearch
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+    environment:
+      - VITE_API_BASE_URL=/api
+      - VITE_DOMAIN=${DOMAIN:-localhost}
+    ports:
+      - "4173:4173"
+    depends_on:
+      - backend
+
+  frontend-build:
+    build:
+      context: ./frontend
+      target: dev
+    entrypoint: ["/usr/local/bin/frontend-entrypoint"]
+    volumes:
+      - ./frontend:/workspace
+    environment:
+      - VITE_API_BASE_URL=/api
+      - VITE_DOMAIN=${DOMAIN:-localhost}
+      - WORKSPACE=/workspace
+
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+
+  opensearch:
+    image: opensearchproject/opensearch:2
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=***REMOVED-OPENSEARCH-PASSWORD***
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+
+volumes:
+  mongo-data:
+  opensearch-data:

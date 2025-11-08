@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.routes import api_router
 from app.core.config import settings
 from app.services.scheduling.manager import get_scheduler
+from app.services.ingestion.startup_cleanup import cleanup_stale_jobs
 
 
 def create_app() -> FastAPI:
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
+        await cleanup_stale_jobs()
         await get_scheduler().start()
 
     @app.on_event("shutdown")

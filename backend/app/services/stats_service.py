@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Iterable
 
 from dateutil.relativedelta import relativedelta
@@ -20,11 +21,56 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 log = structlog.get_logger()
 
 
+class StatsCache:
+    """Simple in-memory cache for stats data."""
+
+    def __init__(self, ttl_seconds: int = 300):  # 5 minutes default
+        self._cache: dict[str, tuple[datetime, Any]] = {}
+        self._ttl = timedelta(seconds=ttl_seconds)
+
+    def get(self, key: str) -> Any | None:
+        if key not in self._cache:
+            return None
+
+        timestamp, value = self._cache[key]
+        if datetime.now(tz=UTC) - timestamp > self._ttl:
+            del self._cache[key]
+            return None
+
+        return value
+
+    def set(self, key: str, value: Any) -> None:
+        self._cache[key] = (datetime.now(tz=UTC), value)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+
+# Global cache instance
+_stats_cache = StatsCache(ttl_seconds=300)
+
+
 class StatsService:
     async def get_overview(self) -> dict[str, Any]:
-        vulnerability_stats = await self._fetch_vulnerability_stats()
-        asset_stats = await self._fetch_asset_stats()
-        return {"vulnerabilities": vulnerability_stats, "assets": asset_stats}
+        # Check cache first
+        cached = _stats_cache.get("overview")
+        if cached is not None:
+            log.info("stats.cache_hit")
+            return cached
+
+        # Run both queries in parallel for better performance
+        vulnerability_stats, asset_stats = await asyncio.gather(
+            self._fetch_vulnerability_stats(),
+            self._fetch_asset_stats(),
+        )
+
+        result = {"vulnerabilities": vulnerability_stats, "assets": asset_stats}
+
+        # Cache the result
+        _stats_cache.set("overview", result)
+        log.info("stats.cache_set")
+
+        return result
 
     async def _fetch_vulnerability_stats(self) -> dict[str, Any]:
         now = datetime.now(tz=UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -360,12 +406,21 @@ class StatsService:
 
     async def _fetch_asset_stats(self) -> dict[str, Any]:
         repository = await AssetRepository.create()
-        vendor_total = await repository.vendors.count_documents({})
-        product_total = await repository.products.count_documents({})
-        version_total = await repository.versions.count_documents({})
 
-        vendor_samples = await repository.sample_vendors(limit=6)
-        product_samples = await repository.sample_products(limit=6)
+        # Run all queries in parallel for better performance
+        (
+            vendor_total,
+            product_total,
+            version_total,
+            vendor_samples,
+            product_samples,
+        ) = await asyncio.gather(
+            repository.vendors.count_documents({}),
+            repository.products.count_documents({}),
+            repository.versions.count_documents({}),
+            repository.sample_vendors(limit=6),
+            repository.sample_products(limit=6),
+        )
 
         def _simplify_sample(item: dict[str, Any]) -> dict[str, Any]:
             name = (

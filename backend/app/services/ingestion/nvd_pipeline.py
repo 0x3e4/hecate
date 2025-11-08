@@ -191,6 +191,42 @@ class NVDPipeline:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("nvd_pipeline.asset_catalog_update_failed", vuln_id=document.vuln_id, error=str(exc))
 
+                # Check if entry exists and is unchanged before processing
+                existing_timestamps = await repository.get_timestamps(document.vuln_id)
+                if existing_timestamps:
+                    existing_published = existing_timestamps.get("published")
+                    existing_modified = existing_timestamps.get("modified")
+                    has_reference_timestamp = document.published is not None or document.modified is not None
+
+                    # Check if NVD source already exists in the document
+                    existing_doc = await repository.collection.find_one(
+                        {"_id": document.vuln_id},
+                        projection={"sources": 1}
+                    )
+                    has_nvd_source = False
+                    if isinstance(existing_doc, dict):
+                        sources_array = existing_doc.get("sources")
+                        if isinstance(sources_array, list):
+                            has_nvd_source = any(
+                                isinstance(src, dict) and src.get("source") == "NVD"
+                                for src in sources_array
+                            )
+
+                    # Skip if timestamps match and NVD data already exists
+                    if (
+                        has_reference_timestamp
+                        and has_nvd_source
+                        and _timestamps_match(existing_published, document.published)
+                        and _timestamps_match(existing_modified, document.modified)
+                    ):
+                        skipped += 1
+                        processed_total += 1
+                        log.debug(
+                            "nvd_pipeline.vulnerability_skipped_unchanged",
+                            vuln_id=document.vuln_id,
+                        )
+                        continue
+
                 normalized_id = (document.vuln_id or "").strip().upper()
                 metadata_tuple = metadata_cache.get(normalized_id) if metadata_cache else None
                 if metadata_tuple:
@@ -282,3 +318,19 @@ class NVDPipeline:
         finally:
             await self.client.close()
             await self.kev_client.close()
+
+
+def _normalize_timestamp(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _timestamps_match(existing: datetime | None, incoming: datetime | None) -> bool:
+    if incoming is None:
+        return existing is None
+    if existing is None:
+        return False
+    return _normalize_timestamp(existing) == _normalize_timestamp(incoming)

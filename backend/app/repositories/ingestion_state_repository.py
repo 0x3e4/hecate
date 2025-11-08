@@ -49,3 +49,17 @@ class IngestionStateRepository:
             {"$set": updates},
             upsert=True,
         )
+
+    async def find_running_jobs(self) -> list[str]:
+        """
+        Find all job:* keys with status "running".
+
+        Returns:
+            List of job keys (e.g., ["job:nvd_sync", "job:euvd_ingestion"])
+        """
+        cursor = self.collection.find(
+            {"_id": {"$regex": "^job:"}, "status": "running"},
+            projection={"_id": 1},
+        )
+        docs = await cursor.to_list(length=None)
+        return [doc["_id"] for doc in docs if isinstance(doc.get("_id"), str)]

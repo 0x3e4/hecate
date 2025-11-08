@@ -63,6 +63,42 @@ class IngestionLogRepository:
 
         return cancelled
 
+    async def cancel_all_running(self, *, reason: str | None = None) -> int:
+        """
+        Cancel ALL running jobs, regardless of job name.
+
+        This is used during startup cleanup to mark orphaned jobs as cancelled.
+
+        Args:
+            reason: Optional cancellation reason
+
+        Returns:
+            Number of jobs cancelled
+        """
+        now = datetime.now(tz=UTC)
+        cursor = self.collection.find({"status": "running"})
+        cancelled = 0
+        async for document in cursor:
+            started_at = document.get("startedAt")
+            if isinstance(started_at, datetime):
+                started_at = started_at.astimezone(UTC)
+            else:
+                started_at = now
+
+            duration = (now - started_at).total_seconds()
+            update: dict[str, Any] = {
+                "status": "cancelled",
+                "finishedAt": now,
+                "durationSeconds": duration,
+            }
+            if reason:
+                update["error"] = reason
+
+            await self.collection.update_one({"_id": document["_id"]}, {"$set": update})
+            cancelled += 1
+
+        return cancelled
+
     async def complete_log(
         self,
         log_id: ObjectId,
