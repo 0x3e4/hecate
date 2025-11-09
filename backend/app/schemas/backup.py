@@ -16,7 +16,7 @@ class BackupMetadata(BaseModel):
 
 class VulnerabilityBackupMetadata(BackupMetadata):
     dataset: Literal["vulnerabilities"] = "vulnerabilities"
-    source: Literal["NVD", "EUVD"]
+    source: Literal["NVD", "EUVD", "ALL"] = "ALL"
 
 
 class VulnerabilityBackupPayload(BaseModel):

@@ -1,7 +1,7 @@
 import { api } from "./client";
 import { BackupRestoreSummary } from "../types";
 
-export type VulnerabilitySource = "NVD" | "EUVD";
+export type VulnerabilitySource = "NVD" | "EUVD" | "ALL";
 
 export interface ExportResponse {
   data: Blob;

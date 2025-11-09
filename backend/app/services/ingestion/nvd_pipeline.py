@@ -197,38 +197,56 @@ class NVDPipeline:
                         existing_published = existing_doc.get("published")
                         existing_modified = existing_doc.get("modified")
 
-                        # Check if NVD source already exists in the document
-                        has_nvd_source = False
+                        # Check if NVD source already exists and extract its raw data
+                        existing_nvd_raw = None
                         sources_array = existing_doc.get("sources")
                         if isinstance(sources_array, list):
-                            has_nvd_source = any(
-                                isinstance(src, dict) and src.get("source") == "NVD"
-                                for src in sources_array
-                            )
+                            for src in sources_array:
+                                if isinstance(src, dict) and src.get("source") == "NVD":
+                                    existing_nvd_raw = src.get("raw")
+                                    break
 
-                        # Skip if timestamps match and NVD data already exists
+                        # Skip if NVD raw data is identical (regardless of timestamp differences)
+                        # NVD appears to be updating published/modified timestamps without changing actual data
                         published_matches = _timestamps_match(existing_published, published)
                         modified_matches = _timestamps_match(existing_modified, modified)
+                        nvd_raw_matches = existing_nvd_raw is not None and existing_nvd_raw == record
 
-                        if (
-                            has_nvd_source
-                            and published_matches
-                            and modified_matches
-                        ):
+                        if nvd_raw_matches:
                             skipped += 1
                             processed_total += 1
                             log.debug(
                                 "nvd_pipeline.vulnerability_skipped_unchanged_early",
                                 vuln_id=cve_id,
+                                published_matches=published_matches,
+                                modified_matches=modified_matches,
                             )
                             continue
 
-                        # Debug: Log why we're not skipping
-                        if processed_total < 10 or processed_total % 100 == 0:
-                            log.debug(
+                        # Debug: Log why we're not skipping (always log first 50 to understand the issue)
+                        if processed_total < 50 or processed_total % 100 == 0:
+                            # Check if raw data differs and log some details
+                            raw_diff_reason = None
+                            if existing_nvd_raw is None:
+                                raw_diff_reason = "no_existing_raw"
+                            elif existing_nvd_raw != record:
+                                # Try to identify what's different
+                                import json
+                                existing_str = json.dumps(existing_nvd_raw, sort_keys=True, default=str)
+                                incoming_str = json.dumps(record, sort_keys=True, default=str)
+                                if len(existing_str) != len(incoming_str):
+                                    raw_diff_reason = f"size_diff_{len(existing_str)}_vs_{len(incoming_str)}"
+                                else:
+                                    raw_diff_reason = "content_diff"
+                            else:
+                                raw_diff_reason = "matches"
+
+                            log.info(
                                 "nvd_pipeline.not_skipping_reason",
                                 vuln_id=cve_id,
-                                has_nvd_source=has_nvd_source,
+                                has_nvd_source=existing_nvd_raw is not None,
+                                nvd_raw_matches=nvd_raw_matches,
+                                raw_diff_reason=raw_diff_reason,
                                 published_matches=published_matches,
                                 modified_matches=modified_matches,
                                 existing_published=str(existing_published)[:19] if existing_published else None,

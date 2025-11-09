@@ -11,23 +11,15 @@ import { useSavedSearches } from "../hooks/useSavedSearches";
 import type { SavedSearch } from "../types";
 
 type BackupDataset =
-  | { id: "NVD" | "EUVD"; label: string; description: string; type: "vuln"; source: VulnerabilitySource }
-  | { id: "CPE"; label: string; description: string; type: "cpe" };
+  | { id: "VULNERABILITIES" | "CPE"; label: string; description: string; type: "vuln" | "cpe"; source?: VulnerabilitySource }
 
 const BACKUP_DATASETS: BackupDataset[] = [
   {
-    id: "NVD",
-    label: "NVD",
-    description: "Sicherung aller NVD CVE Einträge",
+    id: "VULNERABILITIES",
+    label: "Vulnerabilities",
+    description: "Sicherung aller Vulnerability-Einträge (NVD & EUVD)",
     type: "vuln",
-    source: "NVD"
-  },
-  {
-    id: "EUVD",
-    label: "EUVD",
-    description: "Sicherung aller EUVD Einträge",
-    type: "vuln",
-    source: "EUVD"
+    source: "ALL"
   },
   {
     id: "CPE",
@@ -125,10 +117,13 @@ export const SystemPage = () => {
         if (typeof meta.source !== "string") {
           throw new Error("Backup enthält keine Source-Information.");
         }
-        if (meta.source.toUpperCase() !== dataset.source) {
-          throw new Error(`Backup gehört zu ${meta.source}, erwartet ${dataset.source}.`);
+        // Accept ALL, NVD, or EUVD backups for the unified vulnerabilities restore
+        const backupSource = meta.source.toUpperCase();
+        if (!["ALL", "NVD", "EUVD"].includes(backupSource)) {
+          throw new Error(`Ungültige Backup-Quelle: ${meta.source}.`);
         }
-        summary = await restoreVulnerabilityBackup(dataset.source, payload);
+        // Always restore to "ALL" endpoint to accept any vulnerability backup
+        summary = await restoreVulnerabilityBackup("ALL", payload);
       } else {
         const meta = payload.metadata as { dataset?: string };
         if (meta.dataset?.toLowerCase() !== "cpe") {

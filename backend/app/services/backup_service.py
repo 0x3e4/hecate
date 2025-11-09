@@ -31,10 +31,16 @@ class BackupService:
 
     async def export_vulnerabilities(self, source: str) -> VulnerabilityBackupPayload:
         normalized_source = source.upper()
-        if normalized_source not in VULNERABILITY_SOURCES:
-            raise ValueError(f"Unsupported vulnerability source '{source}'. Expected one of {sorted(VULNERABILITY_SOURCES)}.")
 
-        cursor = self.vulnerability_repo.collection.find({"source": normalized_source})
+        # Support "ALL" to export both NVD and EUVD combined
+        if normalized_source == "ALL":
+            filter_query = {"source": {"$in": list(VULNERABILITY_SOURCES)}}
+        elif normalized_source in VULNERABILITY_SOURCES:
+            filter_query = {"source": normalized_source}
+        else:
+            raise ValueError(f"Unsupported vulnerability source '{source}'. Expected one of {sorted(VULNERABILITY_SOURCES)} or 'ALL'.")
+
+        cursor = self.vulnerability_repo.collection.find(filter_query)
         items: list[dict[str, Any]] = []
         async for raw_doc in cursor:
             payload = dict(raw_doc)
@@ -77,11 +83,23 @@ class BackupService:
                 skipped += 1
                 continue
 
-            if document.source.upper() != normalized_source:
+            # If backup source is "ALL", accept any valid source (NVD or EUVD)
+            # Otherwise, ensure the document source matches the backup source
+            if normalized_source != "ALL" and document.source.upper() != normalized_source:
                 log.warning(
                     "backup.restore_vulnerability_source_mismatch",
                     expected=normalized_source,
                     actual=document.source,
+                    identifier=document.vuln_id,
+                )
+                skipped += 1
+                continue
+
+            # Validate document source is valid
+            if normalized_source == "ALL" and document.source.upper() not in VULNERABILITY_SOURCES:
+                log.warning(
+                    "backup.restore_vulnerability_invalid_source",
+                    source=document.source,
                     identifier=document.vuln_id,
                 )
                 skipped += 1

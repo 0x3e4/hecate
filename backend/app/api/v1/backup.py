@@ -51,8 +51,15 @@ async def restore_vulnerabilities(
     if payload.metadata.dataset != "vulnerabilities":
         raise HTTPException(status_code=400, detail="Backup dataset does not contain vulnerabilities.")
 
-    if payload.metadata.source.upper() != source.upper():
-        raise HTTPException(status_code=400, detail="Backup source does not match requested target.")
+    # Allow restoring an "ALL" backup to "ALL", or a specific source backup to that source
+    # Also allow restoring an "ALL" backup to a specific source endpoint (backward compat)
+    normalized_payload_source = payload.metadata.source.upper()
+    normalized_target_source = source.upper()
+
+    if normalized_target_source != "ALL" and normalized_payload_source != "ALL":
+        # Both are specific sources, they must match
+        if normalized_payload_source != normalized_target_source:
+            raise HTTPException(status_code=400, detail="Backup source does not match requested target.")
 
     if payload.metadata.item_count != len(payload.items):
         raise HTTPException(status_code=400, detail="Backup metadata item count does not match payload length.")
