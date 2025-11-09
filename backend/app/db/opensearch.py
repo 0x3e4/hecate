@@ -44,6 +44,9 @@ def get_client() -> OpenSearch:
             http_auth=auth,
             use_ssl=settings.opensearch_url.startswith("https"),
             verify_certs=settings.opensearch_url.startswith("https"),
+            timeout=10,  # 10 second timeout for queries
+            max_retries=1,
+            retry_on_timeout=False,
         )
     return _client
 

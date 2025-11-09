@@ -18,6 +18,7 @@ OptionalInt = Annotated[int | None, BeforeValidator(_empty_string_to_none)]
 class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     environment: str = "development"
+    log_level: str = "INFO"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     anthropic_api_key: str | None = None

@@ -228,14 +228,18 @@ class AssetRepository:
         return await cursor.to_list(length=len(slug_list))
 
     async def sample_vendors(self, *, limit: int) -> list[dict[str, Any]]:
-        pipeline: list[dict[str, Any]] = [
+        # Use $sample directly for true random sampling from entire collection
+        # Performance is acceptable for small sample sizes (6 items)
+        pipeline = [
             {"$match": {"displayName": {"$nin": [None, "", "*"]}}},
             {"$sample": {"size": limit}},
         ]
         return await self.vendors.aggregate(pipeline).to_list(length=limit)
 
     async def sample_products(self, *, limit: int) -> list[dict[str, Any]]:
-        pipeline: list[dict[str, Any]] = [
+        # Use $sample directly for true random sampling from entire collection
+        # Performance is acceptable for small sample sizes (6 items)
+        pipeline = [
             {"$match": {"displayName": {"$nin": [None, "", "*"]}}},
             {"$sample": {"size": limit}},
         ]

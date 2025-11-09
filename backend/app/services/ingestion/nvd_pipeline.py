@@ -158,15 +158,91 @@ class NVDPipeline:
                 self._known_exploited_cache = known_exploited_upper
 
             async for record in self.client.iter_cves(last_modified_start=last_run):
+                # Early extraction of CVE ID and timestamps for skip check
                 cve_wrapper = record.get("cve") if isinstance(record, dict) else None
-                cve_id = cve_wrapper.get("id") if isinstance(cve_wrapper, dict) else None
-                cpe_matches = None
-                if isinstance(cve_id, str) and cve_id.strip():
-                    cpe_matches = await self.client.fetch_cpe_matches(cve_id)
+                if not isinstance(cve_wrapper, dict):
+                    skipped += 1
+                    continue
+
+                cve_id = cve_wrapper.get("id")
+                if not isinstance(cve_id, str) or not cve_id.strip():
+                    skipped += 1
+                    continue
+
+                # Parse timestamps early to check if we can skip this CVE
+                published_raw = cve_wrapper.get("published")
+                modified_raw = cve_wrapper.get("lastModified")
+
+                # Quick timestamp check before expensive operations - single DB query
+                if published_raw or modified_raw:
+                    # Single optimized query to get both timestamps and source info
+                    existing_doc = await repository.collection.find_one(
+                        {"_id": cve_id},
+                        projection={"published": 1, "modified": 1, "sources": 1}
+                    )
+
+                    if existing_doc:
+                        from dateutil import parser as date_parser
+
+                        published = None
+                        modified = None
+                        try:
+                            if published_raw:
+                                published = date_parser.isoparse(published_raw).astimezone(UTC)
+                            if modified_raw:
+                                modified = date_parser.isoparse(modified_raw).astimezone(UTC)
+                        except (ValueError, TypeError):
+                            pass
+
+                        existing_published = existing_doc.get("published")
+                        existing_modified = existing_doc.get("modified")
+
+                        # Check if NVD source already exists in the document
+                        has_nvd_source = False
+                        sources_array = existing_doc.get("sources")
+                        if isinstance(sources_array, list):
+                            has_nvd_source = any(
+                                isinstance(src, dict) and src.get("source") == "NVD"
+                                for src in sources_array
+                            )
+
+                        # Skip if timestamps match and NVD data already exists
+                        published_matches = _timestamps_match(existing_published, published)
+                        modified_matches = _timestamps_match(existing_modified, modified)
+
+                        if (
+                            has_nvd_source
+                            and published_matches
+                            and modified_matches
+                        ):
+                            skipped += 1
+                            processed_total += 1
+                            log.debug(
+                                "nvd_pipeline.vulnerability_skipped_unchanged_early",
+                                vuln_id=cve_id,
+                            )
+                            continue
+
+                        # Debug: Log why we're not skipping
+                        if processed_total < 10 or processed_total % 100 == 0:
+                            log.debug(
+                                "nvd_pipeline.not_skipping_reason",
+                                vuln_id=cve_id,
+                                has_nvd_source=has_nvd_source,
+                                published_matches=published_matches,
+                                modified_matches=modified_matches,
+                                existing_published=str(existing_published)[:19] if existing_published else None,
+                                incoming_published=str(published)[:19] if published else None,
+                                existing_modified=str(existing_modified)[:19] if existing_modified else None,
+                                incoming_modified=str(modified)[:19] if modified else None,
+                            )
+
+                # CPE configuration data is already included in the bulk CVE response
+                # No need to make additional API calls to fetch CPE matches separately
                 result = build_document_from_nvd(
                     record,
                     ingested_at=datetime.now(tz=UTC),
-                    cpe_matches=cpe_matches,
+                    cpe_matches=None,
                 )
                 if result is None:
                     skipped += 1
@@ -191,42 +267,7 @@ class NVDPipeline:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("nvd_pipeline.asset_catalog_update_failed", vuln_id=document.vuln_id, error=str(exc))
 
-                # Check if entry exists and is unchanged before processing
-                existing_timestamps = await repository.get_timestamps(document.vuln_id)
-                if existing_timestamps:
-                    existing_published = existing_timestamps.get("published")
-                    existing_modified = existing_timestamps.get("modified")
-                    has_reference_timestamp = document.published is not None or document.modified is not None
-
-                    # Check if NVD source already exists in the document
-                    existing_doc = await repository.collection.find_one(
-                        {"_id": document.vuln_id},
-                        projection={"sources": 1}
-                    )
-                    has_nvd_source = False
-                    if isinstance(existing_doc, dict):
-                        sources_array = existing_doc.get("sources")
-                        if isinstance(sources_array, list):
-                            has_nvd_source = any(
-                                isinstance(src, dict) and src.get("source") == "NVD"
-                                for src in sources_array
-                            )
-
-                    # Skip if timestamps match and NVD data already exists
-                    if (
-                        has_reference_timestamp
-                        and has_nvd_source
-                        and _timestamps_match(existing_published, document.published)
-                        and _timestamps_match(existing_modified, document.modified)
-                    ):
-                        skipped += 1
-                        processed_total += 1
-                        log.debug(
-                            "nvd_pipeline.vulnerability_skipped_unchanged",
-                            vuln_id=document.vuln_id,
-                        )
-                        continue
-
+                # Timestamp check already done early - proceed with KEV metadata enrichment
                 normalized_id = (document.vuln_id or "").strip().upper()
                 metadata_tuple = metadata_cache.get(normalized_id) if metadata_cache else None
                 if metadata_tuple:

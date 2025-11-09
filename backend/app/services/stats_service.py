@@ -46,23 +46,59 @@ class StatsCache:
         self._cache.clear()
 
 
-# Global cache instance
-_stats_cache = StatsCache(ttl_seconds=300)
+# Global cache instance with longer TTL (15 minutes instead of 5)
+# Stats data doesn't change frequently, so longer cache is acceptable
+_stats_cache = StatsCache(ttl_seconds=900)
 
 
 class StatsService:
     async def get_overview(self) -> dict[str, Any]:
         # Check cache first
         cached = _stats_cache.get("overview")
+
         if cached is not None:
             log.info("stats.cache_hit")
-            return cached
+            # Refresh asset samples even when cached to show random vendors/products
+            cached_copy = cached.copy()
+            try:
+                fresh_asset_samples = await self._fetch_fresh_asset_samples()
+                cached_copy["assets"]["sampleVendors"] = fresh_asset_samples["sampleVendors"]
+                cached_copy["assets"]["sampleProducts"] = fresh_asset_samples["sampleProducts"]
+            except Exception as e:
+                log.warning("stats.fresh_samples_failed", error=str(e))
+                # Return cached version if fresh samples fail
+            return cached_copy
 
-        # Run both queries in parallel for better performance
-        vulnerability_stats, asset_stats = await asyncio.gather(
-            self._fetch_vulnerability_stats(),
-            self._fetch_asset_stats(),
-        )
+        # Add timeout protection to prevent hanging requests
+        try:
+            # Run both queries in parallel with 30 second timeout
+            vulnerability_stats, asset_stats = await asyncio.wait_for(
+                asyncio.gather(
+                    self._fetch_vulnerability_stats(),
+                    self._fetch_asset_stats(),
+                ),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            log.error("stats.timeout", timeout_seconds=30)
+            # Return minimal fallback data on timeout
+            return {
+                "vulnerabilities": {
+                    "total": 0,
+                    "sources": [],
+                    "severities": [],
+                    "topVendors": [],
+                    "topProducts": [],
+                    "timeline": [],
+                },
+                "assets": {
+                    "vendorTotal": 0,
+                    "productTotal": 0,
+                    "versionTotal": 0,
+                    "sampleVendors": [],
+                    "sampleProducts": [],
+                },
+            }
 
         result = {"vulnerabilities": vulnerability_stats, "assets": asset_stats}
 
@@ -71,6 +107,32 @@ class StatsService:
         log.info("stats.cache_set")
 
         return result
+
+    async def _fetch_fresh_asset_samples(self) -> dict[str, Any]:
+        """Fetch fresh random asset samples quickly without hitting cache."""
+        repository = await AssetRepository.create()
+        vendor_samples, product_samples = await asyncio.gather(
+            repository.sample_vendors(limit=6),
+            repository.sample_products(limit=6),
+        )
+
+        def _simplify_sample(item: dict[str, Any]) -> dict[str, Any]:
+            name = (
+                item.get("name")
+                or item.get("displayName")
+                or item.get("_id")
+                or "—"
+            )
+            return {
+                "slug": item.get("slug") or item.get("_id"),
+                "name": name,
+                "aliases": item.get("aliases", [])[:3],
+            }
+
+        return {
+            "sampleVendors": [_simplify_sample(item) for item in vendor_samples],
+            "sampleProducts": [_simplify_sample(item) for item in product_samples],
+        }
 
     async def _fetch_vulnerability_stats(self) -> dict[str, Any]:
         now = datetime.now(tz=UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -89,7 +151,7 @@ class StatsService:
             else:
                 log.warning("stats.opensearch_request_error", error=str(exc))
                 return await self._fetch_vulnerability_stats_from_mongo(start, now)
-        except (OSConnectionError, OpenSearchException) as exc:
+        except (OSConnectionError, OpenSearchException, asyncio.TimeoutError) as exc:
             log.warning("stats.opensearch_unavailable", error=str(exc))
             return await self._fetch_vulnerability_stats_from_mongo(start, now)
 
@@ -163,7 +225,7 @@ class StatsService:
                         "unique": {
                             "cardinality": {
                                 "field": "vuln_id.keyword",
-                                "precision_threshold": 40000,
+                                "precision_threshold": 10000,  # Reduced from 40000 for better performance
                             }
                         },
                     },
@@ -179,7 +241,7 @@ class StatsService:
                         "unique": {
                             "cardinality": {
                                 "field": "vuln_id.keyword",
-                                "precision_threshold": 40000,
+                                "precision_threshold": 10000,  # Reduced from 40000 for better performance
                             }
                         },
                     },
@@ -194,13 +256,13 @@ class StatsService:
                 "vendors": {
                     "terms": {
                         "field": field("vendors"),
-                        "size": 20,
+                        "size": 10,  # Reduced from 20 to 10 for better performance
                     }
                 },
                 "products": {
                     "terms": {
                         "field": field("products"),
-                        "size": 20,
+                        "size": 10,  # Reduced from 20 to 10 for better performance
                     }
                 },
                 "severity": {
@@ -214,7 +276,7 @@ class StatsService:
                     "filter": {
                         "range": {
                             "published": {
-                                "gte": start.isoformat(),
+                                "gte": int(start.timestamp() * 1000),
                             }
                         }
                     },
@@ -224,7 +286,6 @@ class StatsService:
                                 "field": "published",
                                 "calendar_interval": "month",
                                 "min_doc_count": 0,
-                                "extended_bounds": {},
                                 "format": "yyyy-MM",
                             }
                         }
@@ -232,16 +293,11 @@ class StatsService:
                 },
             },
         }
-        if use_keyword_suffix:
-            body["aggs"]["timeline"]["aggs"]["months"]["date_histogram"]["extended_bounds"] = {
-                "min": start.strftime("%Y-%m-%dT%H:%M:%S"),
-                "max": now.strftime("%Y-%m-%dT%H:%M:%S"),
-            }
-        else:
-            body["aggs"]["timeline"]["aggs"]["months"]["date_histogram"]["extended_bounds"] = {
-                "min": start.isoformat(),
-                "max": now.isoformat(),
-            }
+        # Use timestamp in milliseconds for extended_bounds to avoid date format issues
+        body["aggs"]["timeline"]["aggs"]["months"]["date_histogram"]["extended_bounds"] = {
+            "min": int(start.timestamp() * 1000),
+            "max": int(now.timestamp() * 1000),
+        }
 
         return body
 
@@ -294,11 +350,14 @@ class StatsService:
         return None
 
     async def _fetch_vulnerability_stats_from_mongo(self, start: datetime, now: datetime) -> dict[str, Any]:
+        """
+        Fast MongoDB fallback with minimal aggregations.
+        When OpenSearch fails/times out, we prioritize speed over completeness.
+        """
         repository = await VulnerabilityRepository.create()
         collection = repository.collection
 
-        total = await collection.count_documents({})
-
+        # Only run the fastest queries - skip expensive aggregations
         sources_pipeline = [
             {
                 "$group": {
@@ -307,117 +366,72 @@ class StatsService:
                 }
             },
             {"$sort": {"count": -1, "_id": 1}},
-            {"$limit": 10},
+            {"$limit": 5},  # Reduced to 5 for speed
         ]
-        sources_raw = await collection.aggregate(sources_pipeline).to_list(length=10)
-        sources = self._map_group_results(sources_raw)
-
-        vendors_pipeline = [
-            {"$unwind": "$vendors"},
-            {"$match": {"vendors": {"$nin": [None, "", "*"]}}},
-            {"$group": {"_id": "$vendors", "count": {"$sum": 1}}},
-            {"$sort": {"count": -1, "_id": 1}},
-            {"$limit": 10},
-        ]
-        vendor_raw = await collection.aggregate(vendors_pipeline).to_list(length=10)
-        top_vendors = self._map_group_results(vendor_raw)
-
-        products_pipeline = [
-            {"$unwind": "$products"},
-            {"$match": {"products": {"$nin": [None, "", "*"]}}},
-            {"$group": {"_id": "$products", "count": {"$sum": 1}}},
-            {"$sort": {"count": -1, "_id": 1}},
-            {"$limit": 10},
-        ]
-        product_raw = await collection.aggregate(products_pipeline).to_list(length=10)
-        top_products = self._map_group_results(product_raw)
 
         severity_pipeline = [
             {
-                "$project": {
-                    "severity": {
-                        "$toUpper": {"$ifNull": ["$cvss.severity", "UNKNOWN"]},
-                    }
+                "$group": {
+                    "_id": {"$ifNull": ["$cvss.severity", "UNKNOWN"]},
+                    "count": {"$sum": 1},
                 }
             },
-            {"$group": {"_id": "$severity", "count": {"$sum": 1}}},
             {"$sort": {"count": -1, "_id": 1}},
+            {"$limit": 5},
         ]
-        severity_raw = await collection.aggregate(severity_pipeline).to_list(length=10)
-        severities = self._map_group_results(severity_raw)
 
-        timeline_pipeline = [
-            {
-                "$addFields": {
-                    "publishedDate": {
-                        "$cond": [
-                            {"$in": [{"$type": "$published"}, ["date", "timestamp"]]},
-                            "$published",
-                            {
-                                "$convert": {
-                                    "input": "$published",
-                                    "to": "date",
-                                    "onError": None,
-                                    "onNull": None,
-                                }
-                            },
-                        ]
-                    }
-                }
-            },
-            {"$match": {"publishedDate": {"$ne": None, "$gte": start}}},
-            {
-                "$project": {
-                    "month": {
-                        "$dateToString": {
-                            "format": "%Y-%m",
-                            "date": "$publishedDate",
-                            "timezone": "UTC",
-                        }
-                    }
-                }
-            },
-            {"$group": {"_id": "$month", "count": {"$sum": 1}}},
-            {"$sort": {"_id": 1}},
-        ]
-        timeline_raw = await collection.aggregate(timeline_pipeline).to_list(length=200)
+        # Run only essential aggregations in parallel with timeout
+        try:
+            total, sources_raw, severity_raw = await asyncio.wait_for(
+                asyncio.gather(
+                    collection.estimated_document_count(),
+                    collection.aggregate(sources_pipeline).to_list(length=5),
+                    collection.aggregate(severity_pipeline).to_list(length=5),
+                ),
+                timeout=5.0,  # 5 second timeout for fallback
+            )
 
-        timeline_map: dict[str, int] = {
-            row.get("_id"): int(row.get("count", 0))
-            for row in timeline_raw
-            if isinstance(row, dict)
-        }
+            sources = self._map_group_results(sources_raw)
+            severities = [
+                {"key": doc.get("_id", "UNKNOWN").upper(), "doc_count": int(doc.get("count", 0))}
+                for doc in severity_raw
+                if doc.get("_id")
+            ]
 
-        timeline: list[dict[str, Any]] = []
-        month_cursor = start
-        for _ in range(12):
-            month_key = month_cursor.strftime("%Y-%m")
-            timeline.append({"key": month_key, "count": timeline_map.get(month_key, 0)})
-            month_cursor = month_cursor + relativedelta(months=1)
+        except asyncio.TimeoutError:
+            log.warning("stats.mongo_fallback_timeout")
+            total = 0
+            sources = []
+            severities = []
 
+        # Return minimal data - skip expensive vendors/products/timeline
         return {
             "total": total,
             "sources": sources,
             "severities": severities,
-            "topVendors": top_vendors,
-            "topProducts": top_products,
-            "timeline": timeline,
+            "topVendors": [],  # Skip expensive aggregation
+            "topProducts": [],  # Skip expensive aggregation
+            "timeline": [],  # Skip expensive aggregation
         }
 
     async def _fetch_asset_stats(self) -> dict[str, Any]:
         repository = await AssetRepository.create()
 
         # Run all queries in parallel for better performance
+        # Note: counts are cached but samples are always fresh (random)
         (
             vendor_total,
             product_total,
             version_total,
-            vendor_samples,
-            product_samples,
         ) = await asyncio.gather(
             repository.vendors.count_documents({}),
             repository.products.count_documents({}),
             repository.versions.count_documents({}),
+        )
+
+        # Fetch samples separately to get fresh random samples each time
+        # (not affected by cache since they change on every request)
+        vendor_samples, product_samples = await asyncio.gather(
             repository.sample_vendors(limit=6),
             repository.sample_products(limit=6),
         )
