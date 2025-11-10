@@ -145,12 +145,15 @@ class IngestionLogRepository:
         self,
         *,
         job_name: str | None,
+        status: str | None,
         limit: int,
         offset: int,
     ) -> tuple[int, list[dict[str, Any]]]:
         query: dict[str, Any] = {}
         if job_name:
             query["jobName"] = job_name
+        if status:
+            query["status"] = status
         cursor = self.collection.find(query).sort("startedAt", -1).skip(offset).limit(limit)
         total = await self.collection.count_documents(query)
         items = await cursor.to_list(length=limit)

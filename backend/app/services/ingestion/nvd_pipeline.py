@@ -302,7 +302,18 @@ class NVDPipeline:
                 elif not document.exploited and normalized_id and normalized_id in known_exploited_upper:
                     document = document.model_copy(update={"exploited": True})
 
-                upsert_result = await repository.upsert_from_nvd(document, nvd_raw=record)
+                change_context = {
+                    "job_name": job_name,
+                    "job_label": label,
+                    "metadata": {
+                        "trigger": "automated",
+                        "provider": "NVD",
+                        "initial_sync": initial_sync,
+                    },
+                }
+                upsert_result = await repository.upsert_from_nvd(
+                    document, nvd_raw=record, change_context=change_context
+                )
                 if upsert_result.inserted:
                     ingested += 1
                 else:

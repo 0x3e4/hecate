@@ -3,6 +3,7 @@ import { IngestionLogResponse } from "../types";
 
 export interface FetchAuditParams {
   job?: string;
+  status?: string;
   limit?: number;
   offset?: number;
 }

@@ -21,6 +21,7 @@ from app.schemas.ai import (
     AIProviderLiteral,
 )
 from app.schemas.vulnerability import VulnerabilityDetail
+from app.services.cwe_service import get_cwe_service
 
 AI_PROVIDER_LABELS: dict[AIProviderLiteral, str] = {
     "openai": "OpenAI GPT",
@@ -65,7 +66,7 @@ class AIClient:
         Submit a vulnerability context to the requested provider and return the summarised response.
         """
         normalized_language = _normalize_language(language)
-        system_prompt, user_prompt = _build_prompts(vulnerability, normalized_language)
+        system_prompt, user_prompt = await _build_prompts(vulnerability, normalized_language)
 
         if provider == "openai":
             if not settings.openai_api_key:
@@ -104,8 +105,8 @@ class AIClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "temperature": 0.2,
-            "max_tokens": 600,
+            "temperature": 0.3,
+            "max_tokens": 1500,
         }
         headers = {
             "Authorization": f"Bearer {settings.openai_api_key}",
@@ -137,8 +138,8 @@ class AIClient:
     async def _call_anthropic(self, system_prompt: str, user_prompt: str) -> str:
         payload = {
             "model": settings.anthropic_model or "claude-3-haiku-20240307",
-            "max_tokens": 600,
-            "temperature": 0.2,
+            "max_tokens": 1500,
+            "temperature": 0.3,
             "system": system_prompt,
             "messages": [
                 {
@@ -211,8 +212,8 @@ class AIClient:
 
         model_name = settings.google_gemini_model or "gemini-1.5-flash"
         generation_config = {
-            "temperature": 0.2,
-            "max_output_tokens": 600,
+            "temperature": 0.3,
+            "max_output_tokens": 1500,
         }
 
         def _invoke() -> str:
@@ -306,86 +307,316 @@ def _normalize_language(language: str | None) -> str:
     return candidate or "en"
 
 
+def _interpret_cvss_vector(vector: str) -> str:
+    """Convert CVSS vector string into human-readable explanation."""
+    if not vector or not isinstance(vector, str):
+        return ""
+
+    try:
+        # Parse CVSS v3.x vector (e.g., CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H)
+        parts = vector.split("/")
+        if len(parts) < 2:
+            return ""
+
+        metrics = {}
+        for part in parts[1:]:  # Skip version prefix
+            if ":" in part:
+                key, value = part.split(":", 1)
+                metrics[key] = value
+
+        interpretations = []
+
+        # Attack Vector
+        av_map = {
+            "N": "Network (remotely exploitable)",
+            "A": "Adjacent Network (local network required)",
+            "L": "Local (local access required)",
+            "P": "Physical (physical access required)",
+        }
+        if "AV" in metrics:
+            interpretations.append(f"Vector: {av_map.get(metrics['AV'], metrics['AV'])}")
+
+        # Attack Complexity
+        ac_map = {"L": "Low complexity", "H": "High complexity"}
+        if "AC" in metrics:
+            interpretations.append(f"Complexity: {ac_map.get(metrics['AC'], metrics['AC'])}")
+
+        # Privileges Required
+        pr_map = {"N": "No privileges required", "L": "Low privileges", "H": "High privileges"}
+        if "PR" in metrics:
+            interpretations.append(f"Privileges: {pr_map.get(metrics['PR'], metrics['PR'])}")
+
+        # User Interaction
+        ui_map = {"N": "No user interaction", "R": "User interaction required"}
+        if "UI" in metrics:
+            interpretations.append(f"User Interaction: {ui_map.get(metrics['UI'], metrics['UI'])}")
+
+        # Impact: Confidentiality, Integrity, Availability
+        impact_map = {"H": "High", "L": "Low", "N": "None"}
+        impact_parts = []
+        if "C" in metrics:
+            impact_parts.append(f"Confidentiality {impact_map.get(metrics['C'], metrics['C'])}")
+        if "I" in metrics:
+            impact_parts.append(f"Integrity {impact_map.get(metrics['I'], metrics['I'])}")
+        if "A" in metrics:
+            impact_parts.append(f"Availability {impact_map.get(metrics['A'], metrics['A'])}")
+        if impact_parts:
+            interpretations.append(f"Impact: {', '.join(impact_parts)}")
+
+        return "; ".join(interpretations) if interpretations else ""
+    except Exception:  # pragma: no cover - defensive
+        return ""
+
+
+async def _get_cwe_description(cwe_id: str) -> str:
+    """
+    Get human-readable description for a CWE ID from MITRE API.
+    Falls back to static description if API is unavailable.
+    """
+    cwe_service = get_cwe_service()
+
+    try:
+        # Try to get detailed description from MITRE API
+        description = await cwe_service.get_detailed_description(cwe_id)
+        return description
+    except Exception as exc:  # pragma: no cover - fallback on errors
+        logger.debug("ai_service.cwe_fetch_failed", cwe_id=cwe_id, error=str(exc))
+
+        # Fallback to static mapping for common CWEs
+        static_map = {
+            "CWE-20": "Improper Input Validation",
+            "CWE-22": "Path Traversal",
+            "CWE-79": "Cross-Site Scripting (XSS)",
+            "CWE-89": "SQL Injection",
+            "CWE-94": "Code Injection",
+            "CWE-78": "OS Command Injection",
+            "CWE-119": "Buffer Overflow",
+            "CWE-125": "Out-of-bounds Read",
+            "CWE-200": "Information Disclosure",
+            "CWE-287": "Improper Authentication",
+            "CWE-306": "Missing Authentication",
+            "CWE-352": "Cross-Site Request Forgery (CSRF)",
+            "CWE-362": "Race Condition",
+            "CWE-400": "Uncontrolled Resource Consumption",
+            "CWE-416": "Use After Free",
+            "CWE-434": "Unrestricted File Upload",
+            "CWE-502": "Deserialization of Untrusted Data",
+            "CWE-611": "XML External Entity (XXE)",
+            "CWE-787": "Out-of-bounds Write",
+            "CWE-798": "Hard-coded Credentials",
+            "CWE-862": "Missing Authorization",
+            "CWE-918": "Server-Side Request Forgery (SSRF)",
+        }
+
+        normalized = cwe_id.upper().strip()
+        if not normalized.startswith("CWE-"):
+            normalized = f"CWE-{normalized}"
+
+        return static_map.get(normalized, "See CWE database for details")
+
+
 def _isoformat_utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _build_prompts(vulnerability: VulnerabilityDetail, language: str) -> tuple[str, str]:
+async def _build_prompts(vulnerability: VulnerabilityDetail, language: str) -> tuple[str, str]:
     language_instruction = (
         f"Respond in the language identified by the ISO code '{language}'. "
         "If you are unsure which language that is, default to English."
     )
+
+    # Enhanced system prompt with clear structure and examples
     system_prompt = (
-        "You are an experienced cybersecurity analyst. Provide concise and actionable insights. "
-        f"{language_instruction} "
-        "Structure the answer using prefixed with the labels:\n"
-        "Impact:\nReplication:\nDetection:\nMitigation:\nUrgency"
+        "You are an expert cybersecurity analyst specializing in vulnerability assessment and threat intelligence. "
+        "Your role is to provide actionable, technical insights that help security teams prioritize and respond to vulnerabilities.\n\n"
+        f"{language_instruction}\n\n"
+        "Structure your analysis using these exact section headers:\n\n"
+        "## Impact\n"
+        "Explain the technical impact and real-world consequences. Consider: What can an attacker achieve? "
+        "What systems/data are at risk? What is the blast radius?\n\n"
+        "## Attack Scenario\n"
+        "Describe a realistic attack scenario or proof-of-concept approach. Include: Attack vector, "
+        "prerequisites, complexity, and typical attacker goals.\n\n"
+        "## Detection\n"
+        "Provide specific detection strategies. Include: Log sources to monitor, indicators of compromise (IOCs), "
+        "behavioral patterns, and detection rules/queries where applicable.\n\n"
+        "## Mitigation\n"
+        "List concrete mitigation steps in priority order. Include: Patches, configuration changes, "
+        "workarounds, and compensating controls.\n\n"
+        "## Priority Assessment\n"
+        "Provide a risk-based priority recommendation (CRITICAL/HIGH/MEDIUM/LOW) with justification. "
+        "Consider: Exploitation status, EPSS score, CVSS severity, attack complexity, and exposure.\n\n"
+        "Be specific and technical. Avoid generic advice. If information is missing, state it explicitly."
     )
 
-    context = _format_vulnerability_context(vulnerability)
+    context = await _format_vulnerability_context(vulnerability)
+
+    # Enhanced user prompt with few-shot guidance
     user_prompt = (
-        "Assess the following vulnerability information. "
-        "Focus on real-world impact, feasible replication or testing ideas, practical detection hints, "
-        "mitigation or workarounds, and whether fast remediation is advised considering exploitation signals "
-        "or exposure. Use only the provided data; if something is unclear, say so.\n\n"
-        f"Vulnerability details:\n{context}"
+        "Analyze the following vulnerability using the structured format provided. "
+        "Focus on actionable intelligence that helps security teams understand and respond to this threat.\n\n"
+        "EXAMPLE FORMAT (use this structure):\n\n"
+        "## Impact\n"
+        "Remote code execution as SYSTEM/root via unauthenticated HTTP request. Attackers gain full control "
+        "of the application server, enabling data exfiltration, lateral movement, and persistence.\n\n"
+        "## Attack Scenario\n"
+        "1. Attacker sends crafted POST request to /api/upload endpoint\n"
+        "2. Malicious file bypasses validation due to path traversal (CWE-22)\n"
+        "3. Server executes uploaded file with elevated privileges\n"
+        "Prerequisites: Network access to vulnerable endpoint (typically Internet-facing)\n"
+        "Complexity: Low - public exploits available\n\n"
+        "## Detection\n"
+        "- Monitor for unusual file uploads to system directories (e.g., /tmp, /var/www)\n"
+        "- Alert on POST requests to /api/upload with directory traversal patterns (../, ../../)\n"
+        "- Watch for unexpected process creation from web server user\n"
+        "- Check application logs for HTTP 200 responses with suspicious filenames\n\n"
+        "## Mitigation\n"
+        "1. Apply vendor patch immediately (Product v2.1.4+)\n"
+        "2. If patching delayed: Disable /api/upload endpoint or restrict to authenticated users\n"
+        "3. Implement strict file upload validation (whitelist extensions, sanitize paths)\n"
+        "4. Run web server with least privilege (drop SYSTEM/root)\n"
+        "5. Deploy WAF rules blocking directory traversal patterns\n\n"
+        "## Priority Assessment\n"
+        "CRITICAL - Actively exploited (CISA KEV), trivial to exploit (CVSS 9.8), Internet-facing services common. "
+        "High EPSS (85%) indicates widespread exploitation. Patch within 24-48 hours.\n\n"
+        "---\n\n"
+        "NOW ANALYZE THIS VULNERABILITY:\n\n"
+        f"{context}"
     )
 
     return system_prompt, user_prompt
 
 
-def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> str:
-    lines: list[str] = []
-    identifiers = [vulnerability.vuln_id]
-    if vulnerability.source_id and vulnerability.source_id not in identifiers:
-        identifiers.append(vulnerability.source_id)
+async def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> str:
+    """Format vulnerability data into a rich, structured context for AI analysis."""
+    sections: list[str] = []
+
+    # === IDENTIFICATION ===
+    id_parts: list[str] = [f"Primary ID: {vulnerability.vuln_id}"]
+    if vulnerability.source_id and vulnerability.source_id != vulnerability.vuln_id:
+        id_parts.append(f"Source ID: {vulnerability.source_id}")
     if vulnerability.aliases:
-        aliases = [alias for alias in vulnerability.aliases if alias not in identifiers]
-        identifiers.extend(aliases[:3])
-    if identifiers:
-        lines.append(f"Identifiers: {', '.join(filter(None, identifiers))}")
+        aliases = [alias for alias in vulnerability.aliases if alias != vulnerability.vuln_id][:4]
+        if aliases:
+            id_parts.append(f"Aliases: {', '.join(aliases)}")
+    sections.append("IDENTIFICATION:\n" + "\n".join(id_parts))
+
+    # === VULNERABILITY OVERVIEW ===
+    overview_parts: list[str] = []
     if vulnerability.title:
-        lines.append(f"Title: {vulnerability.title}")
+        overview_parts.append(f"Title: {vulnerability.title}")
     if vulnerability.summary:
-        lines.append(f"Summary: {vulnerability.summary}")
+        # Truncate very long summaries but keep most of it
+        summary = vulnerability.summary[:800] + ("..." if len(vulnerability.summary) > 800 else "")
+        overview_parts.append(f"Description: {summary}")
+    if vulnerability.assigner:
+        overview_parts.append(f"Assigned by: {vulnerability.assigner}")
+    if overview_parts:
+        sections.append("OVERVIEW:\n" + "\n".join(overview_parts))
 
-    risk_bits: list[str] = []
+    # === SEVERITY & RISK METRICS ===
+    risk_parts: list[str] = []
     if vulnerability.severity:
-        risk_bits.append(f"Severity {vulnerability.severity}")
+        risk_parts.append(f"Severity: {vulnerability.severity}")
     if vulnerability.cvss_score is not None:
-        risk_bits.append(f"CVSS {vulnerability.cvss_score:.1f}")
+        risk_parts.append(f"CVSS Base Score: {vulnerability.cvss_score:.1f}/10.0")
+
+    # Decode CVSS vector for better understanding
+    if vulnerability.cvss and hasattr(vulnerability.cvss, "vector"):
+        cvss_interpretation = _interpret_cvss_vector(vulnerability.cvss.vector)
+        if cvss_interpretation:
+            risk_parts.append(f"CVSS Breakdown: {cvss_interpretation}")
+
     if vulnerability.epss_score is not None:
-        risk_bits.append(f"EPSS {vulnerability.epss_score:.2f}%")
-    if vulnerability.exploited:
-        risk_bits.append("Known exploited: yes")
-    if risk_bits:
-        lines.append("Risk indicators: " + ", ".join(risk_bits))
+        # EPSS is 0-1, convert to percentage
+        epss_percent = vulnerability.epss_score * 100 if vulnerability.epss_score <= 1.0 else vulnerability.epss_score
+        risk_parts.append(f"EPSS (Exploitation Probability): {epss_percent:.1f}%")
 
-    if vulnerability.exploitation:
-        exploitation_parts: list[str] = []
-        info = vulnerability.exploitation
-        if info.vendor_project:
-            exploitation_parts.append(f"Vendor/Project: {info.vendor_project}")
-        if info.product:
-            exploitation_parts.append(f"Product: {info.product}")
-        if info.short_description:
-            exploitation_parts.append(f"Notes: {info.short_description}")
-        if exploitation_parts:
-            lines.append("Known exploitation details: " + "; ".join(exploitation_parts))
+    if risk_parts:
+        sections.append("SEVERITY & RISK:\n" + "\n".join(risk_parts))
 
-    if vulnerability.vendors:
-        lines.append("Vendors: " + ", ".join(vulnerability.vendors[:5]))
-    if vulnerability.products:
-        lines.append("Products: " + ", ".join(vulnerability.products[:5]))
+    # === EXPLOITATION STATUS ===
+    if vulnerability.exploited or vulnerability.exploitation:
+        exploit_parts: list[str] = []
+        if vulnerability.exploited:
+            exploit_parts.append("⚠ ACTIVELY EXPLOITED IN THE WILD")
+
+        if vulnerability.exploitation:
+            info = vulnerability.exploitation
+            if info.source:
+                exploit_parts.append(f"Source: {info.source}")
+            if info.vendor_project:
+                exploit_parts.append(f"Affected: {info.vendor_project}")
+            if info.product:
+                exploit_parts.append(f"Product: {info.product}")
+            if info.short_description:
+                exploit_parts.append(f"Details: {info.short_description}")
+            if info.required_action:
+                exploit_parts.append(f"Required Action: {info.required_action}")
+            if info.due_date:
+                exploit_parts.append(f"Remediation Due: {info.due_date}")
+            if info.known_ransomware_campaign_use:
+                exploit_parts.append(f"Ransomware Use: {info.known_ransomware_campaign_use}")
+
+        sections.append("EXPLOITATION STATUS:\n" + "\n".join(exploit_parts))
+
+    # === AFFECTED PRODUCTS ===
+    affected_parts: list[str] = []
+    if vulnerability.impacted_products:
+        for idx, impacted in enumerate(vulnerability.impacted_products[:5]):
+            vendor = impacted.vendor.name if impacted.vendor else "Unknown"
+            product = impacted.product.name if impacted.product else "Unknown"
+            versions = ", ".join(impacted.versions[:10]) if impacted.versions else "All versions"
+            envs = f" ({', '.join(impacted.environments)})" if impacted.environments else ""
+            affected_parts.append(f"- {vendor} {product}: {versions}{envs}")
+        if len(vulnerability.impacted_products) > 5:
+            affected_parts.append(f"... and {len(vulnerability.impacted_products) - 5} more products")
+    elif vulnerability.vendors or vulnerability.products:
+        if vulnerability.vendors:
+            affected_parts.append(f"Vendors: {', '.join(vulnerability.vendors[:8])}")
+        if vulnerability.products:
+            affected_parts.append(f"Products: {', '.join(vulnerability.products[:8])}")
+        if vulnerability.product_versions:
+            versions_str = ', '.join(vulnerability.product_versions[:10])
+            if len(vulnerability.product_versions) > 10:
+                versions_str += f" (+{len(vulnerability.product_versions) - 10} more)"
+            affected_parts.append(f"Versions: {versions_str}")
+
+    if affected_parts:
+        sections.append("AFFECTED PRODUCTS:\n" + "\n".join(affected_parts))
+
+    # === WEAKNESS CLASSIFICATION ===
+    weakness_parts: list[str] = []
     if vulnerability.cwes:
-        lines.append("CWEs: " + ", ".join(vulnerability.cwes[:5]))
+        cwe_descriptions = []
+        for cwe in vulnerability.cwes[:5]:
+            cwe_desc = await _get_cwe_description(cwe)
+            cwe_descriptions.append(f"- {cwe}: {cwe_desc}")
+        weakness_parts.extend(cwe_descriptions)
+    if weakness_parts:
+        sections.append("WEAKNESS TYPES (CWE):\n" + "\n".join(weakness_parts))
+
+    # === REFERENCES ===
     if vulnerability.references:
-        lines.append("References: " + "; ".join(vulnerability.references[:5]))
+        ref_list = []
+        for ref in vulnerability.references[:8]:
+            # Shorten very long URLs for readability
+            display_ref = ref if len(ref) <= 100 else ref[:97] + "..."
+            ref_list.append(f"- {display_ref}")
+        if len(vulnerability.references) > 8:
+            ref_list.append(f"... and {len(vulnerability.references) - 8} more references")
+        sections.append("REFERENCES:\n" + "\n".join(ref_list))
 
-    if vulnerability.cpes:
-        lines.append("CPEs: " + "; ".join(vulnerability.cpes[:3]))
+    # === TIMELINE ===
+    timeline_parts: list[str] = []
+    if vulnerability.published:
+        timeline_parts.append(f"Published: {vulnerability.published.strftime('%Y-%m-%d')}")
+    if vulnerability.modified:
+        timeline_parts.append(f"Last Modified: {vulnerability.modified.strftime('%Y-%m-%d')}")
+    if timeline_parts:
+        sections.append("TIMELINE:\n" + "\n".join(timeline_parts))
 
-    return "\n".join(lines)
+    return "\n\n".join(sections)
 
 
 @lru_cache(maxsize=1)

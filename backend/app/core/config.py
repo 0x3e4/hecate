@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     mongo_ingestion_state_collection: str = "ingestion_state"
     mongo_ingestion_log_collection: str = "ingestion_logs"
     mongo_kev_collection: str = "known_exploited_vulnerabilities"
+    mongo_cwe_collection: str = "cwe_catalog"
     mongo_saved_searches_collection: str = "saved_searches"
     opensearch_url: str = "http://opensearch:9200"
     opensearch_username: str | None = None
@@ -60,6 +61,10 @@ class Settings(BaseSettings):
 
     kev_feed_url: str = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
+    cwe_base_url: str = "https://cwe-api.mitre.org/api/v1"
+    cwe_timeout_seconds: int = 30
+    cwe_rate_limit_seconds: float = 1.0
+
     ingestion_user_agent: str = "hecate-ingestion/0.1"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True
@@ -70,6 +75,7 @@ class Settings(BaseSettings):
     scheduler_cpe_interval_hours: int = 24
     scheduler_nvd_interval_hours: int = 24
     scheduler_kev_interval_minutes: int = 60
+    scheduler_cwe_interval_days: int = 7
 
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"

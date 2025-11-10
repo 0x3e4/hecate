@@ -11,6 +11,10 @@ const JOB_LABELS: Record<string, string> = {
   cpe_initial_sync: "CPE Initial Sync",
   nvd_sync: "NVD Sync",
   nvd_initial_sync: "NVD Initial Sync",
+  kev_sync: "CISA KEV Sync",
+  kev_initial_sync: "CISA KEV Initial Sync",
+  cwe_sync: "CWE Cache Refresh",
+  cwe_initial_sync: "CWE Initial Cache Prefetch",
   manual_refresh: "Manueller Refresh",
   saved_search_created: "Gespeicherte Suche erstellt",
   saved_search_deleted: "Gespeicherte Suche gelöscht",
@@ -33,6 +37,7 @@ export const AuditLogPage = () => {
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [jobFilter, setJobFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState<number>(0);
 
   useEffect(() => {
@@ -51,6 +56,7 @@ export const AuditLogPage = () => {
         setLoading(true);
         const response = await fetchIngestionLogs({
           job: jobFilter || undefined,
+          status: statusFilter || undefined,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         });
@@ -63,7 +69,7 @@ export const AuditLogPage = () => {
     };
 
     load();
-  }, [jobFilter, page]);
+  }, [jobFilter, statusFilter, page]);
 
   const rows = useMemo(
     () =>
@@ -105,6 +111,44 @@ export const AuditLogPage = () => {
               <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{progressJson}</pre>
             </details>,
           );
+        } else if (entry.result && typeof entry.result === "object") {
+          // Format result as readable key-value pairs
+          const resultObj = entry.result as Record<string, unknown>;
+          const resultKeys = Object.keys(resultObj);
+
+          if (resultKeys.length > 0) {
+            detailElements.push(
+              <details key="result">
+                <summary style={{ cursor: "pointer" }}>Details anzeigen</summary>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", marginTop: "0.5rem" }}>
+                  {resultKeys.map((key) => {
+                    const value = resultObj[key];
+                    const displayKey = key
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (l) => l.toUpperCase());
+
+                    // Format the value
+                    let displayValue: string;
+                    if (typeof value === "boolean") {
+                      displayValue = value ? "Yes" : "No";
+                    } else if (typeof value === "number") {
+                      displayValue = value.toLocaleString();
+                    } else if (value === null || value === undefined) {
+                      displayValue = "-";
+                    } else {
+                      displayValue = String(value);
+                    }
+
+                    return (
+                      <span key={key} style={{ fontSize: "0.9rem" }}>
+                        <strong>{displayKey}:</strong> {displayValue}
+                      </span>
+                    );
+                  })}
+                </div>
+              </details>,
+            );
+          }
         } else if (resultJson) {
           detailElements.push(
             <details>
@@ -188,10 +232,32 @@ export const AuditLogPage = () => {
               <option value="cpe_initial_sync">CPE Initial Sync</option>
               <option value="nvd_sync">NVD Sync</option>
               <option value="nvd_initial_sync">NVD Initial Sync</option>
+              <option value="kev_sync">CISA KEV Sync</option>
+              <option value="kev_initial_sync">CISA KEV Initial Sync</option>
+              <option value="cwe_sync">CWE Cache Refresh</option>
+              <option value="cwe_initial_sync">CWE Initial Cache Prefetch</option>
               <option value="manual_refresh">Manueller Refresh</option>
               <option value="saved_search_created">Gespeicherte Suche erstellt</option>
               <option value="saved_search_deleted">Gespeicherte Suche gelöscht</option>
               <option value="ai_investigation">AI-Analyse</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", minWidth: "180px" }}>
+            <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
+              Status-Filter
+            </span>
+            <select
+              value={statusFilter}
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                setPage(0);
+              }}
+            >
+              <option value="">Alle Status</option>
+              <option value="running">Running</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </label>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>

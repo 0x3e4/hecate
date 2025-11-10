@@ -63,6 +63,11 @@ async def list_vulnerabilities(
         alias="exploitedOnly",
         description="Return only vulnerabilities with known exploitation.",
     ),
+    ai_analysed_only: bool = Query(
+        default=False,
+        alias="aiAnalysedOnly",
+        description="Return only vulnerabilities with AI analysis.",
+    ),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
@@ -78,6 +83,7 @@ async def list_vulnerabilities(
         limit=limit,
         includeRejected=include_rejected,
         exploitedOnly=exploited_only,
+        aiAnalysedOnly=ai_analysed_only,
     )
     return await service.search_paginated(query, limit=limit, offset=offset)
 

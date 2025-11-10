@@ -14,8 +14,12 @@ class AuditService:
     def __init__(self, log_repository: IngestionLogRepository) -> None:
         self.log_repository = log_repository
 
-    async def list_logs(self, *, job_name: str | None, limit: int, offset: int) -> IngestionLogResponse:
-        total, items = await self.log_repository.list_logs(job_name=job_name, limit=limit, offset=offset)
+    async def list_logs(
+        self, *, job_name: str | None, status: str | None, limit: int, offset: int
+    ) -> IngestionLogResponse:
+        total, items = await self.log_repository.list_logs(
+            job_name=job_name, status=status, limit=limit, offset=offset
+        )
         entries = [self._map_entry(item) for item in items]
         return IngestionLogResponse(total=total, items=entries)
 

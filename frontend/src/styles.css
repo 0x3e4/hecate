@@ -818,8 +818,112 @@ a {
 }
 
 .ai-analysis__text {
-  line-height: 1.6;
-  white-space: pre-line;
+  line-height: 1.7;
+}
+
+.ai-analysis__text h1,
+.ai-analysis__text h2,
+.ai-analysis__text h3,
+.ai-analysis__text h4 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  color: #f5f7fa;
+}
+
+.ai-analysis__text h1:first-child,
+.ai-analysis__text h2:first-child,
+.ai-analysis__text h3:first-child,
+.ai-analysis__text h4:first-child {
+  margin-top: 0;
+}
+
+.ai-analysis__text h1 {
+  font-size: 1.5rem;
+}
+
+.ai-analysis__text h2 {
+  font-size: 1.3rem;
+}
+
+.ai-analysis__text h3 {
+  font-size: 1.15rem;
+}
+
+.ai-analysis__text h4 {
+  font-size: 1rem;
+}
+
+.ai-analysis__text p {
+  margin: 0 0 1rem 0;
+}
+
+.ai-analysis__text p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-analysis__text ul,
+.ai-analysis__text ol {
+  margin: 0 0 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.ai-analysis__text li {
+  margin-bottom: 0.4rem;
+}
+
+.ai-analysis__text code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.ai-analysis__text pre {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0 0 1rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-analysis__text pre code {
+  background: none;
+  padding: 0;
+}
+
+.ai-analysis__text strong {
+  font-weight: 600;
+  color: #fff;
+}
+
+.ai-analysis__text em {
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.ai-analysis__text blockquote {
+  border-left: 3px solid rgba(92, 132, 255, 0.5);
+  padding-left: 1rem;
+  margin: 0 0 1rem 0;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.ai-analysis__text a {
+  color: rgba(92, 132, 255, 0.9);
+  text-decoration: underline;
+}
+
+.ai-analysis__text a:hover {
+  color: rgba(156, 183, 255, 0.95);
+}
+
+.ai-analysis__text hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 1.5rem 0;
 }
 
 .ai-analysis__meta {

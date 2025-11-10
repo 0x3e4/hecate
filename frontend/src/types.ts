@@ -164,6 +164,7 @@ export interface VulnerabilityQuery {
   severity?: string[];
   includeRejected?: boolean;
   exploitedOnly?: boolean;
+  aiAnalysedOnly?: boolean;
   limit?: number;
 }
 

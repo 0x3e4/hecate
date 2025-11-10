@@ -12,6 +12,8 @@ from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
+from app.services.ingestion.job_tracker import JobTracker
+from app.services.cwe_service import get_cwe_service
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 
 log = structlog.get_logger()
@@ -75,6 +77,13 @@ class SchedulerManager:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            _scheduled_cwe_sync,
+            trigger=IntervalTrigger(days=settings.scheduler_cwe_interval_days),
+            id="cwe_sync",
+            replace_existing=True,
+        )
+
     async def shutdown(self) -> None:
         if self._bootstrap_task is not None and not self._bootstrap_task.done():
             self._bootstrap_task.cancel()
@@ -95,6 +104,7 @@ class SchedulerManager:
             ("cpe", "cpe_initial_sync", _initial_cpe_sync, "bootstrap-cpe"),
             ("nvd", "nvd_initial_sync", _initial_nvd_sync, "bootstrap-nvd"),
             ("kev", "kev_initial_sync", _initial_kev_sync, "bootstrap-kev"),
+            ("cwe", "cwe_initial_sync", _initial_cwe_sync, "bootstrap-cwe"),
         )
 
         tasks: list[tuple[str, asyncio.Task[None]]] = []
@@ -253,3 +263,58 @@ async def _initial_sync_already_completed(job_name: str) -> bool:
     if not state:
         return False
     return state.get("status") == "completed"
+
+
+async def _initial_cwe_sync() -> None:
+    """Initial CWE cache prefetch on startup."""
+    await _execute_cwe_sync(initial_sync=True)
+
+
+async def _scheduled_cwe_sync() -> None:
+    """Scheduled CWE cache refresh job (runs weekly)."""
+    await _execute_cwe_sync(initial_sync=False)
+
+
+async def _execute_cwe_sync(*, initial_sync: bool) -> None:
+    """Execute CWE cache refresh with job tracking."""
+    state_repository = await IngestionStateRepository.create()
+    tracker = JobTracker(state_repository)
+
+    job_name = "cwe_initial_sync" if initial_sync else "cwe_sync"
+    label = "CWE Initial Cache Prefetch" if initial_sync else "CWE Cache Refresh"
+
+    ctx = await tracker.start(
+        job_name,
+        label=label,
+        initial_sync=initial_sync,
+    )
+
+    try:
+        log.info("scheduler.cwe_sync_started", initial_sync=initial_sync)
+        cwe_service = get_cwe_service()
+
+        # Clear in-memory cache
+        cwe_service.clear_cache()
+
+        # Delete old MongoDB entries (older than 7 days)
+        deleted = await cwe_service.clear_old_entries()
+
+        # Sync ALL CWEs from MITRE API
+        stats = await cwe_service.sync_all_cwes()
+
+        result = {
+            "fetched": stats["fetched"],
+            "inserted": stats["inserted"],
+            "updated": stats["updated"],
+            "unchanged": stats["unchanged"],
+            "failed": stats["failed"],
+            "deleted_old": deleted,
+            "initial_sync": initial_sync,
+        }
+
+        await tracker.finish(ctx, **result)
+        log.info("scheduler.cwe_sync_completed", **result)
+    except Exception as exc:  # noqa: BLE001
+        error_msg = str(exc)
+        await tracker.fail(ctx, error_msg)
+        log.exception("scheduler.cwe_sync_failed", error=error_msg, initial_sync=initial_sync)
