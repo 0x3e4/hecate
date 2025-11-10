@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Callable, Iterable
 
 from dateutil.relativedelta import relativedelta
@@ -21,54 +21,8 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 log = structlog.get_logger()
 
 
-class StatsCache:
-    """Simple in-memory cache for stats data."""
-
-    def __init__(self, ttl_seconds: int = 300):  # 5 minutes default
-        self._cache: dict[str, tuple[datetime, Any]] = {}
-        self._ttl = timedelta(seconds=ttl_seconds)
-
-    def get(self, key: str) -> Any | None:
-        if key not in self._cache:
-            return None
-
-        timestamp, value = self._cache[key]
-        if datetime.now(tz=UTC) - timestamp > self._ttl:
-            del self._cache[key]
-            return None
-
-        return value
-
-    def set(self, key: str, value: Any) -> None:
-        self._cache[key] = (datetime.now(tz=UTC), value)
-
-    def clear(self) -> None:
-        self._cache.clear()
-
-
-# Global cache instance with longer TTL (15 minutes instead of 5)
-# Stats data doesn't change frequently, so longer cache is acceptable
-_stats_cache = StatsCache(ttl_seconds=900)
-
-
 class StatsService:
     async def get_overview(self) -> dict[str, Any]:
-        # Check cache first
-        cached = _stats_cache.get("overview")
-
-        if cached is not None:
-            log.info("stats.cache_hit")
-            # Refresh asset samples even when cached to show random vendors/products
-            cached_copy = cached.copy()
-            try:
-                fresh_asset_samples = await self._fetch_fresh_asset_samples()
-                cached_copy["assets"]["sampleVendors"] = fresh_asset_samples["sampleVendors"]
-                cached_copy["assets"]["sampleProducts"] = fresh_asset_samples["sampleProducts"]
-            except Exception as e:
-                log.warning("stats.fresh_samples_failed", error=str(e))
-                # Return cached version if fresh samples fail
-            return cached_copy
-
         # Add timeout protection to prevent hanging requests
         try:
             # Run both queries in parallel with 30 second timeout
@@ -102,37 +56,7 @@ class StatsService:
 
         result = {"vulnerabilities": vulnerability_stats, "assets": asset_stats}
 
-        # Cache the result
-        _stats_cache.set("overview", result)
-        log.info("stats.cache_set")
-
         return result
-
-    async def _fetch_fresh_asset_samples(self) -> dict[str, Any]:
-        """Fetch fresh random asset samples quickly without hitting cache."""
-        repository = await AssetRepository.create()
-        vendor_samples, product_samples = await asyncio.gather(
-            repository.sample_vendors(limit=6),
-            repository.sample_products(limit=6),
-        )
-
-        def _simplify_sample(item: dict[str, Any]) -> dict[str, Any]:
-            name = (
-                item.get("name")
-                or item.get("displayName")
-                or item.get("_id")
-                or "—"
-            )
-            return {
-                "slug": item.get("slug") or item.get("_id"),
-                "name": name,
-                "aliases": item.get("aliases", [])[:3],
-            }
-
-        return {
-            "sampleVendors": [_simplify_sample(item) for item in vendor_samples],
-            "sampleProducts": [_simplify_sample(item) for item in product_samples],
-        }
 
     async def _fetch_vulnerability_stats(self) -> dict[str, Any]:
         now = datetime.now(tz=UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -418,20 +342,16 @@ class StatsService:
         repository = await AssetRepository.create()
 
         # Run all queries in parallel for better performance
-        # Note: counts are cached but samples are always fresh (random)
         (
             vendor_total,
             product_total,
             version_total,
+            vendor_samples,
+            product_samples,
         ) = await asyncio.gather(
             repository.vendors.count_documents({}),
             repository.products.count_documents({}),
             repository.versions.count_documents({}),
-        )
-
-        # Fetch samples separately to get fresh random samples each time
-        # (not affected by cache since they change on every request)
-        vendor_samples, product_samples = await asyncio.gather(
             repository.sample_vendors(limit=6),
             repository.sample_products(limit=6),
         )

@@ -98,7 +98,6 @@ class NVDClient:
         *,
         last_modified_start: datetime | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        start_index = 0
         last_modified_param: str | None = None
         if last_modified_start:
             safe_start = last_modified_start.astimezone(UTC)
@@ -111,10 +110,49 @@ class NVDClient:
                 )
                 safe_start = now
             last_modified_param = self._format_datetime(safe_start)
-        total_results: int | None = None
 
-        while True:
-            params: dict[str, Any] = {
+        # First, get total results to start from the end (newest entries)
+        params: dict[str, Any] = {
+            "startIndex": 0,
+            "resultsPerPage": 1,
+        }
+        if last_modified_param:
+            params["lastModStartDate"] = last_modified_param
+
+        try:
+            async with self._rate_limiter.slot():
+                response = await self._client.get("/cves/2.0", params=params)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code if exc.response else None
+            if status == 404 and last_modified_param:
+                log.info(
+                    "nvd_client.no_results_for_last_mod_start",
+                    last_mod_start=last_modified_param,
+                )
+                return
+            log.error(
+                "nvd_client.total_query_failed",
+                error=str(exc),
+                status=status,
+            )
+            raise RuntimeError("Failed to get total NVD CVE count.") from exc
+        except httpx.HTTPError as exc:
+            log.error("nvd_client.total_query_failed", error=str(exc))
+            raise RuntimeError("Failed to get total NVD CVE count.") from exc
+
+        payload = response.json()
+        total_results = payload.get("totalResults")
+        if not isinstance(total_results, int) or total_results == 0:
+            log.info("nvd_client.no_results", total_results=total_results)
+            return
+
+        # Start from the end (newest entries) and work backwards
+        start_index = max(0, total_results - self._page_size)
+        log.info("nvd_client.starting_from_newest", total_results=total_results, start_index=start_index)
+
+        while start_index >= 0:
+            params = {
                 "startIndex": start_index,
                 "resultsPerPage": self._page_size,
             }
@@ -127,12 +165,6 @@ class NVDClient:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code if exc.response else None
-                if status == 404 and last_modified_param:
-                    log.info(
-                        "nvd_client.no_results_for_last_mod_start",
-                        last_mod_start=last_modified_param,
-                    )
-                    return
                 log.error(
                     "nvd_client.page_failed",
                     start_index=start_index,
@@ -145,11 +177,6 @@ class NVDClient:
                 raise RuntimeError("Failed to iterate NVD CVEs.") from exc
 
             payload = response.json()
-            if total_results is None:
-                maybe_total = payload.get("totalResults")
-                if isinstance(maybe_total, int):
-                    total_results = maybe_total
-
             vulnerabilities = payload.get("vulnerabilities")
             if not isinstance(vulnerabilities, list) or not vulnerabilities:
                 break
@@ -163,9 +190,8 @@ class NVDClient:
             if yielded == 0:
                 break
 
-            start_index += yielded
-            if total_results is not None and start_index >= total_results:
-                break
+            # Move backwards to process older entries
+            start_index -= self._page_size
 
     async def close(self) -> None:
         await self._client.aclose()
