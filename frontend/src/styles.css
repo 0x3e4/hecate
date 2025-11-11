@@ -27,6 +27,12 @@ body {
   min-height: 100vh;
   min-width: 0;
   overflow-x: hidden;
+  margin-left: 260px;
+  transition: margin-left 0.25s ease;
+}
+
+.app-sidebar.collapsed ~ .app-main {
+  margin-left: 80px;
 }
 
 .app-content {
@@ -83,16 +89,17 @@ body {
   padding: 2rem 1.5rem;
   background: #05070d;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
   height: 100vh;
-  max-height: 100vh;
   box-sizing: border-box;
   transition: width 0.25s ease, padding 0.25s ease;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   overflow: hidden;
+  z-index: 10;
 }
 
 .app-sidebar.collapsed {
@@ -1385,6 +1392,10 @@ table thead th {
     flex-direction: row;
   }
 
+  .app-main {
+    margin-left: 0;
+  }
+
   .mobile-menu-toggle {
     display: block;
   }
@@ -1644,9 +1655,17 @@ table thead th {
     padding: 1.5rem 1rem;
   }
 
+  .app-main {
+    margin-left: 220px;
+  }
+
   .app-sidebar.collapsed {
     width: 70px;
     padding: 1.5rem 0.5rem;
+  }
+
+  .app-sidebar.collapsed ~ .app-main {
+    margin-left: 70px;
   }
 
   .app-content {

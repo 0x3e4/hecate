@@ -1,0 +1,150 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+name: SonarQube & Trivy Scan
+
+jobs:
+  Analysis:
+    name: SonarQube Code Analysis
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@master
+      with:
+        fetch-depth: 0  # Disabling shallow clone for better reporting relevance
+    - name: SonarQube Scan
+      uses: sonarsource/sonarqube-scan-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST }}
+      with:
+        args: >
+          -Dsonar.projectVersion=0.1.0
+          -Dsonar.projectKey=msc-app
+
+  TrivyDependencyScan:
+    name: Trivy Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Trivy and SonarQube Plugin
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release python3 jq
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install -y trivy
+        trivy plugin install github.com/umax/trivy-plugin-sonarqube
+
+    - name: Run Trivy Scan and Convert to SonarQube Format
+      run: |
+        set -e
+        echo "Running Trivy filesystem scan..."
+        trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
+
+        echo "Checking for vulnerabilities in the report..."
+        VULN_COUNT=$(jq '[.Results[]?.Vulnerabilities // []] | add | length' trivy-deps-report.json)
+        echo "Found $VULN_COUNT vulnerabilities"
+
+        echo "Trivy scan completed. Checking report..."
+        ls -lh trivy-deps-report.json
+        echo "Report contains $(jq '.Results | length' trivy-deps-report.json) result(s)"
+
+        echo "Verifying Python installation..."
+        python3 --version
+
+        echo "Verifying Trivy plugin installation..."
+        trivy plugin list
+
+        echo "Inspecting Trivy report structure..."
+        echo "First vulnerability found:"
+        jq '.Results[0].Vulnerabilities[0] // "No vulnerabilities"' trivy-deps-report.json
+
+        echo "Converting to SonarQube format..."
+        trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
+
+        echo "Conversion completed. Checking output..."
+        ls -lh sonar-deps-report.json
+
+        echo "SonarQube report content:"
+        cat sonar-deps-report.json
+
+        # Verify the output is not empty
+        if [ ! -s sonar-deps-report.json ]; then
+          echo "ERROR: sonar-deps-report.json is empty!"
+          echo "Checking if trivy-deps-report.json has content..."
+          cat trivy-deps-report.json | head -20
+          exit 1
+        fi
+
+        echo "Verifying JSON structure..."
+        if jq empty sonar-deps-report.json 2>/dev/null; then
+          ISSUE_COUNT=$(jq '.issues | length' sonar-deps-report.json)
+          echo "Valid JSON. Report contains $ISSUE_COUNT issue(s)"
+
+          if [ "$ISSUE_COUNT" -eq 0 ]; then
+            echo "WARNING: Trivy found vulnerabilities but conversion produced 0 issues"
+            echo "This might be a bug in trivy-plugin-sonarqube"
+            echo "Trivy report summary:"
+            jq '.Results[] | {Target, Vulnerabilities: (.Vulnerabilities | length)}' trivy-deps-report.json
+          fi
+        else
+          echo "ERROR: Invalid JSON in sonar-deps-report.json"
+          cat sonar-deps-report.json
+          exit 1
+        fi
+
+    - name: Upload Vulnerability Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: trivy-sonarqube-reports
+        path: |
+          trivy-deps-report.json
+          sonar-deps-report.json
+
+  SonarQubeUpload:
+    name: Upload Vulnerabilities to SonarQube
+    runs-on: ubuntu-latest
+    needs:
+      - TrivyDependencyScan
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download Trivy/SonarQube Reports
+      uses: actions/download-artifact@v3
+      with:
+        name: trivy-sonarqube-reports
+
+    - name: Install SonarScanner CLI
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unzip wget
+        wget -qO sonar-scanner-cli.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.3.0.5189-linux-x64.zip
+        unzip sonar-scanner-cli.zip
+        mv sonar-scanner-7.3.0.5189-linux-x64 /opt/sonar-scanner
+        sudo ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner
+        sonar-scanner --version
+
+    - name: Run SonarScanner
+      env:
+        SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST }}
+      run: |
+        sonar-scanner \
+          -Dsonar.host.url="$SONAR_HOST_URL" \
+          -Dsonar.token="$SONAR_TOKEN" \
+          -Dsonar.projectKey=msc-app \
+          -Dsonar.sources=. \
+          -Dsonar.externalIssuesReportPaths="sonar-deps-report.json"
