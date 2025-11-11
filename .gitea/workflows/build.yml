@@ -54,6 +54,10 @@ jobs:
         echo "Running Trivy filesystem scan..."
         trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
 
+        echo "Checking for vulnerabilities in the report..."
+        VULN_COUNT=$(jq '[.Results[]?.Vulnerabilities // []] | add | length' trivy-deps-report.json)
+        echo "Found $VULN_COUNT vulnerabilities"
+
         echo "Trivy scan completed. Checking report..."
         ls -lh trivy-deps-report.json
         echo "Report contains $(jq '.Results | length' trivy-deps-report.json) result(s)"
@@ -61,20 +65,44 @@ jobs:
         echo "Verifying Python installation..."
         python3 --version
 
+        echo "Verifying Trivy plugin installation..."
+        trivy plugin list
+
+        echo "Inspecting Trivy report structure..."
+        echo "First vulnerability found:"
+        jq '.Results[0].Vulnerabilities[0] // "No vulnerabilities"' trivy-deps-report.json
+
         echo "Converting to SonarQube format..."
-        if trivy sonarqube trivy-deps-report.json > sonar-deps-report.json 2>&1; then
-          echo "Conversion successful. Checking output..."
-          ls -lh sonar-deps-report.json
+        trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
 
-          # Verify the output is not empty
-          if [ ! -s sonar-deps-report.json ]; then
-            echo "ERROR: sonar-deps-report.json is empty!"
-            exit 1
+        echo "Conversion completed. Checking output..."
+        ls -lh sonar-deps-report.json
+
+        echo "SonarQube report content:"
+        cat sonar-deps-report.json
+
+        # Verify the output is not empty
+        if [ ! -s sonar-deps-report.json ]; then
+          echo "ERROR: sonar-deps-report.json is empty!"
+          echo "Checking if trivy-deps-report.json has content..."
+          cat trivy-deps-report.json | head -20
+          exit 1
+        fi
+
+        echo "Verifying JSON structure..."
+        if jq empty sonar-deps-report.json 2>/dev/null; then
+          ISSUE_COUNT=$(jq '.issues | length' sonar-deps-report.json)
+          echo "Valid JSON. Report contains $ISSUE_COUNT issue(s)"
+
+          if [ "$ISSUE_COUNT" -eq 0 ]; then
+            echo "WARNING: Trivy found vulnerabilities but conversion produced 0 issues"
+            echo "This might be a bug in trivy-plugin-sonarqube"
+            echo "Trivy report summary:"
+            jq '.Results[] | {Target, Vulnerabilities: (.Vulnerabilities | length)}' trivy-deps-report.json
           fi
-
-          echo "Report contains $(jq '.issues | length' sonar-deps-report.json) issue(s)"
         else
-          echo "ERROR: Trivy SonarQube conversion failed!"
+          echo "ERROR: Invalid JSON in sonar-deps-report.json"
+          cat sonar-deps-report.json
           exit 1
         fi
 
