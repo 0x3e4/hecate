@@ -7,6 +7,8 @@ import { useSavedSearches } from "../hooks/useSavedSearches";
 type SidebarProps = {
   collapsed: boolean;
   onToggleCollapse: () => void;
+  mobileMenuOpen?: boolean;
+  onMobileMenuClose?: () => void;
 };
 
 const navItems = [
@@ -17,13 +19,19 @@ const navItems = [
   { to: "/system", label: "System", icon: LuSettings },
 ];
 
-export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
+export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileMenuClose }: SidebarProps) => {
   const { savedSearches } = useSavedSearches();
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
 
+  const handleLinkClick = () => {
+    if (onMobileMenuClose) {
+      onMobileMenuClose();
+    }
+  };
+
   return (
-    <aside className={`app-sidebar${collapsed ? " collapsed" : ""}`}>
+    <aside className={`app-sidebar${collapsed ? " collapsed" : ""}${mobileMenuOpen ? " mobile-open" : ""}`}>
       <nav className="sidebar-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -37,6 +45,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
                 className={({ isActive }) =>
                   `sidebar-link${isActive ? " active" : ""}`
                 }
+                onClick={handleLinkClick}
               >
                 <span className="sidebar-link-short">
                   <Icon aria-hidden="true" focusable="false" />
@@ -61,6 +70,8 @@ export const Sidebar = ({ collapsed, onToggleCollapse }: SidebarProps) => {
                         onClick={(event) => {
                           if (isActive) {
                             event.preventDefault();
+                          } else {
+                            handleLinkClick();
                           }
                         }}
                       >

@@ -7,9 +7,6 @@ on:
 
 name: SonarQube & Trivy Scan
 
-env:
-  GITEA_REGISTRY: git.nohub.lol
-
 jobs:
   Analysis:
     name: SonarQube Code Analysis
