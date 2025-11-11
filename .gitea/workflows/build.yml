@@ -7,6 +7,9 @@ on:
 
 name: SonarQube & Trivy Scan
 
+env:
+  GITEA_REGISTRY: git.nohub.lol
+
 jobs:
   Analysis:
     name: SonarQube Code Analysis
@@ -26,8 +29,8 @@ jobs:
           -Dsonar.projectVersion=0.1.0
           -Dsonar.projectKey=msc-app
 
-  ScanDeps:
-    name: Trivy Scan
+  TrivyDependencyScan:
+    name: Trivy Dependency Vulnerability Scan
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -35,22 +38,28 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install Dependencies
+    - name: Install Trivy and SonarQube Plugin
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release python3
         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
         echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update
         sudo apt-get install -y trivy
         trivy plugin install github.com/umax/trivy-plugin-sonarqube
 
-    - name: Scan Code with Trivy
+    - name: Run Trivy Scan and Convert to SonarQube Format
       run: |
+        set -e
         trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
+        echo "Trivy scan completed. Checking report size..."
+        ls -lh trivy-deps-report.json
+        echo "Converting to SonarQube format..."
         trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
+        echo "Conversion completed. Checking output..."
+        ls -lh sonar-deps-report.json
 
-    - name: Upload Trivy and SonarQube Reports
+    - name: Upload Vulnerability Reports
       uses: actions/upload-artifact@v3
       with:
         name: trivy-sonarqube-reports
@@ -58,11 +67,11 @@ jobs:
           trivy-deps-report.json
           sonar-deps-report.json
 
-  ScanCode:
-    name: Scan Trivy Report with SonarScanner
+  SonarQubeUpload:
+    name: Upload Vulnerabilities to SonarQube
     runs-on: ubuntu-latest
     needs:
-      - ScanDeps
+      - TrivyDependencyScan
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -95,3 +104,62 @@ jobs:
           -Dsonar.projectKey=msc-app \
           -Dsonar.sources=. \
           -Dsonar.externalIssuesReportPaths="sonar-deps-report.json"
+
+  BuildAndPushImages:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Gitea Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.GITEA_REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata for backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.GITEA_REGISTRY }}/${{ github.repository }}/backend
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Extract metadata for frontend
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.GITEA_REGISTRY }}/${{ github.repository }}/frontend
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        target: runtime
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
