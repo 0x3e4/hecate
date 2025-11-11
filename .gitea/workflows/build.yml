@@ -41,7 +41,7 @@ jobs:
     - name: Install Trivy and SonarQube Plugin
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget apt-transport-https gnupg lsb-release python3
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release python3 jq
         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
         echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update
@@ -51,13 +51,32 @@ jobs:
     - name: Run Trivy Scan and Convert to SonarQube Format
       run: |
         set -e
+        echo "Running Trivy filesystem scan..."
         trivy fs --security-checks=vuln --vuln-type=library --exit-code=0 --format=json --output=trivy-deps-report.json .
-        echo "Trivy scan completed. Checking report size..."
+
+        echo "Trivy scan completed. Checking report..."
         ls -lh trivy-deps-report.json
+        echo "Report contains $(jq '.Results | length' trivy-deps-report.json) result(s)"
+
+        echo "Verifying Python installation..."
+        python3 --version
+
         echo "Converting to SonarQube format..."
-        trivy sonarqube trivy-deps-report.json > sonar-deps-report.json
-        echo "Conversion completed. Checking output..."
-        ls -lh sonar-deps-report.json
+        if trivy sonarqube trivy-deps-report.json > sonar-deps-report.json 2>&1; then
+          echo "Conversion successful. Checking output..."
+          ls -lh sonar-deps-report.json
+
+          # Verify the output is not empty
+          if [ ! -s sonar-deps-report.json ]; then
+            echo "ERROR: sonar-deps-report.json is empty!"
+            exit 1
+          fi
+
+          echo "Report contains $(jq '.issues | length' sonar-deps-report.json) issue(s)"
+        else
+          echo "ERROR: Trivy SonarQube conversion failed!"
+          exit 1
+        fi
 
     - name: Upload Vulnerability Reports
       uses: actions/upload-artifact@v3
@@ -121,7 +140,7 @@ jobs:
       with:
         registry: ${{ env.GITEA_REGISTRY }}
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        password: ${{ secrets.BUILD_TOKEN }}
 
     - name: Extract metadata for backend
       id: meta-backend
