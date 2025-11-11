@@ -7,9 +7,6 @@ on:
 
 name: SonarQube & Trivy Scan
 
-env:
-  GITEA_REGISTRY: https://github.com/0x3e4/hecate
-
 jobs:
   Analysis:
     name: SonarQube Code Analysis

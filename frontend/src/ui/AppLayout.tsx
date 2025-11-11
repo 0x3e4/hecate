@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
 import { Header } from "./Header";
@@ -7,6 +7,19 @@ import { SavedSearchesProvider } from "../hooks/useSavedSearches";
 
 export const AppLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close mobile menu when clicking outside or on overlay
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
 
   return (
     <SavedSearchesProvider>
@@ -14,13 +27,25 @@ export const AppLayout = () => {
         <Sidebar
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
+          mobileMenuOpen={mobileMenuOpen}
+          onMobileMenuClose={() => setMobileMenuOpen(false)}
         />
         <div className="app-main">
-          <Header />
+          <Header
+            onMenuToggle={() => setMobileMenuOpen((value) => !value)}
+            isMobileMenuOpen={mobileMenuOpen}
+          />
           <main className="app-content">
             <Outlet />
           </main>
         </div>
+        {mobileMenuOpen && (
+          <div
+            className="mobile-menu-overlay"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+        )}
       </div>
     </SavedSearchesProvider>
   );
