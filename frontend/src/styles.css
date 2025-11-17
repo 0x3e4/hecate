@@ -1533,10 +1533,13 @@ table thead th {
 
   .cvss-badge-grid {
     grid-template-columns: 1fr;
+    width: 100%;
   }
 
   .cvss-badge-row {
     width: 100%;
+    display: flex;
+    flex-wrap: wrap;
   }
 
   /* Table responsiveness */
@@ -1569,18 +1572,26 @@ table thead th {
   /* Pagination - improved mobile style */
   .pagination {
     flex-wrap: wrap;
-    gap: 0.35rem;
+    gap: 0.5rem;
     justify-content: center;
   }
 
   .pagination button {
-    min-width: 2.25rem;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
     padding: 0.5rem 0.65rem;
     font-size: 0.85rem;
+    touch-action: manipulation;
+    white-space: nowrap;
+  }
+
+  /* Larger buttons for high page numbers */
+  .pagination button:not([disabled]) {
+    min-width: max-content;
   }
 
   .pagination span {
-    padding: 0.3rem 0.4rem !important;
+    padding: 0.5rem 0.4rem !important;
     font-size: 0.85rem;
   }
 
@@ -1666,9 +1677,22 @@ table thead th {
     overflow-x: hidden;
   }
 
-  /* Ensure grid layouts don't overflow */
-  div[style*="gridTemplateColumns"] {
+  /* Ensure card content doesn't overflow */
+  .card > div[style*="display: grid"],
+  .card > section > div[style*="display: grid"] {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Stats page specific fixes for mobile */
+  .card > div[style*="gridTemplateColumns"][style*="minmax"] {
     grid-template-columns: 1fr !important;
+  }
+
+  /* Ensure all grid children respect container width */
+  .card [style*="display: grid"] > * {
+    min-width: 0;
+    max-width: 100%;
   }
 
   /* Search input */
