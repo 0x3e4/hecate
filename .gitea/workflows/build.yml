@@ -46,6 +46,21 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    - name: Run Grype to check backend image for vulnerabilities
+      uses: anchore/scan-action@v3
+      continue-on-error: true
+      with:
+        image: ${{ env.GITEA_REGISTRY }}/${{ github.repository }}/backend:latest
+        fail-build: false
+        severity-cutoff: high
+
+    - name: Upload Grype results for backend
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif }}
+        category: grype-backend
+
     - name: Extract metadata for frontend
       id: meta-frontend
       uses: docker/metadata-action@v5
@@ -66,3 +81,18 @@ jobs:
         labels: ${{ steps.meta-frontend.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    - name: Run Grype to check frontend image for vulnerabilities
+      uses: anchore/scan-action@v3
+      continue-on-error: true
+      with:
+        image: ${{ env.GITEA_REGISTRY }}/${{ github.repository }}/frontend:latest
+        fail-build: false
+        severity-cutoff: high
+
+    - name: Upload Grype results for frontend
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif }}
+        category: grype-frontend
