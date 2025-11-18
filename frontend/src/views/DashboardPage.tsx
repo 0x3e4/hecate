@@ -216,7 +216,6 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
               {preferredCvss ? (
                 <CvssMetricDisplay
                   metric={preferredCvss}
-                  compact
                   showVector={false}
                   showScores={false}
                 />

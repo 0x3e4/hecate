@@ -86,7 +86,7 @@ body {
 .app-sidebar {
   width: 260px;
   flex-shrink: 0;
-  padding: 2rem 1.5rem;
+  padding: 2rem 0;
   background: #05070d;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   position: fixed;
@@ -98,7 +98,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  overflow: hidden;
+  overflow-x: visible;
+  overflow-y: hidden;
   z-index: 10;
 }
 
@@ -110,7 +111,7 @@ body {
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding-right: 0.25rem;
+  padding: 0 1.5rem;
 }
 
 .sidebar-nav::-webkit-scrollbar {
@@ -125,10 +126,12 @@ body {
 .sidebar-link {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
-  padding: 0.65rem 0.9rem;
-  margin-bottom: 0.5rem;
-  border-radius: 10px;
+  gap: 0.75rem;
+  padding: 0.6rem 1.5rem;
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0;
   color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
   font-weight: 500;
@@ -142,10 +145,6 @@ body {
 .sidebar-link.active {
   background-color: rgba(92, 132, 255, 0.18);
   color: #f5f7fa;
-}
-
-.sidebar-nav-group {
-  margin-bottom: 0.5rem;
 }
 
 .sidebar-subnav {
@@ -269,7 +268,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
-  padding: 0.55rem 0.9rem;
+  padding: 0.55rem 1.5rem;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(12, 15, 25, 0.8);
@@ -278,7 +277,8 @@ body {
   cursor: pointer;
   transition: border 0.2s ease, background 0.2s ease;
   margin-top: auto;
-  width: 100%;
+  margin-left: 1.5rem;
+  margin-right: 1.5rem;
 }
 
 .sidebar-collapse-button:hover {
@@ -695,6 +695,10 @@ a {
   letter-spacing: 0.05em;
   color: rgba(255, 255, 255, 0.55);
   margin-right: 0.5rem;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cvss-badge-value {
@@ -706,6 +710,8 @@ a {
   text-transform: uppercase;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .cvss-badge-value[data-level="critical"],
@@ -1004,6 +1010,16 @@ select {
   color: #f5f7fa;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Pagination centered on desktop */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 
 table {
@@ -1412,7 +1428,8 @@ table thead th {
     transition: transform 0.3s ease;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
     border-bottom: none;
-    padding: 2rem 1.5rem;
+    padding: 1.25rem 0;
+    overflow-x: visible;
   }
 
   .app-sidebar.mobile-open {
@@ -1425,7 +1442,7 @@ table thead th {
 
   .app-sidebar.collapsed {
     width: 280px;
-    padding: 2rem 1.5rem;
+    padding: 1.25rem 0;
     transform: translateX(-100%);
   }
 
@@ -1443,8 +1460,13 @@ table thead th {
 
   .app-sidebar.collapsed .sidebar-link {
     justify-content: flex-start;
-    gap: 0.9rem;
-    padding: 0.65rem 0.9rem;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+    width: 100%;
+    justify-content: unset;
   }
 
   .app-sidebar.collapsed .sidebar-subnav {
@@ -1458,16 +1480,30 @@ table thead th {
   .app-sidebar.collapsed .sidebar-collapse-button {
     justify-content: center;
     gap: 0.6rem;
-    padding: 0.55rem 0.9rem;
+    padding: 0.55rem 1rem;
+    margin-left: 1rem;
+    margin-right: 1rem;
   }
 
   .sidebar-nav {
     max-height: none;
     overflow-y: auto;
+    padding: 0 1rem;
   }
 
   .sidebar-subnav {
     padding-left: 1.5rem;
+  }
+
+  .sidebar-link {
+    padding: 0.6rem 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    margin-bottom: 0.25rem;
+    gap: 0.75rem;
+    border-radius: 0;
+    width: 100%;
+    justify-content: unset;
   }
 
   .sidebar-collapse-button {
@@ -1539,7 +1575,18 @@ table thead th {
   .cvss-badge-row {
     width: 100%;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    box-sizing: border-box;
+  }
+
+  .cvss-badge-label {
+    max-width: 60%;
+  }
+
+  .cvss-badge-value {
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Table responsiveness */
@@ -1569,6 +1616,36 @@ table thead th {
     gap: 0.75rem;
   }
 
+  /* Improve checkbox and label alignment on mobile */
+  .asset-filter-options label {
+    font-size: 15px; /* Slightly larger for better readability */
+    line-height: 1.4;
+  }
+
+  .asset-filter-options input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  /* Improve dropdown and select styling on mobile */
+  select,
+  .asset-filter-wrapper select {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 0.65rem 0.75rem;
+    min-height: 44px; /* Ensures touch-friendly size */
+  }
+
+  /* Page size selector styling on mobile */
+  label[for="vulnerability-page-size"] {
+    font-size: 15px;
+  }
+
+  label[for="vulnerability-page-size"] select {
+    font-size: 16px;
+    padding: 0.55rem 0.65rem;
+  }
+
   /* Pagination - improved mobile style */
   .pagination {
     flex-wrap: wrap;
@@ -1578,7 +1655,6 @@ table thead th {
 
   .pagination button {
     min-width: 2.5rem;
-    min-height: 2.5rem;
     padding: 0.5rem 0.65rem;
     font-size: 0.85rem;
     touch-action: manipulation;
@@ -1700,6 +1776,24 @@ table thead th {
   input[type="text"] {
     font-size: 16px; /* Prevents zoom on iOS */
   }
+
+  /* DQL toggle button on mobile */
+  button[aria-pressed] {
+    font-size: 14px;
+    padding: 0.55rem 0.75rem;
+  }
+
+  /* Save search buttons on mobile */
+  button[style*="savedSearchButtonStyle"],
+  button[style*="savedSearchDeleteButtonStyle"] {
+    font-size: 14px;
+    padding: 0.55rem 0.85rem;
+  }
+
+  /* Improve search container on mobile */
+  div[style*="searchContainerStyle"] {
+    min-width: 100% !important;
+  }
 }
 
 /* Tablet Responsive Styles */
@@ -1798,6 +1892,8 @@ table thead th {
   /* Make sidebar collapse button more touch-friendly */
   .sidebar-collapse-button {
     padding: 0.65rem 1rem;
+    margin-left: 1rem;
+    margin-right: 1rem;
   }
 
   /* Improve touch targets */
@@ -1806,13 +1902,17 @@ table thead th {
   .sidebar-link,
   .detail-tabs__tab,
   .cvss-tab {
-    min-height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
 
   .sidebar-link {
-    padding: 0.75rem 0.9rem;
+    padding: 0.6rem 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+    width: 100%;
+    justify-content: unset;
   }
 }

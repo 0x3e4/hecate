@@ -39,7 +39,7 @@ interface VersionOption {
   productSlug: string;
 }
 
-const SELECT_LIMIT = 25;
+const SELECT_LIMIT = 200;
 const PREFETCH_LIMIT = 200;
 
 const uniqueByValue = <T extends { value: string }>(items: T[]): T[] => {
@@ -464,10 +464,13 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
 
   const loadVendorOptions = useCallback(async (inputValue: string): Promise<VendorOption[]> => {
     if (vendorCache.current[inputValue]) {
+      console.log(`[Vendors] Using cached results for "${inputValue}":`, vendorCache.current[inputValue].length);
       return vendorCache.current[inputValue];
     }
     try {
+      console.log(`[Vendors] Fetching vendors for "${inputValue}"...`);
       const response = await fetchVendors(inputValue || null, SELECT_LIMIT);
+      console.log(`[Vendors] Received ${response.items.length} vendors for "${inputValue}"`);
       const options = response.items.map(mapVendorToOption);
       vendorCache.current[inputValue] = options;
       registerVendors(options);
@@ -527,7 +530,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
   const isVersionDisabled = selectedProducts.length !== 1;
 
   return (
-    <section className="card" style={{ marginBottom: "0rem" }}>
+    <section className="card" style={{ marginBottom: "0rem", overflow: "visible" }}>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
@@ -536,7 +539,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           <AsyncSelect<VendorOption, true>
             isMulti
             cacheOptions
-            defaultOptions={vendorDefaultOptions}
+            defaultOptions={false}
             loadOptions={loadVendorOptions}
             value={selectedVendors}
             onChange={(options) => {
@@ -544,6 +547,11 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             }}
             placeholder="Vendors auswählen…"
             styles={selectStyles}
+            menuPortalTarget={document.body}
+            menuPosition="fixed"
+            noOptionsMessage={({ inputValue }) =>
+              inputValue ? `Keine Vendors gefunden für "${inputValue}"` : "Tippen Sie, um zu suchen"
+            }
             formatOptionLabel={(option) => (
               <span style={{ display: "flex", flexDirection: "column" }}>
                 <span>{option.label}</span>
@@ -565,7 +573,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           <AsyncSelect<ProductOption, true>
             isMulti
             cacheOptions
-            defaultOptions={productDefaultOptions}
+            defaultOptions={false}
             loadOptions={loadProductOptions}
             isDisabled={selectedVendors.length === 0}
             value={selectedProducts}
@@ -576,6 +584,11 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
               selectedVendors.length === 0 ? "Erst Vendor wählen" : "Produkte auswählen…"
             }
             styles={selectStyles}
+            menuPortalTarget={document.body}
+            menuPosition="fixed"
+            noOptionsMessage={({ inputValue }) =>
+              inputValue ? `Keine Produkte gefunden für "${inputValue}"` : "Tippen Sie, um zu suchen"
+            }
             formatOptionLabel={(option) => (
               <span style={{ display: "flex", flexDirection: "column" }}>
                 <span>{option.label}</span>
@@ -597,7 +610,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           <AsyncSelect<VersionOption, true>
             isMulti
             cacheOptions
-            defaultOptions={versionDefaultOptions}
+            defaultOptions={false}
             loadOptions={loadVersionOptions}
             isDisabled={isVersionDisabled}
             value={selectedVersions}
@@ -610,6 +623,11 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
                 : "Versionen auswählen…"
             }
             styles={selectStyles}
+            menuPortalTarget={document.body}
+            menuPosition="fixed"
+            noOptionsMessage={({ inputValue }) =>
+              inputValue ? `Keine Versionen gefunden für "${inputValue}"` : "Tippen Sie, um zu suchen"
+            }
           />
         </div>
       </div>
@@ -647,6 +665,11 @@ const selectStyles = {
   menu: (provided: any) => ({
     ...provided,
     background: "rgba(10, 12, 20, 0.95)",
+    zIndex: 100,
+  }),
+  menuPortal: (provided: any) => ({
+    ...provided,
+    zIndex: 9999,
   }),
   option: (provided: any, state: any) => ({
     ...provided,
