@@ -9,6 +9,7 @@ from app.core.config import settings
 
 _client: OpenSearch | None = None
 _opensearch_available: bool = True
+_ensured_indices: set[str] = set()
 log = structlog.get_logger()
 
 
@@ -32,6 +33,26 @@ def _mark_opensearch_unavailable(
     _opensearch_available = False
 
 
+def _desired_index_settings() -> dict[str, Any]:
+    return {
+        "index": {
+            "max_result_window": settings.opensearch_index_max_result_window,
+            "mapping": {
+                "total_fields": {"limit": settings.opensearch_index_total_fields_limit},
+            },
+        }
+    }
+
+
+def _ensure_index_settings(client: OpenSearch, index_name: str) -> bool:
+    try:
+        client.indices.put_settings(index=index_name, body=_desired_index_settings())
+    except (OSConnectionError, OpenSearchException) as exc:
+        log.warning("opensearch.ensure_settings_failed", index=index_name, error=str(exc))
+        return False
+    return True
+
+
 def get_client() -> OpenSearch:
     global _client
     if _client is None:
@@ -52,10 +73,14 @@ def get_client() -> OpenSearch:
 
 
 def ensure_vulnerability_index(index_name: str) -> None:
+    global _ensured_indices
     client = get_client()
     try:
         if client.indices.exists(index=index_name):
+            applied = _ensure_index_settings(client, index_name)
             _mark_opensearch_available()
+            if applied:
+                _ensured_indices.add(index_name)
             return
     except (OSConnectionError, OpenSearchException) as exc:
         _mark_opensearch_unavailable(error=exc, operation="indices.exists", index=index_name)
@@ -66,6 +91,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
             "number_of_shards": 1,
             "number_of_replicas": 0,
             "index.mapping.total_fields.limit": settings.opensearch_index_total_fields_limit,
+            "index.max_result_window": settings.opensearch_index_max_result_window,
         },
         "mappings": {
             "properties": {
@@ -177,6 +203,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
         client.indices.create(index=index_name, body=body)
         log.info("opensearch.index_created", index=index_name)
         _mark_opensearch_available()
+        _ensured_indices.add(index_name)
     except (RequestError, OSConnectionError, OpenSearchException) as exc:
         _mark_opensearch_unavailable(error=exc, operation="indices.create", index=index_name)
 
@@ -197,6 +224,9 @@ async def async_index_document(index: str, document_id: str, document: dict[str,
 async def async_search(index: str, body: dict[str, Any], *, suppress_exceptions: bool = True) -> dict[str, Any]:
     client = get_client()
     loop = asyncio.get_running_loop()
+
+    if index not in _ensured_indices:
+        ensure_vulnerability_index(index)
 
     try:
         result = await loop.run_in_executor(

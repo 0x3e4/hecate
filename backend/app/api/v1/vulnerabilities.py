@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from app.core.config import settings
 from app.schemas.ai import (
     AIInvestigationRequest,
     AIInvestigationResponse,
@@ -72,6 +73,16 @@ async def list_vulnerabilities(
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> PagedVulnerabilityResponse:
+    max_window = settings.opensearch_index_max_result_window
+    if offset + limit > max_window:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Requested page exceeds the OpenSearch result window. "
+                f"Use a smaller offset or filter the result set (max window: {max_window})."
+            ),
+        )
+
     query = VulnerabilityQuery(
         searchTerm=search,
         dqlQuery=dql,
