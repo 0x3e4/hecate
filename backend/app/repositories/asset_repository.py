@@ -179,7 +179,12 @@ class AssetRepository:
             query["vendorSlugs"] = {"$in": vendor_list}
         if keyword:
             regex = {"$regex": keyword, "$options": "i"}
-            query["$or"] = [{"displayName": regex}, {"aliases": regex}]
+            slug_keyword = slugify(keyword)
+            slug_regex = {"$regex": slug_keyword, "$options": "i"} if slug_keyword else None
+            or_clauses: list[dict[str, Any]] = [{"displayName": regex}, {"aliases": regex}]
+            if slug_regex:
+                or_clauses.append({"_id": slug_regex})
+            query["$or"] = or_clauses
 
         total = await self.products.count_documents(query)
         cursor = (
@@ -225,6 +230,13 @@ class AssetRepository:
         if not slug_list:
             return []
         cursor = self.vendors.find({"_id": {"$in": slug_list}})
+        return await cursor.to_list(length=len(slug_list))
+
+    async def find_products_by_slugs(self, slugs: Iterable[str]) -> list[dict[str, Any]]:
+        slug_list = [slug for slug in slugs if slug]
+        if not slug_list:
+            return []
+        cursor = self.products.find({"_id": {"$in": slug_list}})
         return await cursor.to_list(length=len(slug_list))
 
     async def sample_vendors(self, *, limit: int) -> list[dict[str, Any]]:
