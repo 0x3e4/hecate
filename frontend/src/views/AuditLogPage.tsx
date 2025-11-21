@@ -111,44 +111,6 @@ export const AuditLogPage = () => {
               <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{progressJson}</pre>
             </details>,
           );
-        } else if (entry.result && typeof entry.result === "object") {
-          // Format result as readable key-value pairs
-          const resultObj = entry.result as Record<string, unknown>;
-          const resultKeys = Object.keys(resultObj);
-
-          if (resultKeys.length > 0) {
-            detailElements.push(
-              <details key="result">
-                <summary style={{ cursor: "pointer" }}>Details anzeigen</summary>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", marginTop: "0.5rem" }}>
-                  {resultKeys.map((key) => {
-                    const value = resultObj[key];
-                    const displayKey = key
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (l) => l.toUpperCase());
-
-                    // Format the value
-                    let displayValue: string;
-                    if (typeof value === "boolean") {
-                      displayValue = value ? "Yes" : "No";
-                    } else if (typeof value === "number") {
-                      displayValue = value.toLocaleString();
-                    } else if (value === null || value === undefined) {
-                      displayValue = "-";
-                    } else {
-                      displayValue = String(value);
-                    }
-
-                    return (
-                      <span key={key} style={{ fontSize: "0.9rem" }}>
-                        <strong>{displayKey}:</strong> {displayValue}
-                      </span>
-                    );
-                  })}
-                </div>
-              </details>,
-            );
-          }
         } else if (resultJson) {
           detailElements.push(
             <details>
