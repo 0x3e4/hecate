@@ -464,13 +464,10 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
 
   const loadVendorOptions = useCallback(async (inputValue: string): Promise<VendorOption[]> => {
     if (vendorCache.current[inputValue]) {
-      console.log(`[Vendors] Using cached results for "${inputValue}":`, vendorCache.current[inputValue].length);
       return vendorCache.current[inputValue];
     }
     try {
-      console.log(`[Vendors] Fetching vendors for "${inputValue}"...`);
       const response = await fetchVendors(inputValue || null, SELECT_LIMIT);
-      console.log(`[Vendors] Received ${response.items.length} vendors for "${inputValue}"`);
       const options = response.items.map(mapVendorToOption);
       vendorCache.current[inputValue] = options;
       registerVendors(options);
