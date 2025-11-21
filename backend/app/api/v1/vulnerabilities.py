@@ -79,7 +79,8 @@ async def list_vulnerabilities(
             status_code=400,
             detail=(
                 "Requested page exceeds the OpenSearch result window. "
-                f"Use a smaller offset or filter the result set (max window: {max_window})."
+                f"Use a smaller offset or filter the result set (max window: {max_window}, "
+                "adjustable via OPENSEARCH_INDEX_MAX_RESULT_WINDOW)."
             ),
         )
 

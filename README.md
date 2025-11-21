@@ -66,7 +66,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 
 ## API-Ueberblick
 - `GET /api/v1/status/health` – Liveness Probe mit Environment-Info.
-- `POST /api/v1/vulnerabilities/search` & `GET /api/v1/vulnerabilities` - Volltextsuche, Filterung, Pagination (Offset + Limit <= `OPENSEARCH_INDEX_MAX_RESULT_WINDOW`, Default 50.000).
+- `POST /api/v1/vulnerabilities/search` & `GET /api/v1/vulnerabilities` - Volltextsuche, Filterung, Pagination (Offset + Limit <= `OPENSEARCH_INDEX_MAX_RESULT_WINDOW`, Default 200.000, via `.env` anpassbar).
 - `POST /api/v1/vulnerabilities/{id}/ai-investigation` – Fuehrt KI-Analyse aus und persistiert Ergebnis.
 - `POST /api/v1/vulnerabilities/refresh` – Manueller Refresh einzelner IDs.
 - `GET /api/v1/cpe/vendors|products|versions` – Asset-Katalog fuer Filter und UI.
