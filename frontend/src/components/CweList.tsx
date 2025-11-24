@@ -78,9 +78,13 @@ export const CweList = ({ cwes }: CweListProps) => {
               >
                 {cwe}
               </a>
-              {info && (
+              {info ? (
                 <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
                   {info.name}
+                </span>
+              ) : (
+                <span className="muted" style={{ fontSize: "0.9rem" }}>
+                  See CWE database for details
                 </span>
               )}
             </div>

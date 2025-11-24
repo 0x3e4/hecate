@@ -29,6 +29,10 @@ async def get_cwe_bulk(
         normalized_id = cwe_service._normalize_cwe_id(cwe_id)
         description = descriptions.get(normalized_id, "Description not available")
 
+        # Skip CWEs that couldn't be fetched (fallback message)
+        if description in ("See CWE database for details", "Description not available"):
+            continue
+
         cwes[normalized_id] = CWEInfo(
             id=f"CWE-{normalized_id}",
             name=description,
