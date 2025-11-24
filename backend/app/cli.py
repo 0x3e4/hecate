@@ -9,6 +9,7 @@ from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 from app.services.ingestion.kev_pipeline import KevPipeline
+from app.services.cwe_service import get_cwe_service
 
 
 def _parse_iso8601(value: str) -> datetime:
@@ -27,8 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe).",
     )
     parser.add_argument(
         "--since",
@@ -43,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--initial",
         action="store_true",
-        help="Force an initial/full sync (supported for ingest, sync-euvd, sync-cpe, and sync-nvd).",
+        help="Force an initial/full sync (supported for ingest, sync-euvd, sync-cpe, sync-nvd, and sync-cwe).",
     )
     return parser
 
@@ -94,6 +95,13 @@ def main() -> None:
             parser.error("The --since option is not supported for sync-kev.")
         result = asyncio.run(run_kev_sync_once(initial_sync=args.initial))
         print(f"KEV sync finished: {result}")
+    elif args.command == "sync-cwe":
+        if args.limit is not None:
+            parser.error("The --limit option is not supported for sync-cwe.")
+        if args.since:
+            parser.error("The --since option is not supported for sync-cwe.")
+        result = asyncio.run(run_cwe_sync_once(initial_sync=args.initial))
+        print(f"CWE sync finished: {result}")
     else:
         parser.error(f"Unsupported command: {args.command}")
 
@@ -118,6 +126,37 @@ async def run_nvd_sync_once(
 async def run_kev_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
     pipeline = KevPipeline()
     return await pipeline.sync(initial_sync=initial_sync)
+
+
+async def run_cwe_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
+    """Run CWE sync once from CLI."""
+    cwe_service = get_cwe_service()
+    try:
+        # Clear in-memory cache
+        cwe_service.clear_cache()
+
+        # Sync ALL CWEs from MITRE API
+        stats = await cwe_service.sync_all_cwes()
+
+        # Only delete old entries if sync was successful (fetched > 0)
+        deleted = 0
+        if stats["fetched"] > 0:
+            # Delete old MongoDB entries (older than 7 days)
+            deleted = await cwe_service.clear_old_entries()
+            print(f"Deleted {deleted} old CWE entries from MongoDB")
+        else:
+            print("Warning: No new CWE data fetched, skipping deletion of old entries")
+
+        return {
+            "fetched": stats["fetched"],
+            "inserted": stats["inserted"],
+            "updated": stats["updated"],
+            "unchanged": stats["unchanged"],
+            "failed": stats["failed"],
+            "deleted_old": deleted,
+        }
+    finally:
+        await cwe_service.close()
 
 
 if __name__ == "__main__":

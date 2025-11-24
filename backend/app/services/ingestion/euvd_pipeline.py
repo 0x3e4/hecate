@@ -88,11 +88,11 @@ class IngestionPipeline:
 
         local_total_before = await repository.count(source="EUVD")
 
-        # Always fetch remote_total for accurate progress tracking
+        # Always fetch remote_total for accurate progress tracking (without filters to get true total)
         remote_total: int | None = None
         try:
-            remote_total = await self.euvd_client.total_results(modified_since=modified_since if not initial_sync else None)
-            log.info("pipeline.euvd_remote_total_fetched", remote_total=remote_total, modified_since=modified_since)
+            remote_total = await self.euvd_client.total_results(modified_since=None)
+            log.info("pipeline.euvd_remote_total_fetched", remote_total=remote_total)
         except RuntimeError as exc:
             log.warning("pipeline.euvd_total_failed", error=str(exc))
 

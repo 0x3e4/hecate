@@ -296,11 +296,17 @@ async def _execute_cwe_sync(*, initial_sync: bool) -> None:
         # Clear in-memory cache
         cwe_service.clear_cache()
 
-        # Delete old MongoDB entries (older than 7 days)
-        deleted = await cwe_service.clear_old_entries()
-
         # Sync ALL CWEs from MITRE API
         stats = await cwe_service.sync_all_cwes()
+
+        # Only delete old entries if sync was successful (fetched > 0)
+        deleted = 0
+        if stats["fetched"] > 0:
+            # Delete old MongoDB entries (older than 7 days)
+            deleted = await cwe_service.clear_old_entries()
+        else:
+            log.warning("scheduler.cwe_sync_no_data_fetched",
+                       message="Skipping deletion of old entries as no new data was fetched")
 
         result = {
             "fetched": stats["fetched"],
