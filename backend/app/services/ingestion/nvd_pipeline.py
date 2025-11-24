@@ -71,16 +71,18 @@ class NVDPipeline:
                 last_run = configured_since
 
         requested_since = last_run
-        run_full = False
-        remote_total = None
         local_total_before = await repository.count(source="NVD")
 
+        # Always fetch remote_total for accurate progress tracking
+        remote_total: int | None = None
+        try:
+            remote_total = await self.client.total_results()
+            log.info("nvd_pipeline.remote_total_fetched", remote_total=remote_total, last_run=last_run)
+        except RuntimeError as exc:
+            log.warning("nvd_pipeline.total_failed", error=str(exc))
+
+        run_full = False
         if initial_sync and not user_supplied_since:
-            try:
-                remote_total = await self.client.total_results()
-            except RuntimeError as exc:
-                log.warning("nvd_pipeline.total_failed", error=str(exc))
-                remote_total = None
             if remote_total is not None and remote_total > local_total_before:
                 run_full = True
                 if configured_since is not None:
