@@ -111,7 +111,7 @@ class NVDClient:
                 safe_start = now
             last_modified_param = self._format_datetime(safe_start)
 
-        # First, get total results to start from the end (newest entries)
+        # Get total results for the filtered query (if lastModStartDate is set, this returns filtered count)
         params: dict[str, Any] = {
             "startIndex": 0,
             "resultsPerPage": 1,
@@ -148,8 +148,14 @@ class NVDClient:
             return
 
         # Start from the end (newest entries) and work backwards
+        # Note: total_results is already filtered by lastModStartDate if provided
         start_index = max(0, total_results - self._page_size)
-        log.info("nvd_client.starting_from_newest", total_results=total_results, start_index=start_index)
+        log.info(
+            "nvd_client.starting_from_newest",
+            total_results=total_results,
+            start_index=start_index,
+            filtered_by_date=last_modified_param is not None,
+        )
 
         while start_index >= 0:
             params = {
