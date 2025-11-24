@@ -24,34 +24,13 @@ services:
     depends_on:
       - backend
 
-  frontend-build:
-    build:
-      context: ./frontend
-      target: dev
-    entrypoint: ["/usr/local/bin/frontend-entrypoint"]
-    volumes:
-      - ./frontend:/workspace
-    environment:
-      - VITE_API_BASE_URL=/api
-      - VITE_DOMAIN=${DOMAIN:-localhost}
-      - WORKSPACE=/workspace
-    networks:
-      - default
-
-  backend-build:
-    build:
-      context: ./backend
-      target: builder
-    volumes:
-      - ./backend:/workspace
-    working_dir: /workspace
-    entrypoint: ["/bin/bash"]
-    networks:
-      - default
-
   mongo:
     image: mongo:8
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     volumes:
       - mongo-data:/data/db
     ports:
