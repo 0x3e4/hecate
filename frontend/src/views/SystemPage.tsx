@@ -9,6 +9,7 @@ import {
 } from "../api/backup";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import type { SavedSearch } from "../types";
+import { formatDateTime } from "../utils/dateFormat";
 
 type BackupDataset =
   | { id: "VULNERABILITIES" | "CPE"; label: string; description: string; type: "vuln" | "cpe"; source?: VulnerabilitySource }
@@ -287,7 +288,7 @@ export const SystemPage = () => {
                       )}
                     </td>
                     <td style={savedSearchCellStyle}>
-                      {new Date(search.createdAt).toLocaleString()}
+                      {formatDateTime(search.createdAt)}
                     </td>
                     <td style={savedSearchCellStyle}>
                       <button

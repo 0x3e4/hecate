@@ -1,3 +1,5 @@
+import { formatPublished } from "./dateFormat";
+
 export type PublishedFormat = "date" | "datetime";
 
 export interface PublishedDisplay {
@@ -13,13 +15,7 @@ export const getPublishedDisplay = (
     return { text: "", isReserved: true };
   }
 
-  const date = new Date(value);
-  const isValidDate = !Number.isNaN(date.getTime());
-  const text = isValidDate
-    ? format === "date"
-      ? date.toLocaleDateString()
-      : date.toLocaleString()
-    : value;
+  const text = formatPublished(value, format);
 
   return {
     text,

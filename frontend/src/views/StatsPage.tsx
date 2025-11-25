@@ -46,9 +46,9 @@ export const StatsPage = () => {
 
         {!showSkeleton && stats && (
           <>
-            <SummaryGrid stats={stats} />
-
             <div style={{ gap: "1.5rem" }}>
+              <SummaryGrid stats={stats} />
+              
               <div style={{ display: "grid", gap: "1.5rem" }}>
                 <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
                   <ChartCard title="Quelle">
@@ -72,9 +72,9 @@ export const StatsPage = () => {
                   </ChartCard>
                 </div>
               </div>
-            </div>
 
-            <AssetSection assets={stats.assets} />
+              <AssetSection assets={stats.assets} />
+            </div>
           </>
         )}
       </section>
