@@ -288,12 +288,18 @@ body {
 
 .sidebar-collapse-icon {
   font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-sidebar.collapsed .sidebar-collapse-button {
   justify-content: center;
   gap: 0;
-  padding: 0.55rem 0;
+  padding: 0.65rem 0;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .app-sidebar.collapsed .sidebar-collapse-label {
