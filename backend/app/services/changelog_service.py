@@ -33,11 +33,23 @@ class ChangelogService:
 
             # Query vulnerabilities and sort by most recent change
             # Sort by ingested_at first (most recent ingestions)
-            cursor = collection.find({}).sort("ingested_at", -1).skip(offset).limit(limit)
+            # Only fetch the fields we need to improve performance
+            projection = {
+                "_id": 1,
+                "title": 1,
+                "source": 1,
+                "ingested_at": 1,
+                "modified": 1,
+                "cvss.base_score": 1,
+                "cvss.severity": 1,
+                "change_history": 1,
+            }
+            cursor = collection.find({}, projection).sort("ingested_at", -1).skip(offset).limit(limit)
             documents = await cursor.to_list(length=limit)
 
-            # Get total count
-            total = await collection.count_documents({})
+            # Use estimated_document_count for better performance on large collections
+            # This is much faster than count_documents({}) as it uses collection metadata
+            total = await collection.estimated_document_count()
 
             log.info(f"Found {len(documents)} documents, total: {total}")
 
