@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchIngestionLogs } from "../api/audit";
 import { IngestionLogEntry } from "../types";
 import { SkeletonBlock } from "../components/Skeleton";
+import { formatDateTime } from "../utils/dateFormat";
 
 const JOB_LABELS: Record<string, string> = {
   euvd_ingestion: "EUVD Sync",
@@ -75,8 +76,8 @@ export const AuditLogPage = () => {
     () =>
       logs.map((entry) => {
         const duration = entry.durationSeconds != null ? `${entry.durationSeconds.toFixed(1)}s` : "-";
-        const finished = entry.finishedAt ? new Date(entry.finishedAt).toLocaleString() : "-";
-        const started = new Date(entry.startedAt).toLocaleString();
+        const finished = entry.finishedAt ? formatDateTime(entry.finishedAt) : "-";
+        const started = formatDateTime(entry.startedAt);
         const isOverdue = entry.overdue === true;
         const statusKey = isOverdue ? "overdue" : entry.status;
         const statusColor = STATUS_COLOR[statusKey] ?? "#d1d5db";

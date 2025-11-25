@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChangelogEntry, ChangelogResponse, fetchChangelog } from "../api/changelog";
 import { SkeletonBlock } from "../components/Skeleton";
-import { config } from "../config";
+import { formatDateTime } from "../utils/dateFormat";
 
 export const ChangelogPage = () => {
   const [data, setData] = useState<ChangelogResponse | null>(null);
@@ -94,34 +94,8 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
     ? severityColors[entry.severity.toLowerCase()] ?? "#748ffc"
     : "#748ffc";
 
-  const timestamp = new Date(entry.timestamp);
-  const formattedDate = timestamp.toLocaleDateString("de-DE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: config.timezone,
-  });
-  const formattedTime = timestamp.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: config.timezone,
-  });
-
-  const formatChangeDate = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleString("de-DE", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: config.timezone,
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  const formattedDateTime = formatDateTime(entry.timestamp);
+  const [formattedDate, formattedTime] = formattedDateTime.split(', ');
 
   const renderChangeValue = (value: unknown) => {
     if (value === null) {
@@ -267,7 +241,7 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
                 &gt;
               </span>
               <span className="change-history-entry__timestamp">
-                {formatChangeDate(entry.latestChange.changedAt)}
+                {formatDateTime(entry.latestChange.changedAt)}
               </span>
               <span className="change-history-entry__job">
                 {entry.latestChange.jobLabel ?? entry.latestChange.jobName}
