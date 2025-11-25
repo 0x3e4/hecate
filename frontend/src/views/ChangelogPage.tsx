@@ -222,7 +222,9 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
           <span className="muted">
             {formattedDate} {formattedTime}
           </span>
-          <span className="muted">{entry.source}</span>
+          <span className="muted">
+            {entry.latestChange?.jobLabel ?? entry.latestChange?.jobName ?? entry.source}
+          </span>
         </div>
       </div>
 
