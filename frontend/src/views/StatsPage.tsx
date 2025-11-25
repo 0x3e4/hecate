@@ -50,7 +50,7 @@ export const StatsPage = () => {
               <SummaryGrid stats={stats} />
               
               <div style={{ display: "grid", gap: "1.5rem" }}>
-                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" }}>
                   <ChartCard title="Quelle">
                     <BarChart data={stats.vulnerabilities.sources} emptyMessage="Keine Quellen erfasst." maxBars={6} />
                   </ChartCard>
@@ -83,7 +83,7 @@ export const StatsPage = () => {
 };
 
 const StatsSkeleton = () => (
-  <>
+  <div style={{ display: "grid", gap: "1.5rem" }}>
     <div
       style={{
         display: "grid",
@@ -180,7 +180,7 @@ const StatsSkeleton = () => (
         </div>
       </div>
     </div>
-  </>
+  </div>
 );
 
 const SummaryGrid = ({ stats }: { stats: StatsResponse }) => (
