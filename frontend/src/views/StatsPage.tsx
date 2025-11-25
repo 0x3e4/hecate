@@ -46,7 +46,7 @@ export const StatsPage = () => {
 
         {!showSkeleton && stats && (
           <>
-            <div style={{ gap: "1.5rem" }}>
+            <div style={{ display: grid; gap: "1.5rem" }}>
               <SummaryGrid stats={stats} />
               
               <div style={{ display: "grid", gap: "1.5rem" }}>
