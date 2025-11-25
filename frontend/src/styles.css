@@ -775,8 +775,10 @@ a {
   border-radius: 6px;
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.85);
-  overflow-x: auto;
+  overflow-wrap: break-word;
+  word-break: break-all;
   display: inline-block;
+  max-width: 100%;
 }
 
 .cvss-empty {
@@ -831,6 +833,30 @@ a {
 
 .detail-tabs__panel .muted {
   color: rgba(255, 255, 255, 0.5);
+}
+
+.references-list {
+  padding-left: 1.25rem;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.references-list li {
+  margin-bottom: 0.5rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.references-list a {
+  color: rgba(92, 132, 255, 0.9);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.references-list a:hover {
+  color: rgba(156, 183, 255, 0.95);
+  text-decoration: underline;
 }
 
 .ai-analysis {
