@@ -35,7 +35,7 @@ export const StatsPage = () => {
 
   return (
     <div className="page">
-      <section className="card" style={{ display: "grid", gap: "1.5rem" }}>
+      <section className="card">
         <h2>Statistiken</h2>
         <p className="muted">
           Überblick über ingestierte Schwachstellen, Quellen und die abgeleitete Asset-Datenbank.
@@ -48,27 +48,29 @@ export const StatsPage = () => {
           <>
             <SummaryGrid stats={stats} />
 
-            <div style={{ display: "grid", gap: "1.5rem" }}>
-              <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                <ChartCard title="Quelle">
-                  <BarChart data={stats.vulnerabilities.sources} emptyMessage="Keine Quellen erfasst." maxBars={6} />
-                </ChartCard>
-                <ChartCard title="Schweregrade">
-                  <SeverityChart data={stats.vulnerabilities.severities} />
-                </ChartCard>
-              </div>
+            <div style={{ gap: "1.5rem" }}>
+              <div style={{ display: "grid", gap: "1.5rem" }}>
+                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                  <ChartCard title="Quelle">
+                    <BarChart data={stats.vulnerabilities.sources} emptyMessage="Keine Quellen erfasst." maxBars={6} />
+                  </ChartCard>
+                  <ChartCard title="Schweregrade">
+                    <SeverityChart data={stats.vulnerabilities.severities} />
+                  </ChartCard>
+                </div>
 
-              <ChartCard title="Veröffentlichungstrend (letzte Monate)">
-                <TimelineChart data={stats.vulnerabilities.timeline} />
-              </ChartCard>
+                <ChartCard title="Veröffentlichungstrend (letzte Monate)">
+                  <TimelineChart data={stats.vulnerabilities.timeline} />
+                </ChartCard>
 
-              <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                <ChartCard title="Meistgenannte Vendors">
-                  <TopList data={stats.vulnerabilities.topVendors} emptyMessage="Keine Vendors." limit={8} />
-                </ChartCard>
-                <ChartCard title="Meistgenannte Produkte">
-                  <TopList data={stats.vulnerabilities.topProducts} emptyMessage="Keine Produkte." limit={8} />
-                </ChartCard>
+                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                  <ChartCard title="Meistgenannte Vendors">
+                    <TopList data={stats.vulnerabilities.topVendors} emptyMessage="Keine Vendors." limit={8} />
+                  </ChartCard>
+                  <ChartCard title="Meistgenannte Produkte">
+                    <TopList data={stats.vulnerabilities.topProducts} emptyMessage="Keine Produkte." limit={8} />
+                  </ChartCard>
+                </div>
               </div>
             </div>
 
