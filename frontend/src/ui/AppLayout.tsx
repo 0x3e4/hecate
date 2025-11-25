@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { SavedSearchesProvider } from "../hooks/useSavedSearches";
+import { ScrollToTop } from "../components/ScrollToTop";
 
 export const AppLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -46,6 +47,7 @@ export const AppLayout = () => {
             aria-hidden="true"
           />
         )}
+        <ScrollToTop />
       </div>
     </SavedSearchesProvider>
   );
