@@ -1241,7 +1241,7 @@ table thead th {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.change-history-json {
+.json-block.change-history-json {
   margin: 0;
   font-size: 0.75rem;
   padding: 0.75rem;
