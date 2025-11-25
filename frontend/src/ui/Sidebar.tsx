@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { useMemo } from "react";
 
 import { useSavedSearches } from "../hooks/useSavedSearches";
@@ -94,7 +94,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         <span aria-hidden="true" className="sidebar-collapse-icon">
-          {collapsed ? "⮞" : "⮜"}
+          {collapsed ? <LuChevronRight /> : <LuChevronLeft />}
         </span>
         <span className="sidebar-collapse-label">{collapsed ? "Expand" : "Collapse"}</span>
       </button>
