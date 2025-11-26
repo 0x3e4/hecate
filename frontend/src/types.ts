@@ -145,7 +145,6 @@ export interface VulnerabilityPreview {
   exploitation?: KnownExploitation | null;
   published?: string | null;
   aliases?: string[];
-  ghsaIds?: string[];
   cwes?: string[];
   aiAssessment?: AIAssessment | null;
   cvssMetrics?: CvssMetrics | null;

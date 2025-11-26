@@ -67,10 +67,14 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
         const cweList = vuln.cwes ?? [];
         const cwes = cweList.length ? cweList.join(", ") : "—";
         const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
-        const ghsaIds = vuln.ghsaIds ?? [];
+        const ghsaAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("GHSA-"));
         const preferredCvss = getPreferredCvssMetric(vuln.cvssMetrics ?? null);
         const malAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("MAL-"));
         const pysecAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("PYSEC-"));
+        const remainingAliases = aliases.filter((alias) => {
+          const upper = alias.toUpperCase();
+          return !upper.startsWith("GHSA-") && !upper.startsWith("MAL-") && !upper.startsWith("PYSEC-");
+        });
         const exploitedHighlight = vuln.exploited
           ? {
               background: "linear-gradient(315deg, rgba(255,82,82,0.2), rgba(255,82,82,0.05))",
@@ -90,7 +94,22 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                 <div className="vuln-id">
                   {hasCve && <span className="chip">{vuln.vulnId}</span>}
                   {hasSource && <span className="chip">{vuln.sourceId}</span>}
-                  {aliases.map((alias) => (
+                  {ghsaAliases.map((alias) => (
+                    <span key={alias} className="chip" style={{ background: "rgba(92,132,255,0.2)" }}>
+                      {alias}
+                    </span>
+                  ))}
+                  {malAliases.map((alias) => (
+                    <span key={alias} className="chip" style={{ background: "rgba(92,132,255,0.2)" }}>
+                      {alias}
+                    </span>
+                  ))}
+                  {pysecAliases.map((alias) => (
+                    <span key={alias} className="chip" style={{ background: "rgba(92,132,255,0.2)" }}>
+                      {alias}
+                    </span>
+                  ))}
+                  {remainingAliases.map((alias) => (
                     <span key={alias} className="chip" style={{ background: "rgba(92,132,255,0.2)" }}>
                       {alias}
                     </span>
@@ -176,7 +195,7 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                   OSV
                 </a>
               ))}
-              {ghsaIds.map((alias) => (
+              {ghsaAliases.map((alias) => (
                 <a
                   key={alias}
                   href={`https://github.com/advisories/${alias}`}
@@ -186,7 +205,7 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                   <span role="img" aria-label="GHSA">
                     🔗
                   </span>
-                  {alias}
+                  GHSA
                 </a>
               ))}
             </div>
