@@ -283,3 +283,14 @@ export interface BackupRestoreSummary {
   skipped: number;
   total: number;
 }
+
+export interface DQLFieldValueBucket {
+  value: string;
+  count: number;
+}
+
+export interface DQLFieldAggregation {
+  field: string;
+  totalDocs: number;
+  buckets: DQLFieldValueBucket[];
+}

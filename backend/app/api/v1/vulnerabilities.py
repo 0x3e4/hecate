@@ -7,6 +7,7 @@ from app.schemas.ai import (
     AIProviderInfo,
 )
 from app.schemas.vulnerability import (
+    DQLFieldAggregation,
     PagedVulnerabilityResponse,
     VulnerabilityDetail,
     VulnerabilityPreview,
@@ -98,6 +99,20 @@ async def list_vulnerabilities(
         aiAnalysedOnly=ai_analysed_only,
     )
     return await service.search_paginated(query, limit=limit, offset=offset)
+
+
+@router.get("/dql/fields/{field_name}/aggregation", response_model=DQLFieldAggregation)
+async def get_field_aggregation(
+    field_name: str,
+    size: int = Query(default=10, ge=1, le=50, description="Number of top values to return"),
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> DQLFieldAggregation:
+    """
+    Get aggregated values for a DQL field with occurrence counts.
+    Returns the most common values sorted by count (descending).
+    """
+    result = await service.get_field_aggregation(field_name, size=size)
+    return DQLFieldAggregation.model_validate(result)
 
 
 @router.get("/ai/providers", response_model=list[AIProviderInfo])
