@@ -307,7 +307,7 @@ class IngestionPipeline:
                     "metadata": metadata,
                 }
 
-                upsert_result = await repository.upsert(
+                upsert_result = await repository.upsert_from_euvd(
                     document,
                     change_context=change_context,
                     euvd_raw=record
