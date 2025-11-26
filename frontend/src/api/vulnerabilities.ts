@@ -3,6 +3,7 @@ import {
   AIInvestigationResponse,
   AIProviderId,
   AIProviderInfo,
+  DQLFieldAggregation,
   PagedVulnerabilityResponse,
   VulnerabilityDetail,
   VulnerabilityPreview,
@@ -84,5 +85,16 @@ export const triggerVulnerabilityRefresh = async (
   payload: VulnerabilityRefreshRequest
 ): Promise<VulnerabilityRefreshResponse> => {
   const response = await api.post<VulnerabilityRefreshResponse>("/v1/vulnerabilities/refresh", payload);
+  return response.data;
+};
+
+export const getFieldAggregation = async (
+  fieldName: string,
+  size: number = 10
+): Promise<DQLFieldAggregation> => {
+  const response = await api.get<DQLFieldAggregation>(
+    `/v1/vulnerabilities/dql/fields/${encodeURIComponent(fieldName)}/aggregation`,
+    { params: { size } }
+  );
   return response.data;
 };
