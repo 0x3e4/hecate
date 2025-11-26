@@ -77,14 +77,6 @@ class IngestionPipeline:
                     "pipeline.invalid_backfill_since",
                     value=settings.vulnerability_initial_backfill_since,
                 )
-        requested_since = modified_since
-        if not user_supplied_since:
-            if modified_since is None:
-                modified_since = await state_repo.get_timestamp("euvd")
-                requested_since = modified_since
-            if modified_since is None and configured_since is not None:
-                modified_since = configured_since
-                requested_since = configured_since
 
         local_total_before = await repository.count(source="EUVD")
 
@@ -97,6 +89,7 @@ class IngestionPipeline:
             log.warning("pipeline.euvd_total_failed", error=str(exc))
 
         run_full = False
+        requested_since = modified_since
         if initial_sync and not user_supplied_since:
             if remote_total is not None and remote_total > local_total_before:
                 run_full = True
@@ -112,6 +105,15 @@ class IngestionPipeline:
                     local_total_before=local_total_before,
                     since=requested_since,
                 )
+
+        # Only fetch last sync timestamp if we're not doing a full resync
+        if not user_supplied_since and not run_full:
+            if modified_since is None:
+                modified_since = await state_repo.get_timestamp("euvd")
+                requested_since = modified_since
+            if modified_since is None and configured_since is not None:
+                modified_since = configured_since
+                requested_since = configured_since
 
         ingested = 0
         updated = 0
