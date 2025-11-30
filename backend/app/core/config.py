@@ -73,8 +73,8 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     scheduler_timezone: str = "UTC"
     scheduler_euvd_interval_minutes: int = 60
-    scheduler_cpe_interval_hours: int = 24
-    scheduler_nvd_interval_hours: int = 24
+    scheduler_cpe_interval_minutes: int = 1440
+    scheduler_nvd_interval_minutes: int = 10
     scheduler_kev_interval_minutes: int = 60
     scheduler_cwe_interval_days: int = 7
 

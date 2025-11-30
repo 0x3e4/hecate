@@ -58,14 +58,14 @@ class SchedulerManager:
 
         self.scheduler.add_job(
             _scheduled_cpe_sync,
-            trigger=IntervalTrigger(hours=settings.scheduler_cpe_interval_hours),
+            trigger=IntervalTrigger(minutes=settings.scheduler_cpe_interval_minutes),
             id="cpe_sync",
             replace_existing=True,
         )
 
         self.scheduler.add_job(
             _scheduled_nvd_sync,
-            trigger=IntervalTrigger(hours=settings.scheduler_nvd_interval_hours),
+            trigger=IntervalTrigger(minutes=settings.scheduler_nvd_interval_minutes),
             id="nvd_sync",
             replace_existing=True,
         )
