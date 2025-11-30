@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     nvd_api_key: str | None = None
     nvd_rate_limit_seconds: float = 6.0
     nvd_page_size: int = 2000
+    nvd_max_records_per_run: OptionalInt = None
 
     cpe_base_url: str = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
     cpe_max_records_per_run: OptionalInt = 10000

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import copy
 from typing import Any
 
@@ -40,15 +40,24 @@ class NVDPipeline:
         *,
         initial_sync: bool = False,
         modified_since: datetime | None = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         repository = await VulnerabilityRepository.create()
         asset_catalog = await AssetCatalogService.create()
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
 
+        effective_limit = self._resolve_limit(limit)
+        if initial_sync and effective_limit is not None:
+            log.info(
+                "nvd_pipeline.initial_sync_unbounded",
+                configured_limit=effective_limit,
+            )
+            effective_limit = None
+
         job_name = "nvd_initial_sync" if initial_sync else "nvd_sync"
         label = "NVD Initial Sync" if initial_sync else "NVD Sync"
-        ctx = await tracker.start(job_name, label=label, initial_sync=initial_sync)
+        ctx = await tracker.start(job_name, label=label, initial_sync=initial_sync, limit=effective_limit)
 
         user_supplied_since = modified_since is not None
         configured_since: datetime | None = None
@@ -159,7 +168,19 @@ class NVDPipeline:
             else:
                 self._known_exploited_cache = known_exploited_upper
 
-            async for record in self.client.iter_cves(last_modified_start=last_run):
+            # For non-initial syncs, use lastModEndDate to limit the range
+            # Use last 7 days to ensure we capture recent changes
+            last_modified_end = None
+            if not initial_sync:
+                last_modified_end = datetime.now(tz=UTC)
+                # If we have a last_run timestamp, start from there, otherwise go back 7 days
+                if last_run is None:
+                    last_run = last_modified_end - timedelta(days=7)
+
+            async for record in self.client.iter_cves(
+                last_modified_start=last_run,
+                last_modified_end=last_modified_end,
+            ):
                 # Early extraction of CVE ID and timestamps for skip check
                 cve_wrapper = record.get("cve") if isinstance(record, dict) else None
                 if not isinstance(cve_wrapper, dict):
@@ -322,6 +343,15 @@ class NVDPipeline:
                     updated += 1
                 processed_total += 1
 
+                # Check if we've hit the ingestion limit
+                if effective_limit is not None and ingested >= effective_limit:
+                    log.info(
+                        "nvd_pipeline.limit_reached",
+                        ingested=ingested,
+                        limit=effective_limit,
+                    )
+                    break
+
                 if document.modified:
                     ts = document.modified.astimezone(UTC)
                     if not latest_modified or ts > latest_modified:
@@ -337,7 +367,7 @@ class NVDPipeline:
                         "ingested": ingested,
                         "updated": updated,
                         "skipped": skipped,
-                        "limit": None,
+                        "limit": effective_limit,
                         "remote_total": remote_total,
                     }
                     await state_repo.update_state(
@@ -358,7 +388,7 @@ class NVDPipeline:
                         ingested=ingested,
                         updated=updated,
                         skipped=skipped,
-                        limit=None,
+                        limit=effective_limit,
                         remote_total=remote_total,
                         initial_sync=initial_sync,
                     )
@@ -378,7 +408,7 @@ class NVDPipeline:
                 "ingested": ingested,
                 "updated": updated,
                 "skipped": skipped,
-                "limit": None,
+                "limit": effective_limit,
                 "initial_sync": initial_sync,
                 "run_full": run_full,
                 "local_total_before": local_total_before,
@@ -401,6 +431,18 @@ class NVDPipeline:
         finally:
             await self.client.close()
             await self.kev_client.close()
+
+    @staticmethod
+    def _resolve_limit(explicit_limit: int | None) -> int | None:
+        configured_limit = settings.nvd_max_records_per_run
+        if configured_limit is not None and configured_limit <= 0:
+            configured_limit = None
+
+        if explicit_limit is None:
+            return configured_limit
+        if explicit_limit <= 0:
+            return None
+        return explicit_limit
 
 
 def _normalize_timestamp(value: datetime | None) -> datetime | None:

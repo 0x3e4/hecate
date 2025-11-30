@@ -177,6 +177,12 @@ def ensure_vulnerability_index(index_name: str) -> None:
                     }
                 },
                 "epss_score": {"type": "float"},
+                "sources": {
+                    "type": "nested",
+                    "properties": {
+                        "source": {"type": "keyword"},
+                    }
+                },
                 "vendor_slugs": {"type": "keyword"},
                 "product_slugs": {"type": "keyword"},
                 "product_versions": {"type": "keyword"},

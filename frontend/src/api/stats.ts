@@ -23,6 +23,8 @@ export interface StatsResponse {
     severities: TermsBucket[];
     topVendors: TermsBucket[];
     topProducts: TermsBucket[];
+    topCwes: TermsBucket[];
+    epssRanges: TermsBucket[];
     timeline: TimelinePoint[];
   };
   assets: {
