@@ -59,6 +59,15 @@ export const StatsPage = () => {
                   </ChartCard>
                 </div>
 
+                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" }}>
+                  <ChartCard title="Top 5 CWEs">
+                    <BarChart data={stats.vulnerabilities.topCwes} emptyMessage="Keine CWEs erfasst." maxBars={5} />
+                  </ChartCard>
+                  <ChartCard title="EPSS Score Verteilung">
+                    <BarChart data={stats.vulnerabilities.epssRanges} emptyMessage="Keine EPSS-Daten." maxBars={5} />
+                  </ChartCard>
+                </div>
+
                 <ChartCard title="Veröffentlichungstrend (letzte Monate)">
                   <TimelineChart data={stats.vulnerabilities.timeline} />
                 </ChartCard>

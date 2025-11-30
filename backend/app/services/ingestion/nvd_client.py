@@ -97,8 +97,11 @@ class NVDClient:
         self,
         *,
         last_modified_start: datetime | None = None,
+        last_modified_end: datetime | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        last_modified_param: str | None = None
+        last_modified_start_param: str | None = None
+        last_modified_end_param: str | None = None
+
         if last_modified_start:
             safe_start = last_modified_start.astimezone(UTC)
             now = datetime.now(tz=UTC)
@@ -109,15 +112,29 @@ class NVDClient:
                     clamped=now,
                 )
                 safe_start = now
-            last_modified_param = self._format_datetime(safe_start)
+            last_modified_start_param = self._format_datetime(safe_start)
+
+        if last_modified_end:
+            safe_end = last_modified_end.astimezone(UTC)
+            now = datetime.now(tz=UTC)
+            if safe_end > now:
+                log.warning(
+                    "nvd_client.future_last_modified_end",
+                    requested=safe_end,
+                    clamped=now,
+                )
+                safe_end = now
+            last_modified_end_param = self._format_datetime(safe_end)
 
         # Get total results for the filtered query (if lastModStartDate is set, this returns filtered count)
         params: dict[str, Any] = {
             "startIndex": 0,
             "resultsPerPage": 1,
         }
-        if last_modified_param:
-            params["lastModStartDate"] = last_modified_param
+        if last_modified_start_param:
+            params["lastModStartDate"] = last_modified_start_param
+        if last_modified_end_param:
+            params["lastModEndDate"] = last_modified_end_param
 
         try:
             async with self._rate_limiter.slot():
@@ -125,10 +142,11 @@ class NVDClient:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code if exc.response else None
-            if status == 404 and last_modified_param:
+            if status == 404 and last_modified_start_param:
                 log.info(
-                    "nvd_client.no_results_for_last_mod_start",
-                    last_mod_start=last_modified_param,
+                    "nvd_client.no_results_for_last_mod_range",
+                    last_mod_start=last_modified_start_param,
+                    last_mod_end=last_modified_end_param,
                 )
                 return
             log.error(
@@ -148,13 +166,13 @@ class NVDClient:
             return
 
         # Start from the end (newest entries) and work backwards
-        # Note: total_results is already filtered by lastModStartDate if provided
+        # Note: total_results is already filtered by lastModStartDate/lastModEndDate if provided
         start_index = max(0, total_results - self._page_size)
         log.info(
             "nvd_client.starting_from_newest",
             total_results=total_results,
             start_index=start_index,
-            filtered_by_date=last_modified_param is not None,
+            filtered_by_date=last_modified_start_param is not None or last_modified_end_param is not None,
         )
 
         while start_index >= 0:
@@ -162,8 +180,10 @@ class NVDClient:
                 "startIndex": start_index,
                 "resultsPerPage": self._page_size,
             }
-            if last_modified_param:
-                params["lastModStartDate"] = last_modified_param
+            if last_modified_start_param:
+                params["lastModStartDate"] = last_modified_start_param
+            if last_modified_end_param:
+                params["lastModEndDate"] = last_modified_end_param
 
             try:
                 async with self._rate_limiter.slot():

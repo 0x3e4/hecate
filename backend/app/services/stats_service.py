@@ -43,6 +43,8 @@ class StatsService:
                     "severities": [],
                     "topVendors": [],
                     "topProducts": [],
+                    "topCwes": [],
+                    "epssRanges": [],
                     "timeline": [],
                 },
                 "assets": {
@@ -81,14 +83,27 @@ class StatsService:
 
         aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
 
-        total = self._resolve_total(aggregations)
-        sources = self._map_terms_aggregation(aggregations.get("sources"))
+        total = self._resolve_total(response)
+        # Sources is a nested aggregation, need to unwrap it
+        sources_agg = aggregations.get("sources")
+        if isinstance(sources_agg, dict):
+            sources = self._map_terms_aggregation(sources_agg.get("source_names"))
+        else:
+            sources = []
         top_vendors = self._map_terms_aggregation(aggregations.get("vendors"), limit=10)
         top_products = self._map_terms_aggregation(aggregations.get("products"), limit=10)
         severities = self._map_terms_aggregation(
             aggregations.get("severity"),
             value_transform=lambda value: str(value).upper(),
         )
+        top_cwes = self._map_terms_aggregation(aggregations.get("cwes"), limit=5)
+
+        # EPSS ranges are wrapped in a filter aggregation
+        epss_agg = aggregations.get("epss_ranges")
+        if isinstance(epss_agg, dict):
+            epss_ranges = self._map_range_aggregation(epss_agg.get("ranges"))
+        else:
+            epss_ranges = []
 
         timeline_buckets: dict[str, int] = {}
         timeline_agg = aggregations.get("timeline")
@@ -102,6 +117,8 @@ class StatsService:
             "severities": severities,
             "topVendors": top_vendors,
             "topProducts": top_products,
+            "topCwes": top_cwes,
+            "epssRanges": epss_ranges,
             "timeline": timeline,
         }
 
@@ -139,42 +156,17 @@ class StatsService:
                     "must": [{"match_all": {}}],                }
             },
             "aggs": {
-                "total_cves": {
-                    "filter": {
-                        "wildcard": {
-                            "vuln_id.keyword": "CVE-*",
-                        }
-                    },
-                    "aggs": {
-                        "unique": {
-                            "cardinality": {
-                                "field": "vuln_id.keyword",
-                                "precision_threshold": 10000,  # Reduced from 40000 for better performance
-                            }
-                        },
-                    },
-                },
-                "total_euvd_non_cve": {
-                    "filter": {
-                        "bool": {
-                            "must": [{"term": {field("source"): "EUVD"}}],
-                            "must_not": [{"wildcard": {"vuln_id.keyword": "CVE-*"}}],
-                        }
-                    },
-                    "aggs": {
-                        "unique": {
-                            "cardinality": {
-                                "field": "vuln_id.keyword",
-                                "precision_threshold": 10000,  # Reduced from 40000 for better performance
-                            }
-                        },
-                    },
-                },
                 "sources": {
-                    "terms": {
-                        "field": field("source"),
-                        "size": 10,
-                        "missing": "unbekannt",
+                    "nested": {
+                        "path": "sources"
+                    },
+                    "aggs": {
+                        "source_names": {
+                            "terms": {
+                                "field": "sources.source",
+                                "size": 10,
+                            }
+                        }
                     }
                 },
                 "vendors": {
@@ -194,6 +186,34 @@ class StatsService:
                         "field": field("cvss.severity"),
                         "size": 10,
                         "missing": "unknown",
+                    }
+                },
+                "cwes": {
+                    "terms": {
+                        "field": field("cwes"),
+                        "size": 5,
+                    }
+                },
+                "epss_ranges": {
+                    "filter": {
+                        "exists": {
+                            "field": "epssScore"
+                        }
+                    },
+                    "aggs": {
+                        "ranges": {
+                            "range": {
+                                "field": "epssScore",
+                                "ranges": [
+                                    {"key": "0.0-0.1", "from": 0.0, "to": 0.1},
+                                    {"key": "0.1-0.3", "from": 0.1, "to": 0.3},
+                                    {"key": "0.3-0.5", "from": 0.3, "to": 0.5},
+                                    {"key": "0.5-0.7", "from": 0.5, "to": 0.7},
+                                    {"key": "0.7-1.0", "from": 0.7, "to": 1.0},
+                                ],
+                                "keyed": True,
+                            }
+                        }
                     }
                 },
                 "timeline": {
@@ -226,26 +246,23 @@ class StatsService:
         return body
 
     @staticmethod
-    def _resolve_total(aggregations: dict[str, Any]) -> int:
-        total = 0
+    def _resolve_total(response: dict[str, Any]) -> int:
+        """Get total document count from OpenSearch response.
 
-        cve_bucket = aggregations.get("total_cves")
-        if isinstance(cve_bucket, dict):
-            unique = cve_bucket.get("unique")
-            if isinstance(unique, dict):
-                value = unique.get("value")
+        Uses track_total_hits for accurate count instead of cardinality aggregations
+        which can undercount due to approximation algorithms.
+        """
+        hits = response.get("hits")
+        if isinstance(hits, dict):
+            total = hits.get("total")
+            if isinstance(total, dict):
+                value = total.get("value")
                 if isinstance(value, (int, float)):
-                    total += int(value)
+                    return int(value)
+            elif isinstance(total, (int, float)):
+                return int(total)
 
-        euvd_bucket = aggregations.get("total_euvd_non_cve")
-        if isinstance(euvd_bucket, dict):
-            unique = euvd_bucket.get("unique")
-            if isinstance(unique, dict):
-                value = unique.get("value")
-                if isinstance(value, (int, float)):
-                    total += int(value)
-
-        return total
+        return 0
 
     @staticmethod
     def _is_fielddata_error(error: RequestError) -> bool:
@@ -282,13 +299,16 @@ class StatsService:
         collection = repository.collection
 
         # Only run the fastest queries - skip expensive aggregations
+        # Use sources array if available, fall back to source field
         sources_pipeline = [
+            {"$unwind": {"path": "$sources", "preserveNullAndEmptyArrays": True}},
             {
                 "$group": {
-                    "_id": {"$ifNull": ["$source", "unbekannt"]},
+                    "_id": {"$ifNull": ["$sources.source", "$source"]},
                     "count": {"$sum": 1},
                 }
             },
+            {"$match": {"_id": {"$ne": None}}},  # Filter out null
             {"$sort": {"count": -1, "_id": 1}},
             {"$limit": 5},  # Reduced to 5 for speed
         ]
@@ -304,13 +324,42 @@ class StatsService:
             {"$limit": 5},
         ]
 
+        cwes_pipeline = [
+            {"$unwind": {"path": "$cwes", "preserveNullAndEmptyArrays": False}},
+            {
+                "$group": {
+                    "_id": "$cwes",
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"count": -1, "_id": 1}},
+            {"$limit": 5},
+        ]
+
+        epss_pipeline = [
+            # Filter out documents without EPSS scores
+            {"$match": {"epss_score": {"$exists": True, "$ne": None}}},
+            {
+                "$bucket": {
+                    "groupBy": "$epss_score",
+                    "boundaries": [0.0, 0.1, 0.3, 0.5, 0.7, 1.0],
+                    "default": "other",
+                    "output": {
+                        "count": {"$sum": 1}
+                    }
+                }
+            }
+        ]
+
         # Run only essential aggregations in parallel with timeout
         try:
-            total, sources_raw, severity_raw = await asyncio.wait_for(
+            total, sources_raw, severity_raw, cwes_raw, epss_raw = await asyncio.wait_for(
                 asyncio.gather(
                     collection.estimated_document_count(),
                     collection.aggregate(sources_pipeline).to_list(length=5),
                     collection.aggregate(severity_pipeline).to_list(length=5),
+                    collection.aggregate(cwes_pipeline).to_list(length=5),
+                    collection.aggregate(epss_pipeline).to_list(length=5),
                 ),
                 timeout=5.0,  # 5 second timeout for fallback
             )
@@ -321,18 +370,33 @@ class StatsService:
                 for doc in severity_raw
                 if doc.get("_id")
             ]
+            cwes = self._map_group_results(cwes_raw)
+
+            # Map EPSS bucket results to range format
+            epss_ranges = []
+            range_labels = ["0.0-0.1", "0.1-0.3", "0.3-0.5", "0.5-0.7", "0.7-1.0"]
+            for idx, doc in enumerate(epss_raw):
+                if idx < len(range_labels):
+                    epss_ranges.append({
+                        "key": range_labels[idx],
+                        "doc_count": int(doc.get("count", 0))
+                    })
 
         except asyncio.TimeoutError:
             log.warning("stats.mongo_fallback_timeout")
             total = 0
             sources = []
             severities = []
+            cwes = []
+            epss_ranges = []
 
         # Return minimal data - skip expensive vendors/products/timeline
         return {
             "total": total,
             "sources": sources,
             "severities": severities,
+            "topCwes": cwes,
+            "epssRanges": epss_ranges,
             "topVendors": [],  # Skip expensive aggregation
             "topProducts": [],  # Skip expensive aggregation
             "timeline": [],  # Skip expensive aggregation
@@ -450,6 +514,33 @@ class StatsService:
             values[month_key] = int(count)
 
         return values
+
+    @staticmethod
+    def _map_range_aggregation(aggregation: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """Map OpenSearch range aggregation to TermsBucket format."""
+        if not isinstance(aggregation, dict):
+            return []
+
+        buckets = aggregation.get("buckets")
+        if not isinstance(buckets, dict):
+            return []
+
+        # Define the order of range keys
+        range_order = ["0.0-0.1", "0.1-0.3", "0.3-0.5", "0.5-0.7", "0.7-1.0"]
+
+        results: list[dict[str, Any]] = []
+        for range_key in range_order:
+            bucket = buckets.get(range_key)
+            if not isinstance(bucket, dict):
+                continue
+
+            count = bucket.get("doc_count", 0)
+            if not isinstance(count, (int, float)):
+                continue
+
+            results.append({"key": range_key, "doc_count": int(count)})
+
+        return results
 
     @staticmethod
     def _build_timeline_sequence(start: datetime, bucket_map: dict[str, int]) -> list[dict[str, Any]]:
