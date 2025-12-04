@@ -28,8 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "reindex-opensearch"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, reindex-opensearch).",
     )
     parser.add_argument(
         "--since",
@@ -102,6 +102,13 @@ def main() -> None:
             parser.error("The --since option is not supported for sync-cwe.")
         result = asyncio.run(run_cwe_sync_once(initial_sync=args.initial))
         print(f"CWE sync finished: {result}")
+    elif args.command == "reindex-opensearch":
+        if args.limit is not None:
+            parser.error("The --limit option is not supported for reindex-opensearch.")
+        if args.since:
+            parser.error("The --since option is not supported for reindex-opensearch.")
+        result = asyncio.run(run_opensearch_reindex())
+        print(f"OpenSearch reindex finished: {result}")
     else:
         parser.error(f"Unsupported command: {args.command}")
 
@@ -157,6 +164,85 @@ async def run_cwe_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
         }
     finally:
         await cwe_service.close()
+
+
+async def run_opensearch_reindex() -> dict[str, Any]:
+    """Reindex all vulnerabilities from MongoDB to OpenSearch."""
+    from app.repositories.vulnerability_repository import VulnerabilityRepository
+    from app.repositories.ingestion_state_repository import IngestionStateRepository
+    from app.models.vulnerability import VulnerabilityDocument
+    from app.db.opensearch import async_index_document, ensure_vulnerability_index
+    from app.core.config import settings
+    from app.services.ingestion.job_tracker import JobTracker
+    import structlog
+
+    log = structlog.get_logger()
+
+    # Initialize job tracking
+    state_repo = await IngestionStateRepository.create()
+    tracker = JobTracker(state_repo)
+    job_ctx = await tracker.start("Reindex OpenSearch")
+
+    try:
+        # Ensure index exists with proper mapping
+        ensure_vulnerability_index(settings.opensearch_index)
+        log.info("opensearch.reindex_started", index=settings.opensearch_index)
+
+        repo = await VulnerabilityRepository.create()
+        total = await repo.collection.count_documents({})
+        log.info("opensearch.reindex_total", total=total)
+        print(f"Reindexing {total} vulnerabilities to OpenSearch...")
+
+        indexed = 0
+        failed = 0
+        batch_size = 100
+
+        async for doc in repo.collection.find({}).batch_size(batch_size):
+            try:
+                # Remove MongoDB internal fields
+                doc.pop("_id", None)
+                doc.pop("change_history", None)
+
+                # Validate and convert to VulnerabilityDocument
+                vuln = VulnerabilityDocument.model_validate(doc)
+
+                # Index to OpenSearch with all enriched fields
+                await async_index_document(
+                    index=settings.opensearch_index,
+                    document_id=vuln.vuln_id,
+                    document=vuln.opensearch_document(),
+                )
+                indexed += 1
+
+                if indexed % 100 == 0:
+                    progress_pct = (indexed / total * 100) if total > 0 else 0
+                    print(f"Progress: {indexed}/{total} ({progress_pct:.1f}%) - failed: {failed}")
+                    log.info("opensearch.reindex_progress", indexed=indexed, total=total, failed=failed)
+
+            except Exception as exc:
+                failed += 1
+                vuln_id = doc.get("vuln_id", "unknown")
+                log.warning("opensearch.reindex_failed", vuln_id=vuln_id, error=str(exc))
+                if failed <= 10:  # Only print first 10 errors
+                    print(f"Failed to index {vuln_id}: {str(exc)[:100]}")
+
+        log.info("opensearch.reindex_completed", indexed=indexed, failed=failed, total=total)
+        print(f"\nReindex complete: {indexed} indexed, {failed} failed out of {total} total")
+
+        result = {
+            "indexed": indexed,
+            "failed": failed,
+            "total": total,
+        }
+
+        # Mark job as successful
+        await tracker.succeed(job_ctx, result=result)
+        return result
+
+    except Exception as exc:
+        # Mark job as failed
+        await tracker.fail(job_ctx, error=str(exc))
+        raise
 
 
 if __name__ == "__main__":
