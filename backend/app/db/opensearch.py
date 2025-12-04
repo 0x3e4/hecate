@@ -68,6 +68,7 @@ def get_client() -> OpenSearch:
             timeout=10,  # 10 second timeout for queries
             max_retries=1,
             retry_on_timeout=False,
+            pool_maxsize=10,  # Maximum connections in the pool
         )
     return _client
 
