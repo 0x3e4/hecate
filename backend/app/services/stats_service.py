@@ -74,6 +74,9 @@ class StatsService:
                 except (RequestError, OSConnectionError, OpenSearchException) as retry_exc:
                     log.warning("stats.keyword_retry_failed", error=str(retry_exc))
                     return await self._fetch_vulnerability_stats_from_mongo(start, now)
+            elif self._is_nested_path_error(exc):
+                log.warning("stats.nested_path_error", error=str(exc))
+                return await self._fetch_vulnerability_stats_from_mongo(start, now)
             else:
                 log.warning("stats.opensearch_request_error", error=str(exc))
                 return await self._fetch_vulnerability_stats_from_mongo(start, now)
@@ -273,6 +276,19 @@ class StatsService:
         if isinstance(info, dict):
             reason = StatsService._extract_reason(info)
             if isinstance(reason, str) and "fielddata" in reason.lower():
+                return True
+        return False
+
+    @staticmethod
+    def _is_nested_path_error(error: RequestError) -> bool:
+        """Check if error is due to nested path mapping mismatch."""
+        message = str(error).lower()
+        if "nested" in message and "is not nested" in message:
+            return True
+        info = getattr(error, "info", None)
+        if isinstance(info, dict):
+            reason = StatsService._extract_reason(info)
+            if isinstance(reason, str) and "is not nested" in reason.lower():
                 return True
         return False
 

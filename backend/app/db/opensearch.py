@@ -78,6 +78,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
     client = get_client()
     try:
         if client.indices.exists(index=index_name):
+            log.info("opensearch.index_already_exists", index=index_name)
             applied = _ensure_index_settings(client, index_name)
             _mark_opensearch_available()
             if applied:
@@ -218,6 +219,11 @@ def ensure_vulnerability_index(index_name: str) -> None:
 async def async_index_document(index: str, document_id: str, document: dict[str, Any]) -> None:
     client = get_client()
     loop = asyncio.get_running_loop()
+
+    # Ensure index exists with proper mapping before indexing
+    if index not in _ensured_indices:
+        ensure_vulnerability_index(index)
+
     try:
         await loop.run_in_executor(
             None,
