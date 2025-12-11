@@ -1992,3 +1992,30 @@ table thead th {
     font-size: 1.3rem;
   }
 }
+
+/* Clickable chips for vendors, products, and versions */
+.clickable-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(92, 132, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+  border: 1px solid rgba(92, 132, 255, 0.25);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.1s ease;
+  font-weight: 500;
+}
+
+.clickable-chip:hover {
+  background: rgba(92, 132, 255, 0.22);
+  border-color: rgba(92, 132, 255, 0.45);
+  color: #f5f7fa;
+  transform: translateY(-1px);
+}
+
+.clickable-chip:active {
+  transform: translateY(0);
+  background: rgba(92, 132, 255, 0.3);
+}
