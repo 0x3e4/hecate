@@ -162,6 +162,7 @@ export interface VulnerabilityQuery {
   versionFilters?: string[];
   severity?: string[];
   includeRejected?: boolean;
+  includeReserved?: boolean;
   exploitedOnly?: boolean;
   aiAnalysedOnly?: boolean;
   limit?: number;

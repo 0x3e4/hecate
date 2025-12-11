@@ -60,6 +60,11 @@ async def list_vulnerabilities(
         alias="includeRejected",
         description="Include rejected CVE records in the response.",
     ),
+    include_reserved: bool = Query(
+        default=False,
+        alias="includeReserved",
+        description="Include reserved CVE records (without published date) in the response.",
+    ),
     exploited_only: bool = Query(
         default=False,
         alias="exploitedOnly",
@@ -95,6 +100,7 @@ async def list_vulnerabilities(
         versionFilters=versionFilters,
         limit=limit,
         includeRejected=include_rejected,
+        includeReserved=include_reserved,
         exploitedOnly=exploited_only,
         aiAnalysedOnly=ai_analysed_only,
     )
