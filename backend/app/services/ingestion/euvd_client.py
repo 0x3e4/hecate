@@ -81,7 +81,27 @@ class EUVDClient:
                 ) from exc
 
             response.raise_for_status()
-            payload = response.json()
+
+            # Check if response has content before parsing JSON
+            if not response.content:
+                log.error(
+                    "euvd_client.list_vulnerabilities_empty_response",
+                    params=params,
+                )
+                break
+
+            try:
+                payload = response.json()
+            except Exception as json_exc:
+                log.error(
+                    "euvd_client.list_vulnerabilities_invalid_json",
+                    error=str(json_exc),
+                    params=params,
+                    content_preview=response.text[:200] if response.text else "",
+                )
+                raise RuntimeError(
+                    "EUVD API returned invalid JSON response."
+                ) from json_exc
 
             items = self._extract_items(payload)
             if not items:
@@ -105,10 +125,26 @@ class EUVDClient:
             async with self._rate_limiter.slot():
                 response = await self._client.get(self.DIRECT_LOOKUP_PATH, params={"id": candidate})
             response.raise_for_status()
-            payload = response.json()
-            if isinstance(payload, dict) and payload:
-                # Direct lookup returns a single record
-                return payload
+
+            # Check if response has content before parsing JSON
+            if not response.content:
+                log.debug(
+                    "euvd_client.direct_lookup_empty_response",
+                    identifier=identifier,
+                )
+            else:
+                try:
+                    payload = response.json()
+                    if isinstance(payload, dict) and payload:
+                        # Direct lookup returns a single record
+                        return payload
+                except Exception as json_exc:
+                    log.debug(
+                        "euvd_client.direct_lookup_invalid_json",
+                        identifier=identifier,
+                        error=str(json_exc),
+                        content_preview=response.text[:200] if response.text else "",
+                    )
         except httpx.HTTPError as exc:
             log.debug(
                 "euvd_client.direct_lookup_failed",
@@ -135,6 +171,27 @@ class EUVDClient:
                 async with self._rate_limiter.slot():
                     response = await self._client.get(self.SEARCH_PATH, params=params)
                 response.raise_for_status()
+
+                # Check if response has content before parsing JSON
+                if not response.content:
+                    log.warning(
+                        "euvd_client.fetch_single_search_empty_response",
+                        identifier=identifier,
+                        params=params,
+                    )
+                    continue
+
+                try:
+                    payload = response.json()
+                except Exception as json_exc:
+                    log.warning(
+                        "euvd_client.fetch_single_search_invalid_json",
+                        identifier=identifier,
+                        params=params,
+                        error=str(json_exc),
+                        content_preview=response.text[:200] if response.text else "",
+                    )
+                    continue
             except httpx.HTTPError as exc:
                 log.warning(
                     "euvd_client.fetch_single_search_failed",
@@ -144,7 +201,6 @@ class EUVDClient:
                 )
                 continue
 
-            payload = response.json()
             items = self._extract_items(payload)
             if not items:
                 continue
@@ -229,11 +285,24 @@ class EUVDClient:
             async with self._rate_limiter.slot():
                 response = await self._client.get(self.SEARCH_PATH, params=params)
             response.raise_for_status()
+
+            # Check if response has content before parsing JSON
+            if not response.content:
+                log.error("euvd_client.total_empty_response")
+                return 0
+
+            try:
+                payload = response.json()
+            except Exception as json_exc:
+                log.error(
+                    "euvd_client.total_invalid_json",
+                    error=str(json_exc),
+                    content_preview=response.text[:200] if response.text else "",
+                )
+                raise RuntimeError("EUVD API returned invalid JSON response.") from json_exc
         except httpx.HTTPError as exc:
             log.error("euvd_client.total_failed", error=str(exc))
             raise RuntimeError("Failed to fetch EUVD total results.") from exc
-
-        payload = response.json()
         total = payload.get("total")
         if not isinstance(total, int):
             total = payload.get("totalElements")
