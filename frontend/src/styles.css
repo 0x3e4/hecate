@@ -1997,6 +1997,7 @@ table thead th {
 .clickable-chip {
   display: inline-flex;
   align-items: center;
+  text-align: left;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   background: rgba(92, 132, 255, 0.12);
