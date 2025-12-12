@@ -83,9 +83,15 @@ class CWEClient:
 
         try:
             data = response.json()
-            # The API returns the CWE object directly
-            if isinstance(data, dict) and "ID" in data:
-                return data
+            # The API returns {"Weaknesses": [{...}]} for single weakness queries
+            if isinstance(data, dict):
+                if "Weaknesses" in data and isinstance(data["Weaknesses"], list):
+                    # New format: extract first weakness from array
+                    if len(data["Weaknesses"]) > 0:
+                        return data["Weaknesses"][0]
+                elif "ID" in data:
+                    # Old format (fallback): return directly
+                    return data
         except Exception as exc:  # pragma: no cover - defensive
             log.error("cwe_client.parse_error", cwe_id=cwe_id, error=str(exc))
 
