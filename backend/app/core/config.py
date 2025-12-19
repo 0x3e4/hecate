@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     scheduler_kev_interval_minutes: int = 60
     scheduler_cwe_interval_days: int = 7
 
+    # Full sync scheduling (weekly verification runs)
+    scheduler_euvd_full_sync_enabled: bool = True
+    scheduler_euvd_full_sync_cron_hour: int = 2  # 2 AM UTC
+    scheduler_euvd_full_sync_cron_day_of_week: str = "sun"  # Sunday
+    scheduler_nvd_full_sync_enabled: bool = True
+    scheduler_nvd_full_sync_cron_hour: int = 2  # 2 AM UTC
+    scheduler_nvd_full_sync_cron_day_of_week: str = "wed"  # Wednesday
+
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"
     trusted_proxy_real_ip_header: str | None = "x-real-ip"

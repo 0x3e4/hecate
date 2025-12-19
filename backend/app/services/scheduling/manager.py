@@ -5,6 +5,7 @@ from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
@@ -83,6 +84,34 @@ class SchedulerManager:
             id="cwe_sync",
             replace_existing=True,
         )
+
+        # EUVD weekly full sync
+        if settings.scheduler_euvd_full_sync_enabled:
+            self.scheduler.add_job(
+                _scheduled_euvd_full_sync,
+                trigger=CronTrigger(
+                    day_of_week=settings.scheduler_euvd_full_sync_cron_day_of_week,
+                    hour=settings.scheduler_euvd_full_sync_cron_hour,
+                    minute=0,
+                    timezone=settings.scheduler_timezone,
+                ),
+                id="euvd_full_sync",
+                replace_existing=True,
+            )
+
+        # NVD weekly full sync
+        if settings.scheduler_nvd_full_sync_enabled:
+            self.scheduler.add_job(
+                _scheduled_nvd_full_sync,
+                trigger=CronTrigger(
+                    day_of_week=settings.scheduler_nvd_full_sync_cron_day_of_week,
+                    hour=settings.scheduler_nvd_full_sync_cron_hour,
+                    minute=0,
+                    timezone=settings.scheduler_timezone,
+                ),
+                id="nvd_full_sync",
+                replace_existing=True,
+            )
 
     async def shutdown(self) -> None:
         if self._bootstrap_task is not None and not self._bootstrap_task.done():
@@ -192,6 +221,18 @@ async def _execute_nvd_sync(*, initial_sync: bool) -> None:
         log.exception(event, error=str(exc))
 
 
+async def _scheduled_nvd_full_sync() -> None:
+    """Weekly NVD full sync for data verification and integrity."""
+    if settings.ingestion_bootstrap_on_startup:
+        completed = await _initial_sync_already_completed("nvd_initial_sync")
+        if not completed:
+            log.info("scheduler.nvd_full_sync_skipped_initial_sync_incomplete")
+            return
+
+    log.info("scheduler.nvd_full_sync_starting")
+    await _execute_nvd_sync(initial_sync=True)
+
+
 async def _scheduled_kev_sync() -> None:
     if settings.ingestion_bootstrap_on_startup:
         completed = await _initial_sync_already_completed("kev_initial_sync")
@@ -244,6 +285,18 @@ async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> N
             else "scheduler.euvd_initial_sync_failed"
         )
         log.exception(event, error=str(exc))
+
+
+async def _scheduled_euvd_full_sync() -> None:
+    """Weekly EUVD full sync for data verification and integrity."""
+    if settings.ingestion_bootstrap_on_startup:
+        completed = await _initial_sync_already_completed("euvd_initial_sync")
+        if not completed:
+            log.info("scheduler.euvd_full_sync_skipped_initial_sync_incomplete")
+            return
+
+    log.info("scheduler.euvd_full_sync_starting")
+    await _execute_euvd_ingestion(limit=None, initial_sync=True)
 
 
 async def _initial_sync_already_completed(job_name: str) -> bool:
