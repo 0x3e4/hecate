@@ -295,3 +295,29 @@ export interface DQLFieldAggregation {
   totalDocs: number;
   buckets: DQLFieldValueBucket[];
 }
+
+export interface SyncState {
+  jobName: string;
+  label: string;
+  status: string; // running, completed, failed, cancelled, idle
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  durationSeconds?: number | null;
+  nextRun?: string | null;
+  lastResult?: Record<string, unknown> | null;
+  error?: string | null;
+}
+
+export interface SyncStatesResponse {
+  syncs: SyncState[];
+}
+
+export interface TriggerSyncRequest {
+  initial?: boolean;
+}
+
+export interface TriggerSyncResponse {
+  success: boolean;
+  message: string;
+  jobName: string;
+}

@@ -24,11 +24,18 @@ const JOB_LABELS: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   completed: "#8fffb0",
-  running: "#8286ffff",
+  running: "#ffcc66",
   failed: "#ffa3a3",
   timeout: "#fcd34d",
   overdue: "#fcd34d",
   cancelled: "#9ca3af",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  completed: "Abgeschlossen",
+  running: "Läuft",
+  failed: "Fehlgeschlagen",
+  cancelled: "Abgebrochen",
 };
 
 const PAGE_SIZE = 50;
@@ -82,7 +89,9 @@ export const AuditLogPage = () => {
         const statusKey = isOverdue ? "overdue" : entry.status;
         const statusColor = STATUS_COLOR[statusKey] ?? "#d1d5db";
         const statusLabel =
-          isOverdue && entry.status === "running" ? "running (overdue)" : entry.status;
+          isOverdue && entry.status === "running"
+            ? "Läuft (Überfällig)"
+            : STATUS_LABELS[entry.status] ?? entry.status;
         const cancelledNote = entry.status === "cancelled" && entry.error != null ? entry.error : undefined;
         const errorText = entry.error != null && entry.status !== "cancelled" ? entry.error : undefined;
         const hintText = entry.overdueReason ?? (cancelledNote ? `Job abgebrochen: ${cancelledNote}` : undefined);
@@ -140,7 +149,20 @@ export const AuditLogPage = () => {
           <tr key={entry.id}>
             <td>{jobLabel}</td>
             <td>
-              <span style={{ color: statusColor, fontWeight: 600 }}>{statusLabel}</span>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "0.35rem",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  background: `${statusColor}22`,
+                  color: statusColor,
+                  border: `1px solid ${statusColor}44`,
+                }}
+              >
+                {statusLabel}
+              </span>
             </td>
             <td>{started}</td>
             <td>{finished}</td>
@@ -217,10 +239,10 @@ export const AuditLogPage = () => {
               }}
             >
               <option value="">Alle Status</option>
-              <option value="running">Running</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="running">Läuft</option>
+              <option value="completed">Abgeschlossen</option>
+              <option value="failed">Fehlgeschlagen</option>
+              <option value="cancelled">Abgebrochen</option>
             </select>
           </label>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>

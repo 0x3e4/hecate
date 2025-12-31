@@ -7,8 +7,16 @@ import {
   restoreVulnerabilityBackup,
   type VulnerabilitySource
 } from "../api/backup";
+import {
+  fetchSyncStates,
+  triggerEuvdSync,
+  triggerNvdSync,
+  triggerCpeSync,
+  triggerKevSync,
+  triggerCweSync,
+} from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
-import type { SavedSearch } from "../types";
+import type { SavedSearch, SyncState } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
 type BackupDataset =
@@ -39,6 +47,12 @@ export const SystemPage = () => {
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const { savedSearches, loading: savedSearchLoading, removeSavedSearch } = useSavedSearches();
+
+  const [syncStates, setSyncStates] = useState<SyncState[]>([]);
+  const [syncLoading, setSyncLoading] = useState(true);
+  const [syncTriggeringId, setSyncTriggeringId] = useState<string | null>(null);
+  const [expandedSyncId, setExpandedSyncId] = useState<string | null>(null);
+  const syncIntervalRef = useRef<number | null>(null);
 
   const beginAction = (datasetId: string) => {
     setBusyId(datasetId);
@@ -88,11 +102,31 @@ export const SystemPage = () => {
     [savedSearches]
   );
 
+  const loadSyncStates = async () => {
+    try {
+      const response = await fetchSyncStates();
+      setSyncStates(response.syncs);
+      setSyncLoading(false);
+    } catch (error) {
+      console.error("Failed to load sync states", error);
+      setSyncLoading(false);
+    }
+  };
+
   useEffect(() => {
+    void loadSyncStates();
+    syncIntervalRef.current = window.setInterval(() => {
+      void loadSyncStates();
+    }, 5000);
+
     return () => {
       if (toastTimeoutRef.current !== null) {
         window.clearTimeout(toastTimeoutRef.current);
         toastTimeoutRef.current = null;
+      }
+      if (syncIntervalRef.current !== null) {
+        window.clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
       }
     };
   }, []);
@@ -184,8 +218,220 @@ export const SystemPage = () => {
     event.target.value = "";
   };
 
+  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe", initial: boolean) => {
+    const syncId = `${syncType}_${initial ? "initial" : "normal"}`;
+    setSyncTriggeringId(syncId);
+    try {
+      let response;
+      switch (syncType) {
+        case "euvd":
+          response = await triggerEuvdSync(initial);
+          break;
+        case "nvd":
+          response = await triggerNvdSync(initial);
+          break;
+        case "cpe":
+          response = await triggerCpeSync(initial);
+          break;
+        case "kev":
+          response = await triggerKevSync(initial);
+          break;
+        case "cwe":
+          response = await triggerCweSync(initial);
+          break;
+      }
+      showToast(response.message, "success");
+      void loadSyncStates();
+    } catch (error) {
+      console.error("Failed to trigger sync", error);
+      showToast(`Sync konnte nicht gestartet werden.`, "error");
+    } finally {
+      setSyncTriggeringId(null);
+    }
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case "running":
+        return "#ffcc66";
+      case "completed":
+        return "#8fffb0";
+      case "failed":
+        return "#ffa3a3";
+      case "idle":
+        return "#888";
+      default:
+        return "#888";
+    }
+  };
+
+  const formatDuration = (seconds?: number | null): string => {
+    if (!seconds) return "-";
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h`;
+  };
+
+  const displayedSyncStates = useMemo(() => {
+    const order = [
+      "euvd_ingestion",
+      "euvd_initial_sync",
+      "nvd_sync",
+      "nvd_initial_sync",
+      "cpe_sync",
+      "cpe_initial_sync",
+      "kev_sync",
+      "kev_initial_sync",
+      "cwe_sync",
+      "cwe_initial_sync",
+    ];
+    return syncStates.sort((a: SyncState, b: SyncState) => order.indexOf(a.jobName) - order.indexOf(b.jobName));
+  }, [syncStates]);
+
   return (
     <div className="page">
+      <section className="card">
+        <h2>Sync Status</h2>
+        <p className="muted">
+          Übersicht über alle Datenquellen-Synchronisationen. Automatische Aktualisierung alle 5 Sekunden.
+        </p>
+        {syncLoading ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            Lade Sync-Status …
+          </p>
+        ) : (
+          <div style={{ marginTop: "1rem", overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
+              <thead>
+                <tr>
+                  <th style={syncTableHeaderStyle}>Sync Job</th>
+                  <th style={syncTableHeaderStyle}>Status</th>
+                  <th style={syncTableHeaderStyle}>Gestartet</th>
+                  <th style={syncTableHeaderStyle}>Beendet</th>
+                  <th style={syncTableHeaderStyle}>Dauer</th>
+                  <th style={syncTableHeaderStyle}>Nächster Lauf</th>
+                  <th style={syncTableHeaderStyle}>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedSyncStates.map((sync: SyncState) => {
+                  const syncType = sync.jobName.includes("euvd")
+                    ? "euvd"
+                    : sync.jobName.includes("nvd")
+                    ? "nvd"
+                    : sync.jobName.includes("cpe")
+                    ? "cpe"
+                    : sync.jobName.includes("kev")
+                    ? "kev"
+                    : "cwe";
+                  const isInitial = sync.jobName.includes("initial");
+                  const syncId = `${syncType}_${isInitial ? "initial" : "normal"}`;
+                  const isBusy = syncTriggeringId === syncId || sync.status === "running";
+                  const isExpanded = expandedSyncId === sync.jobName;
+                  const hasDetails = sync.lastResult || sync.error;
+
+                  return (
+                    <>
+                      <tr
+                        key={sync.jobName}
+                        onClick={() => hasDetails && setExpandedSyncId(isExpanded ? null : sync.jobName)}
+                        style={{
+                          cursor: hasDetails ? "pointer" : "default",
+                          background: isExpanded ? "rgba(255, 255, 255, 0.02)" : undefined,
+                        }}
+                      >
+                        <td style={syncTableCellStyle}>
+                          <strong>{sync.label}</strong>
+                          {hasDetails && (
+                            <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", opacity: 0.6 }}>
+                              {isExpanded ? "▼" : "▶"}
+                            </span>
+                          )}
+                        </td>
+                        <td style={syncTableCellStyle}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "0.35rem",
+                              fontSize: "0.85rem",
+                              fontWeight: 600,
+                              background: `${getStatusColor(sync.status)}22`,
+                              color: getStatusColor(sync.status),
+                              border: `1px solid ${getStatusColor(sync.status)}44`,
+                            }}
+                          >
+                            {sync.status === "running"
+                              ? "Läuft"
+                              : sync.status === "completed"
+                              ? "Abgeschlossen"
+                              : sync.status === "failed"
+                              ? "Fehlgeschlagen"
+                              : "Inaktiv"}
+                          </span>
+                        </td>
+                        <td style={syncTableCellStyle}>
+                          {sync.startedAt ? formatDateTime(sync.startedAt) : "-"}
+                        </td>
+                        <td style={syncTableCellStyle}>
+                          {sync.finishedAt ? formatDateTime(sync.finishedAt) : "-"}
+                        </td>
+                        <td style={syncTableCellStyle}>{formatDuration(sync.durationSeconds)}</td>
+                        <td style={syncTableCellStyle}>
+                          {sync.nextRun ? (
+                            formatDateTime(sync.nextRun)
+                          ) : isInitial ? (
+                            <span className="muted" style={{ fontSize: "0.85rem" }}>
+                              Nur bei Start
+                            </span>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td style={syncTableCellStyle}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleTriggerSync(syncType, isInitial);
+                            }}
+                            disabled={isBusy}
+                            style={{ minWidth: "120px", fontSize: "0.85rem" }}
+                          >
+                            {isBusy ? "Wird gestartet…" : "Manuell starten"}
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && hasDetails && (
+                        <tr key={`${sync.jobName}-details`}>
+                          <td colSpan={7} style={{ ...syncTableCellStyle, background: "rgba(255, 255, 255, 0.02)", padding: "1rem" }}>
+                            {sync.error ? (
+                              <div>
+                                <strong style={{ color: "#ffa3a3" }}>Fehler:</strong>
+                                <pre style={{ marginTop: "0.5rem", whiteSpace: "pre-wrap", color: "#ffa3a3", fontSize: "0.85rem" }}>
+                                  {sync.error}
+                                </pre>
+                              </div>
+                            ) : sync.lastResult ? (
+                              <div>
+                                <strong>Letztes Ergebnis:</strong>
+                                <pre style={{ marginTop: "0.5rem", whiteSpace: "pre-wrap", fontSize: "0.85rem", background: "rgba(255, 255, 255, 0.06)", padding: "0.75rem", borderRadius: "0.35rem" }}>
+                                  {JSON.stringify(sync.lastResult, null, 2)}
+                                </pre>
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <section className="card">
         <h2>Backup & Restore</h2>
         <p className="muted">
@@ -376,4 +622,19 @@ const toastSuccessStyle: CSSProperties = {
 const toastErrorStyle: CSSProperties = {
   borderColor: "rgba(252, 92, 101, 0.65)",
   color: "#ffb4b6",
+};
+
+const syncTableHeaderStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "0.5rem 0.75rem",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+  fontWeight: 600,
+  fontSize: "0.9rem",
+};
+
+const syncTableCellStyle: CSSProperties = {
+  padding: "0.65rem 0.75rem",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+  verticalAlign: "top",
+  fontSize: "0.9rem",
 };
