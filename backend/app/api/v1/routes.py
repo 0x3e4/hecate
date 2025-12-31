@@ -10,6 +10,7 @@ from app.api.v1 import (
     saved_searches,
     stats,
     status,
+    sync,
     vulnerabilities,
 )
 
@@ -24,3 +25,4 @@ api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(stats.router, prefix="/stats", tags=["stats"])
 api_router.include_router(changelog.router, prefix="/changelog", tags=["changelog"])
 api_router.include_router(backup.router, prefix="/backup", tags=["backup"])
+api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
