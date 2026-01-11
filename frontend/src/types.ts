@@ -149,6 +149,7 @@ export interface VulnerabilityPreview {
   aiAssessment?: AIAssessment | null;
   cvssMetrics?: CvssMetrics | null;
   impactedProducts?: ImpactedProduct[];
+  sourceIds?: string[];
 }
 
 export interface VulnerabilityQuery {
