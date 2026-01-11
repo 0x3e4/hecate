@@ -201,7 +201,7 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
             transition: "color 0.2s ease",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = "#748ffc";
+            e.currentTarget.style.color = "#ffd43b";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.color = "inherit";
