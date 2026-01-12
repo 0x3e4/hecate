@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { useMemo } from "react";
 
 import { useSavedSearches } from "../hooks/useSavedSearches";
@@ -14,6 +14,7 @@ type SidebarProps = {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LuLayoutDashboard },
   { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
+  { to: "/query-builder", label: "Query Builder", icon: LuWrench },
   { to: "/stats", label: "Statistiken", icon: LuFileChartColumnIncreasing },
   { to: "/changelog", label: "Changelog", icon: LuHistory },
   { to: "/audit", label: "Audit Log", icon: LuLogs },
