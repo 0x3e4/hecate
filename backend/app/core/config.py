@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     google_gemini_api_key: str | None = None
     google_gemini_model: str = "gemini-1.5-flash"
     ai_response_language: str = "en"
+    ai_web_search_enabled: bool = True
     mongo_url: str = "mongodb://mongo:27017"
     mongo_db: str = "hecate"
     mongo_vulnerabilities_collection: str = "vulnerabilities"

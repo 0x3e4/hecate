@@ -2116,6 +2116,10 @@ table thead th {
   background: var(--input-bg-focus);
 }
 
+#react-select-2-input {
+  border: none !important;
+}
+
 /* Field Categories */
 .field-categories {
   display: flex;

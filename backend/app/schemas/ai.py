@@ -13,6 +13,11 @@ class AIProviderInfo(BaseModel):
 class AIInvestigationRequest(BaseModel):
     provider: AIProviderLiteral
     language: str | None = None
+    additional_context: str | None = Field(
+        default=None,
+        alias="additionalContext",
+        description="Optional additional context or information to consider in the analysis",
+    )
 
     model_config = {"populate_by_name": True}
 

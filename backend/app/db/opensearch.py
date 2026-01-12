@@ -202,7 +202,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "published": {"type": "date"},
                 "modified": {"type": "date"},
                 "ingested_at": {"type": "date"},
-                "ai_assessment": {"type": "object", "enabled": False},
+                "ai_assessment": {"type": "object"},
             }
         },
     }
