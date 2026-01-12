@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { FieldBrowser } from "../components/QueryBuilder/FieldBrowser";
 import { QueryEditor } from "../components/QueryBuilder/QueryEditor";
@@ -19,6 +19,14 @@ export const QueryBuilderPage = () => {
 
   const { createSearch } = useSavedSearches();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    document.title = "Hecate Cyber Defense - Query Builder";
+
+    return () => {
+      document.title = "Hecate Cyber Defense";
+    };
+  }, []);
 
   // Insert text at cursor position in the query
   const handleInsertText = (text: string) => {

@@ -15,6 +15,14 @@ export const DashboardPage = () => {
   const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
+    document.title = "Hecate Cyber Defense - Dashboard";
+
+    return () => {
+      document.title = "Hecate Cyber Defense";
+    };
+  }, []);
+
+  useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);

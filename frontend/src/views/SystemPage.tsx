@@ -114,6 +114,14 @@ export const SystemPage = () => {
   };
 
   useEffect(() => {
+    document.title = "Hecate Cyber Defense - System";
+
+    return () => {
+      document.title = "Hecate Cyber Defense";
+    };
+  }, []);
+
+  useEffect(() => {
     void loadSyncStates();
     syncIntervalRef.current = window.setInterval(() => {
       void loadSyncStates();
