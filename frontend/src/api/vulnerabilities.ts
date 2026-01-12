@@ -68,11 +68,15 @@ export const getAiProviders = async (): Promise<AIProviderInfo[]> => {
 export const requestAiInvestigation = async (
   identifier: string,
   provider: AIProviderId,
-  language?: string | null
+  language?: string | null,
+  additionalContext?: string | null
 ): Promise<AIInvestigationResponse> => {
-  const payload: { provider: AIProviderId; language?: string | null } = { provider };
+  const payload: { provider: AIProviderId; language?: string | null; additionalContext?: string | null } = { provider };
   if (language) {
     payload.language = language;
+  }
+  if (additionalContext) {
+    payload.additionalContext = additionalContext;
   }
   const response = await api.post<AIInvestigationResponse>(
     `/v1/vulnerabilities/${encodeURIComponent(identifier)}/ai-investigation`,

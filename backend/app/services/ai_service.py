@@ -61,12 +61,18 @@ class AIClient:
         vulnerability: VulnerabilityDetail,
         *,
         language: str | None = None,
+        additional_context: str | None = None,
     ) -> AIInvestigationResponse:
         """
         Submit a vulnerability context to the requested provider and return the summarised response.
         """
         normalized_language = _normalize_language(language)
-        system_prompt, user_prompt = await _build_prompts(vulnerability, normalized_language)
+        system_prompt, user_prompt = await _build_prompts(
+            vulnerability,
+            normalized_language,
+            additional_context,
+            provider
+        )
 
         if provider == "openai":
             if not settings.openai_api_key:
@@ -106,7 +112,7 @@ class AIClient:
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.3,
-            "max_tokens": 1500,
+            "max_tokens": 4000,
         }
         headers = {
             "Authorization": f"Bearer {settings.openai_api_key}",
@@ -138,7 +144,7 @@ class AIClient:
     async def _call_anthropic(self, system_prompt: str, user_prompt: str) -> str:
         payload = {
             "model": settings.anthropic_model or "claude-3-haiku-20240307",
-            "max_tokens": 1500,
+            "max_tokens": 4000,
             "temperature": 0.3,
             "system": system_prompt,
             "messages": [
@@ -213,7 +219,7 @@ class AIClient:
         model_name = settings.google_gemini_model or "gemini-1.5-flash"
         generation_config = {
             "temperature": 0.3,
-            "max_output_tokens": 1500,
+            "max_output_tokens": 4000,
         }
 
         def _invoke() -> str:
@@ -241,6 +247,8 @@ class AIClient:
                 if not safety_settings:
                     safety_settings = None
 
+            # Note: Google Search grounding is available in Gemini API but requires specific setup
+            # For now, we rely on prompt instructions to leverage Gemini's knowledge
             model = genai.GenerativeModel(
                 model_name=model_name,
                 system_instruction=system_prompt,
@@ -419,18 +427,112 @@ def _isoformat_utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-async def _build_prompts(vulnerability: VulnerabilityDetail, language: str) -> tuple[str, str]:
+async def _build_prompts(
+    vulnerability: VulnerabilityDetail,
+    language: str,
+    additional_context: str | None = None,
+    provider: str = "openai",
+) -> tuple[str, str]:
     language_instruction = (
         f"Respond in the language identified by the ISO code '{language}'. "
         "If you are unsure which language that is, default to English."
     )
 
+    # Add web search instruction for supported providers
+    web_search_instruction = ""
+    version_specific_instruction = ""
+
+    if settings.ai_web_search_enabled:
+        if provider == "gemini":
+            web_search_instruction = (
+                "IMPORTANT: Use Google Search to find the latest information about this vulnerability. "
+                "Search for:\n"
+                "1. GitHub Security Advisory (search: 'GHSA [CVE-ID] site:github.com')\n"
+                "2. Official vendor security bulletins\n"
+                "3. Release notes and changelogs with security fixes\n"
+                "4. Recent exploit information and proof-of-concepts\n"
+                "5. Community discussions and analysis\n\n"
+                "When citing patch versions, ALWAYS include the source URL as proof.\n\n"
+            )
+        elif provider in ["openai", "anthropic"]:
+            web_search_instruction = (
+                "Search for the latest information about this vulnerability, prioritizing:\n"
+                "1. GitHub Security Advisory (GHSA-xxxx format)\n"
+                "2. Official vendor security bulletins and advisories\n"
+                "3. Release notes with security fixes\n"
+                "4. Recent exploits and patches\n\n"
+                "CRITICAL: When stating patch versions, cite the exact source URL.\n\n"
+            )
+
+    # Add version-specific analysis instruction if user provided version info
+    if additional_context and additional_context.strip():
+        context_lower = additional_context.lower()
+        # Check if user mentioned a version
+        if any(keyword in context_lower for keyword in ["version", "v ", "v.", "release", "build"]):
+            version_specific_instruction = (
+                "## Version-Specific Analysis - CRITICAL ACCURACY REQUIREMENTS\n"
+                "The analyst has provided version information. You MUST follow these rules STRICTLY:\n\n"
+                "**STEP 1: CHECK DATABASE-VERIFIED VULNERABLE VERSIONS**\n"
+                "The vulnerability data includes a section '⚠️ VERIFIED VULNERABLE VERSIONS FROM DATABASE' or "
+                "'AFFECTED PRODUCTS & VULNERABLE VERSIONS (DATABASE-VERIFIED)'. These are AUTHORITATIVE lists of "
+                "vulnerable versions extracted from official sources. You MUST:\n"
+                "1. Check if the analyst's version is EXPLICITLY listed in these vulnerable versions\n"
+                "2. If the version is listed → it IS vulnerable\n"
+                "3. If the version is NOT listed → cross-check with official advisories before concluding\n"
+                "4. Use this as your PRIMARY source for vulnerable version verification\n\n"
+                "**STEP 2: CHECK THE OFFICIAL ADVISORIES**\n"
+                "The vulnerability data includes an '⚠️ OFFICIAL SECURITY ADVISORIES' section. These URLs contain "
+                "official patch and vulnerability information. You MUST:\n"
+                "1. Visit these URLs to verify patched versions and vulnerability scope\n"
+                "2. Extract the EXACT vulnerable and patched versions from these sources\n"
+                "3. Quote the version information EXACTLY as stated\n"
+                "4. Include the specific advisory URL when stating version information\n\n"
+                "**STEP 3: IF NO DATABASE VERSIONS OR ADVISORIES ARE AVAILABLE**\n"
+                "1. Search for the OFFICIAL GitHub Security Advisory (GHSA-xxxx-xxxx-xxxx)\n"
+                "2. Search vendor's official security bulletins and changelogs\n"
+                "3. Verify the EXACT patched versions from these official sources\n\n"
+                "**CRITICAL: DO NOT GUESS OR INFER VERSION INFORMATION**\n"
+                "- NEVER assume version numbers based on patterns (e.g., \"if 6.3.7 is vulnerable, then 6.3.8 must be the fix\")\n"
+                "- If database shows \"6.2.0, 6.2.1, 6.2.2, 6.2.3\" as vulnerable, DO NOT assume 6.3.7 is vulnerable\n"
+                "- If you find conflicting information between database and advisories, cite ALL sources and note the discrepancy\n"
+                "- If you cannot verify patch information, state: \"Unable to verify exact patched versions from official sources\"\n\n"
+                "**REQUIRED OUTPUT FORMAT:**\n"
+                "1. State vulnerable versions from database (if available)\n"
+                "2. State patched versions from official advisory (with URL)\n"
+                "3. Cross-reference: Is the analyst's version in the vulnerable list?\n"
+                "4. Provide clear YES/NO answer with reasoning\n"
+                "5. If affected: Recommend specific target version\n\n"
+                "**EXAMPLE (follow this format):**\n"
+                "Database shows vulnerable versions: 6.2.0, 6.2.1, 6.2.2, 6.2.3\n"
+                "According to https://github.com/vendor/project/security/advisories/GHSA-xxxx-xxxx-xxxx:\n"
+                "- Patched in: 6.2.4 and 6.3.0-rc.2\n"
+                "- Your version 6.3.7: NOT AFFECTED\n"
+                "  Reason: 6.3.7 is NOT in the vulnerable version list and is > 6.3.0-rc.2 (patched version)\n\n"
+            )
+
     # Enhanced system prompt with clear structure and examples
+    tldr_instruction = ""
+    if additional_context and additional_context.strip():
+        tldr_instruction = (
+            "## TL;DR\n"
+            "FIRST, provide a brief, direct answer (2-4 sentences) specifically addressing the analyst's context/question. "
+            "Focus on what they need to know for their specific scenario. "
+            "If you mention version numbers or patch information, you MUST include the source URL in parentheses.\n\n"
+        )
+
     system_prompt = (
         "You are an expert cybersecurity analyst specializing in vulnerability assessment and threat intelligence. "
         "Your role is to provide actionable, technical insights that help security teams prioritize and respond to vulnerabilities.\n\n"
         f"{language_instruction}\n\n"
+        "**CRITICAL ACCURACY RULE:**\n"
+        "- NEVER guess, infer, or fabricate version numbers, patch information, or release dates\n"
+        "- If you cannot verify information from official sources, explicitly state this\n"
+        "- When citing specific versions or patches, ALWAYS include the source URL\n"
+        "- Wrong security information is worse than incomplete information\n\n"
+        f"{web_search_instruction}"
+        f"{version_specific_instruction}"
         "Structure your analysis using these exact section headers:\n\n"
+        f"{tldr_instruction}"
         "## Impact\n"
         "Explain the technical impact and real-world consequences. Consider: What can an attacker achieve? "
         "What systems/data are at risk? What is the blast radius?\n\n"
@@ -442,7 +544,7 @@ async def _build_prompts(vulnerability: VulnerabilityDetail, language: str) -> t
         "behavioral patterns, and detection rules/queries where applicable.\n\n"
         "## Mitigation\n"
         "List concrete mitigation steps in priority order. Include: Patches, configuration changes, "
-        "workarounds, and compensating controls.\n\n"
+        "workarounds, and compensating controls. When mentioning patched versions, include source URLs.\n\n"
         "## Priority Assessment\n"
         "Provide a risk-based priority recommendation (CRITICAL/HIGH/MEDIUM/LOW) with justification. "
         "Consider: Exploitation status, EPSS score, CVSS severity, attack complexity, and exposure.\n\n"
@@ -450,6 +552,10 @@ async def _build_prompts(vulnerability: VulnerabilityDetail, language: str) -> t
     )
 
     context = await _format_vulnerability_context(vulnerability)
+
+    # Add user-provided additional context if present
+    if additional_context and additional_context.strip():
+        context += f"\n\nADDITIONAL CONTEXT (provided by analyst):\n{additional_context.strip()}"
 
     # Enhanced user prompt with few-shot guidance
     user_prompt = (
@@ -490,6 +596,34 @@ async def _build_prompts(vulnerability: VulnerabilityDetail, language: str) -> t
 async def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> str:
     """Format vulnerability data into a rich, structured context for AI analysis."""
     sections: list[str] = []
+
+    # === OFFICIAL SECURITY ADVISORIES (MOST IMPORTANT - ALWAYS CHECK THESE FIRST) ===
+    advisory_urls: list[str] = []
+    if vulnerability.references:
+        for ref in vulnerability.references:
+            ref_lower = ref.lower()
+            # Prioritize GitHub Security Advisories, vendor security pages, and official advisories
+            if any(pattern in ref_lower for pattern in [
+                'github.com/advisories/ghsa-',
+                'github.com/security/advisories/ghsa-',
+                '/security/advisories/',
+                'security.graylog.org',
+                '/security/',
+                '/advisory/',
+                '/advisories/',
+                'nvd.nist.gov/vuln/detail/',
+            ]):
+                advisory_urls.append(ref)
+
+    if advisory_urls:
+        advisory_section = (
+            "⚠️ OFFICIAL SECURITY ADVISORIES - AUTHORITATIVE SOURCES FOR PATCH INFORMATION:\n"
+            "These URLs contain the OFFICIAL patch versions and vulnerability details. "
+            "When analyzing version information, you MUST check these URLs first:\n"
+        )
+        for url in advisory_urls[:5]:  # Show top 5 most important
+            advisory_section += f"- {url}\n"
+        sections.append(advisory_section.strip())
 
     # === IDENTIFICATION ===
     id_parts: list[str] = [f"Primary ID: {vulnerability.vuln_id}"]
@@ -560,30 +694,48 @@ async def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> s
 
         sections.append("EXPLOITATION STATUS:\n" + "\n".join(exploit_parts))
 
-    # === AFFECTED PRODUCTS ===
+    # === AFFECTED PRODUCTS & VERSIONS (DATABASE-VERIFIED) ===
     affected_parts: list[str] = []
+    has_version_data = False
+
     if vulnerability.impacted_products:
-        for idx, impacted in enumerate(vulnerability.impacted_products[:5]):
+        affected_parts.append(
+            "⚠️ VERIFIED VULNERABLE VERSIONS FROM DATABASE:\n"
+            "The following version information is from the vulnerability database and should be used "
+            "as the PRIMARY source for determining if a specific version is affected:"
+        )
+        for idx, impacted in enumerate(vulnerability.impacted_products[:10]):  # Show more products
             vendor = impacted.vendor.name if impacted.vendor else "Unknown"
             product = impacted.product.name if impacted.product else "Unknown"
-            versions = ", ".join(impacted.versions[:10]) if impacted.versions else "All versions"
-            envs = f" ({', '.join(impacted.environments)})" if impacted.environments else ""
-            affected_parts.append(f"- {vendor} {product}: {versions}{envs}")
-        if len(vulnerability.impacted_products) > 5:
-            affected_parts.append(f"... and {len(vulnerability.impacted_products) - 5} more products")
+
+            if impacted.versions:
+                has_version_data = True
+                versions = ", ".join(impacted.versions[:20]) if impacted.versions else "All versions"
+                if len(impacted.versions) > 20:
+                    versions += f" (and {len(impacted.versions) - 20} more)"
+                envs = f" [{', '.join(impacted.environments)}]" if impacted.environments else ""
+                affected_parts.append(f"  • {vendor} {product}: {versions}{envs}")
+            else:
+                envs = f" ({', '.join(impacted.environments)})" if impacted.environments else ""
+                affected_parts.append(f"  • {vendor} {product}: All versions{envs}")
+
+        if len(vulnerability.impacted_products) > 10:
+            affected_parts.append(f"  ... and {len(vulnerability.impacted_products) - 10} more products")
     elif vulnerability.vendors or vulnerability.products:
         if vulnerability.vendors:
             affected_parts.append(f"Vendors: {', '.join(vulnerability.vendors[:8])}")
         if vulnerability.products:
             affected_parts.append(f"Products: {', '.join(vulnerability.products[:8])}")
         if vulnerability.product_versions:
-            versions_str = ', '.join(vulnerability.product_versions[:10])
-            if len(vulnerability.product_versions) > 10:
-                versions_str += f" (+{len(vulnerability.product_versions) - 10} more)"
-            affected_parts.append(f"Versions: {versions_str}")
+            has_version_data = True
+            versions_str = ', '.join(vulnerability.product_versions[:20])
+            if len(vulnerability.product_versions) > 20:
+                versions_str += f" (+{len(vulnerability.product_versions) - 20} more)"
+            affected_parts.append(f"Vulnerable Versions: {versions_str}")
 
     if affected_parts:
-        sections.append("AFFECTED PRODUCTS:\n" + "\n".join(affected_parts))
+        section_title = "AFFECTED PRODUCTS & VULNERABLE VERSIONS (DATABASE-VERIFIED):" if has_version_data else "AFFECTED PRODUCTS:"
+        sections.append(section_title + "\n" + "\n".join(affected_parts))
 
     # === WEAKNESS CLASSIFICATION ===
     weakness_parts: list[str] = []

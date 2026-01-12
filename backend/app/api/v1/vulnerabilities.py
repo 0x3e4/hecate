@@ -158,6 +158,7 @@ async def create_ai_investigation(
             payload.provider,
             vulnerability,
             language=payload.language,
+            additional_context=payload.additional_context,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
