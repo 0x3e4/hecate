@@ -444,6 +444,9 @@ def build_document(
     elif isinstance(aliases, list):
         aliases = [str(value).strip() for value in aliases if isinstance(value, (str, int, float))]
     aliases = [alias for alias in aliases if alias]
+    # Add the EUVD source ID to aliases if present and not already included
+    if source_id and source_id not in aliases and source_id != cve_id:
+        aliases.append(source_id)
 
     assigner = _ensure_str(euvd_record.get("assigner"))
     exploited = _to_optional_bool(euvd_record.get("exploited"))
