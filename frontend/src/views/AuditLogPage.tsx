@@ -49,6 +49,14 @@ export const AuditLogPage = () => {
   const [page, setPage] = useState<number>(0);
 
   useEffect(() => {
+    document.title = "Hecate Cyber Defense - Audit Log";
+
+    return () => {
+      document.title = "Hecate Cyber Defense";
+    };
+  }, []);
+
+  useEffect(() => {
     if (page === 0) {
       return;
     }

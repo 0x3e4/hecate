@@ -16,6 +16,14 @@ export const StatsPage = () => {
   const showSkeleton = loading && !stats;
 
   useEffect(() => {
+    document.title = "Hecate Cyber Defense - Statistiken";
+
+    return () => {
+      document.title = "Hecate Cyber Defense";
+    };
+  }, []);
+
+  useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);

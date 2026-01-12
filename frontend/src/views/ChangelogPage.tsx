@@ -11,6 +11,14 @@ export const ChangelogPage = () => {
   const showSkeleton = loading && !data;
 
   useEffect(() => {
+    document.title = "Hecate Cyber Defense - Changelog";
+
+    return () => {
+      document.title = "Hecate Cyber Defense";
+    };
+  }, []);
+
+  useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);
