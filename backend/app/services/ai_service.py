@@ -16,6 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency
 import structlog
 from app.core.config import settings
 from app.schemas.ai import (
+    AIBatchInvestigationResponse,
     AIInvestigationResponse,
     AIProviderInfo,
     AIProviderLiteral,
@@ -94,6 +95,53 @@ class AIClient:
             language=normalized_language,
             summary=summary,
             generatedAt=_isoformat_utc_now(),
+        )
+
+    async def analyze_vulnerabilities_batch(
+        self,
+        provider: AIProviderLiteral,
+        vulnerabilities: list[VulnerabilityDetail],
+        *,
+        language: str | None = None,
+        additional_context: str | None = None,
+    ) -> AIBatchInvestigationResponse:
+        """
+        Analyze multiple vulnerabilities together for combined insights.
+        Focuses on synthesis, patterns, and cross-cutting concerns.
+        """
+        normalized_language = _normalize_language(language)
+        system_prompt, user_prompt = await _build_batch_prompts(
+            vulnerabilities,
+            normalized_language,
+            additional_context,
+            provider
+        )
+
+        if provider == "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OpenAI provider is not configured.")
+            combined_response = await self._call_openai(system_prompt, user_prompt)
+        elif provider == "anthropic":
+            if not settings.anthropic_api_key:
+                raise ValueError("Anthropic provider is not configured.")
+            combined_response = await self._call_anthropic(system_prompt, user_prompt)
+        elif provider == "gemini":
+            if not settings.google_gemini_api_key:
+                raise ValueError("Google Gemini provider is not configured.")
+            combined_response = await self._call_gemini(system_prompt, user_prompt)
+        else:  # pragma: no cover - defensive programming
+            raise ValueError(f"Unsupported provider '{provider}'.")
+
+        # Parse response into executive summary and individual sections
+        summary, individual_summaries = _parse_batch_response(combined_response, vulnerabilities)
+
+        return AIBatchInvestigationResponse(
+            provider=provider,
+            language=normalized_language,
+            summary=summary,
+            individualSummaries=individual_summaries,
+            generatedAt=_isoformat_utc_now(),
+            vulnerabilityCount=len(vulnerabilities),
         )
 
     @asynccontextmanager
@@ -277,6 +325,27 @@ class AIClient:
 
             candidates = getattr(response, "candidates", None) or []
             for candidate in candidates:
+                content = getattr(candidate, "content", None)
+                parts = getattr(content, "parts", None) if content is not None else None
+                part_texts: list[str] = []
+                if parts:
+                    for part in parts:
+                        part_text = getattr(part, "text", None)
+                        if isinstance(part_text, str) and part_text.strip():
+                            part_texts.append(part_text.strip())
+                if part_texts:
+                    combined_text = "\n".join(part_texts).strip()
+                    if combined_text:
+                        finish_reason = getattr(candidate, "finish_reason", None)
+                        if finish_reason:
+                            finish_value = str(getattr(finish_reason, "name", finish_reason)).upper()
+                            if finish_value in {"MAX_TOKENS", "FINISH_REASON_MAX_TOKENS"}:
+                                logger.warning("gemini.response.truncated", finish_reason=finish_value)
+                            elif finish_value not in {"STOP", "FINISH_REASON_STOP"}:
+                                logger.warning("gemini.response.ended_early", finish_reason=finish_value)
+                        logger.debug("gemini.response.part_text", length=len(combined_text))
+                        return combined_text
+
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason:
                     finish_value = str(getattr(finish_reason, "name", finish_reason)).upper()
@@ -287,15 +356,6 @@ class AIClient:
                         )
                     if finish_value not in {"STOP", "FINISH_REASON_STOP"}:
                         raise AIProviderError(f"Gemini request ended early: {finish_reason}")
-                content = getattr(candidate, "content", None)
-                parts = getattr(content, "parts", None) if content is not None else None
-                if not parts:
-                    continue
-                for part in parts:
-                    part_text = getattr(part, "text", None)
-                    if isinstance(part_text, str) and part_text.strip():
-                        logger.debug("gemini.response.part_text", length=len(part_text))
-                        return part_text.strip()
 
             raise AIProviderError("Gemini response did not contain any text.")
 
@@ -769,6 +829,219 @@ async def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> s
         sections.append("TIMELINE:\n" + "\n".join(timeline_parts))
 
     return "\n\n".join(sections)
+
+
+async def _build_batch_prompts(
+    vulnerabilities: list[VulnerabilityDetail],
+    language: str,
+    additional_context: str | None = None,
+    provider: str = "openai",
+) -> tuple[str, str]:
+    """Build prompts for batch vulnerability analysis focused on synthesis."""
+    language_instruction = (
+        f"Respond in the language identified by the ISO code '{language}'. "
+        "If you are unsure which language that is, default to English."
+    )
+
+    # Build detailed context for each vulnerability including version info and advisories
+    vuln_contexts = []
+    for vuln in vulnerabilities:
+        ctx_parts = [f"### {vuln.vuln_id}"]
+
+        # Basic info
+        if vuln.title:
+            ctx_parts.append(f"**Title:** {vuln.title}")
+        if vuln.summary:
+            summary_short = vuln.summary[:400] + "..." if len(vuln.summary) > 400 else vuln.summary
+            ctx_parts.append(f"**Summary:** {summary_short}")
+
+        # Risk metrics
+        if vuln.cvss_score is not None:
+            ctx_parts.append(f"**CVSS:** {vuln.cvss_score}/10 ({vuln.severity or 'N/A'})")
+        if vuln.epss_score is not None:
+            ctx_parts.append(f"**EPSS:** {vuln.epss_score:.1%} exploitation probability")
+
+        # Weakness classification
+        if vuln.cwes:
+            cwe_list = vuln.cwes[:3]
+            ctx_parts.append(f"**CWE:** {', '.join(cwe_list)}")
+
+        # Official advisories (for patch/version verification)
+        if vuln.references:
+            advisory_urls = []
+            for ref in vuln.references:
+                ref_lower = ref.lower()
+                if any(pattern in ref_lower for pattern in [
+                    'github.com/advisories/ghsa-',
+                    'github.com/security/advisories/ghsa-',
+                    '/security/advisories/',
+                    '/security/',
+                    '/advisory/',
+                    '/advisories/',
+                ]):
+                    advisory_urls.append(ref)
+
+            if advisory_urls:
+                ctx_parts.append(f"**Official Advisories:** {', '.join(advisory_urls[:3])}")
+
+        # Vulnerable versions from database
+        if vuln.impacted_products:
+            version_info = []
+            for impacted in vuln.impacted_products[:5]:
+                vendor = impacted.vendor.name if impacted.vendor else "Unknown"
+                product = impacted.product.name if impacted.product else "Unknown"
+                if impacted.versions:
+                    versions = ", ".join(impacted.versions[:10])
+                    if len(impacted.versions) > 10:
+                        versions += f" (+{len(impacted.versions) - 10} more)"
+                    version_info.append(f"{vendor} {product}: {versions}")
+
+            if version_info:
+                ctx_parts.append(f"**Vulnerable Versions (DB-verified):** {'; '.join(version_info)}")
+        elif vuln.product_versions:
+            versions_str = ', '.join(vuln.product_versions[:15])
+            if len(vuln.product_versions) > 15:
+                versions_str += f" (+{len(vuln.product_versions) - 15} more)"
+            ctx_parts.append(f"**Vulnerable Versions:** {versions_str}")
+
+        vuln_contexts.append("\n".join(ctx_parts))
+
+    vulnerabilities_section = "\n\n".join(vuln_contexts)
+
+    # Add version-specific analysis instruction if user provided version info
+    version_specific_instruction = ""
+    if additional_context and additional_context.strip():
+        context_lower = additional_context.lower()
+        # Check if user mentioned a version
+        if any(keyword in context_lower for keyword in ["version", "v ", "v.", "release", "build"]):
+            version_specific_instruction = (
+                "\n**CRITICAL: Version-Specific Analysis Required**\n"
+                "The analyst has provided version information in the additional context. For EACH vulnerability:\n"
+                "1. Check if vulnerable versions are listed in the 'Vulnerable Versions (DB-verified)' section\n"
+                "2. If the analyst's version is in the vulnerable list → they ARE affected\n"
+                "3. If not listed, check the Official Advisories URLs to verify patched versions\n"
+                "4. Provide a clear YES/NO answer: \"You ARE affected\" or \"You are NOT affected\"\n"
+                "5. If affected: Recommend specific target version to patch to\n"
+                "6. NEVER guess version information - only use verified data from database or official advisories\n\n"
+            )
+
+    system_prompt = (
+        "You are an expert cybersecurity analyst helping security teams understand multiple related vulnerabilities. "
+        "Your goal is to synthesize information across vulnerabilities, identify patterns, and provide actionable guidance.\n\n"
+        f"{language_instruction}\n\n"
+        "Use the exact section headers shown below in English. Do not translate or rename them.\n\n"
+        "**CRITICAL ACCURACY RULE:**\n"
+        "- Each vulnerability includes 'Vulnerable Versions (DB-verified)' and 'Official Advisories' sections\n"
+        "- Use these as PRIMARY sources for version information\n"
+        "- NEVER guess or infer version numbers\n"
+        "- When citing patches, include the source URL\n"
+        f"{version_specific_instruction}"
+        "Provide your analysis in this format:\n\n"
+        "## Executive Summary\n"
+        "A brief overview (3-5 sentences) synthesizing the key themes, patterns, and priorities across all vulnerabilities. "
+        "Focus on what matters most to the security team.\n\n"
+        "## Key Insights\n"
+        "- Common attack patterns or techniques\n"
+        "- Shared affected components or technologies\n"
+        "- Relationships between vulnerabilities (if any)\n"
+        "- Priority ordering with rationale\n\n"
+        "## Recommended Actions\n"
+        "Concrete steps prioritized by impact and urgency. Be specific about what to patch/fix first.\n\n"
+        "## Individual Vulnerability Notes\n"
+        "For each vulnerability, provide a concise note using this format:\n"
+        "### [CVE-ID]\n"
+        "[2-3 sentences covering: what it is, why it matters, immediate action needed]\n"
+        "If version info was provided in context: Add a clear statement about affected status (YES/NO) with reasoning.\n\n"
+        "Be concise and actionable. Avoid generic advice."
+    )
+
+    context_section = f"VULNERABILITIES TO ANALYZE:\n\n{vulnerabilities_section}"
+    if additional_context and additional_context.strip():
+        context_section += f"\n\nADDITIONAL CONTEXT (from user):\n{additional_context.strip()}"
+
+    user_prompt = (
+        "Analyze these vulnerabilities together. Focus on synthesizing insights that help the team "
+        "understand the bigger picture and prioritize their response.\n\n"
+        f"{context_section}"
+    )
+
+    return system_prompt, user_prompt
+
+
+def _parse_batch_response(response: str, vulnerabilities: list[VulnerabilityDetail]) -> tuple[str, dict[str, str]]:
+    """
+    Parse the batch analysis response into executive summary and individual sections.
+    Returns: (executive_summary, individual_summaries_dict)
+    """
+    import re
+
+    def _normalize_id(value: str) -> str:
+        return value.strip().upper()
+
+    def _collect_ids(vuln: VulnerabilityDetail) -> list[str]:
+        ids: list[str] = []
+        if vuln.vuln_id:
+            ids.append(vuln.vuln_id)
+        if vuln.source_id:
+            ids.append(vuln.source_id)
+        if vuln.aliases:
+            ids.extend([alias for alias in vuln.aliases if alias])
+        return ids
+
+    # Try to extract individual vulnerability sections
+    individual_summaries: dict[str, str] = {}
+
+    summary = response.strip()
+    individual_text = response
+    individual_section_markers = [
+        "## Individual Vulnerability Notes",
+        "## Individuelle Schwachstellenhinweise",
+        "## Einzelne Schwachstellen",
+        "## Einzelne Verwundbarkeiten",
+    ]
+    for marker in individual_section_markers:
+        if marker in response:
+            parts = response.split(marker, 1)
+            summary = parts[0].strip()
+            individual_text = parts[1].strip() if len(parts) > 1 else ""
+            break
+
+    # Build candidate ID lists for matching
+    vuln_ids_map = {vuln.vuln_id: _collect_ids(vuln) for vuln in vulnerabilities if vuln.vuln_id}
+    normalized_candidates = {
+        vuln_id: {_normalize_id(candidate) for candidate in candidates}
+        for vuln_id, candidates in vuln_ids_map.items()
+    }
+
+    # Extract individual vulnerability notes by looking for ### headers
+    matches = list(re.finditer(r"^###\s+(.+)$", individual_text, flags=re.MULTILINE))
+    for index, match in enumerate(matches):
+        header_text = match.group(1).strip()
+        header_norm = _normalize_id(header_text)
+        start_idx = match.end()
+        end_idx = matches[index + 1].start() if index + 1 < len(matches) else len(individual_text)
+        body = individual_text[start_idx:end_idx].strip()
+        if not body:
+            continue
+
+        for vuln_id, candidates in normalized_candidates.items():
+            if any(candidate in header_norm for candidate in candidates):
+                for candidate in vuln_ids_map.get(vuln_id, []):
+                    individual_summaries[candidate] = body
+                break
+
+    # Fill missing summaries with a fallback message
+    for vuln in vulnerabilities:
+        candidate_ids = _collect_ids(vuln)
+        if not candidate_ids:
+            continue
+        if any(candidate in individual_summaries for candidate in candidate_ids):
+            continue
+        fallback = f"Keine separate Analyse verfügbar. Siehe kombinierte Analyse ({vuln.vuln_id})."
+        for candidate in candidate_ids:
+            individual_summaries[candidate] = fallback
+
+    return summary, individual_summaries
 
 
 @lru_cache(maxsize=1)

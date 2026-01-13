@@ -1,7 +1,11 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.core.config import settings
 from app.schemas.ai import (
+    AIBatchInvestigationRequest,
+    AIBatchInvestigationResponse,
     AIInvestigationRequest,
     AIInvestigationResponse,
     AIProviderInfo,
@@ -188,4 +192,101 @@ async def create_ai_investigation(
         result=result_payload,
     )
 
+    return result
+
+
+@router.post("/ai-investigation/batch", response_model=AIBatchInvestigationResponse)
+async def create_batch_ai_investigation(
+    payload: AIBatchInvestigationRequest,
+    request: Request,
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+    ai_client: AIClient = Depends(get_ai_client),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> AIBatchInvestigationResponse:
+    """
+    Analyze multiple vulnerabilities together for combined insights.
+    Maximum 10 vulnerabilities per request.
+    """
+    # Fetch all vulnerabilities
+    vulnerabilities: list[VulnerabilityDetail] = []
+    for vuln_id in payload.vulnerability_ids:
+        vuln = await service.get_by_id(vuln_id)
+        if vuln is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Vulnerability {vuln_id} not found",
+            )
+        vulnerabilities.append(vuln)
+
+    # Call AI service for batch analysis
+    try:
+        result = await ai_client.analyze_vulnerabilities_batch(
+            payload.provider,
+            vulnerabilities,
+            language=payload.language,
+            additional_context=payload.additional_context,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    # Save batch analysis to database
+    batch_id = await service.save_batch_analysis(
+        vulnerability_ids=payload.vulnerability_ids,
+        provider=payload.provider,
+        language=result.language,
+        summary=result.summary,
+        individual_summaries=result.individual_summaries,
+        additional_context=payload.additional_context,
+    )
+
+    # Audit logging
+    client_ip = get_client_ip(request)
+    metadata = {
+        "label": "AI Batch-Analyse abgeschlossen",
+        "clientIp": client_ip,
+        "provider": payload.provider,
+        "vulnerabilityCount": len(vulnerabilities),
+        "batchId": batch_id,
+    }
+    metadata = {key: value for key, value in metadata.items() if value}
+    result_payload = {
+        "batchId": batch_id,
+        "vulnerabilityIds": payload.vulnerability_ids,
+        "language": result.language,
+        "vulnerabilityCount": result.vulnerability_count,
+    }
+    await audit_service.record_event(
+        "ai_batch_investigation",
+        metadata=metadata or None,
+        result=result_payload,
+    )
+
+    return result
+
+
+@router.get("/ai-investigation/batch", response_model=dict[str, Any])
+async def list_batch_analyses(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> dict[str, Any]:
+    """
+    List recent batch AI analyses with pagination.
+    """
+    return await service.list_batch_analyses(limit=limit, offset=offset)
+
+
+@router.get("/ai-investigation/batch/{batch_id}", response_model=dict[str, Any])
+async def get_batch_analysis(
+    batch_id: str,
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> dict[str, Any]:
+    """
+    Retrieve a specific batch AI analysis by ID.
+    """
+    result = await service.get_batch_analysis(batch_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Batch analysis not found")
     return result

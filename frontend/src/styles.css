@@ -1045,6 +1045,34 @@ input:focus {
 .ai-analysis__meta {
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.6);
+  margin-top: 0.75rem;
+}
+
+.ai-analysis__batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.ai-analysis__batch-card {
+  background: rgba(15, 18, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.ai-analysis__batch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.ai-analysis__batch-id {
+  font-weight: 600;
+  color: rgba(156, 183, 255, 0.95);
+  font-size: 0.9rem;
 }
 
 .vuln-ai {
@@ -2859,4 +2887,310 @@ table thead th {
 
 .share-dropdown-item:active {
   background: rgba(92, 132, 255, 0.25);
+}
+
+/* ============================================
+   AI-Analyse Page
+   ============================================ */
+
+.ai-analyse-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.ai-analyse-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ai-analyse-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Vulnerability Selector */
+.vulnerability-selector {
+  background: rgba(15, 18, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.vulnerability-selector h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.vulnerability-selector__search {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: rgba(15, 18, 30, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #f5f7fa;
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+  box-sizing: border-box;
+}
+
+.vulnerability-selector__search:focus {
+  outline: none;
+  border-color: rgba(92, 132, 255, 0.5);
+}
+
+.vulnerability-selector__selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.vulnerability-selector__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(92, 132, 255, 0.18);
+  border: 1px solid rgba(92, 132, 255, 0.35);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: rgba(156, 183, 255, 0.95);
+}
+
+.vulnerability-selector__chip-remove {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.vulnerability-selector__chip-remove:hover {
+  opacity: 1;
+}
+
+.vulnerability-selector__results {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.vulnerability-selector__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin: 0;
+}
+
+.vulnerability-selector__item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.vulnerability-selector__item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vulnerability-selector__item.disabled:hover {
+  background: transparent;
+}
+
+.vulnerability-selector__item.skeleton-item {
+  cursor: default;
+  pointer-events: none;
+}
+
+.vulnerability-selector__checkbox {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.vulnerability-selector__item.disabled .vulnerability-selector__checkbox {
+  cursor: not-allowed;
+}
+
+.vulnerability-selector__item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.skeleton-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.vulnerability-selector__item-id {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: rgba(156, 183, 255, 0.95);
+}
+
+.vulnerability-selector__item-title {
+  font-size: 0.85rem;
+  color: rgba(245, 247, 250, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vulnerability-selector__limit-warning {
+  padding: 0.75rem;
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 6px;
+  color: rgba(255, 220, 120, 0.95);
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+/* AI-Analyse Controls */
+.ai-analyse-controls {
+  background: rgba(15, 18, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.ai-analyse-controls .form-group {
+  margin-bottom: 1rem;
+}
+
+.ai-analyse-controls .form-group:last-of-type {
+  margin-bottom: 1.5rem;
+}
+
+.ai-analyse-controls label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: rgba(245, 247, 250, 0.9);
+}
+
+.ai-analyse-controls select,
+.ai-analyse-controls textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: rgba(15, 18, 30, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #f5f7fa;
+  font-size: 0.95rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.ai-analyse-controls select:focus,
+.ai-analyse-controls textarea:focus {
+  outline: none;
+  border-color: rgba(92, 132, 255, 0.5);
+}
+
+.ai-analyse-controls textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* Batch Analysis Display */
+.batch-analysis-display {
+  background: rgba(15, 18, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-height: 400px;
+}
+
+.batch-analysis-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  flex-wrap: wrap;
+}
+
+.batch-analysis-tab {
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(245, 247, 250, 0.6);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.batch-analysis-tab:hover {
+  color: rgba(245, 247, 250, 0.9);
+}
+
+.batch-analysis-tab.active {
+  color: rgba(156, 183, 255, 0.95);
+  border-bottom-color: rgba(92, 132, 255, 0.8);
+}
+
+.batch-analysis-content {
+  min-height: 300px;
+}
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: rgba(92, 132, 255, 0.8);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .ai-analyse-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-analyse-left {
+    order: 2;
+  }
+
+  .ai-analyse-right {
+    order: 1;
+  }
+
+  .batch-analysis-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
 }

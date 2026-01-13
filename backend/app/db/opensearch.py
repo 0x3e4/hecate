@@ -293,6 +293,39 @@ async def async_update_document(index: str, document_id: str, fields: dict[str, 
         return False
 
 
+async def async_update_document_script(index: str, document_id: str, script: dict[str, Any]) -> bool:
+    """Update a document using a script (e.g., to append to arrays)."""
+    client = get_client()
+    loop = asyncio.get_running_loop()
+
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: client.update(
+                index=index,
+                id=document_id,
+                body={"script": script},
+                refresh="wait_for",
+            ),
+        )
+        _mark_opensearch_available()
+        return True
+    except NotFoundError:
+        log.warning("opensearch.update_script_not_found", index=index, id=document_id)
+        return False
+    except (OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(
+            error=exc,
+            operation="update_script",
+            index=index,
+            document_id=document_id,
+        )
+        return False
+    except Exception as exc:  # noqa: BLE001 - defensive logging
+        log.warning("opensearch.update_script_failed", index=index, id=document_id, error=str(exc))
+        return False
+
+
 async def async_get(index: str, document_id: str) -> dict[str, Any] | None:
     client = get_client()
     loop = asyncio.get_running_loop()
