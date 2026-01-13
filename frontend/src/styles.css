@@ -2047,11 +2047,49 @@ table thead th {
   max-width: 100%;
 }
 
+@media (max-width: 768px) {
+  .query-builder-page .card {
+    padding: 1rem;
+    overflow-x: hidden;
+  }
+
+  .query-builder-page .card h2 {
+    font-size: 1.4rem;
+  }
+
+  .query-builder-page .card p.muted {
+    font-size: 0.9rem;
+  }
+
+  .query-builder-page code {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .query-builder-page pre {
+    overflow-x: auto;
+    word-wrap: normal;
+  }
+
+  .query-builder-page h5,
+  .query-builder-page h4,
+  .query-builder-page p {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+}
+
 .query-builder-layout {
   display: grid;
   grid-template-columns: 450px 1fr;
   gap: 1.5rem;
   margin-top: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .query-builder-layout {
+    grid-template-columns: 350px 1fr;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -2060,11 +2098,28 @@ table thead th {
   }
 }
 
+@media (max-width: 768px) {
+  .query-builder-layout {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+}
+
 .query-builder-left,
 .query-builder-right {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .query-builder-left,
+  .query-builder-right {
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 
 /* Field Browser */
@@ -2076,6 +2131,15 @@ table thead th {
   max-height: calc(100vh - 250px);
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  .field-browser {
+    padding: 1rem;
+    max-height: 500px;
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 
 .field-browser-header h3 {
@@ -2116,6 +2180,13 @@ table thead th {
   background: var(--input-bg-focus);
 }
 
+@media (max-width: 768px) {
+  .field-browser-search .search-input {
+    padding: 0.6rem 0.75rem 0.6rem 2.5rem;
+    font-size: 0.95rem;
+  }
+}
+
 #react-select-2-input {
   border: none !important;
 }
@@ -2125,12 +2196,16 @@ table thead th {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .field-category {
   border: 1px solid var(--border-color);
   border-radius: 6px;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .field-category-header {
@@ -2152,6 +2227,18 @@ table thead th {
   background: rgba(255, 255, 255, 0.05);
 }
 
+@media (max-width: 768px) {
+  .field-category-header {
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    min-height: 44px;
+  }
+
+  .field-category-header:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
 .field-category-header svg {
   width: 1rem;
   height: 1rem;
@@ -2159,6 +2246,10 @@ table thead th {
 
 .category-name {
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .category-count {
@@ -2169,6 +2260,9 @@ table thead th {
 
 .field-list {
   padding: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Field Item */
@@ -2176,9 +2270,18 @@ table thead th {
   margin-bottom: 0.5rem;
 }
 
+@media (max-width: 768px) {
+  .field-item {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 .field-item-main {
   display: flex;
   gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .field-item-content {
@@ -2189,6 +2292,8 @@ table thead th {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .field-item-content:hover {
@@ -2197,12 +2302,25 @@ table thead th {
   transform: translateX(2px);
 }
 
+@media (max-width: 768px) {
+  .field-item-content {
+    padding: 1rem;
+  }
+
+  .field-item-content:active {
+    background: rgba(92, 132, 255, 0.15);
+    border-color: rgba(92, 132, 255, 0.4);
+  }
+}
+
 .field-name {
   display: inline-block;
   color: #ffe66b;
   font-weight: 600;
   font-size: 0.9rem;
   margin-bottom: 0.25rem;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .field-type-badge {
@@ -2222,6 +2340,8 @@ table thead th {
   color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .field-expand-button {
@@ -2241,6 +2361,14 @@ table thead th {
   margin-top: 0.75rem;
 }
 
+@media (max-width: 768px) {
+  .field-expand-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-top: 0.5rem;
+  }
+}
+
 .field-expand-button:hover {
   background: rgba(92, 132, 255, 0.2);
   border-color: rgba(92, 132, 255, 0.4);
@@ -2257,6 +2385,9 @@ table thead th {
   padding: 0.75rem;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .field-aggregation.loading,
@@ -2282,6 +2413,7 @@ table thead th {
 .aggregation-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .aggregation-row {
@@ -2297,10 +2429,13 @@ table thead th {
   padding: 0.4rem 0.5rem;
   color: #93c5fd;
   font-size: 0.85rem;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .aggregation-value code {
   color: inherit;
+  word-break: break-word;
 }
 
 .aggregation-count {
@@ -2311,6 +2446,18 @@ table thead th {
   white-space: nowrap;
 }
 
+@media (max-width: 768px) {
+  .aggregation-value {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .aggregation-count {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+  }
+}
+
 /* Query Editor Panel */
 .query-editor-panel {
   background: var(--card-bg);
@@ -2319,11 +2466,21 @@ table thead th {
   padding: 1.25rem;
 }
 
+@media (max-width: 768px) {
+  .query-editor-panel {
+    padding: 1rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 .query-editor-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .query-editor-header h3 {
@@ -2350,12 +2507,22 @@ table thead th {
   resize: vertical;
   min-height: 150px;
   margin-bottom: 1rem;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .query-input:focus {
   outline: none;
   border-color: var(--primary-color);
   background: var(--input-bg-focus);
+}
+
+@media (max-width: 768px) {
+  .query-input {
+    padding: 0.85rem;
+    font-size: 0.95rem;
+    min-height: 180px;
+  }
 }
 
 .operator-buttons {
@@ -2390,6 +2557,21 @@ table thead th {
   border-color: rgba(92, 132, 255, 0.4);
 }
 
+@media (max-width: 768px) {
+  .operator-buttons {
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .operator-buttons button {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.9rem;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+}
+
 .query-actions {
   display: flex;
   gap: 0.75rem;
@@ -2406,6 +2588,19 @@ table thead th {
 .query-actions button svg {
   width: 1rem;
   height: 1rem;
+}
+
+@media (max-width: 768px) {
+  .query-actions {
+    gap: 0.5rem;
+  }
+
+  .query-actions button {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    min-height: 44px;
+    white-space: nowrap;
+  }
 }
 
 .query-help {
@@ -2436,6 +2631,7 @@ table thead th {
   padding: 0.15rem 0.35rem;
   border-radius: 3px;
   font-size: 0.8rem;
+  word-break: break-word;
 }
 
 .query-help a {
@@ -2455,6 +2651,14 @@ table thead th {
   padding: 1.25rem;
 }
 
+@media (max-width: 768px) {
+  .expanded-aggregations {
+    padding: 1rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 .expanded-aggregations h4 {
   margin: 0 0 1rem 0;
   color: var(--text-primary);
@@ -2463,6 +2667,9 @@ table thead th {
 
 .aggregation-section {
   margin-bottom: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .aggregation-section:last-child {
@@ -2478,6 +2685,98 @@ table thead th {
 
 .aggregation-section code {
   color: #ffe66b;
+  word-break: break-word;
+}
+
+/* Dialog Overlay and Modals */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.dialog {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 768px) {
+  .dialog {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 1.25rem;
+  }
+}
+
+.dialog h3 {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-primary);
+  font-size: 1.25rem;
+}
+
+.dialog p {
+  margin: 0 0 1rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.dialog input[type="text"] {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  margin-bottom: 1.25rem;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .dialog input[type="text"] {
+    padding: 0.85rem;
+    font-size: 1rem;
+  }
+}
+
+.dialog input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  background: var(--input-bg-focus);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .dialog-actions {
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+  }
+
+  .dialog-actions button {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    min-height: 48px;
+  }
 }
 
 /* No Results */
@@ -2513,6 +2812,16 @@ table thead th {
   border-left: 4px solid #ef4444;
 }
 
+@media (max-width: 768px) {
+  .toast {
+    bottom: 1rem;
+    right: 1rem;
+    left: 1rem;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.95rem;
+  }
+}
+
 @keyframes slideInUp {
   from {
     opacity: 0;
@@ -2522,4 +2831,32 @@ table thead th {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Share Dropdown Styles */
+.share-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  color: rgba(245, 247, 250, 0.9);
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.share-dropdown-item:hover {
+  background: rgba(92, 132, 255, 0.15);
+  color: rgba(156, 183, 255, 0.95);
+}
+
+.share-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.share-dropdown-item:active {
+  background: rgba(92, 132, 255, 0.25);
 }
