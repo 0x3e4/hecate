@@ -52,6 +52,50 @@ export interface AIAssessment {
   [key: string]: unknown;
 }
 
+export interface AIBatchInvestigationRequest {
+  vulnerabilityIds: string[];
+  provider: AIProviderId;
+  language?: string | null;
+  additionalContext?: string | null;
+}
+
+export interface AIBatchInvestigationResponse {
+  provider: AIProviderId;
+  language: string;
+  summary: string;
+  individualSummaries: Record<string, string>;
+  generatedAt: string;
+  vulnerabilityCount: number;
+}
+
+export interface BatchAnalysisItem {
+  batch_id: string;
+  vulnerability_ids: string[];
+  provider: string;
+  language: string;
+  summary: string;
+  individual_summaries: Record<string, string>;
+  additional_context?: string | null;
+  vulnerability_count: number;
+  timestamp: string;
+}
+
+export interface BatchAnalysisListResponse {
+  items: BatchAnalysisItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface BatchAnalysisReference {
+  batch_id: string;
+  timestamp: string;
+  provider: string;
+  summary_excerpt: string;
+  summary?: string;
+  language?: string;
+}
+
 export interface KnownExploitation {
   source?: string | null;
   vendorProject?: string | null;
@@ -150,6 +194,7 @@ export interface VulnerabilityPreview {
   cvssMetrics?: CvssMetrics | null;
   impactedProducts?: ImpactedProduct[];
   sourceIds?: string[];
+  batchAnalyses?: BatchAnalysisReference[];
 }
 
 export interface VulnerabilityQuery {

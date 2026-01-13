@@ -1,8 +1,11 @@
 import { api } from "./client";
 import {
+  AIBatchInvestigationRequest,
+  AIBatchInvestigationResponse,
   AIInvestigationResponse,
   AIProviderId,
   AIProviderInfo,
+  BatchAnalysisListResponse,
   DQLFieldAggregation,
   PagedVulnerabilityResponse,
   VulnerabilityDetail,
@@ -81,6 +84,26 @@ export const requestAiInvestigation = async (
   const response = await api.post<AIInvestigationResponse>(
     `/v1/vulnerabilities/${encodeURIComponent(identifier)}/ai-investigation`,
     payload
+  );
+  return response.data;
+};
+
+export const requestBatchAiInvestigation = async (
+  request: AIBatchInvestigationRequest
+): Promise<AIBatchInvestigationResponse> => {
+  const response = await api.post<AIBatchInvestigationResponse>(
+    "/v1/vulnerabilities/ai-investigation/batch",
+    request
+  );
+  return response.data;
+};
+
+export const listBatchAnalyses = async (
+  params?: { limit?: number; offset?: number }
+): Promise<BatchAnalysisListResponse> => {
+  const response = await api.get<BatchAnalysisListResponse>(
+    "/v1/vulnerabilities/ai-investigation/batch",
+    { params }
   );
   return response.data;
 };
