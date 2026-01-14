@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getAiProviders, listBatchAnalyses, requestBatchAiInvestigation } from "../api/vulnerabilities";
+import { Link } from "react-router-dom";
+import Markdown from "react-markdown";
+import {
+  getAiProviders,
+  listBatchAnalyses,
+  listSingleAiAnalyses,
+  requestBatchAiInvestigation,
+  type SingleAnalysisItem,
+} from "../api/vulnerabilities";
 import {
   AIBatchInvestigationResponse,
   AIProviderId,
@@ -21,8 +29,9 @@ export const AIAnalysePage = () => {
   const [typing, setTyping] = useState<boolean>(false);
   const [displayText, setDisplayText] = useState<string>("");
   const [batchHistory, setBatchHistory] = useState<BatchAnalysisItem[]>([]);
-  const [batchHistoryLoading, setBatchHistoryLoading] = useState<boolean>(false);
-  const [batchHistoryError, setBatchHistoryError] = useState<string | null>(null);
+  const [singleHistory, setSingleHistory] = useState<SingleAnalysisItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const shouldAnimateSummaryRef = useRef(false);
   const typingIntervalRef = useRef<number | null>(null);
@@ -51,23 +60,27 @@ export const AIAnalysePage = () => {
     loadProviders();
   }, []);
 
-  const loadBatchHistory = useCallback(async () => {
-    setBatchHistoryLoading(true);
-    setBatchHistoryError(null);
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
     try {
-      const data = await listBatchAnalyses({ limit: 10, offset: 0 });
-      setBatchHistory(data.items || []);
+      const [batchData, singleData] = await Promise.all([
+        listBatchAnalyses({ limit: 20, offset: 0 }),
+        listSingleAiAnalyses({ limit: 20, offset: 0 }),
+      ]);
+      setBatchHistory(batchData.items || []);
+      setSingleHistory(singleData.items || []);
     } catch (err) {
-      console.error("Failed to load batch analyses:", err);
-      setBatchHistoryError("Batch-Analysen konnten nicht geladen werden.");
+      console.error("Failed to load AI analyses history:", err);
+      setHistoryError("AI-Analysen konnten nicht geladen werden.");
     } finally {
-      setBatchHistoryLoading(false);
+      setHistoryLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadBatchHistory();
-  }, [loadBatchHistory]);
+    loadHistory();
+  }, [loadHistory]);
 
   // Typing animation effect
   useEffect(() => {
@@ -133,7 +146,7 @@ export const AIAnalysePage = () => {
       });
 
       setResponse(result);
-      await loadBatchHistory();
+      await loadHistory();
     } catch (err: any) {
       console.error("AI analysis failed:", err);
 
@@ -258,62 +271,116 @@ export const AIAnalysePage = () => {
       </section>
 
       <section className="card">
-        <h2>Batch-Analyse Verlauf</h2>
+        <h2>Historie</h2>
         <p className="muted">
-          Übersicht der letzten kombinierten AI-Analysen.
+          Übersicht aller AI-Analysen.
         </p>
 
-        {batchHistoryLoading && (
-          <div className="muted">Batch-Analysen werden geladen...</div>
+        {historyLoading && (
+          <div className="muted">AI-Analysen werden geladen...</div>
         )}
-        {batchHistoryError && (
+        {historyError && (
           <div className="alert alert-error" style={{ marginTop: "1rem" }}>
-            {batchHistoryError}
+            {historyError}
           </div>
         )}
-        {!batchHistoryLoading && !batchHistoryError && batchHistory.length === 0 && (
-          <div className="muted">Keine Batch-Analysen vorhanden.</div>
+        {!historyLoading && !historyError && batchHistory.length === 0 && singleHistory.length === 0 && (
+          <div className="muted">Keine AI-Analysen vorhanden.</div>
         )}
-        {!batchHistoryLoading && !batchHistoryError && batchHistory.length > 0 && (
+        {!historyLoading && !historyError && (batchHistory.length > 0 || singleHistory.length > 0) && (
           <div className="ai-analysis__batch-list">
-            {batchHistory.map((batch) => {
-              const providerLabel = providerLabelMap.get(batch.provider) ?? batch.provider;
-              const summary = (batch.summary || "").trim();
-              const summaryPreview = summary.length > 320 ? `${summary.slice(0, 320)}...` : summary;
-              return (
-                <div key={batch.batch_id} className="ai-analysis__batch-card">
-                  <div className="ai-analysis__batch-header">
-                    <span className="ai-analysis__batch-id">{batch.batch_id}</span>
-                    <span className="muted" style={{ fontSize: "0.85rem" }}>
-                      {batch.vulnerability_count} Schwachstellen
-                    </span>
-                  </div>
-                  {summaryPreview ? (
-                    <div className="ai-analysis__text">
-                      {summaryPreview}
-                    </div>
-                  ) : (
-                    <div className="muted">Keine Zusammenfassung verfügbar.</div>
-                  )}
-                  {batch.vulnerability_ids?.length > 0 && (
-                    <div className="vuln-aliases" style={{ marginTop: "0.75rem" }}>
-                      {batch.vulnerability_ids.map((id) => (
-                        <span key={`${batch.batch_id}-${id}`} className="chip">
-                          {id}
+            {/* Combine and sort by timestamp */}
+            {[
+              ...batchHistory.map((b) => ({ ...b, type: "batch" as const })),
+              ...singleHistory,
+            ]
+              .sort((a, b) => {
+                const timeA = new Date(a.timestamp || 0).getTime();
+                const timeB = new Date(b.timestamp || 0).getTime();
+                return timeB - timeA;
+              })
+              .map((item) => {
+                const providerLabel = providerLabelMap.get(item.provider) ?? item.provider;
+
+                if (item.type === "batch") {
+                  const batch = item as BatchAnalysisItem & { type: "batch" };
+                  const summary = (batch.summary || "").trim();
+                  return (
+                    <div key={batch.batch_id} className="ai-analysis__batch-card">
+                      <div className="ai-analysis__batch-header">
+                        <span className="ai-analysis__batch-id">{batch.batch_id}</span>
+                        <span className="chip chip-batch">Batch</span>
+                        <span className="muted" style={{ fontSize: "0.85rem", marginLeft: "auto" }}>
+                          {batch.vulnerability_count} Schwachstellen
                         </span>
-                      ))}
+                      </div>
+                      {summary ? (
+                        <div className="ai-analysis__text markdown-content">
+                          <Markdown>{summary}</Markdown>
+                        </div>
+                      ) : (
+                        <div className="muted">Keine Zusammenfassung verfügbar.</div>
+                      )}
+                      {batch.vulnerability_ids?.length > 0 && (
+                        <div className="vuln-aliases" style={{ marginTop: "0.75rem" }}>
+                          {batch.vulnerability_ids.map((id) => (
+                            <Link
+                              key={`${batch.batch_id}-${id}`}
+                              to={`/vulnerability/${encodeURIComponent(id)}`}
+                              className="chip chip-link"
+                            >
+                              {id}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {(providerLabel || batch.language || batch.timestamp) && (
+                        <div className="ai-analysis__meta">
+                          {providerLabel && <span>{providerLabel}</span>}
+                          {batch.language && <span> · Sprache: {batch.language.toUpperCase()}</span>}
+                          {batch.timestamp && <span> · {new Date(batch.timestamp).toLocaleString()}</span>}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {(providerLabel || batch.language || batch.timestamp) && (
-                    <div className="ai-analysis__meta">
-                      {providerLabel && <span>{providerLabel}</span>}
-                      {batch.language && <span> · Sprache: {batch.language.toUpperCase()}</span>}
-                      {batch.timestamp && <span> · {new Date(batch.timestamp).toLocaleString()}</span>}
+                  );
+                } else {
+                  const single = item as SingleAnalysisItem;
+                  const summary = (single.summary || "").trim();
+                  return (
+                    <div key={`single-${single.vulnerability_id}`} className="ai-analysis__batch-card">
+                      <div className="ai-analysis__batch-header">
+                        <Link
+                          to={`/vulnerability/${encodeURIComponent(single.vulnerability_id)}`}
+                          className="ai-analysis__batch-id"
+                          style={{ textDecoration: "none" }}
+                        >
+                          {single.vulnerability_id}
+                        </Link>
+                        <span className="chip chip-single">Einzel</span>
+                      </div>
+                      {single.title && (
+                        <div className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
+                          {single.title}
+                        </div>
+                      )}
+                      {summary ? (
+                        <div className="ai-analysis__text markdown-content">
+                          <Markdown>{summary}</Markdown>
+                        </div>
+                      ) : (
+                        <div className="muted">Keine Zusammenfassung verfügbar.</div>
+                      )}
+                      {(providerLabel || single.language || single.timestamp) && (
+                        <div className="ai-analysis__meta">
+                          {providerLabel && <span>{providerLabel}</span>}
+                          {single.language && <span> · Sprache: {single.language.toUpperCase()}</span>}
+                          {single.timestamp && <span> · {new Date(single.timestamp).toLocaleString()}</span>}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                }
+              })}
           </div>
         )}
       </section>

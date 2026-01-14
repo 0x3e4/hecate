@@ -464,6 +464,33 @@ input:focus {
   font-size: 0.75rem;
 }
 
+.chip-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chip-link:hover {
+  background: rgba(92, 132, 255, 0.25);
+  color: #fff;
+}
+
+.chip-batch {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.45rem;
+  margin-left: 0.5rem;
+}
+
+.chip-single {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.45rem;
+  margin-left: 0.5rem;
+}
+
 .vuln-title {
   margin: 1rem 0 0.75rem;
 }

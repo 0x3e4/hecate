@@ -108,6 +108,33 @@ export const listBatchAnalyses = async (
   return response.data;
 };
 
+export interface SingleAnalysisItem {
+  type: "single";
+  vulnerability_id: string;
+  title: string;
+  provider: string;
+  language: string;
+  summary: string;
+  timestamp: string;
+}
+
+export interface SingleAnalysisListResponse {
+  items: SingleAnalysisItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export const listSingleAiAnalyses = async (
+  params?: { limit?: number; offset?: number }
+): Promise<SingleAnalysisListResponse> => {
+  const response = await api.get<SingleAnalysisListResponse>(
+    "/v1/vulnerabilities/ai-investigation/single",
+    { params }
+  );
+  return response.data;
+};
+
 export const triggerVulnerabilityRefresh = async (
   payload: VulnerabilityRefreshRequest
 ): Promise<VulnerabilityRefreshResponse> => {
