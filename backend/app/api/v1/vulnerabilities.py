@@ -290,3 +290,15 @@ async def get_batch_analysis(
     if result is None:
         raise HTTPException(status_code=404, detail="Batch analysis not found")
     return result
+
+
+@router.get("/ai-investigation/single", response_model=dict[str, Any])
+async def list_single_ai_analyses(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> dict[str, Any]:
+    """
+    List vulnerabilities with single AI analyses, sorted by most recent.
+    """
+    return await service.list_single_ai_analyses(limit=limit, offset=offset)
