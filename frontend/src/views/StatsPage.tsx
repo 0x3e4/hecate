@@ -69,7 +69,7 @@ export const StatsPage = () => {
 
                 <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" }}>
                   <ChartCard title="Top 5 CWEs">
-                    <BarChart data={stats.vulnerabilities.topCwes} emptyMessage="Keine CWEs erfasst." maxBars={5} />
+                    <CweChart data={stats.vulnerabilities.topCwes} />
                   </ChartCard>
                   <ChartCard title="EPSS Score">
                     <EpssChart data={stats.vulnerabilities.epssRanges} />
@@ -90,6 +90,15 @@ export const StatsPage = () => {
                   </ChartCard>
                   <ChartCard title="Most named Products">
                     <TopList data={stats.vulnerabilities.topProducts} emptyMessage="Keine Produkte." limit={8} />
+                  </ChartCard>
+                </div>
+
+                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                  <ChartCard title="Top Reference Domains">
+                    <TopList data={stats.vulnerabilities.referenceDomains} emptyMessage="Keine Referenzen." limit={10} />
+                  </ChartCard>
+                  <ChartCard title="Top Assigners">
+                    <TopList data={stats.vulnerabilities.topAssigners} emptyMessage="Keine Assigner." limit={10} />
                   </ChartCard>
                 </div>
               </div>
@@ -209,13 +218,14 @@ const SummaryGrid = ({ stats }: { stats: StatsResponse }) => (
     style={{
       display: "grid",
       gap: "1rem",
-      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
     }}
   >
     <StatCard label="Vulnerabilities" value={stats.vulnerabilities.total} accent="#5c84ff" />
+    <StatCard label="Exploited (KEV)" value={stats.vulnerabilities.exploitedCount} accent="#ff6b6b" />
     <StatCard label="Vendors" value={stats.assets.vendorTotal} accent="#66d9e8" />
-    <StatCard label="Prodducts" value={stats.assets.productTotal} accent="#ffd43b" />
-    <StatCard label="Versions" value={stats.assets.versionTotal} accent="#ff6b6b" />
+    <StatCard label="Products" value={stats.assets.productTotal} accent="#ffd43b" />
+    <StatCard label="Versions" value={stats.assets.versionTotal} accent="#a855f7" />
   </div>
 );
 
@@ -251,56 +261,6 @@ const ChartCard = ({ title, children }: { title: string; children: ReactNode }) 
     {children}
   </div>
 );
-
-const BarChart = ({
-  data,
-  maxBars = 5,
-  emptyMessage = "Keine Daten.",
-  color = "#5c84ff",
-}: {
-  data: TermsBucket[];
-  maxBars?: number;
-  emptyMessage?: string;
-  color?: string;
-}) => {
-  const items = useMemo(() => data.filter((item) => item.doc_count > 0).slice(0, maxBars), [data, maxBars]);
-
-  if (items.length === 0) {
-    return <p className="muted">{emptyMessage}</p>;
-  }
-
-  const maxValue = Math.max(...items.map((item) => item.doc_count));
-  const baseHeight = 20;
-  const scaleHeight = 120;
-
-  return (
-    <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", minHeight: `${baseHeight + scaleHeight + 20}px` }}>
-      {items.map((item) => {
-        const barHeight = maxValue === 0 ? baseHeight : baseHeight + (item.doc_count / maxValue) * scaleHeight;
-        return (
-          <div key={item.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${barHeight}px`,
-                background: color,
-                borderRadius: "6px 6px 0 0",
-                transition: "height 0.3s ease",
-              }}
-              title={`${item.key}: ${item.doc_count.toLocaleString()}`}
-            />
-            <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString()}</strong>
-              <div className="muted" style={{ fontSize: "0.7rem" }}>
-                {item.key.length > 14 ? `${item.key.slice(0, 12)}…` : item.key || "–"}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
 
 const severityColors: Record<string, string> = {
   CRITICAL: "#ff6b6b",
@@ -417,6 +377,57 @@ const SourcesChart = ({ data }: { data: TermsBucket[] }) => {
               <strong>{item.doc_count.toLocaleString()}</strong>
               <div style={{ fontSize: "0.7rem", color, opacity: 0.9 }}>
                 {item.key.length > 14 ? `${item.key.slice(0, 12)}…` : item.key || "–"}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const cweColors = [
+  "#f472b6",  // Pink
+  "#a855f7",  // Purple
+  "#818cf8",  // Indigo
+  "#38bdf8",  // Sky
+  "#2dd4bf",  // Teal
+];
+
+const CweChart = ({ data }: { data: TermsBucket[] }) => {
+  const items = useMemo(() => data.filter((item) => item.doc_count > 0).slice(0, 5), [data]);
+
+  if (items.length === 0) {
+    return <p className="muted">Keine CWEs erfasst.</p>;
+  }
+
+  const maxValue = Math.max(...items.map((item) => item.doc_count));
+  const baseHeight = 20;
+  const scaleHeight = 120;
+
+  return (
+    <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", minHeight: `${baseHeight + scaleHeight + 20}px` }}>
+      {items.map((item, index) => {
+        const barHeight = maxValue === 0 ? baseHeight : baseHeight + (item.doc_count / maxValue) * scaleHeight;
+        const color = cweColors[index % cweColors.length];
+
+        return (
+          <div key={item.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+            <div
+              style={{
+                width: "100%",
+                height: `${barHeight}px`,
+                background: `linear-gradient(180deg, ${color}, ${color}99)`,
+                borderRadius: "6px 6px 0 0",
+                boxShadow: `0 0 12px ${color}40`,
+                transition: "height 0.3s ease",
+              }}
+              title={`${item.key}: ${item.doc_count.toLocaleString()}`}
+            />
+            <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
+              <strong>{item.doc_count.toLocaleString()}</strong>
+              <div style={{ fontSize: "0.7rem", color, opacity: 0.9 }}>
+                {item.key.length > 12 ? `${item.key.slice(0, 10)}…` : item.key || "–"}
               </div>
             </div>
           </div>
