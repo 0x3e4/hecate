@@ -61,28 +61,34 @@ class StatsService:
         return result
 
     async def _fetch_vulnerability_stats(self) -> dict[str, Any]:
-        now = datetime.now(tz=UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        start = now - relativedelta(months=11)
+        now = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_30_days = now - relativedelta(days=30)
 
         try:
-            response = await self._run_vulnerability_search(start, now, use_keyword_suffix=False)
+            response = await self._run_vulnerability_search(
+                start_30_days=start_30_days,
+                use_keyword_suffix=False,
+            )
         except RequestError as exc:
             if self._is_fielddata_error(exc):
                 log.info("stats.retry_keyword_fields")
                 try:
-                    response = await self._run_vulnerability_search(start, now, use_keyword_suffix=True)
+                    response = await self._run_vulnerability_search(
+                        start_30_days=start_30_days,
+                        use_keyword_suffix=True,
+                    )
                 except (RequestError, OSConnectionError, OpenSearchException) as retry_exc:
                     log.warning("stats.keyword_retry_failed", error=str(retry_exc))
-                    return await self._fetch_vulnerability_stats_from_mongo(start, now)
+                    return await self._fetch_vulnerability_stats_from_mongo()
             elif self._is_nested_path_error(exc):
                 log.warning("stats.nested_path_error", error=str(exc))
-                return await self._fetch_vulnerability_stats_from_mongo(start, now)
+                return await self._fetch_vulnerability_stats_from_mongo()
             else:
                 log.warning("stats.opensearch_request_error", error=str(exc))
-                return await self._fetch_vulnerability_stats_from_mongo(start, now)
+                return await self._fetch_vulnerability_stats_from_mongo()
         except (OSConnectionError, OpenSearchException, asyncio.TimeoutError) as exc:
             log.warning("stats.opensearch_unavailable", error=str(exc))
-            return await self._fetch_vulnerability_stats_from_mongo(start, now)
+            return await self._fetch_vulnerability_stats_from_mongo()
 
         aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
 
@@ -108,11 +114,19 @@ class StatsService:
         else:
             epss_ranges = []
 
-        timeline_buckets: dict[str, int] = {}
+        # 30-day detailed timeline (nested under filter)
+        timeline: list[dict[str, Any]] = []
         timeline_agg = aggregations.get("timeline")
         if isinstance(timeline_agg, dict):
-            timeline_buckets = self._map_histogram(timeline_agg.get("months"))
-        timeline = self._build_timeline_sequence(start, timeline_buckets)
+            days_agg = timeline_agg.get("days")
+            if isinstance(days_agg, dict):
+                timeline = self._map_daily_histogram(days_agg)
+
+        # All-time monthly summary
+        timeline_summary: list[dict[str, Any]] = []
+        summary_agg = aggregations.get("timeline_summary")
+        if isinstance(summary_agg, dict):
+            timeline_summary = self._map_monthly_histogram(summary_agg)
 
         return {
             "total": total,
@@ -123,16 +137,19 @@ class StatsService:
             "topCwes": top_cwes,
             "epssRanges": epss_ranges,
             "timeline": timeline,
+            "timelineSummary": timeline_summary,
         }
 
     async def _run_vulnerability_search(
         self,
-        start: datetime,
-        now: datetime,
         *,
+        start_30_days: datetime,
         use_keyword_suffix: bool,
     ) -> dict[str, Any]:
-        body = self._build_vulnerability_query(start, now, use_keyword_suffix=use_keyword_suffix)
+        body = self._build_vulnerability_query(
+            start_30_days=start_30_days,
+            use_keyword_suffix=use_keyword_suffix,
+        )
         return await async_search(
             settings.opensearch_index,
             body,
@@ -141,9 +158,8 @@ class StatsService:
 
     def _build_vulnerability_query(
         self,
-        start: datetime,
-        now: datetime,
         *,
+        start_30_days: datetime,
         use_keyword_suffix: bool,
     ) -> dict[str, Any]:
         def field(name: str) -> str:
@@ -156,7 +172,8 @@ class StatsService:
             "track_total_hits": True,
             "query": {
                 "bool": {
-                    "must": [{"match_all": {}}],                }
+                    "must": [{"match_all": {}}],
+                }
             },
             "aggs": {
                 "sources": {
@@ -175,13 +192,13 @@ class StatsService:
                 "vendors": {
                     "terms": {
                         "field": field("vendors"),
-                        "size": 10,  # Reduced from 20 to 10 for better performance
+                        "size": 10,
                     }
                 },
                 "products": {
                     "terms": {
                         "field": field("products"),
-                        "size": 10,  # Reduced from 20 to 10 for better performance
+                        "size": 10,
                     }
                 },
                 "severity": {
@@ -219,31 +236,36 @@ class StatsService:
                         }
                     }
                 },
+                # Last 30 days - daily granularity
                 "timeline": {
                     "filter": {
                         "range": {
                             "published": {
-                                "gte": int(start.timestamp() * 1000),
+                                "gte": int(start_30_days.timestamp() * 1000),
                             }
                         }
                     },
                     "aggs": {
-                        "months": {
+                        "days": {
                             "date_histogram": {
                                 "field": "published",
-                                "calendar_interval": "month",
+                                "calendar_interval": "day",
                                 "min_doc_count": 0,
-                                "format": "yyyy-MM",
+                                "format": "yyyy-MM-dd",
                             }
                         }
-                    },
+                    }
+                },
+                # All-time monthly summary
+                "timeline_summary": {
+                    "date_histogram": {
+                        "field": "published",
+                        "calendar_interval": "month",
+                        "min_doc_count": 0,
+                        "format": "yyyy-MM",
+                    }
                 },
             },
-        }
-        # Use timestamp in milliseconds for extended_bounds to avoid date format issues
-        body["aggs"]["timeline"]["aggs"]["months"]["date_histogram"]["extended_bounds"] = {
-            "min": int(start.timestamp() * 1000),
-            "max": int(now.timestamp() * 1000),
         }
 
         return body
@@ -306,7 +328,7 @@ class StatsService:
                     return cb_reason
         return None
 
-    async def _fetch_vulnerability_stats_from_mongo(self, start: datetime, now: datetime) -> dict[str, Any]:
+    async def _fetch_vulnerability_stats_from_mongo(self) -> dict[str, Any]:
         """
         Fast MongoDB fallback with minimal aggregations.
         When OpenSearch fails/times out, we prioritize speed over completeness.
@@ -530,6 +552,73 @@ class StatsService:
             values[month_key] = int(count)
 
         return values
+
+    @staticmethod
+    def _map_daily_histogram(aggregation: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """Map daily date histogram to timeline points with timestamps."""
+        if not isinstance(aggregation, dict):
+            return []
+        buckets = aggregation.get("buckets")
+        if not isinstance(buckets, Iterable):
+            return []
+
+        results: list[dict[str, Any]] = []
+        for bucket in buckets:
+            if not isinstance(bucket, dict):
+                continue
+
+            # Get timestamp in milliseconds
+            raw_key = bucket.get("key")
+            if not isinstance(raw_key, (int, float)):
+                continue
+
+            timestamp = int(raw_key)
+            key_str = bucket.get("key_as_string", "")
+
+            count = bucket.get("doc_count", 0)
+            if not isinstance(count, (int, float)):
+                continue
+
+            results.append({
+                "key": key_str,
+                "count": int(count),
+                "timestamp": timestamp,
+            })
+
+        return results
+
+    @staticmethod
+    def _map_monthly_histogram(aggregation: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """Map monthly date histogram to timeline summary points."""
+        if not isinstance(aggregation, dict):
+            return []
+        buckets = aggregation.get("buckets")
+        if not isinstance(buckets, Iterable):
+            return []
+
+        results: list[dict[str, Any]] = []
+        for bucket in buckets:
+            if not isinstance(bucket, dict):
+                continue
+
+            raw_key = bucket.get("key")
+            if not isinstance(raw_key, (int, float)):
+                continue
+
+            timestamp = int(raw_key)
+            key_str = bucket.get("key_as_string", "")
+
+            count = bucket.get("doc_count", 0)
+            if not isinstance(count, (int, float)):
+                continue
+
+            results.append({
+                "key": key_str,
+                "count": int(count),
+                "timestamp": timestamp,
+            })
+
+        return results
 
     @staticmethod
     def _map_range_aggregation(aggregation: dict[str, Any] | None) -> list[dict[str, Any]]:

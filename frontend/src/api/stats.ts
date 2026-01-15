@@ -8,6 +8,7 @@ export interface TermsBucket {
 export interface TimelinePoint {
   key: string;
   count: number;
+  timestamp: number;
 }
 
 export interface CatalogSample {
@@ -26,6 +27,7 @@ export interface StatsResponse {
     topCwes: TermsBucket[];
     epssRanges: TermsBucket[];
     timeline: TimelinePoint[];
+    timelineSummary: TimelinePoint[];
   };
   assets: {
     vendorTotal: number;
