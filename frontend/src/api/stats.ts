@@ -28,6 +28,9 @@ export interface StatsResponse {
     epssRanges: TermsBucket[];
     timeline: TimelinePoint[];
     timelineSummary: TimelinePoint[];
+    topAssigners: TermsBucket[];
+    exploitedCount: number;
+    referenceDomains: TermsBucket[];
   };
   assets: {
     vendorTotal: number;

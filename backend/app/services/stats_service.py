@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from typing import Any, Callable, Iterable
+from urllib.parse import urlparse
 
 from dateutil.relativedelta import relativedelta
 import structlog
@@ -46,6 +47,10 @@ class StatsService:
                     "topCwes": [],
                     "epssRanges": [],
                     "timeline": [],
+                    "timelineSummary": [],
+                    "topAssigners": [],
+                    "exploitedCount": 0,
+                    "referenceDomains": [],
                 },
                 "assets": {
                     "vendorTotal": 0,
@@ -128,6 +133,19 @@ class StatsService:
         if isinstance(summary_agg, dict):
             timeline_summary = self._map_monthly_histogram(summary_agg)
 
+        # Top assigners
+        top_assigners = self._map_terms_aggregation(aggregations.get("assigners"), limit=10)
+
+        # Exploited count
+        exploited_agg = aggregations.get("exploited")
+        exploited_count = 0
+        if isinstance(exploited_agg, dict):
+            exploited_count = exploited_agg.get("doc_count", 0)
+
+        # Reference domains - extract domains from full URLs
+        raw_refs = self._map_terms_aggregation(aggregations.get("reference_domains"), limit=100)
+        reference_domains = self._extract_domain_counts(raw_refs)
+
         return {
             "total": total,
             "sources": sources,
@@ -138,6 +156,9 @@ class StatsService:
             "epssRanges": epss_ranges,
             "timeline": timeline,
             "timelineSummary": timeline_summary,
+            "topAssigners": top_assigners,
+            "exploitedCount": exploited_count,
+            "referenceDomains": reference_domains,
         }
 
     async def _run_vulnerability_search(
@@ -263,6 +284,28 @@ class StatsService:
                         "calendar_interval": "month",
                         "min_doc_count": 0,
                         "format": "yyyy-MM",
+                    }
+                },
+                # Top assigners
+                "assigners": {
+                    "terms": {
+                        "field": field("assigner"),
+                        "size": 10,
+                    }
+                },
+                # Exploited vulnerabilities count
+                "exploited": {
+                    "filter": {
+                        "term": {
+                            "exploited": True
+                        }
+                    }
+                },
+                # Reference domains (extract domain from URLs)
+                "reference_domains": {
+                    "terms": {
+                        "field": field("references"),
+                        "size": 100,
                     }
                 },
             },
@@ -438,6 +481,10 @@ class StatsService:
             "topVendors": [],  # Skip expensive aggregation
             "topProducts": [],  # Skip expensive aggregation
             "timeline": [],  # Skip expensive aggregation
+            "timelineSummary": [],
+            "topAssigners": [],
+            "exploitedCount": 0,
+            "referenceDomains": [],
         }
 
     async def _fetch_asset_stats(self) -> dict[str, Any]:
@@ -646,6 +693,32 @@ class StatsService:
             results.append({"key": range_key, "doc_count": int(count)})
 
         return results
+
+    @staticmethod
+    def _extract_domain_counts(raw_refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Extract and aggregate domain counts from full URL references."""
+        domain_counts: dict[str, int] = {}
+
+        for ref in raw_refs:
+            url = ref.get("key", "")
+            count = ref.get("doc_count", 0)
+            if not isinstance(url, str) or not url:
+                continue
+
+            try:
+                parsed = urlparse(url)
+                domain = parsed.netloc.lower()
+                # Remove www. prefix for cleaner grouping
+                if domain.startswith("www."):
+                    domain = domain[4:]
+                if domain:
+                    domain_counts[domain] = domain_counts.get(domain, 0) + count
+            except Exception:
+                continue
+
+        # Sort by count descending and take top 10
+        sorted_domains = sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        return [{"key": domain, "doc_count": count} for domain, count in sorted_domains]
 
     @staticmethod
     def _build_timeline_sequence(start: datetime, bucket_map: dict[str, int]) -> list[dict[str, Any]]:
