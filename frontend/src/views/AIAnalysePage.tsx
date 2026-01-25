@@ -6,6 +6,7 @@ import {
   listBatchAnalyses,
   listSingleAiAnalyses,
   requestBatchAiInvestigation,
+  triggerVulnerabilityRefresh,
   type SingleAnalysisItem,
 } from "../api/vulnerabilities";
 import {
@@ -138,6 +139,9 @@ export const AIAnalysePage = () => {
     shouldAnimateSummaryRef.current = true;
 
     try {
+      // Sync vulnerability data first to ensure up-to-date information
+      await triggerVulnerabilityRefresh({ vulnIds: selectedVulnIds });
+
       const result = await requestBatchAiInvestigation({
         vulnerabilityIds: selectedVulnIds,
         provider: selectedProvider,
