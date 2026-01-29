@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
-import { searchVulnerabilities } from "../api/vulnerabilities";
+import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { getPublishedDisplay } from "../utils/published";
@@ -11,8 +11,16 @@ import { ExploitationSummary } from "../components/ExploitationSummary";
 import { getPreferredCvssMetric } from "../utils/cvss";
 
 export const DashboardPage = () => {
+  const navigate = useNavigate();
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Single vulnerability query state
+  const [queryInput, setQueryInput] = useState<string>("");
+  const [queryLoading, setQueryLoading] = useState<boolean>(false);
+  const [queryNotFound, setQueryNotFound] = useState<string | null>(null);
+  const [syncLoading, setSyncLoading] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     document.title = "Hecate Cyber Defense - Dashboard";
@@ -40,10 +48,303 @@ export const DashboardPage = () => {
     load();
   }, []);
 
+  // Auto-dismiss toast after 5 seconds
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const handleQuerySearch = useCallback(async () => {
+    const trimmed = queryInput.trim().toUpperCase();
+    if (!trimmed) return;
+
+    setQueryLoading(true);
+    setQueryNotFound(null);
+    setToast(null);
+
+    try {
+      const vuln = await getVulnerability(trimmed);
+      const vulnIdForRoute = vuln.vulnId || vuln.sourceId || trimmed;
+      navigate(`/vulnerability/${encodeURIComponent(vulnIdForRoute)}`);
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status?: number } };
+      if (axiosError.response?.status === 404) {
+        setQueryNotFound(trimmed);
+      } else {
+        setToast({ type: "error", message: `Fehler beim Abrufen: ${trimmed}` });
+      }
+    } finally {
+      setQueryLoading(false);
+    }
+  }, [queryInput, navigate]);
+
+  const handleManualSync = useCallback(async () => {
+    if (!queryNotFound) return;
+
+    setSyncLoading(true);
+    setToast(null);
+
+    const isCve = queryNotFound.toUpperCase().startsWith("CVE-");
+    const payload = isCve
+      ? { vulnIds: [queryNotFound] }
+      : { sourceIds: [queryNotFound] };
+
+    try {
+      const response = await triggerVulnerabilityRefresh(payload);
+
+      const hasInsertedOrUpdated = response.results.some(
+        (r) => r.status === "inserted" || r.status === "updated"
+      );
+      const errors = response.results.filter((r) => r.status === "error");
+
+      if (hasInsertedOrUpdated) {
+        setQueryNotFound(null);
+        setQueryInput("");
+        navigate(`/vulnerability/${encodeURIComponent(queryNotFound)}`);
+      } else if (errors.length > 0) {
+        const errorMessages = errors.map((e) => e.message || "Unbekannter Fehler").join("; ");
+        setToast({
+          type: "error",
+          message: `Schwachstelle nicht in NVD/EUVD gefunden: ${errorMessages}`,
+        });
+      } else {
+        setToast({
+          type: "error",
+          message: `Schwachstelle "${queryNotFound}" konnte nicht synchronisiert werden. Nicht in NVD oder EUVD vorhanden.`,
+        });
+      }
+    } catch (error) {
+      console.error("Manual sync failed", error);
+      setToast({
+        type: "error",
+        message: `Synchronisation fehlgeschlagen. NVD/EUVD haben diese Schwachstelle möglicherweise nicht.`,
+      });
+    } finally {
+      setSyncLoading(false);
+    }
+  }, [queryNotFound, navigate]);
+
+  const handleQueryKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && !queryLoading && !syncLoading) {
+        handleQuerySearch();
+      }
+    },
+    [handleQuerySearch, queryLoading, syncLoading]
+  );
+
+  const handleClear = useCallback(() => {
+    setQueryInput("");
+    setQueryNotFound(null);
+    setToast(null);
+  }, []);
+
   return (
     <div className="page">
+      <SingleVulnQuery
+        queryInput={queryInput}
+        setQueryInput={setQueryInput}
+        queryLoading={queryLoading}
+        queryNotFound={queryNotFound}
+        syncLoading={syncLoading}
+        onSearch={handleQuerySearch}
+        onSync={handleManualSync}
+        onKeyDown={handleQueryKeyDown}
+        onClear={handleClear}
+      />
       <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} />
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: "1.5rem",
+            right: "1.5rem",
+            padding: "1rem 1.5rem",
+            borderRadius: "0.5rem",
+            background: toast.type === "error" ? "rgba(255,82,82,0.95)" : "rgba(76,175,80,0.95)",
+            color: "#fff",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            zIndex: 9999,
+            maxWidth: "400px",
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
+  );
+};
+
+interface SingleVulnQueryProps {
+  queryInput: string;
+  setQueryInput: (value: string) => void;
+  queryLoading: boolean;
+  queryNotFound: string | null;
+  syncLoading: boolean;
+  onSearch: () => void;
+  onSync: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onClear: () => void;
+}
+
+const SingleVulnQuery = ({
+  queryInput,
+  setQueryInput,
+  queryLoading,
+  queryNotFound,
+  syncLoading,
+  onSync,
+  onKeyDown,
+  onClear,
+}: SingleVulnQueryProps) => {
+  const isLoading = queryLoading || syncLoading;
+  const showNotFound = queryNotFound && !queryLoading;
+
+  return (
+    <section className="card" style={{ marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+        <h2 style={{ margin: 0 }}>Schwachstelle abrufen</h2>
+        {isLoading && (
+          <span
+            style={{
+              display: "inline-block",
+              width: "1rem",
+              height: "1rem",
+              border: "2px solid rgba(255,255,255,0.2)",
+              borderTopColor: "rgba(255,255,255,0.8)",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+            }}
+          />
+        )}
+      </div>
+
+      <div style={{ position: "relative", width: "100%", overflow: "hidden" }}>
+        <input
+          type="text"
+          value={queryInput}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setQueryInput(e.target.value);
+          }}
+          onKeyDown={onKeyDown}
+          placeholder="CVE-ID oder EUVD-ID eingeben und Enter drücken"
+          disabled={isLoading}
+          autoComplete="off"
+          style={{
+            boxSizing: "border-box",
+            width: "100%",
+            padding: "0.75rem 1rem",
+            paddingRight: queryInput ? "2.5rem" : "1rem",
+            borderRadius: "8px",
+            border: showNotFound
+              ? "1px solid rgba(255,193,7,0.5)"
+              : "1px solid rgba(255,255,255,0.12)",
+            background: showNotFound
+              ? "rgba(255,193,7,0.08)"
+              : "rgba(15, 18, 30, 0.85)",
+            color: "#f5f7fa",
+            fontSize: "1rem",
+            transition: "border-color 0.2s, background 0.2s",
+          }}
+        />
+        {queryInput && !isLoading && (
+          <button
+            onClick={onClear}
+            style={{
+              position: "absolute",
+              right: "0.5rem",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              color: "rgba(255,255,255,0.5)",
+              cursor: "pointer",
+              padding: "0.25rem",
+              fontSize: "1.1rem",
+              lineHeight: 1,
+            }}
+            title="Eingabe löschen"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {/* Status messages */}
+      {queryLoading && (
+        <p style={{ margin: "0.75rem 0 0", color: "rgba(255,255,255,0.6)", fontSize: "0.9rem" }}>
+          Suche in lokaler Datenbank…
+        </p>
+      )}
+
+      {syncLoading && (
+        <p style={{ margin: "0.75rem 0 0", color: "rgba(255,193,7,0.9)", fontSize: "0.9rem" }}>
+          Lade von NVD/EUVD…
+        </p>
+      )}
+
+      {showNotFound && (
+        <div
+          style={{
+            marginTop: "0.75rem",
+            padding: "1rem",
+            borderRadius: "0.5rem",
+            background: "rgba(255,193,7,0.1)",
+            border: "1px solid rgba(255,193,7,0.25)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+            <span style={{ fontSize: "1.25rem", lineHeight: 1 }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontWeight: 500 }}>
+                „{queryNotFound}" nicht in lokaler Datenbank
+              </p>
+              <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.9rem" }}>
+                Die Schwachstelle wurde noch nicht synchronisiert. Soll sie von den offiziellen Quellen abgerufen werden?
+              </p>
+              <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  onClick={onSync}
+                  disabled={syncLoading}
+                  className="btn"
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: "rgba(255,193,7,0.3)",
+                    border: "1px solid rgba(255,193,7,0.5)",
+                    fontWeight: 500,
+                  }}
+                >
+                  Von NVD/EUVD laden
+                </button>
+                <button
+                  onClick={onClear}
+                  className="btn"
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: "transparent",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                  }}
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSS for spinner animation */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </section>
   );
 };
 

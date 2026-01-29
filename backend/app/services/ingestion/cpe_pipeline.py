@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import structlog
@@ -31,29 +32,50 @@ class CPEPipeline:
             initial_sync=initial_sync,
             label=label,
         )
-        last_run = await state_repo.get_timestamp(STATE_KEY)
-        repo = await CPERepository.create()
 
         ingested = 0
         failures = 0
         latest_timestamp: datetime | None = None
 
-        async for record in self.client.iter_cpe_records(last_modified_after=last_run):
-            parsed = _normalize_cpe_record(record)
-            if not parsed:
-                failures += 1
-                continue
+        timeout_minutes = settings.ingestion_running_timeout_minutes
+        timeout_seconds = timeout_minutes * 60 if timeout_minutes and timeout_minutes > 0 else None
+        timed_out = False
 
-            await repo.upsert(parsed)
-            ingested += 1
+        try:
+            last_run = await state_repo.get_timestamp(STATE_KEY)
+            repo = await CPERepository.create()
 
-            if parsed.get("lastModified") and isinstance(parsed["lastModified"], datetime):
-                ts = parsed["lastModified"].astimezone(UTC)
-                if not latest_timestamp or ts > latest_timestamp:
-                    latest_timestamp = ts
+            async with asyncio.timeout(timeout_seconds):  # None = no timeout
+                async for record in self.client.iter_cpe_records(last_modified_after=last_run):
+                    parsed = _normalize_cpe_record(record)
+                    if not parsed:
+                        failures += 1
+                        continue
 
-            if effective_limit is not None and ingested >= effective_limit:
-                break
+                    await repo.upsert(parsed)
+                    ingested += 1
+
+                    if parsed.get("lastModified") and isinstance(parsed["lastModified"], datetime):
+                        ts = parsed["lastModified"].astimezone(UTC)
+                        if not latest_timestamp or ts > latest_timestamp:
+                            latest_timestamp = ts
+
+                    if effective_limit is not None and ingested >= effective_limit:
+                        break
+
+        except TimeoutError:
+            timed_out = True
+            log.warning(
+                "cpe_pipeline.timeout",
+                timeout_seconds=timeout_seconds,
+                ingested=ingested,
+                failures=failures,
+            )
+
+        except Exception as exc:
+            log.exception("cpe_pipeline.sync_failed", error=str(exc), ingested=ingested, failures=failures)
+            await tracker.fail(ctx, str(exc))
+            raise
 
         if latest_timestamp:
             await state_repo.set_timestamp(STATE_KEY, latest_timestamp)
@@ -63,11 +85,9 @@ class CPEPipeline:
             "failures": failures,
             "limit": effective_limit,
             "initial_sync": initial_sync,
+            "timed_out": timed_out,
         }
-        try:
-            await tracker.finish(ctx, **result)
-        except Exception:  # noqa: BLE001 - logging best-effort
-            log.warning("cpe_pipeline.tracker_finish_failed")
+        await tracker.finish(ctx, **result)
         log.info("cpe_pipeline.sync_complete", **result)
         return result
 
