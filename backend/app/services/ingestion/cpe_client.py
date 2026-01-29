@@ -76,6 +76,14 @@ class CPEClient:
                 break
 
             results_returned = len(results)
+            total_results = payload.get("totalResults", 0)
+            log.info(
+                "cpe_client.page_fetched",
+                start_index=start_index,
+                results_returned=results_returned,
+                total_results=total_results,
+            )
+
             if results_returned == 0:
                 break
 

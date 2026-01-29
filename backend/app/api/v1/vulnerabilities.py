@@ -14,6 +14,8 @@ from app.schemas.vulnerability import (
     DQLFieldAggregation,
     PagedVulnerabilityResponse,
     VulnerabilityDetail,
+    VulnerabilityLookupRequest,
+    VulnerabilityLookupResponse,
     VulnerabilityPreview,
     VulnerabilityQuery,
     VulnerabilityRefreshRequest,
@@ -44,6 +46,97 @@ async def trigger_refresh(
     Trigger vulnerability feed refresh.
     """
     return await service.trigger_refresh(payload)
+
+
+@router.post("/lookup", response_model=VulnerabilityLookupResponse)
+async def lookup_vulnerability(
+    payload: VulnerabilityLookupRequest,
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> VulnerabilityLookupResponse:
+    """
+    Look up a single vulnerability by identifier with optional auto-sync.
+
+    This endpoint first checks if the vulnerability exists locally. If not found
+    and `autoSync` is true, it will attempt to fetch the vulnerability from
+    NVD/EUVD sources. Useful for automation of vulnerability checking and
+    data collection.
+
+    Returns:
+    - status "found": Vulnerability already exists in database
+    - status "synced": Vulnerability was fetched from NVD/EUVD and stored
+    - status "not_found": Vulnerability not available in any source
+    - status "error": Sync was attempted but failed
+    """
+    identifier = payload.identifier.strip()
+
+    # First, try to find locally
+    existing = await service.get_by_id(identifier)
+    if existing is not None:
+        return VulnerabilityLookupResponse(
+            identifier=identifier,
+            status="found",
+            vulnerability=existing,
+        )
+
+    # Not found locally - check if auto_sync is requested
+    if not payload.auto_sync:
+        return VulnerabilityLookupResponse(
+            identifier=identifier,
+            status="not_found",
+            message="Vulnerability not found locally. Set autoSync=true to fetch from NVD/EUVD.",
+        )
+
+    # Attempt to sync from NVD/EUVD
+    is_cve = identifier.upper().startswith("CVE-")
+    refresh_request = VulnerabilityRefreshRequest(
+        vuln_ids=[identifier] if is_cve else [],
+        source_ids=[] if is_cve else [identifier],
+    )
+
+    try:
+        refresh_response = await service.trigger_refresh(refresh_request)
+    except Exception as exc:
+        return VulnerabilityLookupResponse(
+            identifier=identifier,
+            status="error",
+            message=f"Sync failed: {exc}",
+        )
+
+    # Check the refresh result
+    sync_result = next((r for r in refresh_response.results if r.identifier.upper() == identifier.upper()), None)
+
+    if sync_result is None:
+        return VulnerabilityLookupResponse(
+            identifier=identifier,
+            status="not_found",
+            message="No sync result returned. Vulnerability may not exist in NVD/EUVD.",
+        )
+
+    if sync_result.status == "error":
+        return VulnerabilityLookupResponse(
+            identifier=identifier,
+            status="error",
+            message=sync_result.message or "Sync failed without specific error message.",
+            sync_result=sync_result,
+        )
+
+    if sync_result.status in ("inserted", "updated"):
+        # Successfully synced - fetch the vulnerability
+        synced_vuln = await service.get_by_id(identifier)
+        return VulnerabilityLookupResponse(
+            identifier=identifier,
+            status="synced",
+            vulnerability=synced_vuln,
+            sync_result=sync_result,
+        )
+
+    # Status is "skipped" or unknown
+    return VulnerabilityLookupResponse(
+        identifier=identifier,
+        status="not_found",
+        message=sync_result.message or "Vulnerability not available in NVD/EUVD sources.",
+        sync_result=sync_result,
+    )
 
 
 @router.get("", response_model=PagedVulnerabilityResponse)
