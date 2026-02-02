@@ -425,10 +425,25 @@ input:focus {
 
 .vuln-card {
   background: rgba(8, 10, 18, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1.25rem;
+}
+
+.vuln-card.low {
+  border: 1px solid rgba(0, 128, 0, 0.25);
+}
+
+.vuln-card.medium {
+  border: 1px solid rgba(255, 165, 0, 0.25);
+}
+
+.vuln-card.high {
+  border: 1px solid rgba(220, 20, 60, 0.25);
+}
+
+.vuln-card.unknown {
+  border: 1px solid rgba(128, 128, 128, 0.25);
 }
 
 .vuln-header {

@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
+from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
@@ -82,6 +83,13 @@ class SchedulerManager:
             _scheduled_cwe_sync,
             trigger=IntervalTrigger(days=settings.scheduler_cwe_interval_days),
             id="cwe_sync",
+            replace_existing=True,
+        )
+
+        self.scheduler.add_job(
+            _scheduled_circl_sync,
+            trigger=IntervalTrigger(minutes=settings.scheduler_circl_interval_minutes),
+            id="circl_sync",
             replace_existing=True,
         )
 
@@ -377,3 +385,20 @@ async def _execute_cwe_sync(*, initial_sync: bool) -> None:
         error_msg = str(exc)
         await tracker.fail(ctx, error_msg)
         log.exception("scheduler.cwe_sync_failed", error=error_msg, initial_sync=initial_sync)
+
+
+async def _scheduled_circl_sync() -> None:
+    """Scheduled CIRCL enrichment sync job."""
+    await _execute_circl_sync()
+
+
+async def _execute_circl_sync() -> None:
+    """Execute CIRCL enrichment sync."""
+    pipeline = CirclPipeline()
+    try:
+        result = await pipeline.sync()
+        log.info("scheduler.circl_sync_completed", **result)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("scheduler.circl_sync_failed", error=str(exc))
+    finally:
+        await pipeline.close()

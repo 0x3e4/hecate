@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
@@ -28,8 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "reindex-opensearch"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, reindex-opensearch).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-circl", "reindex-opensearch"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-circl, reindex-opensearch).",
     )
     parser.add_argument(
         "--since",
@@ -102,6 +103,13 @@ def main() -> None:
             parser.error("The --since option is not supported for sync-cwe.")
         result = asyncio.run(run_cwe_sync_once(initial_sync=args.initial))
         print(f"CWE sync finished: {result}")
+    elif args.command == "sync-circl":
+        if args.since:
+            parser.error("The --since option is not supported for sync-circl.")
+        if args.initial:
+            parser.error("The --initial option is not supported for sync-circl (enrichment only).")
+        result = asyncio.run(run_circl_sync_once(limit=args.limit))
+        print(f"CIRCL sync finished: {result}")
     elif args.command == "reindex-opensearch":
         if args.limit is not None:
             parser.error("The --limit option is not supported for reindex-opensearch.")
@@ -133,6 +141,15 @@ async def run_nvd_sync_once(
 async def run_kev_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
     pipeline = KevPipeline()
     return await pipeline.sync(initial_sync=initial_sync)
+
+
+async def run_circl_sync_once(limit: int | None = None) -> dict[str, int]:
+    """Run CIRCL enrichment sync once from CLI."""
+    pipeline = CirclPipeline()
+    try:
+        return await pipeline.sync(limit=limit)
+    finally:
+        await pipeline.close()
 
 
 async def run_cwe_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
