@@ -267,7 +267,7 @@ const severityColors: Record<string, string> = {
   HIGH: "#ff922b",
   MEDIUM: "#fcc419",
   LOW: "#69db7c",
-  UNKNOWN: "#748ffc",
+  UNKNOWN: "#808080",
 };
 
 const severityLabels: Record<string, string> = {

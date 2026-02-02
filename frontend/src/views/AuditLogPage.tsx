@@ -16,6 +16,7 @@ const JOB_LABELS: Record<string, string> = {
   kev_initial_sync: "CISA KEV Initial Sync",
   cwe_sync: "CWE Cache Refresh",
   cwe_initial_sync: "CWE Initial Cache Prefetch",
+  circl_sync: "CIRCL Enrichment Sync",
   manual_refresh: "Manueller Refresh",
   saved_search_created: "Gespeicherte Suche erstellt",
   saved_search_deleted: "Gespeicherte Suche gelöscht",
@@ -229,6 +230,7 @@ export const AuditLogPage = () => {
               <option value="kev_initial_sync">CISA KEV Initial Sync</option>
               <option value="cwe_sync">CWE Cache Refresh</option>
               <option value="cwe_initial_sync">CWE Initial Cache Prefetch</option>
+              <option value="circl_sync">CIRCL Enrichment Sync</option>
               <option value="manual_refresh">Manueller Refresh</option>
               <option value="saved_search_created">Gespeicherte Suche erstellt</option>
               <option value="saved_search_deleted">Gespeicherte Suche gelöscht</option>
