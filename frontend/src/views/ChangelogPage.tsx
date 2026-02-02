@@ -99,8 +99,8 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
   };
 
   const severityColor = entry.severity
-    ? severityColors[entry.severity.toLowerCase()] ?? "#748ffc"
-    : "#748ffc";
+    ? severityColors[entry.severity.toLowerCase()] ?? "#808080"
+    : "#808080";
 
   const formattedDateTime = formatDateTime(entry.timestamp);
   const [formattedDate, formattedTime] = formattedDateTime.split(', ');

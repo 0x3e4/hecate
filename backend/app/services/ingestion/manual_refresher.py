@@ -377,13 +377,12 @@ class ManualRefresher:
                 return False
 
             # Extract vendor/product/version from CIRCL
-            vendors, products, versions, product_version_map = _extract_circl_product_info(circl_record)
+            vendors, products, versions, product_version_map, cpes, impacted_products = _extract_circl_product_info(circl_record)
 
             if not vendors and not products and not versions:
                 return False
 
             # Update asset catalog
-            cpes = _extract_circl_cpes(circl_record)
             catalog_result = None
             try:
                 catalog_result = await asset_catalog.record_assets(
@@ -417,6 +416,8 @@ class ManualRefresher:
                 vendor_slugs=catalog_result.vendor_slugs if catalog_result else [],
                 product_slugs=catalog_result.product_slugs if catalog_result else [],
                 product_version_ids=catalog_result.version_ids if catalog_result else [],
+                cpes=cpes,
+                impacted_products=impacted_products,
                 circl_raw=circl_record,
                 change_context=change_context,
             )
@@ -547,22 +548,78 @@ class ManualRefresher:
                 yield identifier, normalized
 
 
-def _extract_circl_product_info(record: dict[str, Any]) -> tuple[list[str], list[str], list[str], dict[str, set[str]]]:
+def _extract_circl_product_info(
+    record: dict[str, Any],
+) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[str], list[dict[str, Any]]]:
     """
     Extract vendor, product, and version information from a CIRCL record.
-    Returns: (vendors, products, versions, product_version_map)
+    Supports both CVE 5.x format (containers.cna.affected) and legacy format.
+    Returns: (vendors, products, versions, product_version_map, cpes, impacted_products)
     """
     vendors: set[str] = set()
     products: set[str] = set()
     versions: set[str] = set()
     product_version_map: dict[str, set[str]] = {}
+    cpes: set[str] = set()
+    impacted_products: list[dict[str, Any]] = []
 
-    # Extract from vulnerable_product field (CPE URIs)
+    # CVE 5.x format: containers.cna.affected[]
+    containers = record.get("containers") or {}
+    cna = containers.get("cna") or {}
+    affected_list = cna.get("affected") or []
+    if isinstance(affected_list, list):
+        for item in affected_list:
+            if not isinstance(item, dict):
+                continue
+            vendor = item.get("vendor")
+            product = item.get("product")
+            vendor_name = vendor.strip() if isinstance(vendor, str) and vendor.strip() else None
+            product_name = product.strip() if isinstance(product, str) and product.strip() else None
+
+            if vendor_name:
+                vendors.add(vendor_name)
+            if product_name:
+                products.add(product_name)
+
+                # Extract versions from versions array
+                item_versions: list[str] = []
+                versions_list = item.get("versions") or []
+                if isinstance(versions_list, list):
+                    for ver_item in versions_list:
+                        if isinstance(ver_item, dict):
+                            version = ver_item.get("version")
+                            if isinstance(version, str) and version.strip() and version not in ("*", "-"):
+                                ver_str = version.strip()
+                                versions.add(ver_str)
+                                item_versions.append(ver_str)
+                                bucket = product_version_map.setdefault(product_name, set())
+                                bucket.add(ver_str)
+
+                                # Build CPE from affected data
+                                if vendor_name:
+                                    cpe = _build_circl_cpe(vendor_name, product_name, ver_str)
+                                    if cpe:
+                                        cpes.add(cpe)
+
+                # Build impacted_product entry if we have vendor and product
+                if vendor_name and product_name:
+                    impacted_product = {
+                        "vendor": {"name": vendor_name, "slug": _slugify_circl(vendor_name)},
+                        "product": {"name": product_name, "slug": _slugify_circl(product_name)},
+                        "versions": item_versions,
+                        "vulnerable": True,
+                        "environments": [],
+                    }
+                    impacted_products.append(impacted_product)
+
+    # Legacy format: vulnerable_product field (CPE URIs)
     vulnerable_products = record.get("vulnerable_product") or []
     if isinstance(vulnerable_products, list):
         for cpe in vulnerable_products:
             if not isinstance(cpe, str):
                 continue
+            if cpe.startswith("cpe:"):
+                cpes.add(cpe)
             parsed = _parse_circl_cpe_uri(cpe)
             if parsed:
                 vendor, product, version = parsed
@@ -575,21 +632,21 @@ def _extract_circl_product_info(record: dict[str, Any]) -> tuple[list[str], list
                         bucket = product_version_map.setdefault(product, set())
                         bucket.add(version)
 
-    # Extract from vendors field if present
+    # Legacy format: vendors field if present
     vendor_list = record.get("vendors") or []
     if isinstance(vendor_list, list):
         for vendor in vendor_list:
             if isinstance(vendor, str) and vendor.strip():
                 vendors.add(vendor.strip())
 
-    # Extract from products field if present
+    # Legacy format: products field if present
     product_list = record.get("products") or []
     if isinstance(product_list, list):
         for product in product_list:
             if isinstance(product, str) and product.strip():
                 products.add(product.strip())
 
-    # Extract from affected_product if present (array of objects)
+    # Legacy format: affected_product if present (array of objects)
     affected = record.get("affected_product") or []
     if isinstance(affected, list):
         for item in affected:
@@ -612,18 +669,30 @@ def _extract_circl_product_info(record: dict[str, Any]) -> tuple[list[str], list
         sorted(products),
         sorted(versions),
         product_version_map,
+        sorted(cpes),
+        impacted_products,
     )
 
 
-def _extract_circl_cpes(record: dict[str, Any]) -> list[str]:
-    """Extract CPE URIs from CIRCL record."""
-    cpes: list[str] = []
-    vulnerable_products = record.get("vulnerable_product") or []
-    if isinstance(vulnerable_products, list):
-        for cpe in vulnerable_products:
-            if isinstance(cpe, str) and cpe.startswith("cpe:"):
-                cpes.append(cpe)
-    return cpes
+def _build_circl_cpe(vendor: str, product: str, version: str) -> str | None:
+    """Build a CPE 2.3 URI from vendor, product, and version."""
+    if not vendor or not product:
+        return None
+    # Normalize for CPE format (lowercase, replace spaces with underscores)
+    v = vendor.lower().replace(" ", "_").replace(":", "\\:")
+    p = product.lower().replace(" ", "_").replace(":", "\\:")
+    ver = version.replace(" ", "_").replace(":", "\\:") if version else "*"
+    return f"cpe:2.3:a:{v}:{p}:{ver}:*:*:*:*:*:*:*"
+
+
+def _slugify_circl(value: str) -> str:
+    """Convert a string to a URL-friendly slug."""
+    import re
+    slug = value.lower().strip()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug)
+    return slug.strip("-")
 
 
 def _parse_circl_cpe_uri(cpe: str) -> tuple[str | None, str | None, str | None] | None:

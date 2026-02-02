@@ -232,7 +232,7 @@ const SingleVulnQuery = ({
             setQueryInput(e.target.value);
           }}
           onKeyDown={onKeyDown}
-          placeholder="CVE-ID oder EUVD-ID eingeben und Enter drücken"
+          placeholder="Vulnerability ID eingeben und Enter drücken"
           disabled={isLoading}
           autoComplete="off"
           style={{
