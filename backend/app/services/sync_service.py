@@ -9,6 +9,7 @@ import structlog
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.schemas.sync import SyncState
+from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
@@ -29,6 +30,7 @@ SYNC_JOBS = [
     ("kev_initial_sync", "CISA KEV Initial Sync"),
     ("cwe_sync", "CWE Cache Refresh"),
     ("cwe_initial_sync", "CWE Initial Cache Prefetch"),
+    ("circl_sync", "CIRCL Enrichment Sync"),
 ]
 
 
@@ -229,6 +231,27 @@ class SyncService:
             log.info("sync.kev_completed", initial=initial, **result)
         except Exception as exc:  # noqa: BLE001
             log.exception("sync.kev_failed", initial=initial, error=str(exc))
+
+    async def trigger_circl_sync(self) -> dict[str, Any]:
+        """Trigger CIRCL enrichment sync (no initial_sync support)."""
+        log.info("sync.trigger_circl")
+        asyncio.create_task(self._execute_circl_sync())
+        return {
+            "success": True,
+            "message": "CIRCL enrichment sync triggered",
+            "jobName": "circl_sync",
+        }
+
+    async def _execute_circl_sync(self) -> None:
+        """Execute CIRCL enrichment sync in background."""
+        pipeline = CirclPipeline()
+        try:
+            result = await pipeline.sync()
+            log.info("sync.circl_completed", **result)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("sync.circl_failed", error=str(exc))
+        finally:
+            await pipeline.close()
 
 
 async def get_sync_service() -> SyncService:

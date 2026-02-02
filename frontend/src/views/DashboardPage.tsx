@@ -395,7 +395,7 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
         return (
           <article
             key={primaryId}
-            className="vuln-card"
+            className={`vuln-card ${vuln.severity ?? "unknown"}`}
             style={exploitedHighlight}
           >
             <header className="vuln-header">

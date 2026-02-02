@@ -68,9 +68,15 @@ class Settings(BaseSettings):
     cwe_timeout_seconds: int = 30
     cwe_rate_limit_seconds: float = 1.0
 
+    circl_base_url: str = "https://vulnerability.circl.lu/api"
+    circl_timeout_seconds: int = 30
+    circl_rate_limit_seconds: float = 1.0
+    circl_max_records_per_run: OptionalInt = 1000
+
     ingestion_user_agent: str = "hecate-ingestion/0.1"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True
+    ingestion_priority_vuln_db: str = "NVD"  # NVD or EUVD
 
     scheduler_enabled: bool = True
     scheduler_timezone: str = "UTC"
@@ -79,6 +85,7 @@ class Settings(BaseSettings):
     scheduler_nvd_interval_minutes: int = 10
     scheduler_kev_interval_minutes: int = 60
     scheduler_cwe_interval_days: int = 7
+    scheduler_circl_interval_minutes: int = 120
 
     # Full sync scheduling (weekly verification runs)
     scheduler_euvd_full_sync_enabled: bool = True

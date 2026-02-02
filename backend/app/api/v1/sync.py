@@ -65,3 +65,12 @@ async def trigger_cwe_sync(
     """Trigger CWE sync (normal or initial)."""
     result = await service.trigger_cwe_sync(initial=request.initial)
     return TriggerSyncResponse(**result)
+
+
+@router.post("/trigger/circl", response_model=TriggerSyncResponse)
+async def trigger_circl_sync(
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger CIRCL enrichment sync (no initial_sync support)."""
+    result = await service.trigger_circl_sync()
+    return TriggerSyncResponse(**result)
