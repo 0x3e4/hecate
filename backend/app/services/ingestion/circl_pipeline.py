@@ -187,7 +187,7 @@ class CirclPipeline:
         Returns: 'enriched', 'skipped', or 'not_found'
         """
         # Extract vendor/product/version data from CIRCL record
-        vendors, products, versions, product_version_map, cpes, impacted_products = _extract_product_info(circl_record)
+        vendors, products, versions, product_version_map, cpes = _extract_product_info(circl_record)
 
         if not vendors and not products and not versions:
             log.debug("circl_pipeline.no_product_info", cve_id=cve_id)
@@ -228,7 +228,6 @@ class CirclPipeline:
             product_slugs=catalog_result.product_slugs if catalog_result else [],
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
-            impacted_products=impacted_products,
             circl_raw=circl_record,
             change_context=change_context,
         )
@@ -241,7 +240,6 @@ class CirclPipeline:
                 products=products,
                 versions_count=len(versions),
                 cpes_count=len(cpes),
-                impacted_products_count=len(impacted_products),
             )
             return "enriched"
         elif result == "not_found":
@@ -267,18 +265,17 @@ class CirclPipeline:
 
 def _extract_product_info(
     record: dict[str, Any],
-) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[str], list[dict[str, Any]]]:
+) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[str]]:
     """
     Extract vendor, product, and version information from a CIRCL record.
     Supports both CVE 5.x format (containers.cna.affected) and legacy format.
-    Returns: (vendors, products, versions, product_version_map, cpes, impacted_products)
+    Returns: (vendors, products, versions, product_version_map, cpes)
     """
     vendors: set[str] = set()
     products: set[str] = set()
     versions: set[str] = set()
     product_version_map: dict[str, set[str]] = {}
     cpes: set[str] = set()
-    impacted_products: list[dict[str, Any]] = []
 
     # CVE 5.x format: containers.cna.affected[]
     containers = record.get("containers") or {}
@@ -299,7 +296,6 @@ def _extract_product_info(
                 products.add(product_name)
 
                 # Extract versions from versions array
-                item_versions: list[str] = []
                 versions_list = item.get("versions") or []
                 if isinstance(versions_list, list):
                     for ver_item in versions_list:
@@ -308,7 +304,6 @@ def _extract_product_info(
                             if isinstance(version, str) and version.strip() and version not in ("*", "-"):
                                 ver_str = version.strip()
                                 versions.add(ver_str)
-                                item_versions.append(ver_str)
                                 bucket = product_version_map.setdefault(product_name, set())
                                 bucket.add(ver_str)
 
@@ -317,17 +312,6 @@ def _extract_product_info(
                                     cpe = _build_cpe(vendor_name, product_name, ver_str)
                                     if cpe:
                                         cpes.add(cpe)
-
-                # Build impacted_product entry if we have vendor and product
-                if vendor_name and product_name:
-                    impacted_product = {
-                        "vendor": {"name": vendor_name, "slug": _slugify(vendor_name)},
-                        "product": {"name": product_name, "slug": _slugify(product_name)},
-                        "versions": item_versions,
-                        "vulnerable": True,
-                        "environments": [],
-                    }
-                    impacted_products.append(impacted_product)
 
     # Legacy format: vulnerable_product field (CPE URIs)
     vulnerable_products = record.get("vulnerable_product") or []
@@ -387,7 +371,6 @@ def _extract_product_info(
         sorted(versions),
         product_version_map,
         sorted(cpes),
-        impacted_products,
     )
 
 
@@ -411,16 +394,6 @@ def _build_cpe(vendor: str, product: str, version: str) -> str | None:
     p = product.lower().replace(" ", "_").replace(":", "\\:")
     ver = version.replace(" ", "_").replace(":", "\\:") if version else "*"
     return f"cpe:2.3:a:{v}:{p}:{ver}:*:*:*:*:*:*:*"
-
-
-def _slugify(value: str) -> str:
-    """Convert a string to a URL-friendly slug."""
-    import re
-    slug = value.lower().strip()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_]+", "-", slug)
-    slug = re.sub(r"-+", "-", slug)
-    return slug.strip("-")
 
 
 def _parse_cpe_uri(cpe: str) -> tuple[str | None, str | None, str | None] | None:

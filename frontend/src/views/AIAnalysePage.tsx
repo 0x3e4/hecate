@@ -33,6 +33,11 @@ export const AIAnalysePage = () => {
   const [singleHistory, setSingleHistory] = useState<SingleAnalysisItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState<number>(0);
+  const [batchTotal, setBatchTotal] = useState<number>(0);
+  const [singleTotal, setSingleTotal] = useState<number>(0);
+
+  const HISTORY_PAGE_SIZE = 20;
 
   const shouldAnimateSummaryRef = useRef(false);
   const typingIntervalRef = useRef<number | null>(null);
@@ -61,16 +66,19 @@ export const AIAnalysePage = () => {
     loadProviders();
   }, []);
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (page: number) => {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
+      const offset = page * HISTORY_PAGE_SIZE;
       const [batchData, singleData] = await Promise.all([
-        listBatchAnalyses({ limit: 20, offset: 0 }),
-        listSingleAiAnalyses({ limit: 20, offset: 0 }),
+        listBatchAnalyses({ limit: HISTORY_PAGE_SIZE, offset }),
+        listSingleAiAnalyses({ limit: HISTORY_PAGE_SIZE, offset }),
       ]);
       setBatchHistory(batchData.items || []);
       setSingleHistory(singleData.items || []);
+      setBatchTotal(batchData.total);
+      setSingleTotal(singleData.total);
     } catch (err) {
       console.error("Failed to load AI analyses history:", err);
       setHistoryError("AI-Analysen konnten nicht geladen werden.");
@@ -80,8 +88,8 @@ export const AIAnalysePage = () => {
   }, []);
 
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadHistory(historyPage);
+  }, [loadHistory, historyPage]);
 
   // Typing animation effect
   useEffect(() => {
@@ -150,7 +158,8 @@ export const AIAnalysePage = () => {
       });
 
       setResponse(result);
-      await loadHistory();
+      setHistoryPage(0);
+      await loadHistory(0);
     } catch (err: any) {
       console.error("AI analysis failed:", err);
 
@@ -186,6 +195,12 @@ export const AIAnalysePage = () => {
 
   const hasAiProviders = aiProviders.length > 0;
   const providerLabelMap = new Map(aiProviders.map((provider) => [provider.id, provider.label]));
+
+  // Pagination calculations for history (batch + single combined)
+  const historyTotalCombined = batchTotal + singleTotal;
+  const historyMaxTotal = Math.max(batchTotal, singleTotal);
+  const hasPreviousHistoryPage = historyPage > 0;
+  const hasNextHistoryPage = (historyPage + 1) * HISTORY_PAGE_SIZE < historyMaxTotal;
 
   return (
     <div className="page ai-analyse-page">
@@ -279,6 +294,30 @@ export const AIAnalysePage = () => {
         <p className="muted">
           Übersicht aller AI-Analysen.
         </p>
+
+        {historyTotalCombined > 0 && (
+          <div style={{ margin: "1rem 0", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.75rem", flexWrap: "wrap" }}>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              Seite {historyPage + 1} · Gesamt: {historyTotalCombined} Einträge
+            </span>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={() => setHistoryPage((current) => Math.max(0, current - 1))}
+                disabled={!hasPreviousHistoryPage || historyLoading}
+              >
+                Zurück
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryPage((current) => current + 1)}
+                disabled={!hasNextHistoryPage || historyLoading}
+              >
+                Weiter
+              </button>
+            </div>
+          </div>
+        )}
 
         {historyLoading && (
           <div className="muted">AI-Analysen werden geladen...</div>

@@ -395,7 +395,13 @@ const cweColors = [
 ];
 
 const CweChart = ({ data }: { data: TermsBucket[] }) => {
-  const items = useMemo(() => data.filter((item) => item.doc_count > 0).slice(0, 5), [data]);
+  const items = useMemo(
+    () =>
+      data
+        .filter((item) => item.doc_count > 0 && !["NVD-CWE-noinfo", "NVD-CWE-Other"].includes(item.key))
+        .slice(0, 5),
+    [data]
+  );
 
   if (items.length === 0) {
     return <p className="muted">Keine CWEs erfasst.</p>;
