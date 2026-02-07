@@ -44,7 +44,11 @@ class ManualRefresher:
         self._euvd_client = euvd_client or EUVDClient()
         self._circl_client = circl_client or CirclClient()
 
-    async def refresh(self, identifiers: Iterable[str]) -> list[VulnerabilityRefreshStatus]:
+    async def refresh(
+        self,
+        identifiers: Iterable[str],
+        source: str | None = None,
+    ) -> list[VulnerabilityRefreshStatus]:
         prepared = [
             value.strip()
             for value in identifiers
@@ -65,6 +69,7 @@ class ManualRefresher:
                 "type": "manual_refresh",
                 "label": "Manueller Refresh",
                 "requested": prepared,
+                "source": source,
             },
         )
 
@@ -85,6 +90,7 @@ class ManualRefresher:
                     asset_catalog=asset_catalog,
                     kev_metadata=kev_metadata,
                     circl_client=self._circl_client,
+                    source=source,
                 )
                 statuses.append(status)
         except Exception as exc:
@@ -136,12 +142,47 @@ class ManualRefresher:
         asset_catalog: AssetCatalogService,
         kev_metadata: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]],
         circl_client: CirclClient,
+        source: str | None = None,
     ) -> VulnerabilityRefreshStatus:
         upper_normalized = normalized_identifier.upper()
         is_cve = CVE_PATTERN.fullmatch(upper_normalized) is not None
         is_euvd = EUVD_PATTERN.fullmatch(upper_normalized) is not None
         ingested_at = datetime.now(tz=UTC)
 
+        # If a specific source is requested, only fetch from that source
+        if source:
+            source_upper = source.upper()
+            if source_upper == "CIRCL":
+                return await self._refresh_from_circl(
+                    original_identifier=original_identifier,
+                    normalized_identifier=normalized_identifier,
+                    repository=repository,
+                    asset_catalog=asset_catalog,
+                    circl_client=circl_client,
+                    is_cve=is_cve,
+                )
+            elif source_upper == "NVD":
+                return await self._refresh_from_nvd(
+                    original_identifier=original_identifier,
+                    normalized_identifier=normalized_identifier,
+                    repository=repository,
+                    asset_catalog=asset_catalog,
+                    kev_metadata=kev_metadata,
+                    is_cve=is_cve,
+                    ingested_at=ingested_at,
+                )
+            elif source_upper == "EUVD":
+                return await self._refresh_from_euvd(
+                    original_identifier=original_identifier,
+                    normalized_identifier=normalized_identifier,
+                    repository=repository,
+                    asset_catalog=asset_catalog,
+                    kev_metadata=kev_metadata,
+                    is_cve=is_cve,
+                    ingested_at=ingested_at,
+                )
+
+        # No specific source requested - use default behavior (fetch from all sources)
         euvd_record = await self._fetch_euvd_record(original_identifier, normalized_identifier)
         canonical_id, source_id = self._resolve_identifiers(
             original_identifier=original_identifier,
@@ -359,6 +400,269 @@ class ManualRefresher:
             changed_fields=upsert_result.changed_fields,
         )
 
+    async def _refresh_from_nvd(
+        self,
+        *,
+        original_identifier: str,
+        normalized_identifier: str,
+        repository: VulnerabilityRepository,
+        asset_catalog: AssetCatalogService,
+        kev_metadata: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]],
+        is_cve: bool,
+        ingested_at: datetime,
+    ) -> VulnerabilityRefreshStatus:
+        """Refresh vulnerability data from NVD only."""
+        upper_normalized = normalized_identifier.upper()
+        canonical_id = upper_normalized if is_cve else None
+
+        if not canonical_id or not CVE_PATTERN.fullmatch(canonical_id):
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="NVD",
+                status="error",
+                message="NVD requires a valid CVE identifier.",
+            )
+
+        nvd_record = await self._nvd_client.fetch_cve(canonical_id)
+        nvd_cpe_matches = await self._nvd_client.fetch_cpe_matches(canonical_id)
+
+        if not nvd_record:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="NVD",
+                status="skipped",
+                message="No data found in NVD.",
+            )
+
+        built = build_document_from_nvd(nvd_record, ingested_at=ingested_at, cpe_matches=nvd_cpe_matches)
+        if not built:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="NVD",
+                status="error",
+                message="Failed to build document from NVD data.",
+            )
+
+        document, product_version_map = built
+        try:
+            catalog_result = await asset_catalog.record_assets(
+                vendors=document.vendors,
+                product_versions=product_version_map,
+                cpes=document.cpes,
+                cpe_configurations=document.cpe_configurations,
+            )
+            document = document.model_copy(
+                update={
+                    "vendor_slugs": catalog_result.vendor_slugs,
+                    "product_slugs": catalog_result.product_slugs,
+                    "product_versions": catalog_result.version_strings or document.product_versions,
+                    "product_version_ids": catalog_result.version_ids,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("manual_refresher.asset_catalog_update_failed", vuln_id=document.vuln_id, error=str(exc))
+
+        # Add KEV metadata if available
+        if document.vuln_id:
+            metadata_tuple = kev_metadata.get(document.vuln_id.upper())
+            if metadata_tuple:
+                metadata_model, raw_entry = metadata_tuple
+                updates: dict[str, Any] = {"exploited": True, "exploitation": metadata_model}
+                raw_payload = copy.deepcopy(document.raw) if isinstance(document.raw, dict) else {}
+                if raw_entry:
+                    raw_payload["kev"] = raw_entry
+                updates["raw"] = raw_payload
+                document = document.model_copy(update=updates)
+
+        change_context = {
+            "job_name": "manual_refresh",
+            "job_label": "Manual Refresh",
+            "metadata": {"trigger": "manual", "provider": "NVD", "identifier": original_identifier},
+        }
+        upsert_result = await repository.upsert_from_nvd(document, nvd_raw=nvd_record, change_context=change_context)
+
+        return VulnerabilityRefreshStatus(
+            identifier=original_identifier,
+            provider="NVD",
+            status="inserted" if upsert_result.inserted else "updated",
+            changed_fields=upsert_result.changed_fields,
+        )
+
+    async def _refresh_from_euvd(
+        self,
+        *,
+        original_identifier: str,
+        normalized_identifier: str,
+        repository: VulnerabilityRepository,
+        asset_catalog: AssetCatalogService,
+        kev_metadata: dict[str, tuple[ExploitationMetadata, dict[str, Any] | None]],
+        is_cve: bool,
+        ingested_at: datetime,
+    ) -> VulnerabilityRefreshStatus:
+        """Refresh vulnerability data from EUVD only."""
+        euvd_record = await self._fetch_euvd_record(original_identifier, normalized_identifier)
+
+        if not euvd_record:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="EUVD",
+                status="skipped",
+                message="No data found in EUVD.",
+            )
+
+        canonical_id, source_id = self._resolve_identifiers(
+            original_identifier=original_identifier,
+            normalized_identifier=normalized_identifier,
+            euvd_record=euvd_record,
+            is_cve=is_cve,
+        )
+
+        document, product_version_map = build_document(
+            cve_id=canonical_id,
+            source_id=source_id,
+            euvd_record=euvd_record,
+            supplemental_record=None,
+            supplemental_cpe_matches=None,
+            ingested_at=ingested_at,
+        )
+
+        try:
+            catalog_result = await asset_catalog.record_assets(
+                vendors=document.vendors,
+                product_versions=product_version_map,
+                cpes=document.cpes,
+                cpe_configurations=document.cpe_configurations,
+            )
+            document = document.model_copy(
+                update={
+                    "vendor_slugs": catalog_result.vendor_slugs,
+                    "product_slugs": catalog_result.product_slugs,
+                    "product_versions": catalog_result.version_strings or document.product_versions,
+                    "product_version_ids": catalog_result.version_ids,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("manual_refresher.asset_catalog_update_failed", vuln_id=document.vuln_id, error=str(exc))
+
+        # Add KEV metadata if available
+        if document.vuln_id:
+            metadata_tuple = kev_metadata.get(document.vuln_id.upper())
+            if metadata_tuple:
+                metadata_model, raw_entry = metadata_tuple
+                updates: dict[str, Any] = {"exploited": True, "exploitation": metadata_model}
+                raw_payload = copy.deepcopy(document.raw) if isinstance(document.raw, dict) else {}
+                if raw_entry:
+                    raw_payload["kev"] = raw_entry
+                updates["raw"] = raw_payload
+                document = document.model_copy(update=updates)
+
+        change_context = {
+            "job_name": "manual_refresh",
+            "job_label": "Manual Refresh",
+            "metadata": {"trigger": "manual", "provider": "EUVD", "identifier": original_identifier},
+        }
+        upsert_result = await repository.upsert(document, change_context=change_context, euvd_raw=euvd_record)
+
+        return VulnerabilityRefreshStatus(
+            identifier=original_identifier,
+            provider="EUVD",
+            status="inserted" if upsert_result.inserted else "updated",
+            changed_fields=upsert_result.changed_fields,
+        )
+
+    async def _refresh_from_circl(
+        self,
+        *,
+        original_identifier: str,
+        normalized_identifier: str,
+        repository: VulnerabilityRepository,
+        asset_catalog: AssetCatalogService,
+        circl_client: CirclClient,
+        is_cve: bool,
+    ) -> VulnerabilityRefreshStatus:
+        """Refresh vulnerability data from CIRCL only (enrichment for existing records)."""
+        upper_normalized = normalized_identifier.upper()
+        canonical_id = upper_normalized if is_cve else None
+
+        if not canonical_id or not CVE_PATTERN.fullmatch(canonical_id):
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="CIRCL",
+                status="error",
+                message="CIRCL requires a valid CVE identifier.",
+            )
+
+        circl_record = await circl_client.fetch_cve(canonical_id)
+        if not circl_record:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="CIRCL",
+                status="skipped",
+                message="No data found in CIRCL.",
+            )
+
+        vendors, products, versions, product_version_map, cpes = _extract_circl_product_info(circl_record)
+
+        if not vendors and not products and not versions:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="CIRCL",
+                status="skipped",
+                message="CIRCL record has no vendor/product/version data.",
+            )
+
+        catalog_result = None
+        try:
+            catalog_result = await asset_catalog.record_assets(
+                vendors=vendors,
+                product_versions=product_version_map,
+                cpes=cpes,
+                cpe_configurations=None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("manual_refresher.circl_asset_catalog_failed", cve_id=canonical_id, error=str(exc))
+
+        change_context = {
+            "job_name": "manual_refresh",
+            "job_label": "Manual Refresh",
+            "metadata": {"trigger": "manual", "provider": "CIRCL", "identifier": original_identifier},
+        }
+
+        result = await repository.upsert_from_circl(
+            cve_id=canonical_id,
+            vendors=vendors,
+            products=products,
+            product_versions=versions,
+            vendor_slugs=catalog_result.vendor_slugs if catalog_result else [],
+            product_slugs=catalog_result.product_slugs if catalog_result else [],
+            product_version_ids=catalog_result.version_ids if catalog_result else [],
+            cpes=cpes,
+            circl_raw=circl_record,
+            change_context=change_context,
+        )
+
+        if result == "not_found":
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="CIRCL",
+                status="skipped",
+                message="Vulnerability not found in database. CIRCL can only enrich existing records.",
+            )
+        elif result == "unchanged":
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="CIRCL",
+                status="skipped",
+                message="No new data from CIRCL (fields already populated).",
+            )
+
+        return VulnerabilityRefreshStatus(
+            identifier=original_identifier,
+            provider="CIRCL",
+            status="updated",
+            message="Enriched with CIRCL data.",
+        )
+
     async def _enrich_with_circl(
         self,
         *,
@@ -377,7 +681,7 @@ class ManualRefresher:
                 return False
 
             # Extract vendor/product/version from CIRCL
-            vendors, products, versions, product_version_map, cpes, impacted_products = _extract_circl_product_info(circl_record)
+            vendors, products, versions, product_version_map, cpes = _extract_circl_product_info(circl_record)
 
             if not vendors and not products and not versions:
                 return False
@@ -417,7 +721,6 @@ class ManualRefresher:
                 product_slugs=catalog_result.product_slugs if catalog_result else [],
                 product_version_ids=catalog_result.version_ids if catalog_result else [],
                 cpes=cpes,
-                impacted_products=impacted_products,
                 circl_raw=circl_record,
                 change_context=change_context,
             )
@@ -550,18 +853,17 @@ class ManualRefresher:
 
 def _extract_circl_product_info(
     record: dict[str, Any],
-) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[str], list[dict[str, Any]]]:
+) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[str]]:
     """
     Extract vendor, product, and version information from a CIRCL record.
     Supports both CVE 5.x format (containers.cna.affected) and legacy format.
-    Returns: (vendors, products, versions, product_version_map, cpes, impacted_products)
+    Returns: (vendors, products, versions, product_version_map, cpes)
     """
     vendors: set[str] = set()
     products: set[str] = set()
     versions: set[str] = set()
     product_version_map: dict[str, set[str]] = {}
     cpes: set[str] = set()
-    impacted_products: list[dict[str, Any]] = []
 
     # CVE 5.x format: containers.cna.affected[]
     containers = record.get("containers") or {}
@@ -582,7 +884,6 @@ def _extract_circl_product_info(
                 products.add(product_name)
 
                 # Extract versions from versions array
-                item_versions: list[str] = []
                 versions_list = item.get("versions") or []
                 if isinstance(versions_list, list):
                     for ver_item in versions_list:
@@ -591,7 +892,6 @@ def _extract_circl_product_info(
                             if isinstance(version, str) and version.strip() and version not in ("*", "-"):
                                 ver_str = version.strip()
                                 versions.add(ver_str)
-                                item_versions.append(ver_str)
                                 bucket = product_version_map.setdefault(product_name, set())
                                 bucket.add(ver_str)
 
@@ -600,17 +900,6 @@ def _extract_circl_product_info(
                                     cpe = _build_circl_cpe(vendor_name, product_name, ver_str)
                                     if cpe:
                                         cpes.add(cpe)
-
-                # Build impacted_product entry if we have vendor and product
-                if vendor_name and product_name:
-                    impacted_product = {
-                        "vendor": {"name": vendor_name, "slug": _slugify_circl(vendor_name)},
-                        "product": {"name": product_name, "slug": _slugify_circl(product_name)},
-                        "versions": item_versions,
-                        "vulnerable": True,
-                        "environments": [],
-                    }
-                    impacted_products.append(impacted_product)
 
     # Legacy format: vulnerable_product field (CPE URIs)
     vulnerable_products = record.get("vulnerable_product") or []
@@ -670,7 +959,6 @@ def _extract_circl_product_info(
         sorted(versions),
         product_version_map,
         sorted(cpes),
-        impacted_products,
     )
 
 
@@ -683,16 +971,6 @@ def _build_circl_cpe(vendor: str, product: str, version: str) -> str | None:
     p = product.lower().replace(" ", "_").replace(":", "\\:")
     ver = version.replace(" ", "_").replace(":", "\\:") if version else "*"
     return f"cpe:2.3:a:{v}:{p}:{ver}:*:*:*:*:*:*:*"
-
-
-def _slugify_circl(value: str) -> str:
-    """Convert a string to a URL-friendly slug."""
-    import re
-    slug = value.lower().strip()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_]+", "-", slug)
-    slug = re.sub(r"-+", "-", slug)
-    return slug.strip("-")
 
 
 def _parse_circl_cpe_uri(cpe: str) -> tuple[str | None, str | None, str | None] | None:

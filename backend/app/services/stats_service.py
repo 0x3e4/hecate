@@ -233,6 +233,7 @@ class StatsService:
                     "terms": {
                         "field": field("cwes"),
                         "size": 5,
+                        "exclude": ["NVD-CWE-noinfo", "NVD-CWE-Other"],
                     }
                 },
                 "epss_ranges": {
@@ -407,6 +408,7 @@ class StatsService:
 
         cwes_pipeline = [
             {"$unwind": {"path": "$cwes", "preserveNullAndEmptyArrays": False}},
+            {"$match": {"cwes": {"$nin": ["NVD-CWE-noinfo", "NVD-CWE-Other"]}}},
             {
                 "$group": {
                     "_id": "$cwes",

@@ -937,11 +937,16 @@ input:focus {
 .detail-tabs,
 .detail-tabs__nav,
 .detail-tabs__actions {
-  overflow: visible;
+  overflow: visible !important;
 }
 
-.card:has(.detail-tabs__actions) {
-  overflow: visible;
+.card:has(.detail-tabs__actions),
+section.card:has(.detail-tabs__actions) {
+  overflow: visible !important;
+}
+
+.page:has(.detail-tabs__actions) {
+  overflow: visible !important;
 }
 
 .detail-tabs__actions button:hover {
@@ -1834,6 +1839,11 @@ table thead th {
     padding: 0.55rem 0.65rem;
   }
 
+  #vulnerability-page-size {
+    min-height: auto;
+    padding: 0.3rem 0.5rem;
+  }
+
   /* Pagination - improved mobile style */
   .pagination {
     flex-wrap: wrap;
@@ -1939,6 +1949,15 @@ table thead th {
 
   .card {
     overflow-x: hidden;
+  }
+
+  .card:has(.detail-tabs__actions),
+  section.card:has(.detail-tabs__actions) {
+    overflow: visible !important;
+  }
+
+  .page:has(.detail-tabs__actions) {
+    overflow: visible !important;
   }
 
   /* Ensure card content doesn't overflow */

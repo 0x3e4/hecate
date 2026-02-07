@@ -464,6 +464,16 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                     </span>
                     CIRCL
                   </a> 
+                  <a
+                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.vulnId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span role="img" aria-label="Wazuh">
+                      🔮
+                    </span>
+                    Wazuh
+                  </a> 
                 </>
               )}
               {vuln.sourceId && (

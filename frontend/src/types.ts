@@ -256,9 +256,12 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   sources?: SourceEntry[];
 }
 
+export type RefreshSourceType = "NVD" | "EUVD" | "CIRCL";
+
 export interface VulnerabilityRefreshRequest {
   vulnIds?: string[];
   sourceIds?: string[];
+  source?: RefreshSourceType;
 }
 
 export type VulnerabilityRefreshStatus = {
