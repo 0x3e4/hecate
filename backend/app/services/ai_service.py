@@ -9,9 +9,11 @@ from typing import Any, AsyncIterator
 import httpx
 
 try:  # pragma: no cover - optional dependency
-    import google.generativeai as genai
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    from google import genai
+    from google.genai import types as genai_types
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
     genai = None  # type: ignore[assignment]
+    genai_types = None  # type: ignore[assignment]
 
 import structlog
 from app.core.config import settings
@@ -52,7 +54,7 @@ class AIClient:
             providers.append(AIProviderInfo(id="openai", label=AI_PROVIDER_LABELS["openai"]))
         if settings.anthropic_api_key:
             providers.append(AIProviderInfo(id="anthropic", label=AI_PROVIDER_LABELS["anthropic"]))
-        if settings.google_gemini_api_key and genai is not None:
+        if settings.google_gemini_api_key and genai is not None and genai_types is not None:
             providers.append(AIProviderInfo(id="gemini", label=AI_PROVIDER_LABELS["gemini"]))
         return providers
 
@@ -250,9 +252,9 @@ class AIClient:
         raise AIProviderError("Anthropic response did not contain any text.")
 
     async def _call_gemini(self, system_prompt: str, user_prompt: str) -> str:
-        if genai is None:
+        if genai is None or genai_types is None:
             raise AIProviderError(
-                "Gemini provider requires the google-generativeai package. Install it to continue."
+                "Gemini provider requires the google-genai package. Install it to continue."
             )
         if not settings.google_gemini_api_key:
             raise ValueError("Google Gemini provider is not configured.")
@@ -265,50 +267,55 @@ class AIClient:
         )
 
         model_name = settings.google_gemini_model or "gemini-1.5-flash"
-        generation_config = {
-            "temperature": 0.3,
-            "max_output_tokens": 4000,
-        }
 
         def _invoke() -> str:
-            genai.configure(api_key=settings.google_gemini_api_key)
+            _genai = genai
+            _genai_types = genai_types
+            assert _genai is not None and _genai_types is not None
+
             safety_settings = None
-            try:
-                from google.generativeai.types import HarmBlockThreshold, HarmCategory  # type: ignore
-            except (ImportError, AttributeError):  # pragma: no cover - optional
-                safety_settings = None
-            else:
+            harm_category_enum = getattr(_genai_types, "HarmCategory", None)
+            harm_threshold_enum = getattr(_genai_types, "HarmBlockThreshold", None)
+            safety_setting_model = getattr(_genai_types, "SafetySetting", None)
+            if (
+                harm_category_enum is not None
+                and harm_threshold_enum is not None
+                and safety_setting_model is not None
+            ):
                 category_names = [
                     "HARM_CATEGORY_HARASSMENT",
                     "HARM_CATEGORY_HATE_SPEECH",
-                    "HARM_CATEGORY_SEXUAL",
-                    "HARM_CATEGORY_SEXUAL_CONTENT",
-                    "HARM_CATEGORY_DANGEROUS",
+                    "HARM_CATEGORY_SEXUALLY_EXPLICIT",
                     "HARM_CATEGORY_DANGEROUS_CONTENT",
                 ]
-                threshold = getattr(HarmBlockThreshold, "BLOCK_NONE", None)
-                safety_settings = {}
-                for name in category_names:
-                    category = getattr(HarmCategory, name, None)
-                    if category is not None and threshold is not None:
-                        safety_settings[category] = threshold
-                if not safety_settings:
-                    safety_settings = None
+                threshold = getattr(harm_threshold_enum, "BLOCK_NONE", None)
+                if threshold is not None:
+                    generated_settings: list[Any] = []
+                    for name in category_names:
+                        category = getattr(harm_category_enum, name, None)
+                        if category is not None:
+                            generated_settings.append(
+                                safety_setting_model(category=category, threshold=threshold)
+                            )
+                    if generated_settings:
+                        safety_settings = generated_settings
 
             # Note: Google Search grounding is available in Gemini API but requires specific setup
             # For now, we rely on prompt instructions to leverage Gemini's knowledge
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=system_prompt,
-                generation_config=generation_config,
-            )
-            kwargs: dict[str, Any] = {}
+            config_kwargs: dict[str, Any] = {
+                "system_instruction": system_prompt,
+                "temperature": 0.3,
+                "max_output_tokens": 4000,
+            }
             if safety_settings is not None:
-                kwargs["safety_settings"] = safety_settings
-            response = model.generate_content(
-                user_prompt,
-                **kwargs,
-            )
+                config_kwargs["safety_settings"] = safety_settings
+
+            with _genai.Client(api_key=settings.google_gemini_api_key) as gemini_client:
+                response = gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=user_prompt,
+                    config=_genai_types.GenerateContentConfig(**config_kwargs),
+                )
             logger.debug(
                 "gemini.response.raw",
                 response=str(response),
