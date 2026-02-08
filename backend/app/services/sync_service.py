@@ -14,7 +14,7 @@ from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
-from app.services.scheduling.manager import _execute_cwe_sync, get_scheduler
+from app.services.scheduling.manager import _execute_capec_sync, _execute_cwe_sync, get_scheduler
 
 log = structlog.get_logger()
 
@@ -30,6 +30,8 @@ SYNC_JOBS = [
     ("kev_initial_sync", "CISA KEV Initial Sync"),
     ("cwe_sync", "CWE Cache Refresh"),
     ("cwe_initial_sync", "CWE Initial Cache Prefetch"),
+    ("capec_sync", "CAPEC Cache Refresh"),
+    ("capec_initial_sync", "CAPEC Initial Cache Prefetch"),
     ("circl_sync", "CIRCL Enrichment Sync"),
 ]
 
@@ -191,6 +193,16 @@ class SyncService:
             "success": True,
             "message": f"{'Initial' if initial else 'Normal'} CWE sync triggered",
             "jobName": "cwe_initial_sync" if initial else "cwe_sync",
+        }
+
+    async def trigger_capec_sync(self, *, initial: bool) -> dict[str, Any]:
+        """Trigger CAPEC sync (normal or initial)."""
+        log.info("sync.trigger_capec", initial=initial)
+        asyncio.create_task(_execute_capec_sync(initial_sync=initial))
+        return {
+            "success": True,
+            "message": f"{'Initial' if initial else 'Normal'} CAPEC sync triggered",
+            "jobName": "capec_initial_sync" if initial else "capec_sync",
         }
 
     async def _execute_euvd_sync(self, *, initial: bool) -> None:

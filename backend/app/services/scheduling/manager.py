@@ -15,6 +15,7 @@ from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 from app.services.ingestion.job_tracker import JobTracker
+from app.services.capec_service import get_capec_service
 from app.services.cwe_service import get_cwe_service
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 
@@ -87,6 +88,13 @@ class SchedulerManager:
         )
 
         self.scheduler.add_job(
+            _scheduled_capec_sync,
+            trigger=IntervalTrigger(days=settings.scheduler_capec_interval_days),
+            id="capec_sync",
+            replace_existing=True,
+        )
+
+        self.scheduler.add_job(
             _scheduled_circl_sync,
             trigger=IntervalTrigger(minutes=settings.scheduler_circl_interval_minutes),
             id="circl_sync",
@@ -142,6 +150,7 @@ class SchedulerManager:
             ("nvd", "nvd_initial_sync", _initial_nvd_sync, "bootstrap-nvd"),
             ("kev", "kev_initial_sync", _initial_kev_sync, "bootstrap-kev"),
             ("cwe", "cwe_initial_sync", _initial_cwe_sync, "bootstrap-cwe"),
+            ("capec", "capec_initial_sync", _initial_capec_sync, "bootstrap-capec"),
         )
 
         tasks: list[tuple[str, asyncio.Task[None]]] = []
@@ -385,6 +394,65 @@ async def _execute_cwe_sync(*, initial_sync: bool) -> None:
         error_msg = str(exc)
         await tracker.fail(ctx, error_msg)
         log.exception("scheduler.cwe_sync_failed", error=error_msg, initial_sync=initial_sync)
+
+
+async def _initial_capec_sync() -> None:
+    """Initial CAPEC cache prefetch on startup."""
+    await _execute_capec_sync(initial_sync=True)
+
+
+async def _scheduled_capec_sync() -> None:
+    """Scheduled CAPEC cache refresh job (runs weekly)."""
+    await _execute_capec_sync(initial_sync=False)
+
+
+async def _execute_capec_sync(*, initial_sync: bool) -> None:
+    """Execute CAPEC cache refresh with job tracking."""
+    state_repository = await IngestionStateRepository.create()
+    tracker = JobTracker(state_repository)
+
+    job_name = "capec_initial_sync" if initial_sync else "capec_sync"
+    label = "CAPEC Initial Cache Prefetch" if initial_sync else "CAPEC Cache Refresh"
+
+    ctx = await tracker.start(
+        job_name,
+        label=label,
+        initial_sync=initial_sync,
+    )
+
+    try:
+        log.info("scheduler.capec_sync_started", initial_sync=initial_sync)
+        capec_service = get_capec_service()
+
+        capec_service.clear_cache()
+
+        stats = await capec_service.sync_all_capecs()
+
+        deleted = 0
+        if stats["fetched"] > 0:
+            deleted = await capec_service.clear_old_entries()
+        else:
+            log.warning(
+                "scheduler.capec_sync_no_data_fetched",
+                message="Skipping deletion of old entries as no new data was fetched",
+            )
+
+        result = {
+            "fetched": stats["fetched"],
+            "inserted": stats["inserted"],
+            "updated": stats["updated"],
+            "unchanged": stats["unchanged"],
+            "failed": stats["failed"],
+            "deleted_old": deleted,
+            "initial_sync": initial_sync,
+        }
+
+        await tracker.finish(ctx, **result)
+        log.info("scheduler.capec_sync_completed", **result)
+    except Exception as exc:  # noqa: BLE001
+        error_msg = str(exc)
+        await tracker.fail(ctx, error_msg)
+        log.exception("scheduler.capec_sync_failed", error=error_msg, initial_sync=initial_sync)
 
 
 async def _scheduled_circl_sync() -> None:

@@ -67,6 +67,16 @@ async def trigger_cwe_sync(
     return TriggerSyncResponse(**result)
 
 
+@router.post("/trigger/capec", response_model=TriggerSyncResponse)
+async def trigger_capec_sync(
+    request: TriggerSyncRequest = TriggerSyncRequest(),
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger CAPEC sync (normal or initial)."""
+    result = await service.trigger_capec_sync(initial=request.initial)
+    return TriggerSyncResponse(**result)
+
+
 @router.post("/trigger/circl", response_model=TriggerSyncResponse)
 async def trigger_circl_sync(
     service: SyncService = Depends(get_sync_service),

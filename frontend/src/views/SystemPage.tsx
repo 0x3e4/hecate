@@ -14,6 +14,7 @@ import {
   triggerCpeSync,
   triggerKevSync,
   triggerCweSync,
+  triggerCapecSync,
   triggerCirclSync,
 } from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
@@ -227,7 +228,7 @@ export const SystemPage = () => {
     event.target.value = "";
   };
 
-  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "circl", initial: boolean) => {
+  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl", initial: boolean) => {
     const syncId = `${syncType}_${initial ? "initial" : "normal"}`;
     setSyncTriggeringId(syncId);
     try {
@@ -247,6 +248,9 @@ export const SystemPage = () => {
           break;
         case "cwe":
           response = await triggerCweSync(initial);
+          break;
+        case "capec":
+          response = await triggerCapecSync(initial);
           break;
         case "circl":
           response = await triggerCirclSync();
@@ -296,6 +300,8 @@ export const SystemPage = () => {
       "kev_initial_sync",
       "cwe_sync",
       "cwe_initial_sync",
+      "capec_sync",
+      "capec_initial_sync",
       "circl_sync",
     ];
     return syncStates.sort((a: SyncState, b: SyncState) => order.indexOf(a.jobName) - order.indexOf(b.jobName));
@@ -336,6 +342,8 @@ export const SystemPage = () => {
                     ? "cpe"
                     : sync.jobName.includes("kev")
                     ? "kev"
+                    : sync.jobName.includes("capec")
+                    ? "capec"
                     : sync.jobName.includes("circl")
                     ? "circl"
                     : "cwe";

@@ -10,6 +10,7 @@ from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 from app.services.ingestion.kev_pipeline import KevPipeline
+from app.services.capec_service import get_capec_service
 from app.services.cwe_service import get_cwe_service
 
 
@@ -29,8 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-circl", "reindex-opensearch"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-circl, reindex-opensearch).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "reindex-opensearch"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, reindex-opensearch).",
     )
     parser.add_argument(
         "--since",
@@ -45,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--initial",
         action="store_true",
-        help="Force an initial/full sync (supported for ingest, sync-euvd, sync-cpe, sync-nvd, and sync-cwe).",
+        help="Force an initial/full sync (supported for ingest, sync-euvd, sync-cpe, sync-nvd, sync-cwe, and sync-capec).",
     )
     return parser
 
@@ -103,6 +104,13 @@ def main() -> None:
             parser.error("The --since option is not supported for sync-cwe.")
         result = asyncio.run(run_cwe_sync_once(initial_sync=args.initial))
         print(f"CWE sync finished: {result}")
+    elif args.command == "sync-capec":
+        if args.limit is not None:
+            parser.error("The --limit option is not supported for sync-capec.")
+        if args.since:
+            parser.error("The --since option is not supported for sync-capec.")
+        result = asyncio.run(run_capec_sync_once(initial_sync=args.initial))
+        print(f"CAPEC sync finished: {result}")
     elif args.command == "sync-circl":
         if args.since:
             parser.error("The --since option is not supported for sync-circl.")
@@ -150,6 +158,33 @@ async def run_circl_sync_once(limit: int | None = None) -> dict[str, int]:
         return await pipeline.sync(limit=limit)
     finally:
         await pipeline.close()
+
+
+async def run_capec_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
+    """Run CAPEC sync once from CLI."""
+    capec_service = get_capec_service()
+    try:
+        capec_service.clear_cache()
+
+        stats = await capec_service.sync_all_capecs()
+
+        deleted = 0
+        if stats["fetched"] > 0:
+            deleted = await capec_service.clear_old_entries()
+            print(f"Deleted {deleted} old CAPEC entries from MongoDB")
+        else:
+            print("Warning: No new CAPEC data fetched, skipping deletion of old entries")
+
+        return {
+            "fetched": stats["fetched"],
+            "inserted": stats["inserted"],
+            "updated": stats["updated"],
+            "unchanged": stats["unchanged"],
+            "failed": stats["failed"],
+            "deleted_old": deleted,
+        }
+    finally:
+        await capec_service.close()
 
 
 async def run_cwe_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
