@@ -770,6 +770,53 @@ input:focus {
   border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
+.cvss-badge-row--clickable {
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cvss-badge-row--clickable:hover {
+  background: rgba(92, 132, 255, 0.10);
+  border-color: rgba(92, 132, 255, 0.25);
+}
+
+.cvss-badge-row--active {
+  background: rgba(92, 132, 255, 0.12);
+  border-color: rgba(92, 132, 255, 0.35);
+}
+
+.cvss-explanation {
+  padding: 0.5rem 0.65rem;
+  margin-top: 0.2rem;
+  margin-bottom: 0.15rem;
+  border-radius: 8px;
+  background: rgba(92, 132, 255, 0.08);
+  border: 1px solid rgba(92, 132, 255, 0.18);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(200, 215, 255, 0.92);
+  animation: cvssExplFadeIn 0.15s ease;
+}
+
+.cvss-explanation__metric {
+  color: rgba(156, 183, 255, 0.85);
+  margin-bottom: 0.3rem;
+}
+
+.cvss-explanation__value {
+  color: rgba(230, 237, 255, 0.95);
+}
+
+.cvss-explanation__value strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+@keyframes cvssExplFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .cvss-badge-label {
   font-size: 0.72rem;
   text-transform: uppercase;
