@@ -4,6 +4,7 @@ from app.api.v1 import (
     assets,
     audit,
     backup,
+    capec,
     changelog,
     cpe,
     cwe,
@@ -20,6 +21,7 @@ api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tag
 api_router.include_router(saved_searches.router, prefix="/saved-searches", tags=["saved-searches"])
 api_router.include_router(cpe.router, prefix="/cpe", tags=["cpe"])
 api_router.include_router(cwe.router, prefix="/cwe", tags=["cwe"])
+api_router.include_router(capec.router, prefix="/capec", tags=["capec"])
 api_router.include_router(assets.router, prefix="/assets", tags=["assets"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(stats.router, prefix="/stats", tags=["stats"])

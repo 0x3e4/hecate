@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     mongo_ingestion_log_collection: str = "ingestion_logs"
     mongo_kev_collection: str = "known_exploited_vulnerabilities"
     mongo_cwe_collection: str = "cwe_catalog"
+    mongo_capec_collection: str = "capec_catalog"
     mongo_saved_searches_collection: str = "saved_searches"
     opensearch_url: str = "http://opensearch:9200"
     opensearch_username: str | None = None
@@ -68,6 +69,9 @@ class Settings(BaseSettings):
     cwe_timeout_seconds: int = 30
     cwe_rate_limit_seconds: float = 1.0
 
+    capec_xml_url: str = "https://capec.mitre.org/data/xml/capec_latest.xml"
+    capec_timeout_seconds: int = 60
+
     circl_base_url: str = "https://vulnerability.circl.lu/api"
     circl_timeout_seconds: int = 30
     circl_rate_limit_seconds: float = 1.0
@@ -85,6 +89,7 @@ class Settings(BaseSettings):
     scheduler_nvd_interval_minutes: int = 10
     scheduler_kev_interval_minutes: int = 60
     scheduler_cwe_interval_days: int = 7
+    scheduler_capec_interval_days: int = 7
     scheduler_circl_interval_minutes: int = 120
 
     # Full sync scheduling (weekly verification runs)
