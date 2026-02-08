@@ -501,11 +501,32 @@ const EpssChart = ({ data }: { data: TermsBucket[] }) => {
   );
 };
 
+const useContainerWidth = (ref: React.RefObject<HTMLElement | null>, fallback = 600) => {
+  const [width, setWidth] = useState(fallback);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0) setWidth(w);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return width;
+};
+
 const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
   const [isAnimated, setIsAnimated] = useState(false);
+  const containerWidth = useContainerWidth(containerRef);
 
   // Trigger animation on mount
   useEffect(() => {
@@ -517,9 +538,10 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
     return <p className="muted">Noch keine Zeitreihendaten.</p>;
   }
 
-  const baseWidth = 1200;
+  const baseWidth = containerWidth;
   const height = 180;
-  const padding = { top: 20, bottom: 45, left: 50, right: 20 };
+  const isMobile = containerWidth < 500;
+  const padding = { top: 20, bottom: 45, left: isMobile ? 35 : 50, right: isMobile ? 10 : 20 };
   const chartWidth = baseWidth - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
@@ -587,7 +609,8 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   const getTimeLabels = () => {
     if (data.length === 0) return [];
 
-    const labelCount = Math.min(8, data.length);
+    const maxLabels = isMobile ? 4 : 8;
+    const labelCount = Math.min(maxLabels, data.length);
     const labelStep = Math.max(1, Math.floor(data.length / labelCount));
     const labels: { index: number; x: number; date: Date }[] = [];
 
@@ -613,10 +636,9 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
       onMouseLeave={clearHover}
     >
       <svg
-        width="100%"
+        width={baseWidth}
         height={height}
         viewBox={`0 0 ${baseWidth} ${height}`}
-        preserveAspectRatio="none"
       >
         <defs>
           {/* Animated gradient */}
@@ -738,10 +760,10 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
               <circle
                 cx={point.x}
                 cy={point.y}
-                r={isActive ? 7 : hasData ? 5 : 3}
+                r={isActive ? (isMobile ? 5 : 7) : hasData ? (isMobile ? 3 : 5) : (isMobile ? 2 : 3)}
                 fill={isActive ? "#fff" : hasData ? "#5c84ff" : "rgba(92, 132, 255, 0.3)"}
                 stroke={isActive ? "#5c84ff" : "transparent"}
-                strokeWidth={isActive ? 3 : 0}
+                strokeWidth={isActive ? 2 : 0}
                 filter={isActive ? "url(#pointGlow)" : undefined}
                 style={{
                   cursor: "pointer",
@@ -854,6 +876,7 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerWidth = useContainerWidth(containerRef);
 
   // Calculate cumulative totals
   const cumulativeData = useMemo(() => {
@@ -868,9 +891,10 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
     return <p className="muted">Noch keine Zeitreihendaten.</p>;
   }
 
-  const width = 1200;
+  const width = containerWidth;
   const height = 220;
-  const padding = { top: 25, bottom: 40, left: 60, right: 20 };
+  const isMobile = containerWidth < 500;
+  const padding = { top: 25, bottom: 40, left: isMobile ? 40 : 60, right: isMobile ? 10 : 20 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
@@ -930,10 +954,9 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
       <svg
-        width="100%"
+        width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
         onMouseMove={handleMouseMove}
         onMouseLeave={() => { setHoveredIndex(null); setTooltipPos(null); }}
         style={{ cursor: "crosshair" }}
