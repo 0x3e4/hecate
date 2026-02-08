@@ -19,12 +19,9 @@ const VERSION_GROUPS: VersionGroup[] = [
   { id: "other", label: "CVSS (Other)", keys: ["other", "cvssMetricOther"] },
 ];
 
+// Attack Requirements and Sub* impacts are now main fields for v4.0
 const V40_ADDITIONAL_FIELDS: MetricAttribute[] = [
-  { label: "Attack Requirements", key: "attackRequirements" },
   { label: "Exploit Maturity", key: "exploitMaturity" },
-  { label: "Sub Confidentiality", key: "subConfidentialityImpact" },
-  { label: "Sub Integrity", key: "subIntegrityImpact" },
-  { label: "Sub Availability", key: "subAvailabilityImpact" },
   { label: "Modified Attack Vector", key: "modifiedAttackVector" },
   { label: "Modified Attack Complexity", key: "modifiedAttackComplexity" },
   { label: "Modified Attack Requirements", key: "modifiedAttackRequirements" },
@@ -47,9 +44,11 @@ const V40_ADDITIONAL_FIELDS: MetricAttribute[] = [
   { label: "Availability Requirement", key: "availabilityRequirement" },
 ];
 
-const V31_ADDITIONAL_FIELDS: MetricAttribute[] = [{ label: "Scope", key: "scope" }];
+// Scope is now displayed in the main attributes list for v3.x
+const V31_ADDITIONAL_FIELDS: MetricAttribute[] = [];
 
-const V20_ADDITIONAL_FIELDS: MetricAttribute[] = [{ label: "Authentication", key: "authentication" }];
+// Authentication is now displayed in the main attributes list for v2.0
+const V20_ADDITIONAL_FIELDS: MetricAttribute[] = [];
 
 export interface ParsedCvssMetric {
   key: string;
@@ -62,12 +61,17 @@ export interface ParsedCvssMetric {
   impactScore?: number | null;
   attackVector?: string | null;
   attackComplexity?: string | null;
+  attackRequirements?: string | null; // CVSS 4.0
   privilegesRequired?: string | null;
   userInteraction?: string | null;
-  scope?: string | null;
+  scope?: string | null; // CVSS 3.x
   confidentialityImpact?: string | null;
   integrityImpact?: string | null;
   availabilityImpact?: string | null;
+  // CVSS 4.0 Subsequent System impact metrics
+  subConfidentialityImpact?: string | null;
+  subIntegrityImpact?: string | null;
+  subAvailabilityImpact?: string | null;
   additionalAttributes?: Array<{ label: string; value: string | null }>;
   source?: string | null;
   type?: string | null;
@@ -244,6 +248,12 @@ const resolveGroup = (group: VersionGroup, metrics: CvssMetrics | null | undefin
     "attackComplexity",
     "accessComplexity"
   );
+  const attackRequirements = pickField(
+    vectorData,
+    selected,
+    fallbackEntries,
+    "attackRequirements"
+  );
   const privilegesRequired = pickField(
     vectorData,
     selected,
@@ -279,6 +289,31 @@ const resolveGroup = (group: VersionGroup, metrics: CvssMetrics | null | undefin
     fallbackEntries,
     "availabilityImpact",
     "vulnAvailabilityImpact"
+  );
+  // CVSS 4.0 Subsequent System impact metrics
+  const subConfidentialityImpact = pickField(
+    vectorData,
+    selected,
+    fallbackEntries,
+    "subConfidentialityImpact",
+    "subsequentConfidentialityImpact",
+    "subSequentSystemConfidentiality"
+  );
+  const subIntegrityImpact = pickField(
+    vectorData,
+    selected,
+    fallbackEntries,
+    "subIntegrityImpact",
+    "subsequentIntegrityImpact",
+    "subSequentSystemIntegrity"
+  );
+  const subAvailabilityImpact = pickField(
+    vectorData,
+    selected,
+    fallbackEntries,
+    "subAvailabilityImpact",
+    "subsequentAvailabilityImpact",
+    "subSequentSystemAvailability"
   );
 
   const additionalAttributes: Array<{ label: string; value: string | null }> = [];
@@ -319,12 +354,16 @@ const resolveGroup = (group: VersionGroup, metrics: CvssMetrics | null | undefin
     impactScore,
     attackVector,
     attackComplexity,
+    attackRequirements,
     privilegesRequired,
     userInteraction,
     scope,
     confidentialityImpact,
     integrityImpact,
     availabilityImpact,
+    subConfidentialityImpact,
+    subIntegrityImpact,
+    subAvailabilityImpact,
     additionalAttributes: additionalAttributes.length ? additionalAttributes : undefined,
     source: typeof selected.source === "string" ? selected.source : null,
     type: typeof selected.type === "string" ? selected.type : null,

@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { ParsedCvssMetric } from "../utils/cvss";
+import { getCvssExplanation } from "../utils/cvssExplanations";
 
 interface CvssMetricDisplayProps {
   metric: ParsedCvssMetric | null;
@@ -84,6 +86,8 @@ export const CvssMetricDisplay = ({
   showVector = true,
   showScores = true,
 }: CvssMetricDisplayProps) => {
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+
   if (!metric) {
     return (
       <div className={`cvss-card ${compact ? "compact" : ""}`}>
@@ -102,15 +106,52 @@ export const CvssMetricDisplay = ({
   const severity = metric.baseSeverity ?? "UNKNOWN";
   const severityClass = severity ? severity.toLowerCase() : "unknown";
   const severityLabel = formatEnumValue(severity);
-  const attributes: Array<{ label: string; value: string | null | undefined }> = [
-    { label: "Attack Vector", value: metric.attackVector },
-    { label: "Attack Complexity", value: metric.attackComplexity },
-    { label: "Privileges Required", value: metric.privilegesRequired },
-    { label: "User Interaction", value: metric.userInteraction },
-    { label: "Confidentiality Impact", value: metric.confidentialityImpact },
-    { label: "Integrity Impact", value: metric.integrityImpact },
-    { label: "Availability Impact", value: metric.availabilityImpact },
-  ];
+
+  // Build version-aware attribute list
+  const isV4 = metric.key === "v40" || metric.version?.startsWith("4");
+  const isV3 = metric.key === "v31" || metric.key === "v30" || metric.version?.startsWith("3");
+  const isV2 = metric.key === "v20" || metric.version?.startsWith("2");
+
+  const attributes: Array<{ label: string; value: string | null | undefined }> = [];
+
+  // Common base metrics for all versions
+  attributes.push({ label: "Attack Vector", value: metric.attackVector });
+  attributes.push({ label: "Attack Complexity", value: metric.attackComplexity });
+
+  if (isV2) {
+    // CVSS 2.0 uses Authentication instead of Privileges Required
+    attributes.push({ label: "Authentication", value: metric.privilegesRequired });
+  } else {
+    // CVSS 4.0 has Attack Requirements as a base metric
+    if (isV4) {
+      attributes.push({ label: "Attack Requirements", value: metric.attackRequirements });
+    }
+    attributes.push({ label: "Privileges Required", value: metric.privilegesRequired });
+    attributes.push({ label: "User Interaction", value: metric.userInteraction });
+  }
+
+  // Scope for CVSS 3.x
+  if (isV3) {
+    attributes.push({ label: "Scope", value: metric.scope });
+  }
+
+  // Impact metrics - label appropriately for each version
+  if (isV4) {
+    // CVSS 4.0: Vulnerable System impacts
+    attributes.push({ label: "Vuln. Confidentiality", value: metric.confidentialityImpact });
+    attributes.push({ label: "Vuln. Integrity", value: metric.integrityImpact });
+    attributes.push({ label: "Vuln. Availability", value: metric.availabilityImpact });
+    // CVSS 4.0: Subsequent System impacts
+    attributes.push({ label: "Sub. Confidentiality", value: metric.subConfidentialityImpact });
+    attributes.push({ label: "Sub. Integrity", value: metric.subIntegrityImpact });
+    attributes.push({ label: "Sub. Availability", value: metric.subAvailabilityImpact });
+  } else {
+    attributes.push({ label: "Confidentiality Impact", value: metric.confidentialityImpact });
+    attributes.push({ label: "Integrity Impact", value: metric.integrityImpact });
+    attributes.push({ label: "Availability Impact", value: metric.availabilityImpact });
+  }
+
+  // Add version-specific additional attributes
   if (metric.additionalAttributes) {
     attributes.push(...metric.additionalAttributes);
   }
@@ -144,12 +185,31 @@ export const CvssMetricDisplay = ({
                 {visibleItems.map((attribute) => {
                   const normalizedValue =
                     attribute.displayValue.toLowerCase().replace(/\s+/g, "_") || "unknown";
+                  const isSelected = selectedLabel === attribute.label;
+                  const explanation = isSelected
+                    ? getCvssExplanation(attribute.label, attribute.displayValue)
+                    : null;
                   return (
-                    <div key={attribute.label} className="cvss-badge-row">
-                      <span className="cvss-badge-label">{attribute.label}</span>
-                      <span className="cvss-badge-value" data-level={normalizedValue}>
-                        {attribute.displayValue}
-                      </span>
+                    <div key={attribute.label}>
+                      <div
+                        className={`cvss-badge-row cvss-badge-row--clickable${isSelected ? " cvss-badge-row--active" : ""}`}
+                        onClick={() => setSelectedLabel(isSelected ? null : attribute.label)}
+                      >
+                        <span className="cvss-badge-label">{attribute.label}</span>
+                        <span className="cvss-badge-value" data-level={normalizedValue}>
+                          {attribute.displayValue}
+                        </span>
+                      </div>
+                      {isSelected && explanation && (
+                        <div className="cvss-explanation">
+                          <div className="cvss-explanation__metric">{explanation.metric}</div>
+                          {explanation.value && (
+                            <div className="cvss-explanation__value">
+                              <strong>{attribute.displayValue}:</strong> {explanation.value}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
