@@ -1,9 +1,6 @@
 services:
   backend:
-    build:
-      context: ./backend
-    env_file:
-      - ./backend/.env
+    image: git.nohub.lol/rk/hecate-backend:latest
     volumes:
       - ./backend/app:/app
     ports:
@@ -13,12 +10,7 @@ services:
       - opensearch
 
   frontend:
-    build:
-      context: ./frontend
-      target: runtime
-    environment:
-      - VITE_API_BASE_URL=/api
-      - VITE_DOMAIN=${DOMAIN:-localhost}
+    image: git.nohub.lol/rk/hecate-frontend:latest
     ports:
       - "4173:4173"
     depends_on:
@@ -42,8 +34,6 @@ services:
       - discovery.type=single-node
       - plugins.security.disabled=true
       - bootstrap.memory_lock=true
-      - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=***REMOVED-OPENSEARCH-PASSWORD***
     ulimits:
       memlock:
         soft: -1
