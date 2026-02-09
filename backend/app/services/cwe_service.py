@@ -181,6 +181,16 @@ class CWEService:
 
         return results
 
+    async def get_bulk_cwe_data(self, cwe_ids: list[str]) -> dict[str, CWEDescription]:
+        """Get CWEDescription objects for multiple CWE IDs."""
+        results: dict[str, CWEDescription] = {}
+        for cwe_id in cwe_ids:
+            normalized_id = self._normalize_cwe_id(cwe_id)
+            data = await self._get_cwe_data(cwe_id)
+            if data:
+                results[normalized_id] = data
+        return results
+
     async def _ensure_repository(self) -> CWERepository:
         """Ensure repository is initialized (lazy loading)."""
         if self._repository is None:

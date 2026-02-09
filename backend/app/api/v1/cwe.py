@@ -20,23 +20,14 @@ async def get_cwe_bulk(
     if not request.cwe_ids:
         return CWEBulkResponse(cwes={})
 
-    # Get short descriptions for all CWE IDs
-    descriptions = await cwe_service.get_bulk_descriptions(request.cwe_ids, detailed=False)
+    cwe_data = await cwe_service.get_bulk_cwe_data(request.cwe_ids)
 
-    # Build response with structured CWE info
     cwes = {}
-    for cwe_id in request.cwe_ids:
-        normalized_id = cwe_service._normalize_cwe_id(cwe_id)
-        description = descriptions.get(normalized_id, "Description not available")
-
-        # Skip CWEs that couldn't be fetched (fallback message)
-        if description in ("See CWE database for details", "Description not available"):
-            continue
-
+    for normalized_id, desc in cwe_data.items():
         cwes[normalized_id] = CWEInfo(
             id=f"CWE-{normalized_id}",
-            name=description,
-            description=description,
+            name=desc.name,
+            description=desc.description if desc.description else desc.name,
         )
 
     return CWEBulkResponse(cwes=cwes)
@@ -53,13 +44,13 @@ async def get_cwe(
     Returns the CWE name and description from the MITRE CWE database.
     """
     normalized_id = cwe_service._normalize_cwe_id(cwe_id)
-    description = await cwe_service.get_description(cwe_id)
+    data = await cwe_service._get_cwe_data(cwe_id)
 
-    if description == "See CWE database for details":
+    if not data:
         raise HTTPException(status_code=404, detail=f"CWE-{normalized_id} not found")
 
     return CWEInfo(
         id=f"CWE-{normalized_id}",
-        name=description,
-        description=description,
+        name=data.name,
+        description=data.description if data.description else data.name,
     )
