@@ -1,8 +1,6 @@
 services:
   backend:
     image: git.nohub.lol/rk/hecate-backend:latest
-    volumes:
-      - ./backend/app:/app
     ports:
       - "8000:8000"
     depends_on:
@@ -30,10 +28,6 @@ services:
 
   opensearch:
     image: opensearchproject/opensearch:2
-    environment:
-      - discovery.type=single-node
-      - plugins.security.disabled=true
-      - bootstrap.memory_lock=true
     ulimits:
       memlock:
         soft: -1
