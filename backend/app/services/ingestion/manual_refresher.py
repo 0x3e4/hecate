@@ -16,6 +16,7 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.vulnerability import VulnerabilityRefreshStatus
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.circl_client import CirclClient
+from app.services.ingestion.circl_pipeline import _build_impacted_products_from_affected
 from app.services.ingestion.euvd_client import EUVDClient
 from app.services.ingestion.nvd_client import NVDClient
 from app.services.ingestion.normalizer import build_document, build_document_from_nvd
@@ -346,12 +347,21 @@ class ManualRefresher:
                 )
 
                 # Enrich with CIRCL data if vendors/products/versions are missing
+                # or if impactedProducts lacks version range info
                 circl_enriched = False
                 if document.vuln_id and CVE_PATTERN.fullmatch(document.vuln_id):
+                    impacted_has_ranges = any(
+                        any(
+                            v for v in p.get("versions", [])
+                            if "<" in v or ">" in v
+                        )
+                        for p in (document.impacted_products or [])
+                    )
                     needs_enrichment = (
                         not document.vendors
                         or not document.products
                         or not document.product_versions
+                        or not impacted_has_ranges
                     )
                     if needs_enrichment:
                         circl_enriched = await self._enrich_with_circl(
@@ -628,6 +638,8 @@ class ManualRefresher:
             "metadata": {"trigger": "manual", "provider": "CIRCL", "identifier": original_identifier},
         }
 
+        impacted_products = _build_impacted_products_from_affected(circl_record)
+
         result = await repository.upsert_from_circl(
             cve_id=canonical_id,
             vendors=vendors,
@@ -637,6 +649,7 @@ class ManualRefresher:
             product_slugs=catalog_result.product_slugs if catalog_result else [],
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
+            impacted_products=impacted_products,
             circl_raw=circl_record,
             change_context=change_context,
         )
@@ -712,6 +725,8 @@ class ManualRefresher:
                 },
             }
 
+            impacted_products = _build_impacted_products_from_affected(circl_record)
+
             result = await repository.upsert_from_circl(
                 cve_id=cve_id,
                 vendors=vendors,
@@ -721,6 +736,7 @@ class ManualRefresher:
                 product_slugs=catalog_result.product_slugs if catalog_result else [],
                 product_version_ids=catalog_result.version_ids if catalog_result else [],
                 cpes=cpes,
+                impacted_products=impacted_products,
                 circl_raw=circl_record,
                 change_context=change_context,
             )
@@ -883,23 +899,41 @@ def _extract_circl_product_info(
             if product_name:
                 products.add(product_name)
 
-                # Extract versions from versions array
+                # Extract versions from versions array (CVE 5.x format)
                 versions_list = item.get("versions") or []
                 if isinstance(versions_list, list):
                     for ver_item in versions_list:
                         if isinstance(ver_item, dict):
-                            version = ver_item.get("version")
-                            if isinstance(version, str) and version.strip() and version not in ("*", "-"):
-                                ver_str = version.strip()
-                                versions.add(ver_str)
-                                bucket = product_version_map.setdefault(product_name, set())
-                                bucket.add(ver_str)
+                            status = ver_item.get("status", "affected")
+                            if status == "unaffected":
+                                continue
 
-                                # Build CPE from affected data
-                                if vendor_name:
-                                    cpe = _build_circl_cpe(vendor_name, product_name, ver_str)
-                                    if cpe:
-                                        cpes.add(cpe)
+                            # Collect all concrete version strings for search/filtering
+                            for field in ("version", "lessThan", "lessThanOrEqual"):
+                                val = ver_item.get(field)
+                                if isinstance(val, str) and val.strip() and val.strip() not in ("*", "-", "unspecified"):
+                                    ver_str = val.strip()
+                                    versions.add(ver_str)
+                                    bucket = product_version_map.setdefault(product_name, set())
+                                    bucket.add(ver_str)
+
+                            # Also extract version strings from changes array
+                            changes = ver_item.get("changes")
+                            if isinstance(changes, list):
+                                for change in changes:
+                                    if isinstance(change, dict):
+                                        at_ver = change.get("at")
+                                        if isinstance(at_ver, str) and at_ver.strip() and at_ver.strip() not in ("*", "-", "unspecified"):
+                                            versions.add(at_ver.strip())
+                                            bucket = product_version_map.setdefault(product_name, set())
+                                            bucket.add(at_ver.strip())
+
+                            # Build CPE from affected data
+                            version = ver_item.get("version")
+                            if vendor_name and isinstance(version, str) and version.strip() and version not in ("*", "-"):
+                                cpe = _build_circl_cpe(vendor_name, product_name, version.strip())
+                                if cpe:
+                                    cpes.add(cpe)
 
     # Legacy format: vulnerable_product field (CPE URIs)
     vulnerable_products = record.get("vulnerable_product") or []

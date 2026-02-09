@@ -12,6 +12,7 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.circl_client import CirclClient
 from app.services.ingestion.job_tracker import JobTracker
+from app.utils.strings import slugify
 
 log = structlog.get_logger()
 
@@ -157,6 +158,13 @@ class CirclPipeline:
                         {"vendors": {"$in": [None, []]}},
                         {"products": {"$in": [None, []]}},
                         {"product_versions": {"$in": [None, []]}},
+                        {"impactedProducts": {"$in": [None, []]}},
+                        {
+                            # Has impactedProducts but none contain range operators
+                            "impactedProducts": {"$not": {"$elemMatch": {
+                                "versions": {"$elemMatch": {"$regex": "[<>]"}},
+                            }}},
+                        },
                     ],
                 }
             },
@@ -193,6 +201,9 @@ class CirclPipeline:
             log.debug("circl_pipeline.no_product_info", cve_id=cve_id)
             return "skipped"
 
+        # Build impactedProducts from CVE 5.x affected data
+        impacted_products = _build_impacted_products_from_affected(circl_record)
+
         # Update asset catalog
         try:
             catalog_result = await asset_catalog.record_assets(
@@ -228,6 +239,7 @@ class CirclPipeline:
             product_slugs=catalog_result.product_slugs if catalog_result else [],
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
+            impacted_products=impacted_products,
             circl_raw=circl_record,
             change_context=change_context,
         )
@@ -295,23 +307,41 @@ def _extract_product_info(
             if product_name:
                 products.add(product_name)
 
-                # Extract versions from versions array
+                # Extract versions from versions array (CVE 5.x format)
                 versions_list = item.get("versions") or []
                 if isinstance(versions_list, list):
                     for ver_item in versions_list:
                         if isinstance(ver_item, dict):
-                            version = ver_item.get("version")
-                            if isinstance(version, str) and version.strip() and version not in ("*", "-"):
-                                ver_str = version.strip()
-                                versions.add(ver_str)
-                                bucket = product_version_map.setdefault(product_name, set())
-                                bucket.add(ver_str)
+                            status = ver_item.get("status", "affected")
+                            if status == "unaffected":
+                                continue
 
-                                # Build CPE from affected data
-                                if vendor_name:
-                                    cpe = _build_cpe(vendor_name, product_name, ver_str)
-                                    if cpe:
-                                        cpes.add(cpe)
+                            # Collect all concrete version strings for search/filtering
+                            for field in ("version", "lessThan", "lessThanOrEqual"):
+                                val = ver_item.get(field)
+                                if isinstance(val, str) and val.strip() and val.strip() not in ("*", "-", "unspecified"):
+                                    ver_str = val.strip()
+                                    versions.add(ver_str)
+                                    bucket = product_version_map.setdefault(product_name, set())
+                                    bucket.add(ver_str)
+
+                            # Also extract version strings from changes array
+                            changes = ver_item.get("changes")
+                            if isinstance(changes, list):
+                                for change in changes:
+                                    if isinstance(change, dict):
+                                        at_ver = change.get("at")
+                                        if isinstance(at_ver, str) and at_ver.strip() and at_ver.strip() not in ("*", "-", "unspecified"):
+                                            versions.add(at_ver.strip())
+                                            bucket = product_version_map.setdefault(product_name, set())
+                                            bucket.add(at_ver.strip())
+
+                            # Build CPE from affected data
+                            version = ver_item.get("version")
+                            if vendor_name and isinstance(version, str) and version.strip() and version not in ("*", "-"):
+                                cpe = _build_cpe(vendor_name, product_name, version.strip())
+                                if cpe:
+                                    cpes.add(cpe)
 
     # Legacy format: vulnerable_product field (CPE URIs)
     vulnerable_products = record.get("vulnerable_product") or []
@@ -371,6 +401,134 @@ def _extract_product_info(
         sorted(versions),
         product_version_map,
         sorted(cpes),
+    )
+
+
+def _format_cve5_version_range(ver_item: dict[str, Any]) -> str | None:
+    """Format a CVE 5.x version entry into a human-readable version range string."""
+    version = ver_item.get("version")
+    less_than = ver_item.get("lessThan")
+    less_than_or_equal = ver_item.get("lessThanOrEqual")
+
+    parts: list[str] = []
+
+    # Start bound: include if it's a meaningful version (not "0" which means "from the beginning")
+    if isinstance(version, str) and version.strip() and version.strip() not in ("0", "*", "-", "unspecified"):
+        parts.append(f">= {version.strip()}")
+
+    # End bound
+    if isinstance(less_than, str) and less_than.strip() and less_than.strip() not in ("-", "unspecified"):
+        lt = less_than.strip()
+        if lt == "*":
+            # lessThan: * means "all versions from version onwards"
+            pass
+        else:
+            parts.append(f"< {lt}")
+    elif isinstance(less_than_or_equal, str) and less_than_or_equal.strip() and less_than_or_equal.strip() not in ("-", "unspecified"):
+        lte = less_than_or_equal.strip()
+        if lte == "*":
+            pass
+        else:
+            parts.append(f"<= {lte}")
+
+    # Exact version (no range bounds)
+    if not parts and isinstance(version, str) and version.strip() and version.strip() not in ("*", "-", "unspecified"):
+        return version.strip()
+
+    if not parts:
+        return None
+
+    return ", ".join(parts)
+
+
+def _build_impacted_products_from_affected(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Build impactedProducts from CVE 5.x affected[] data.
+
+    Handles version ranges (lessThan, lessThanOrEqual), exact versions,
+    status filtering, and the changes array.
+    """
+    containers = record.get("containers") or {}
+    cna = containers.get("cna") or {}
+    affected_list = cna.get("affected") or []
+
+    if not isinstance(affected_list, list):
+        return []
+
+    aggregated: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for item in affected_list:
+        if not isinstance(item, dict):
+            continue
+
+        vendor = item.get("vendor")
+        product = item.get("product")
+        vendor_name = vendor.strip() if isinstance(vendor, str) and vendor.strip() else None
+        product_name = product.strip() if isinstance(product, str) and product.strip() else None
+
+        if not vendor_name or not product_name:
+            continue
+
+        default_status = item.get("defaultStatus", "unknown")
+        vendor_slug = slugify(vendor_name) or vendor_name.lower()
+        product_slug = slugify(product_name) or product_name.lower()
+
+        key = (vendor_slug, product_slug)
+        entry = aggregated.setdefault(
+            key,
+            {
+                "vendor": {"name": vendor_name, "slug": vendor_slug},
+                "product": {"name": product_name, "slug": product_slug},
+                "versions": set(),
+                "vulnerable": default_status != "unaffected",
+                "environments": set(),
+            },
+        )
+
+        versions_list = item.get("versions") or []
+        if not isinstance(versions_list, list):
+            continue
+
+        for ver_item in versions_list:
+            if not isinstance(ver_item, dict):
+                continue
+
+            status = ver_item.get("status", "affected")
+            if status == "unaffected":
+                continue
+
+            # Format the main version range
+            formatted = _format_cve5_version_range(ver_item)
+            if formatted:
+                entry["versions"].add(formatted)
+                entry["vulnerable"] = True
+
+            # Process changes array for sub-ranges
+            changes = ver_item.get("changes")
+            if isinstance(changes, list):
+                for change in changes:
+                    if isinstance(change, dict):
+                        change_status = change.get("status")
+                        at_ver = change.get("at")
+                        if change_status == "affected" and isinstance(at_ver, str) and at_ver.strip():
+                            entry["versions"].add(f">= {at_ver.strip()}")
+                            entry["vulnerable"] = True
+
+    results: list[dict[str, Any]] = []
+    for entry in aggregated.values():
+        results.append(
+            {
+                "vendor": entry["vendor"],
+                "product": entry["product"],
+                "versions": sorted(entry["versions"], key=str.lower) if entry["versions"] else [],
+                "vulnerable": entry["vulnerable"],
+                "environments": sorted(entry["environments"], key=str.lower) if entry["environments"] else [],
+            }
+        )
+
+    return sorted(
+        results,
+        key=lambda item: (item["vendor"]["name"].lower(), item["product"]["name"].lower()),
     )
 
 
