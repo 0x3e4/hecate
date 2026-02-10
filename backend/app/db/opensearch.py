@@ -188,17 +188,17 @@ def ensure_vulnerability_index(index_name: str) -> None:
                         "dateReleased": {"type": "date"},
                     }
                 },
-                "epss_score": {"type": "float"},
+                "epssScore": {"type": "float"},
                 "sources": {
                     "type": "nested",
                     "properties": {
                         "source": {"type": "keyword"},
                     }
                 },
-                "vendor_slugs": {"type": "keyword"},
-                "product_slugs": {"type": "keyword"},
-                "product_versions": {"type": "keyword"},
-                "product_version_ids": {"type": "keyword"},
+                "vendorSlugs": {"type": "keyword"},
+                "productSlugs": {"type": "keyword"},
+                "productVersions": {"type": "keyword"},
+                "productVersionIds": {"type": "keyword"},
                 "vendors": {"type": "keyword"},
                 "products": {"type": "keyword"},
                 "cvss": {
