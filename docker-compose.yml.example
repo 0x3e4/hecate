@@ -29,19 +29,17 @@ services:
       resources:
         limits:
           memory: 2G
-    volumes:
-      - mongo-data:/data/db
-    ports:
-      - "27017:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+    volumes:
+      - mongo-data:/data/db
 
   opensearch:
-    image: opensearchproject/opensearch:2
+    image: opensearchproject/opensearch:3
     environment:
       discovery.type: single-node
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
@@ -50,17 +48,14 @@ services:
       memlock:
         soft: -1
         hard: -1
-    ports:
-      - "9200:9200"
-      - "9600:9600"
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sk https://localhost:9200 -o /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
 
 volumes:
   mongo-data:

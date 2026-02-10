@@ -19,7 +19,10 @@ async def get_client() -> AsyncIOMotorClient:
 
         if settings.mongo_tls:
             kwargs["tls"] = True
-            kwargs["tlsAllowInvalidCertificates"] = True
+            if settings.mongo_tls_cert_key_file:
+                kwargs["tlsCAFile"] = settings.mongo_tls_cert_key_file
+            else:
+                kwargs["tlsAllowInvalidCertificates"] = True
             log.info("mongo.tls_enabled")
 
         _mongo_client = AsyncIOMotorClient(settings.mongo_url, **kwargs)

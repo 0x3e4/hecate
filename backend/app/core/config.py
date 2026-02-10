@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     mongo_username: str | None = None
     mongo_password: str | None = None
     mongo_tls: bool = False
+    mongo_tls_cert_key_file: str | None = None
     mongo_db: str = "hecate"
     mongo_vulnerabilities_collection: str = "vulnerabilities"
     mongo_cpe_collection: str = "cpe_catalog"
