@@ -326,7 +326,7 @@ export interface SavedSearch {
 }
 
 export interface BackupRestoreSummary {
-  dataset: "vulnerabilities" | "cpe";
+  dataset: "vulnerabilities" | "saved_searches";
   source?: string | null;
   inserted: number;
   updated: number;

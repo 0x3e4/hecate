@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 
 
 class BackupMetadata(BaseModel):
-    dataset: Literal["vulnerabilities", "cpe"]
-    exported_at: datetime = Field(serialization_alias="exportedAt")
-    item_count: int = Field(serialization_alias="itemCount")
+    dataset: Literal["vulnerabilities", "saved_searches"]
+    exported_at: datetime = Field(alias="exportedAt")
+    item_count: int = Field(alias="itemCount")
 
     model_config = {"populate_by_name": True}
 
@@ -24,17 +24,17 @@ class VulnerabilityBackupPayload(BaseModel):
     items: list[dict[str, Any]]
 
 
-class CPEBackupMetadata(BackupMetadata):
-    dataset: Literal["cpe"] = "cpe"
+class SavedSearchBackupMetadata(BackupMetadata):
+    dataset: Literal["saved_searches"] = "saved_searches"
 
 
-class CPEBackupPayload(BaseModel):
-    metadata: CPEBackupMetadata
+class SavedSearchBackupPayload(BaseModel):
+    metadata: SavedSearchBackupMetadata
     items: list[dict[str, Any]]
 
 
 class BackupRestoreSummary(BaseModel):
-    dataset: Literal["vulnerabilities", "cpe"]
+    dataset: Literal["vulnerabilities", "saved_searches"]
     source: str | None = None
     inserted: int
     updated: int
