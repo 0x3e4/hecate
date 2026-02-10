@@ -1,4 +1,5 @@
 import asyncio
+import ssl
 from typing import Any
 
 import structlog
@@ -60,11 +61,20 @@ def get_client() -> OpenSearch:
         if settings.opensearch_username and settings.opensearch_password:
             auth = (settings.opensearch_username, settings.opensearch_password)
 
+        use_ssl = settings.opensearch_url.startswith("https")
+        ssl_context = None
+        if use_ssl:
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+
         _client = OpenSearch(
             hosts=[settings.opensearch_url],
             http_auth=auth,
-            use_ssl=settings.opensearch_url.startswith("https"),
-            verify_certs=settings.opensearch_url.startswith("https"),
+            use_ssl=use_ssl,
+            verify_certs=False,
+            ssl_context=ssl_context,
+            ssl_show_warn=False,
             timeout=10,  # 10 second timeout for queries
             max_retries=1,
             retry_on_timeout=False,
