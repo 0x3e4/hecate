@@ -410,26 +410,24 @@ def _format_cve5_version_range(ver_item: dict[str, Any]) -> str | None:
     less_than = ver_item.get("lessThan")
     less_than_or_equal = ver_item.get("lessThanOrEqual")
 
+    has_upper = False
     parts: list[str] = []
 
-    # Start bound: include if it's a meaningful version (not "0" which means "from the beginning")
-    if isinstance(version, str) and version.strip() and version.strip() not in ("0", "*", "-", "unspecified"):
-        parts.append(f">= {version.strip()}")
-
-    # End bound
+    # End bound (check first to decide whether start bound needs >= prefix)
     if isinstance(less_than, str) and less_than.strip() and less_than.strip() not in ("-", "unspecified"):
         lt = less_than.strip()
-        if lt == "*":
-            # lessThan: * means "all versions from version onwards"
-            pass
-        else:
+        if lt != "*":
             parts.append(f"< {lt}")
+            has_upper = True
     elif isinstance(less_than_or_equal, str) and less_than_or_equal.strip() and less_than_or_equal.strip() not in ("-", "unspecified"):
         lte = less_than_or_equal.strip()
-        if lte == "*":
-            pass
-        else:
+        if lte != "*":
             parts.append(f"<= {lte}")
+            has_upper = True
+
+    # Start bound: only show ">= version" when there is a range (upper bound present)
+    if has_upper and isinstance(version, str) and version.strip() and version.strip() not in ("0", "*", "-", "unspecified"):
+        parts.insert(0, f">= {version.strip()}")
 
     # Exact version (no range bounds)
     if not parts and isinstance(version, str) and version.strip() and version.strip() not in ("*", "-", "unspecified"):
