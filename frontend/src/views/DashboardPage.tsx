@@ -367,12 +367,24 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
           vuln.published,
           "datetime"
         );
-        const cvss = vuln.cvssScore != null ? vuln.cvssScore.toFixed(1) : "n/a";
         const epss =
           vuln.epssScore != null ? `${vuln.epssScore.toFixed(2)}%` : "n/a";
-        const vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
-        const products = vuln.products?.length ? vuln.products.join(", ") : "—";
-        const versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : "—";
+        const ip = vuln.impactedProducts ?? [];
+        let vendors: string;
+        let products: string;
+        let versions: string;
+        if (ip.length > 0) {
+          const vn = [...new Set(ip.map((p) => p.vendor?.name).filter(Boolean))];
+          const pn = [...new Set(ip.map((p) => p.product?.name).filter(Boolean))];
+          const vs = [...new Set(ip.flatMap((p) => p.versions ?? []).filter(Boolean))];
+          vendors = vn.length ? vn.join(", ") : "—";
+          products = pn.length ? pn.join(", ") : "—";
+          versions = vs.length ? vs.join(", ") : "—";
+        } else {
+          vendors = vuln.vendors?.length ? vuln.vendors.join(", ") : "—";
+          products = vuln.products?.length ? vuln.products.join(", ") : "—";
+          versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : "—";
+        }
         const cweList = vuln.cwes ?? [];
         const cwes = cweList.length ? cweList.join(", ") : "—";
         const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
@@ -531,12 +543,15 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
 
             <div className="vuln-meta">
               <MetaItem label="Quelle" value={vuln.source ?? "EUVD"} />
-              <MetaItem label="CVSS" value={cvss} />
-              <MetaItem label="EPSS" value={epss} />
-              <MetaItem
-                label="Exploited"
-                value={<ExploitationSummary exploited={vuln.exploited} exploitation={vuln.exploitation} />}
-              />
+              {vuln.epssScore != null && (
+                <MetaItem label="EPSS" value={epss} />
+              )}
+              {vuln.exploited != null && (
+                <MetaItem
+                  label="Exploited"
+                  value={<ExploitationSummary exploited={vuln.exploited} exploitation={vuln.exploitation} />}
+                />
+              )}
               <MetaItem label="Assigner" value={vuln.assigner ?? "—"} />
               <MetaItem
                 label="Veröffentlicht"
