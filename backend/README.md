@@ -1,6 +1,6 @@
 # Hecate Backend
 
-FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninformationen. Die Dokumentation fuer das Gesamtprojekt befindet sich in der [README im Repository-Root](../README.md).
+FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninformationen. Die Dokumentation für das Gesamtprojekt befindet sich in der [README im Repository-Root](../README.md).
 
 ## Architektur
 
@@ -18,7 +18,7 @@ app/
 │   ├── sync.py              # Manuelle Sync-Trigger
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
-│   ├── changelog.py         # Letzte Aenderungen
+│   ├── changelog.py         # Letzte Änderungen
 │   └── status.py            # Health Check
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
@@ -95,10 +95,10 @@ app/
 | Collection | Modell | Beschreibung |
 |-----------|--------|-------------|
 | `vulnerabilities` | `VulnerabilityDocument` | Schwachstellen mit CVSS, EPSS, CWEs, CPEs, Quell-Rohdaten |
-| `cwe_catalog` | `CWEEntry` | CWE-Schwaechen (7-Tage TTL-Cache) |
+| `cwe_catalog` | `CWEEntry` | CWE-Schwächen (7-Tage TTL-Cache) |
 | `capec_catalog` | `CAPECEntry` | CAPEC-Angriffsmuster (7-Tage TTL-Cache) |
-| `known_exploited_vulnerabilities` | `CisaKevEntry` | CISA KEV-Eintraege |
-| `cpe_catalog` | - | CPE-Eintraege (Vendor, Product, Version) |
+| `known_exploited_vulnerabilities` | `CisaKevEntry` | CISA KEV-Einträge |
+| `cpe_catalog` | - | CPE-Einträge (Vendor, Product, Version) |
 | `asset_vendors` | - | Vendoren mit Slug und Produkt-Anzahl |
 | `asset_products` | - | Produkte mit Vendor-Zuordnung |
 | `asset_versions` | - | Versionen mit Produkt-Zuordnung |
@@ -108,7 +108,7 @@ app/
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
-Volltext-Index mit Text-Feldern fuer Suche und `.keyword`-Feldern fuer Aggregationen. Nested `sources`-Pfad fuer Quell-Aggregationen.
+Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregationen. Nested `sources`-Pfad für Quell-Aggregationen.
 
 **Konfiguration:** `max_result_window` = 200.000, `total_fields.limit` = 2.000
 
@@ -119,19 +119,19 @@ Volltext-Index mit Text-Feldern fuer Suche und `.keyword`-Feldern fuer Aggregati
 | EUVD | ENISA REST-API | 60 min | Schwachstellen mit Change-History |
 | NVD | NIST REST-API | 10 min | CVSS, CPE-Konfigurationen |
 | KEV | CISA JSON-Feed | 60 min | Exploitation-Status |
-| CPE | NVD CPE 2.0 API | 1440 min (taeglich) | Produkt-/Versions-Katalog |
-| CWE | MITRE REST-API | 7 Tage | Schwaeche-Definitionen |
+| CPE | NVD CPE 2.0 API | 1440 min (täglich) | Produkt-/Versions-Katalog |
+| CWE | MITRE REST-API | 7 Tage | Schwäche-Definitionen |
 | CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
-| CIRCL | CIRCL REST-API | 120 min | Zusaetzliche Anreicherung |
+| CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
 
-Alle Pipelines unterstuetzen inkrementelle und initiale Syncs. Woechentliche Full-Syncs (EUVD Sonntag 2 Uhr, NVD Mittwoch 2 Uhr UTC).
+Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs (EUVD Sonntag 2 Uhr, NVD Mittwoch 2 Uhr UTC).
 
 ## Design-Patterns
 
 ### Repository-Pattern
 - `create()` Classmethod erstellt Indexes
 - `_id` = Entity-ID in MongoDB
-- `upsert()` gibt `"inserted"`, `"updated"` oder `"unchanged"` zurueck
+- `upsert()` gibt `"inserted"`, `"updated"` oder `"unchanged"` zurück
 
 ### 3-Tier-Cache (CWE, CAPEC)
 ```
@@ -154,17 +154,17 @@ Snake-Case in Python, camelCase auf dem Wire.
 
 ## Entwicklung
 
-### Abhaengigkeiten verwalten
+### Abhängigkeiten verwalten
 
-Dieses Projekt verwendet [Poetry](https://python-poetry.org/) fuer die Verwaltung von Abhaengigkeiten.
+Dieses Projekt verwendet [Poetry](https://python-poetry.org/) für die Verwaltung von Abhängigkeiten.
 
-#### Neue Abhaengigkeit hinzufuegen
+#### Neue Abhängigkeit hinzufügen
 
 ```bash
 # pyproject.toml manuell bearbeiten und dann die Lock-Datei aktualisieren:
 poetry lock
 
-# Oder direkt mit Poetry hinzufuegen:
+# Oder direkt mit Poetry hinzufügen:
 poetry add <paket-name>
 
 # Dann beide Dateien committen:
@@ -172,21 +172,21 @@ git add pyproject.toml poetry.lock
 git commit -m "Add <paket-name> dependency"
 ```
 
-#### Abhaengigkeiten aktualisieren
+#### Abhängigkeiten aktualisieren
 
 ```bash
-# Alle Abhaengigkeiten auf die neuesten kompatiblen Versionen aktualisieren:
+# Alle Abhängigkeiten auf die neuesten kompatiblen Versionen aktualisieren:
 poetry update
 
 # Ein bestimmtes Paket aktualisieren:
 poetry update <paket-name>
 
-# Dann die Aenderungen committen:
+# Dann die Änderungen committen:
 git add poetry.lock
 git commit -m "Update dependencies"
 ```
 
-#### Abhaengigkeiten lokal installieren
+#### Abhängigkeiten lokal installieren
 
 ```bash
 poetry install
@@ -211,8 +211,8 @@ docker run -p 8000:8000 --env-file .env hecate-backend
 ### Warum poetry.lock wichtig ist
 
 Die Datei `poetry.lock` stellt sicher:
-- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhaengigkeitsversionen
-- **Sicherheitspruefung** - Trivy scannt diese Datei auf Schwachstellen
+- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhängigkeitsversionen
+- **Sicherheitsprüfung** - Trivy scannt diese Datei auf Schwachstellen
 - **Supply-Chain-Sicherheit** - Fixiert exakte Versionen zur Verhinderung von Angriffen
 
 Committe `poetry.lock` immer in die Versionsverwaltung.
