@@ -1,66 +1,214 @@
 # Hecate Frontend
 
-React-Anwendung für die Visualisierung und Verwaltung von Schwachstelleninformationen. Die Dokumentation für das Gesamtprojekt befindet sich in der README im Repository-Root.
+React-SPA fuer die Visualisierung und Verwaltung von Schwachstelleninformationen. Die Dokumentation fuer das Gesamtprojekt befindet sich in der [README im Repository-Root](../README.md).
+
+## Architektur
+
+```
+src/
+├── api/                         # Axios-basierte Service-Module
+│   ├── client.ts                # Axios-Instanz (Base-URL, 60s Timeout)
+│   ├── vulnerabilities.ts       # Suche, Detail, Refresh, AI-Analyse
+│   ├── cwe.ts                   # CWE einzeln & bulk
+│   ├── capec.ts                 # CAPEC einzeln, bulk, CWE->CAPEC
+│   ├── stats.ts                 # Statistik-Aggregationen
+│   ├── audit.ts                 # Ingestion-Logs
+│   ├── changelog.ts             # Letzte Aenderungen
+│   ├── sync.ts                  # Sync-Trigger & Status
+│   ├── backup.ts                # Export/Import (10 min Timeout)
+│   ├── assets.ts                # Vendor/Produkt/Version-Katalog
+│   └── savedSearches.ts         # Gespeicherte Suchen (CRUD)
+├── views/                       # Seitenkomponenten
+│   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
+│   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
+│   ├── VulnerabilityDetailPage.tsx # Vollstaendige Detailansicht
+│   ├── QueryBuilderPage.tsx     # Interaktiver DQL-Editor
+│   ├── AIAnalysePage.tsx        # KI-Analyse (einzeln & Batch)
+│   ├── StatsPage.tsx            # Statistik-Dashboard
+│   ├── AuditLogPage.tsx         # Ingestion-Protokolle
+│   ├── ChangelogPage.tsx        # Letzte Aenderungen
+│   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
+├── components/                  # Wiederverwendbare Komponenten
+│   ├── AIAnalyse/
+│   │   ├── BatchAnalysisDisplay.tsx   # Batch-Ergebnisanzeige (Markdown)
+│   │   └── VulnerabilitySelector.tsx  # Multi-Select fuer Batch-Analyse
+│   ├── QueryBuilder/
+│   │   ├── QueryEditor.tsx      # DQL-Texteditor mit Operator-Buttons
+│   │   ├── FieldBrowser.tsx     # DQL-Feld-Browser nach Kategorien
+│   │   ├── FieldItem.tsx        # Einzelnes Feld mit Typ-Info
+│   │   └── FieldAggregation.tsx # Feld-Wert-Aggregation (Top Values)
+│   ├── AssetFilters.tsx         # Async Multi-Select (Vendor/Produkt/Version)
+│   ├── CweList.tsx              # CWE-Anzeige mit MITRE-Links
+│   ├── CapecList.tsx            # CAPEC-Angriffsmuster mit Details
+│   ├── CvssMetricDisplay.tsx    # CVSS-Score-Visualisierung (v2/3/4)
+│   ├── ExploitationSummary.tsx  # KEV-Exploitation-Status
+│   ├── ReservedBadge.tsx        # Badge fuer reservierte CVEs
+│   ├── Skeleton.tsx             # Lade-Platzhalter
+│   └── ScrollToTop.tsx          # Scroll-to-Top Button
+├── hooks/
+│   ├── usePersistentState.ts    # localStorage-gestuetzter State
+│   └── useSavedSearches.tsx     # Context-Provider fuer gespeicherte Suchen
+├── ui/                          # Layout-Komponenten
+│   ├── AppLayout.tsx            # Root-Layout (Sidebar + Header + Content)
+│   ├── Header.tsx               # Top-Navigation
+│   └── Sidebar.tsx              # Seitennavigation mit gespeicherten Suchen
+├── utils/
+│   ├── cvss.ts                  # CVSS-Metrik-Parsing & Sortierung
+│   ├── cvssExplanations.ts      # CVSS-Metrik-Erklaerungen
+│   ├── dateFormat.ts            # Zeitzonen-bewusste Formatierung (de-DE)
+│   └── published.ts             # Veroeffentlichungsdatum-Helper
+├── constants/
+│   └── dqlFields.ts             # DQL-Feld-Definitionen & Kategorien
+├── config.ts                    # Umgebungs-Konfiguration (Vite Env)
+├── router.tsx                   # React Router v7 Routen
+├── types.ts                     # TypeScript-Interfaces
+├── styles.css                   # Globales Dark-Theme CSS
+└── main.tsx                     # React-Einstiegspunkt
+```
+
+## Seiten & Routing
+
+| Route | Komponente | Beschreibung |
+|-------|-----------|-------------|
+| `/` | `DashboardPage` | Startseite mit Schwachstellensuche und aktuellen Eintraegen |
+| `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
+| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History |
+| `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
+| `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via Feature-Flag) |
+| `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
+| `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
+| `/changelog` | `ChangelogPage` | Letzte Aenderungen an Schwachstellen |
+| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
+
+Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
+
+## State-Management
+
+Kein Redux/Zustand - basiert auf Reacts eingebauten Mechanismen:
+
+| Methode | Verwendung |
+|---------|-----------|
+| **Context API** | `SavedSearchesContext` - globale gespeicherte Suchen |
+| **useState** | Lokaler Komponentenstate (Loading, Error, Daten) |
+| **URL-Parameter** | Filter, Pagination, Query-Modus (bookmarkbar) |
+| **localStorage** | Sidebar-Zustand, Asset-Filter-Auswahl (`usePersistentState`) |
+
+### Datenlademuster
+
+```
+useEffect → setLoading(true) → API-Aufruf → setData/setError → setLoading(false)
+```
+
+Skeleton-Platzhalter waehrend des Ladens.
+
+## Styling
+
+- **Custom CSS** in `styles.css` (~800+ Zeilen), kein CSS-Framework
+- **Dark Theme** mit CSS-Variablen (`#080a12` Hintergrund, `#f5f7fa` Text)
+- **Severity-Farben:** Critical (`#ff6b6b`), High (`#ffa3a3`), Medium (`#ffcc66`), Low (`#8fffb0`)
+- **Responsive Design** mit CSS Grid/Flexbox, mobile Sidebar als Overlay
+- Einige Komponenten verwenden inline `style`-Props fuer dynamische Werte
+
+## Lokalisierung
+
+- **Sprache:** Deutsch (hardcoded, kein i18n-Framework)
+- **Datumsformat:** `DD.MM.YYYY HH:mm` (de-DE Locale)
+- **Zeitzone:** Konfigurierbar via `VITE_TIMEZONE` (Default: `Europe/Vienna`)
+
+## Konfiguration
+
+Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
+
+| Variable | Default | Beschreibung |
+|----------|---------|-------------|
+| `VITE_API_BASE_URL` | `/api` | API-Basis-Pfad |
+| `VITE_TIMEZONE` | `UTC` | Zeitzone fuer Datumsanzeige |
+| `VITE_AI_FEATURES_ENABLED` | `true` | KI-Analyse aktivieren/deaktivieren |
+| `VITE_DOMAIN` | `hecate.pw` | Domain fuer Share-URLs |
 
 ## Entwicklung
 
-### Abhängigkeiten verwalten
+### Abhaengigkeiten verwalten
 
-Dieses Projekt verwendet [npm](https://www.npmjs.com/) für die Verwaltung von Abhängigkeiten.
+Dieses Projekt verwendet [npm](https://www.npmjs.com/) fuer die Verwaltung von Abhaengigkeiten.
 
-#### Neue Abhängigkeit hinzufügen
+#### Neue Abhaengigkeit hinzufuegen
 
 ```bash
-# Abhängigkeit hinzufügen (package-lock.json wird automatisch aktualisiert):
-docker compose run --rm frontend-build npm install <paket-name>
+# Abhaengigkeit hinzufuegen:
+npm install <paket-name>
 
-# Entwicklungs-Abhängigkeit hinzufügen:
-docker compose run --rm frontend-build npm install --save-dev <paket-name>
+# Entwicklungs-Abhaengigkeit:
+npm install --save-dev <paket-name>
 
 # Dann beide Dateien committen:
 git add package.json package-lock.json
 git commit -m "Add <paket-name> dependency"
 ```
 
-#### Abhängigkeiten aktualisieren
+#### Abhaengigkeiten aktualisieren
 
 ```bash
-# Alle Abhängigkeiten auf die neuesten Versionen aktualisieren:
-docker compose run --rm frontend-build npm update
+# Alle Abhaengigkeiten aktualisieren:
+npm update
 
 # Ein bestimmtes Paket aktualisieren:
-docker compose run --rm frontend-build npm update <paket-name>
+npm update <paket-name>
 
-# Dann die Änderungen committen:
+# Dann committen:
 git add package-lock.json
 git commit -m "Update dependencies"
-```
-
-#### Abhängigkeiten lokal installieren
-
-```bash
-# Falls Node.js lokal installiert ist:
-npm install
-
-# Oder mit Docker:
-docker compose run --rm frontend-build npm install
 ```
 
 #### Entwicklungsserver starten
 
 ```bash
-# Mit Docker Compose:
-docker compose up frontend-build
-
-# Oder lokal:
-npm run dev
+npm install && npm run dev
 ```
+
+Dev-Server laeuft auf Port 3000, proxied `/api` automatisch an `http://backend:8000`.
+
+### Linting
+
+```bash
+npm run lint
+```
+
+### Docker Build
+
+Multi-Stage Build (dev -> build -> runtime) basierend auf `node:24-alpine`. Nutzt `serve` fuer statische Auslieferung auf Port 4173.
+
+```bash
+docker build -t hecate-frontend ./frontend
+docker run -p 4173:4173 hecate-frontend
+```
+
+### Code-Splitting
+
+Manuelle Chunk-Aufteilung in `vite/chunk-split.ts`:
+- `react-select` -> eigener Chunk
+- `react-icons` -> eigener Chunk
+- `axios` -> eigener Chunk
+- Restliche `node_modules` -> `vendor` Chunk
 
 ### Warum package-lock.json wichtig ist
 
 Die Datei `package-lock.json` stellt sicher:
-- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhängigkeitsversionen
-- **Sicherheitsprüfung** - Trivy scannt diese Datei auf Schwachstellen
+- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhaengigkeitsversionen
+- **Sicherheitspruefung** - Trivy scannt diese Datei auf Schwachstellen
 - **Supply-Chain-Sicherheit** - Fixiert exakte Versionen zur Verhinderung von Angriffen
 
 Committe `package-lock.json` immer in die Versionsverwaltung.
+
+## Technologie-Stack
+
+| Technologie | Version | Zweck |
+|------------|---------|-------|
+| React | 19.2 | UI-Bibliothek |
+| TypeScript | 5.9 | Typsicherheit |
+| Vite | 7.3 | Build-Tool & Dev-Server |
+| React Router | 7.13 | Client-seitiges Routing |
+| Axios | 1.13 | HTTP-Client |
+| react-markdown | 10.1 | Markdown-Rendering (AI-Zusammenfassungen) |
+| react-icons | 5.5 | Icon-Bibliothek (Lucide) |
+| react-select | 5.10 | Async Multi-Select Dropdowns |
