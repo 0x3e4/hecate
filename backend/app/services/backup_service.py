@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,16 +9,15 @@ import structlog
 from pydantic import ValidationError
 
 from app.models.vulnerability import VulnerabilityDocument
-from app.repositories.cpe_repository import CPERepository
+from app.repositories.saved_search_repository import SavedSearchRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.backup import (
     BackupRestoreSummary,
-    CPEBackupMetadata,
-    CPEBackupPayload,
+    SavedSearchBackupMetadata,
+    SavedSearchBackupPayload,
     VulnerabilityBackupMetadata,
     VulnerabilityBackupPayload,
 )
-from app.schemas.cpe import CPEEntry
 
 
 log = structlog.get_logger()
@@ -25,23 +26,41 @@ VULNERABILITY_SOURCES = {"NVD", "EUVD"}
 
 
 class BackupService:
-    def __init__(self, vulnerability_repo: VulnerabilityRepository, cpe_repo: CPERepository) -> None:
+    def __init__(
+        self,
+        vulnerability_repo: VulnerabilityRepository,
+        saved_search_repo: SavedSearchRepository,
+    ) -> None:
         self.vulnerability_repo = vulnerability_repo
-        self.cpe_repo = cpe_repo
+        self.saved_search_repo = saved_search_repo
 
-    async def export_vulnerabilities(self, source: str) -> VulnerabilityBackupPayload:
+    async def stream_vulnerability_export(self, source: str) -> AsyncIterator[str]:
+        """Stream vulnerability backup as JSON chunks to avoid timeouts on large datasets."""
         normalized_source = source.upper()
 
-        # Support "ALL" to export both NVD and EUVD combined
         if normalized_source == "ALL":
-            filter_query = {"source": {"$in": list(VULNERABILITY_SOURCES)}}
+            filter_query: dict[str, Any] = {"source": {"$in": list(VULNERABILITY_SOURCES)}}
         elif normalized_source in VULNERABILITY_SOURCES:
             filter_query = {"source": normalized_source}
         else:
             raise ValueError(f"Unsupported vulnerability source '{source}'. Expected one of {sorted(VULNERABILITY_SOURCES)} or 'ALL'.")
 
+        item_count = await self.vulnerability_repo.collection.count_documents(filter_query)
+
+        metadata = VulnerabilityBackupMetadata(
+            source=normalized_source,
+            exported_at=datetime.now(tz=UTC),
+            item_count=item_count,
+        )
+        metadata_json = json.dumps(
+            metadata.model_dump(mode="json", by_alias=True),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        yield f'{{"metadata":{metadata_json},"items":['
+
         cursor = self.vulnerability_repo.collection.find(filter_query)
-        items: list[dict[str, Any]] = []
+        first = True
         async for raw_doc in cursor:
             payload = dict(raw_doc)
             payload.pop("_id", None)
@@ -55,14 +74,19 @@ class BackupService:
                     identifier=payload.get("vuln_id") or payload.get("source_id"),
                 )
                 continue
-            items.append(document.model_dump(mode="python"))
 
-        metadata = VulnerabilityBackupMetadata(
-            source=normalized_source,
-            exported_at=datetime.now(tz=UTC),
-            item_count=len(items),
-        )
-        return VulnerabilityBackupPayload(metadata=metadata, items=items)
+            item_json = json.dumps(
+                document.model_dump(mode="json"),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            if first:
+                yield item_json
+                first = False
+            else:
+                yield f",{item_json}"
+
+        yield "]}"
 
     async def restore_vulnerabilities(self, payload: VulnerabilityBackupPayload) -> BackupRestoreSummary:
         normalized_source = payload.metadata.source.upper()
@@ -83,8 +107,6 @@ class BackupService:
                 skipped += 1
                 continue
 
-            # If backup source is "ALL", accept any valid source (NVD or EUVD)
-            # Otherwise, ensure the document source matches the backup source
             if normalized_source != "ALL" and document.source.upper() != normalized_source:
                 log.warning(
                     "backup.restore_vulnerability_source_mismatch",
@@ -95,7 +117,6 @@ class BackupService:
                 skipped += 1
                 continue
 
-            # Validate document source is valid
             if normalized_source == "ALL" and document.source.upper() not in VULNERABILITY_SOURCES:
                 log.warning(
                     "backup.restore_vulnerability_invalid_source",
@@ -142,64 +163,62 @@ class BackupService:
             total=total,
         )
 
-    async def export_cpe(self) -> CPEBackupPayload:
-        cursor = self.cpe_repo.collection.find({})
+    async def export_saved_searches(self) -> SavedSearchBackupPayload:
+        documents = await self.saved_search_repo.list_all()
         items: list[dict[str, Any]] = []
-        async for raw_doc in cursor:
-            payload = dict(raw_doc)
-            payload.pop("_id", None)
-            try:
-                entry = CPEEntry.model_validate(payload)
-            except ValidationError as exc:
-                log.warning("backup.skip_invalid_cpe", error=str(exc), identifier=payload.get("cpeName"))
-                continue
-            items.append(entry.model_dump(mode="python"))
+        for doc in documents:
+            item = {
+                "name": doc.get("name", ""),
+                "queryParams": doc.get("queryParams", ""),
+                "dqlQuery": doc.get("dqlQuery"),
+                "createdAt": doc.get("createdAt", datetime.now(tz=UTC)).isoformat() if isinstance(doc.get("createdAt"), datetime) else doc.get("createdAt"),
+                "updatedAt": doc.get("updatedAt", datetime.now(tz=UTC)).isoformat() if isinstance(doc.get("updatedAt"), datetime) else doc.get("updatedAt"),
+            }
+            items.append(item)
 
-        metadata = CPEBackupMetadata(
+        metadata = SavedSearchBackupMetadata(
             exported_at=datetime.now(tz=UTC),
             item_count=len(items),
         )
-        return CPEBackupPayload(metadata=metadata, items=items)
+        return SavedSearchBackupPayload(metadata=metadata, items=items)
 
-    async def restore_cpe(self, payload: CPEBackupPayload) -> BackupRestoreSummary:
+    async def restore_saved_searches(self, payload: SavedSearchBackupPayload) -> BackupRestoreSummary:
         inserted = 0
-        updated = 0
         skipped = 0
 
         for item in payload.items:
-            try:
-                entry = CPEEntry.model_validate(item)
-            except ValidationError as exc:
-                log.warning("backup.restore_cpe_validation_failed", error=str(exc), identifier=item.get("cpe_name"))
+            name = item.get("name", "").strip()
+            query_params = item.get("queryParams", "").strip()
+            dql_query = item.get("dqlQuery")
+
+            if not name:
+                log.warning("backup.restore_saved_search_missing_name", item=item)
                 skipped += 1
                 continue
 
-            document = entry.model_dump(by_alias=True, exclude_none=True)
-
             try:
-                was_inserted = await self.cpe_repo.upsert(document)
-            except Exception as exc:  # noqa: BLE001
-                log.error("backup.restore_cpe_failed", error=str(exc), identifier=entry.cpe_name)
-                skipped += 1
-                continue
-
-            if was_inserted:
+                await self.saved_search_repo.insert(
+                    name=name,
+                    query_params=query_params,
+                    dql_query=dql_query.strip() if isinstance(dql_query, str) else None,
+                )
                 inserted += 1
-            else:
-                updated += 1
+            except Exception as exc:  # noqa: BLE001
+                log.error("backup.restore_saved_search_failed", error=str(exc), name=name)
+                skipped += 1
+                continue
 
-        total = inserted + updated
         return BackupRestoreSummary(
-            dataset="cpe",
+            dataset="saved_searches",
             source=None,
             inserted=inserted,
-            updated=updated,
+            updated=0,
             skipped=skipped,
-            total=total,
+            total=inserted,
         )
 
 
 async def get_backup_service() -> BackupService:
     vulnerability_repo = await VulnerabilityRepository.create()
-    cpe_repo = await CPERepository.create()
-    return BackupService(vulnerability_repo, cpe_repo)
+    saved_search_repo = await SavedSearchRepository.create()
+    return BackupService(vulnerability_repo, saved_search_repo)

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
 import {
-  exportCpeBackup,
+  exportSavedSearchesBackup,
   exportVulnerabilityBackup,
-  restoreCpeBackup,
+  restoreSavedSearchesBackup,
   restoreVulnerabilityBackup,
   type VulnerabilitySource
 } from "../api/backup";
@@ -22,7 +22,8 @@ import type { SavedSearch, SyncState } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
 type BackupDataset =
-  | { id: "VULNERABILITIES" | "CPE"; label: string; description: string; type: "vuln" | "cpe"; source?: VulnerabilitySource }
+  | { id: "VULNERABILITIES"; label: string; description: string; type: "vuln"; source: VulnerabilitySource }
+  | { id: "SAVED_SEARCHES"; label: string; description: string; type: "saved_searches" }
 
 const BACKUP_DATASETS: BackupDataset[] = [
   {
@@ -33,22 +34,20 @@ const BACKUP_DATASETS: BackupDataset[] = [
     source: "ALL"
   },
   {
-    id: "CPE",
-    label: "CPE",
-    description: "Sicherung aller NVD CPE Einträge",
-    type: "cpe"
+    id: "SAVED_SEARCHES",
+    label: "Gespeicherte Suchen",
+    description: "Sicherung aller gespeicherten Suchfilter",
+    type: "saved_searches"
   }
 ];
 
 export const SystemPage = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
-  const { savedSearches, loading: savedSearchLoading, removeSavedSearch } = useSavedSearches();
+  const { savedSearches, loading: savedSearchLoading, removeSavedSearch, refresh: refreshSavedSearches } = useSavedSearches();
 
   const [syncStates, setSyncStates] = useState<SyncState[]>([]);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -56,29 +55,19 @@ export const SystemPage = () => {
   const [expandedSyncId, setExpandedSyncId] = useState<string | null>(null);
   const syncIntervalRef = useRef<number | null>(null);
 
-  const beginAction = (datasetId: string) => {
-    setBusyId(datasetId);
-    setStatusMessage(null);
-    setErrorMessage(null);
-  };
-
-  const finishAction = () => {
-    setBusyId(null);
-  };
-
   const handleExport = async (dataset: BackupDataset) => {
-    beginAction(dataset.id);
+    setBusyId(dataset.id);
     try {
       const response =
         dataset.type === "vuln"
           ? await exportVulnerabilityBackup(dataset.source)
-          : await exportCpeBackup();
+          : await exportSavedSearchesBackup();
 
       const timestamp = new Date().toISOString().replace(/[:]/g, "").replace(/\..+/, "");
       const fallbackName =
         dataset.type === "vuln"
           ? `${dataset.source.toLowerCase()}-backup-${timestamp}.json`
-          : `cpe-backup-${timestamp}.json`;
+          : `saved-searches-backup-${timestamp}.json`;
       const filename = response.filename ?? fallbackName;
 
       const url = URL.createObjectURL(response.data);
@@ -90,12 +79,12 @@ export const SystemPage = () => {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
 
-      setStatusMessage(`${dataset.label}: Sicherung bereitgestellt (${filename}).`);
+      showToast(`${dataset.label}: Sicherung bereitgestellt (${filename}).`, "success");
     } catch (error) {
       console.error("Backup export failed", error);
-      setErrorMessage(`Backup für ${dataset.label} konnte nicht erstellt werden.`);
+      showToast(`Backup für ${dataset.label} konnte nicht erstellt werden.`, "error");
     } finally {
-      finishAction();
+      setBusyId(null);
     }
   };
 
@@ -142,9 +131,8 @@ export const SystemPage = () => {
   }, []);
 
   const handleRestore = async (dataset: BackupDataset, file: File) => {
-    beginAction(dataset.id);
+    setBusyId(dataset.id);
     try {
-      setStatusMessage(`${dataset.label}: Wiederherstellung gestartet …`);
       const fileContent = await file.text();
       const payload = JSON.parse(fileContent);
 
@@ -162,31 +150,31 @@ export const SystemPage = () => {
         if (typeof meta.source !== "string") {
           throw new Error("Backup enthält keine Source-Information.");
         }
-        // Accept ALL, NVD, or EUVD backups for the unified vulnerabilities restore
         const backupSource = meta.source.toUpperCase();
         if (!["ALL", "NVD", "EUVD"].includes(backupSource)) {
           throw new Error(`Ungültige Backup-Quelle: ${meta.source}.`);
         }
-        // Always restore to "ALL" endpoint to accept any vulnerability backup
         summary = await restoreVulnerabilityBackup("ALL", payload);
       } else {
         const meta = payload.metadata as { dataset?: string };
-        if (meta.dataset?.toLowerCase() !== "cpe") {
-          throw new Error("Backup enthält keine CPE-Daten.");
+        if (meta.dataset !== "saved_searches") {
+          throw new Error("Backup enthält keine gespeicherten Suchen.");
         }
-        summary = await restoreCpeBackup(payload);
+        summary = await restoreSavedSearchesBackup(payload);
+        void refreshSavedSearches();
       }
 
-      setStatusMessage(
-        `${dataset.label}: ${summary.inserted} neu, ${summary.updated} aktualisiert, ${summary.skipped} übersprungen.`
+      showToast(
+        `${dataset.label}: ${summary.inserted} neu, ${summary.updated} aktualisiert, ${summary.skipped} übersprungen.`,
+        "success"
       );
     } catch (error) {
       console.error("Backup restore failed", error);
       const message =
         error instanceof Error ? error.message : `Wiederherstellung für ${dataset.label} ist fehlgeschlagen.`;
-      setErrorMessage(message);
+      showToast(message, "error");
     } finally {
-      finishAction();
+      setBusyId(null);
     }
   };
 
@@ -460,12 +448,6 @@ export const SystemPage = () => {
         <p className="muted">
           Lade Sicherungen der Datenquellen herunter oder spiele zuvor exportierte Backups wieder ein.
         </p>
-        {statusMessage && (
-          <p style={{ marginTop: "0.5rem", color: "#8fffb0", fontWeight: 500 }}>{statusMessage}</p>
-        )}
-        {errorMessage && (
-          <p style={{ marginTop: "0.5rem", color: "#ffa3a3", fontWeight: 500 }}>{errorMessage}</p>
-        )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "1rem" }}>
           {BACKUP_DATASETS.map((dataset) => (

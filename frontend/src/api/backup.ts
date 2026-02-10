@@ -42,16 +42,19 @@ export const restoreVulnerabilityBackup = async (
   return response.data;
 };
 
-export const exportCpeBackup = async (): Promise<ExportResponse> => {
-  const response = await api.get<Blob>("/v1/backup/cpe/export", { responseType: "blob", timeout: BACKUP_TIMEOUT });
+export const exportSavedSearchesBackup = async (): Promise<ExportResponse> => {
+  const response = await api.get<Blob>("/v1/backup/saved-searches/export", {
+    responseType: "blob",
+    timeout: BACKUP_TIMEOUT
+  });
   return {
     data: response.data,
     filename: extractFilename(response.headers["content-disposition"])
   };
 };
 
-export const restoreCpeBackup = async (payload: unknown): Promise<BackupRestoreSummary> => {
-  const response = await api.post<BackupRestoreSummary>("/v1/backup/cpe/restore", payload, {
+export const restoreSavedSearchesBackup = async (payload: unknown): Promise<BackupRestoreSummary> => {
+  const response = await api.post<BackupRestoreSummary>("/v1/backup/saved-searches/restore", payload, {
     timeout: BACKUP_TIMEOUT
   });
   return response.data;
