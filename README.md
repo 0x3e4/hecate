@@ -1,6 +1,6 @@
 # Hecate
 
-KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Anwendung aggregiert Daten aus EUVD, NVD, CISA KEV, CIRCL, CWE und CAPEC, reichert sie mit KI-Unterstuetzung an und macht sie ueber ein React-Frontend sowie eine REST-API nutzbar.
+KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Anwendung aggregiert Daten aus EUVD, NVD, CISA KEV, CIRCL, CWE und CAPEC, reichert sie mit KI-Unterstützung an und macht sie über ein React-Frontend sowie eine REST-API nutzbar.
 
 ## Architektur
 
@@ -41,7 +41,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 │   │   │   ├── scheduling/   # APScheduler Job-Verwaltung
 │   │   │   └── http/         # HTTP Rate-Limiting
 │   │   └── utils/        # String- und Request-Hilfsfunktionen
-│   ├── pyproject.toml    # Python-Abhaengigkeiten (Poetry)
+│   ├── pyproject.toml    # Python-Abhängigkeiten (Poetry)
 │   └── Dockerfile        # Multi-Stage Build (python:3.13-slim)
 ├── frontend/             # React SPA
 │   ├── src/
@@ -54,7 +54,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 │   │   ├── router.tsx    # React Router v7 Konfiguration
 │   │   ├── types.ts      # TypeScript-Interfaces
 │   │   └── styles.css    # Globales Dark-Theme CSS
-│   ├── package.json      # Node-Abhaengigkeiten (npm)
+│   ├── package.json      # Node-Abhängigkeiten (npm)
 │   └── Dockerfile        # Multi-Stage Build (node:24-alpine)
 ├── docs/                 # Architektur- und Konzeptdokumente
 ├── .gitea/workflows/     # CI/CD (Build, Grype-Scan, SonarQube, Trivy)
@@ -67,14 +67,14 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 ### Datenaggregation & Automatisierung
 - **7 Datenquellen:** EUVD, NVD, CISA KEV, CPE, CWE (MITRE API), CAPEC (MITRE XML), CIRCL
 - **APScheduler** steuert periodische Syncs mit konfigurierbaren Intervallen und Bootstrap-on-Startup
-- **Normalisierung:** Alle Quellen werden in ein einheitliches `VulnerabilityDocument`-Schema ueberfuehrt
+- **Normalisierung:** Alle Quellen werden in ein einheitliches `VulnerabilityDocument`-Schema überführt
 - **Asset-Katalog:** Vendoren, Produkte und Versionen werden aus ingestierten Daten extrahiert
-- **Change-Tracking:** Aenderungshistorien fuer Schwachstellen, vollstaendiger Audit-Trail
+- **Change-Tracking:** Änderungshistorien für Schwachstellen, vollständiger Audit-Trail
 
 ### Suche & Analyse
-- **OpenSearch-Volltext** mit DQL-Unterstuetzung (Domain-Specific Query Language) und Relevanzsortierung
-- **KI-Assessments** ueber OpenAI, Anthropic oder Google Gemini (einzeln oder Batch)
-- **CVSS-Metriken** normalisiert ueber v2.0, v3.0, v3.1 und v4.0
+- **OpenSearch-Volltext** mit DQL-Unterstützung (Domain-Specific Query Language) und Relevanzsortierung
+- **KI-Assessments** über OpenAI, Anthropic oder Google Gemini (einzeln oder Batch)
+- **CVSS-Metriken** normalisiert über v2.0, v3.0, v3.1 und v4.0
 - **CWE/CAPEC-Anreicherung** mit 3-Tier-Cache (Memory -> MongoDB -> externe Quelle, 7 Tage TTL)
 - **EPSS-Scores** und KEV-Exploitation-Status
 
@@ -83,19 +83,19 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 |---------|-------------|
 | Dashboard | Schwachstellensuche mit CVSS, EPSS, Exploitation-Status |
 | Schwachstellen-Liste | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
-| Detail-Seite | Vollstaendige Schwachstellendetails mit AI-Assessments, Referenzen, Change-History |
+| Detail-Seite | Vollständige Schwachstellendetails mit AI-Assessments, Referenzen, Change-History |
 | Query Builder | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
-| KI-Analyse | Einzel- und Batch-Analyse ueber verschiedene AI-Provider |
+| KI-Analyse | Einzel- und Batch-Analyse über verschiedene AI-Provider |
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
-| Changelog | Letzte Aenderungen an Schwachstellen (erstellt/aktualisiert) |
+| Changelog | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | System | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
 
 ### Betrieb
-- **Backup & Restore** fuer Schwachstellen (EUVD/NVD/Alle) und gespeicherte Suchen
+- **Backup & Restore** für Schwachstellen (EUVD/NVD/Alle) und gespeicherte Suchen
 - **Gespeicherte Suchen** mit Sidebar-Integration und Audit-Trail
-- **Statistiken** mit OpenSearch-Aggregationen (Mongo-Fallback bei Ausfaellen)
-- **Manuelle Sync-Trigger** fuer alle 7 Datenquellen ueber die API
+- **Statistiken** mit OpenSearch-Aggregationen (Mongo-Fallback bei Ausfällen)
+- **Manuelle Sync-Trigger** für alle 7 Datenquellen über die API
 
 ## Schnellstart (Docker Compose)
 
@@ -109,7 +109,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 cp .env.example .env
 cp docker-compose.yml.example docker-compose.yml
 
-# 2. .env anpassen (Mongo-Passwort, OpenSearch-Passwort, API-Schluessel etc.)
+# 2. .env anpassen (Mongo-Passwort, OpenSearch-Passwort, API-Schlüssel etc.)
 nano .env
 
 # 3. Stack starten
@@ -140,7 +140,7 @@ npm run dev   # Dev-Server auf Port 3000, proxied /api -> Backend
 
 Vite proxied `/api`-Anfragen im Dev-Modus automatisch an `http://backend:8000` (Docker) bzw. `http://localhost:8000` (lokal).
 
-## API-Ueberblick
+## API-Überblick
 
 ### Status
 - `GET /api/v1/status/health` - Liveness Probe
@@ -165,7 +165,7 @@ Vite proxied `/api`-Anfragen im Dev-Modus automatisch an `http://backend:8000` (
 - `GET/POST/DELETE /api/v1/saved-searches` - Gespeicherte Suchen
 - `GET /api/v1/stats/overview` - Statistik-Aggregationen
 - `GET /api/v1/audit/ingestion` - Audit-Log
-- `GET /api/v1/changelog` - Letzte Aenderungen
+- `GET /api/v1/changelog` - Letzte Änderungen
 - `POST /api/v1/sync/trigger/{job}` - Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl)
 - `GET/POST /api/v1/backup/...` - Export/Import
 
@@ -181,7 +181,7 @@ poetry run python -m app.cli sync-kev [--initial]
 
 ## Konfiguration
 
-Alle Parameter werden ueber Umgebungsvariablen gesteuert (siehe `.env.example`):
+Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 
 | Kategorie | Wichtige Variablen |
 |-----------|-------------------|

@@ -1,6 +1,6 @@
 # Hecate Frontend
 
-React-SPA fuer die Visualisierung und Verwaltung von Schwachstelleninformationen. Die Dokumentation fuer das Gesamtprojekt befindet sich in der [README im Repository-Root](../README.md).
+React-SPA für die Visualisierung und Verwaltung von Schwachstelleninformationen. Die Dokumentation für das Gesamtprojekt befindet sich in der [README im Repository-Root](../README.md).
 
 ## Architektur
 
@@ -13,7 +13,7 @@ src/
 │   ├── capec.ts                 # CAPEC einzeln, bulk, CWE->CAPEC
 │   ├── stats.ts                 # Statistik-Aggregationen
 │   ├── audit.ts                 # Ingestion-Logs
-│   ├── changelog.ts             # Letzte Aenderungen
+│   ├── changelog.ts             # Letzte Änderungen
 │   ├── sync.ts                  # Sync-Trigger & Status
 │   ├── backup.ts                # Export/Import (10 min Timeout)
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
@@ -21,17 +21,17 @@ src/
 ├── views/                       # Seitenkomponenten
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
-│   ├── VulnerabilityDetailPage.tsx # Vollstaendige Detailansicht
+│   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
 │   ├── QueryBuilderPage.tsx     # Interaktiver DQL-Editor
 │   ├── AIAnalysePage.tsx        # KI-Analyse (einzeln & Batch)
 │   ├── StatsPage.tsx            # Statistik-Dashboard
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
-│   ├── ChangelogPage.tsx        # Letzte Aenderungen
+│   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
 │   │   ├── BatchAnalysisDisplay.tsx   # Batch-Ergebnisanzeige (Markdown)
-│   │   └── VulnerabilitySelector.tsx  # Multi-Select fuer Batch-Analyse
+│   │   └── VulnerabilitySelector.tsx  # Multi-Select für Batch-Analyse
 │   ├── QueryBuilder/
 │   │   ├── QueryEditor.tsx      # DQL-Texteditor mit Operator-Buttons
 │   │   ├── FieldBrowser.tsx     # DQL-Feld-Browser nach Kategorien
@@ -42,21 +42,21 @@ src/
 │   ├── CapecList.tsx            # CAPEC-Angriffsmuster mit Details
 │   ├── CvssMetricDisplay.tsx    # CVSS-Score-Visualisierung (v2/3/4)
 │   ├── ExploitationSummary.tsx  # KEV-Exploitation-Status
-│   ├── ReservedBadge.tsx        # Badge fuer reservierte CVEs
+│   ├── ReservedBadge.tsx        # Badge für reservierte CVEs
 │   ├── Skeleton.tsx             # Lade-Platzhalter
 │   └── ScrollToTop.tsx          # Scroll-to-Top Button
 ├── hooks/
-│   ├── usePersistentState.ts    # localStorage-gestuetzter State
-│   └── useSavedSearches.tsx     # Context-Provider fuer gespeicherte Suchen
+│   ├── usePersistentState.ts    # localStorage-gestützter State
+│   └── useSavedSearches.tsx     # Context-Provider für gespeicherte Suchen
 ├── ui/                          # Layout-Komponenten
 │   ├── AppLayout.tsx            # Root-Layout (Sidebar + Header + Content)
 │   ├── Header.tsx               # Top-Navigation
 │   └── Sidebar.tsx              # Seitennavigation mit gespeicherten Suchen
 ├── utils/
 │   ├── cvss.ts                  # CVSS-Metrik-Parsing & Sortierung
-│   ├── cvssExplanations.ts      # CVSS-Metrik-Erklaerungen
+│   ├── cvssExplanations.ts      # CVSS-Metrik-Erklärungen
 │   ├── dateFormat.ts            # Zeitzonen-bewusste Formatierung (de-DE)
-│   └── published.ts             # Veroeffentlichungsdatum-Helper
+│   └── published.ts             # Veröffentlichungsdatum-Helper
 ├── constants/
 │   └── dqlFields.ts             # DQL-Feld-Definitionen & Kategorien
 ├── config.ts                    # Umgebungs-Konfiguration (Vite Env)
@@ -70,14 +70,14 @@ src/
 
 | Route | Komponente | Beschreibung |
 |-------|-----------|-------------|
-| `/` | `DashboardPage` | Startseite mit Schwachstellensuche und aktuellen Eintraegen |
+| `/` | `DashboardPage` | Startseite mit Schwachstellensuche und aktuellen Einträgen |
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via Feature-Flag) |
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
-| `/changelog` | `ChangelogPage` | Letzte Aenderungen an Schwachstellen |
+| `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
 
 Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
@@ -99,7 +99,7 @@ Kein Redux/Zustand - basiert auf Reacts eingebauten Mechanismen:
 useEffect → setLoading(true) → API-Aufruf → setData/setError → setLoading(false)
 ```
 
-Skeleton-Platzhalter waehrend des Ladens.
+Skeleton-Platzhalter während des Ladens.
 
 ## Styling
 
@@ -107,7 +107,7 @@ Skeleton-Platzhalter waehrend des Ladens.
 - **Dark Theme** mit CSS-Variablen (`#080a12` Hintergrund, `#f5f7fa` Text)
 - **Severity-Farben:** Critical (`#ff6b6b`), High (`#ffa3a3`), Medium (`#ffcc66`), Low (`#8fffb0`)
 - **Responsive Design** mit CSS Grid/Flexbox, mobile Sidebar als Overlay
-- Einige Komponenten verwenden inline `style`-Props fuer dynamische Werte
+- Einige Komponenten verwenden inline `style`-Props für dynamische Werte
 
 ## Lokalisierung
 
@@ -122,23 +122,23 @@ Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
 | Variable | Default | Beschreibung |
 |----------|---------|-------------|
 | `VITE_API_BASE_URL` | `/api` | API-Basis-Pfad |
-| `VITE_TIMEZONE` | `UTC` | Zeitzone fuer Datumsanzeige |
+| `VITE_TIMEZONE` | `UTC` | Zeitzone für Datumsanzeige |
 | `VITE_AI_FEATURES_ENABLED` | `true` | KI-Analyse aktivieren/deaktivieren |
-| `VITE_DOMAIN` | `hecate.pw` | Domain fuer Share-URLs |
+| `VITE_DOMAIN` | `hecate.pw` | Domain für Share-URLs |
 
 ## Entwicklung
 
-### Abhaengigkeiten verwalten
+### Abhängigkeiten verwalten
 
-Dieses Projekt verwendet [npm](https://www.npmjs.com/) fuer die Verwaltung von Abhaengigkeiten.
+Dieses Projekt verwendet [npm](https://www.npmjs.com/) für die Verwaltung von Abhängigkeiten.
 
-#### Neue Abhaengigkeit hinzufuegen
+#### Neue Abhängigkeit hinzufügen
 
 ```bash
-# Abhaengigkeit hinzufuegen:
+# Abhängigkeit hinzufügen:
 npm install <paket-name>
 
-# Entwicklungs-Abhaengigkeit:
+# Entwicklungs-Abhängigkeit:
 npm install --save-dev <paket-name>
 
 # Dann beide Dateien committen:
@@ -146,10 +146,10 @@ git add package.json package-lock.json
 git commit -m "Add <paket-name> dependency"
 ```
 
-#### Abhaengigkeiten aktualisieren
+#### Abhängigkeiten aktualisieren
 
 ```bash
-# Alle Abhaengigkeiten aktualisieren:
+# Alle Abhängigkeiten aktualisieren:
 npm update
 
 # Ein bestimmtes Paket aktualisieren:
@@ -166,7 +166,7 @@ git commit -m "Update dependencies"
 npm install && npm run dev
 ```
 
-Dev-Server laeuft auf Port 3000, proxied `/api` automatisch an `http://backend:8000`.
+Dev-Server läuft auf Port 3000, proxied `/api` automatisch an `http://backend:8000`.
 
 ### Linting
 
@@ -176,7 +176,7 @@ npm run lint
 
 ### Docker Build
 
-Multi-Stage Build (dev -> build -> runtime) basierend auf `node:24-alpine`. Nutzt `serve` fuer statische Auslieferung auf Port 4173.
+Multi-Stage Build (dev -> build -> runtime) basierend auf `node:24-alpine`. Nutzt `serve` für statische Auslieferung auf Port 4173.
 
 ```bash
 docker build -t hecate-frontend ./frontend
@@ -194,8 +194,8 @@ Manuelle Chunk-Aufteilung in `vite/chunk-split.ts`:
 ### Warum package-lock.json wichtig ist
 
 Die Datei `package-lock.json` stellt sicher:
-- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhaengigkeitsversionen
-- **Sicherheitspruefung** - Trivy scannt diese Datei auf Schwachstellen
+- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhängigkeitsversionen
+- **Sicherheitsprüfung** - Trivy scannt diese Datei auf Schwachstellen
 - **Supply-Chain-Sicherheit** - Fixiert exakte Versionen zur Verhinderung von Angriffen
 
 Committe `package-lock.json` immer in die Versionsverwaltung.
