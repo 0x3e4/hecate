@@ -1,22 +1,30 @@
 services:
   backend:
     image: git.nohub.lol/rk/hecate-backend:latest
+    env_file: ".env"
     ports:
       - "8000:8000"
     depends_on:
-      - mongo
-      - opensearch
+      mongo:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
 
   frontend:
     image: git.nohub.lol/rk/hecate-frontend:latest
+    env_file: ".env"
     ports:
       - "4173:4173"
     depends_on:
-      - backend
+      backend:
+        condition: service_started
 
   mongo:
     image: mongo:8
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     deploy:
       resources:
         limits:
@@ -25,9 +33,19 @@ services:
       - mongo-data:/data/db
     ports:
       - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   opensearch:
     image: opensearchproject/opensearch:2
+    environment:
+      discovery.type: single-node
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS}
     ulimits:
       memlock:
         soft: -1
@@ -37,6 +55,12 @@ services:
       - "9600:9600"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk https://localhost:9200 -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   mongo-data:

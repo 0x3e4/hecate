@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     ai_response_language: str = "en"
     ai_web_search_enabled: bool = True
     mongo_url: str = "mongodb://mongo:27017"
+    mongo_username: str | None = None
+    mongo_password: str | None = None
+    mongo_tls: bool = False
     mongo_db: str = "hecate"
     mongo_vulnerabilities_collection: str = "vulnerabilities"
     mongo_cpe_collection: str = "cpe_catalog"
@@ -40,7 +43,7 @@ class Settings(BaseSettings):
     mongo_cwe_collection: str = "cwe_catalog"
     mongo_capec_collection: str = "capec_catalog"
     mongo_saved_searches_collection: str = "saved_searches"
-    opensearch_url: str = "http://opensearch:9200"
+    opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
     opensearch_index: str = "hecate-vulnerabilities"
