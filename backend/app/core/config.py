@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     ingestion_priority_vuln_db: str = "NVD"  # NVD or EUVD
 
     scheduler_enabled: bool = True
+    tz: str = "UTC"
     scheduler_timezone: str = "UTC"
     scheduler_euvd_interval_minutes: int = 60
     scheduler_cpe_interval_minutes: int = 1440

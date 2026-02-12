@@ -3369,3 +3369,15 @@ table thead th {
     flex-wrap: nowrap;
   }
 }
+
+.today-severity-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.today-mini-card-scroll {
+  scrollbar-width: none;
+}
+
+.today-mini-card-scroll::-webkit-scrollbar {
+  display: none;
+}

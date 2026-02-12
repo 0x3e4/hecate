@@ -52,6 +52,11 @@ export interface SlugBucket {
   doc_count: number;
 }
 
+export interface ProductBucket extends SlugBucket {
+  vendorSlug: string;
+  vendorName: string;
+}
+
 export interface TodayCve {
   vulnId: string;
   title: string;
@@ -60,8 +65,9 @@ export interface TodayCve {
 
 export interface TodaySummaryResponse {
   total: number;
-  topVendors: SlugBucket[];
-  topProducts: SlugBucket[];
+  todayDate: string;
+  vendors: SlugBucket[];
+  products: ProductBucket[];
   severities: TermsBucket[];
   cves: TodayCve[];
 }

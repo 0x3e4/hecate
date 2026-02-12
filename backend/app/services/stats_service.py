@@ -733,9 +733,11 @@ class StatsService:
         return timeline
 
     async def get_today_summary(self) -> dict[str, Any]:
-        """Return today's vulnerability stats: top vendors, top products, severity breakdown, CVE list."""
+        """Return today's vulnerability stats: vendors with products, severity breakdown, CVE list."""
+        today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+
         body: dict[str, Any] = {
-            "size": 100,
+            "size": 200,
             "track_total_hits": True,
             "query": {
                 "bool": {
@@ -747,16 +749,13 @@ class StatsService:
             "_source": ["vuln_id", "title", "cvss.severity"],
             "sort": [{"published": {"order": "desc"}}],
             "aggs": {
-                "top_vendors": {
-                    "terms": {"field": "vendorSlugs", "size": 5},
+                "vendors": {
+                    "terms": {"field": "vendorSlugs.keyword", "size": 500},
                     "aggs": {
                         "display_name": {"terms": {"field": "vendors", "size": 1}},
-                    },
-                },
-                "top_products": {
-                    "terms": {"field": "productSlugs", "size": 5},
-                    "aggs": {
-                        "display_name": {"terms": {"field": "products", "size": 1}},
+                        "products": {
+                            "terms": {"field": "productSlugs.keyword", "size": 500},
+                        },
                     },
                 },
                 "severity_breakdown": {
@@ -773,8 +772,50 @@ class StatsService:
 
         aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
 
-        top_vendors = self._map_slug_with_name(aggregations.get("top_vendors"), limit=5)
-        top_products = self._map_slug_with_name(aggregations.get("top_products"), limit=5)
+        # Collect all product slugs so we can look up correct display names from MongoDB
+        vendors_agg = aggregations.get("vendors", {})
+        all_product_slugs: set[str] = set()
+        for vb in (vendors_agg.get("buckets") or []):
+            for pb in (vb.get("products", {}).get("buckets") or []):
+                pslug = pb.get("key")
+                if pslug and isinstance(pslug, str):
+                    all_product_slugs.add(pslug)
+
+        # Look up correct product display names from asset catalog
+        product_name_map: dict[str, str] = {}
+        if all_product_slugs:
+            asset_repo = await AssetRepository.create()
+            product_docs = await asset_repo.find_products_by_slugs(all_product_slugs)
+            for doc in product_docs:
+                product_name_map[doc["_id"]] = doc.get("displayName") or doc["_id"]
+
+        vendors: list[dict[str, Any]] = []
+        products: list[dict[str, Any]] = []
+        for vb in (vendors_agg.get("buckets") or []):
+            if not isinstance(vb, dict):
+                continue
+            vslug = vb.get("key")
+            if not vslug or not isinstance(vslug, str):
+                continue
+            vname_buckets = vb.get("display_name", {}).get("buckets", [])
+            vname = vname_buckets[0]["key"] if vname_buckets else vslug.replace("-", " ").title()
+            vendors.append({"slug": vslug, "name": vname, "doc_count": int(vb.get("doc_count", 0))})
+
+            for pb in (vb.get("products", {}).get("buckets") or []):
+                if not isinstance(pb, dict):
+                    continue
+                pslug = pb.get("key")
+                if not pslug or not isinstance(pslug, str):
+                    continue
+                pname = product_name_map.get(pslug, pslug.replace("-", " ").title())
+                products.append({
+                    "slug": pslug,
+                    "name": pname,
+                    "doc_count": int(pb.get("doc_count", 0)),
+                    "vendorSlug": vslug,
+                    "vendorName": vname,
+                })
+
         severities = self._map_terms_aggregation(
             aggregations.get("severity_breakdown"),
             value_transform=lambda v: str(v).lower(),
@@ -803,8 +844,9 @@ class StatsService:
 
         return {
             "total": total,
-            "topVendors": top_vendors,
-            "topProducts": top_products,
+            "todayDate": today_str,
+            "vendors": vendors,
+            "products": products,
             "severities": severities,
             "cves": cves,
         }

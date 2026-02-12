@@ -44,6 +44,7 @@ services:
     image: opensearchproject/opensearch:3
     restart: unless-stopped
     environment:
+      TZ: ${TZ:-UTC}
       discovery.type: single-node
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD}
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS}
