@@ -473,7 +473,7 @@ const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode
     }}
   >
     <h3 style={{ fontSize: "0.9rem", margin: "0 0 0.75rem" }}>{title}</h3>
-    <div className="today-mini-card-scroll" style={{ maxHeight: "700px", overflowY: "auto", overflowX: "hidden" }}>
+    <div className="today-mini-card-scroll" style={{ maxHeight: "500px", overflowY: "auto", overflowX: "hidden" }}>
       {children}
     </div>
   </div>
