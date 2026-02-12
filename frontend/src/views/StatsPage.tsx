@@ -8,20 +8,22 @@ import {
   fetchStatsOverview,
 } from "../api/stats";
 import { SkeletonBlock } from "../components/Skeleton";
+import { useI18n } from "../i18n/context";
 
 export const StatsPage = () => {
+  const { t } = useI18n();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const showSkeleton = loading && !stats;
 
   useEffect(() => {
-    document.title = "Hecate Cyber Defense - Statistiken";
+    document.title = t("Hecate Cyber Defense - Statistics", "Hecate Cyber Defense - Statistiken");
 
     return () => {
       document.title = "Hecate Cyber Defense";
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const load = async () => {
@@ -32,21 +34,24 @@ export const StatsPage = () => {
         setStats(response);
       } catch (err) {
         console.error("Failed to load stats", err);
-        setError("Statistiken konnten nicht geladen werden.");
+        setError(t("Could not load statistics.", "Statistiken konnten nicht geladen werden."));
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, []);
+  }, [t]);
 
   return (
     <div className="page">
       <section className="card">
-        <h2>Statistiken</h2>
+        <h2>{t("Statistics", "Statistiken")}</h2>
         <p className="muted">
-          Überblick über ingestierte Schwachstellen, Quellen und die abgeleitete Asset-Datenbank.
+          {t(
+            "Overview of ingested vulnerabilities, sources, and the derived asset database.",
+            "Überblick über ingestierte Schwachstellen, Quellen und die abgeleitete Asset-Datenbank."
+          )}
         </p>
 
         {showSkeleton && <StatsSkeleton />}
@@ -59,10 +64,10 @@ export const StatsPage = () => {
               
               <div style={{ display: "grid", gap: "1.5rem" }}>
                 <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" }}>
-                  <ChartCard title="Quelle">
+                  <ChartCard title={t("Source", "Quelle")}>
                     <SourcesChart data={stats.vulnerabilities.sources} />
                   </ChartCard>
-                  <ChartCard title="Schweregrade">
+                  <ChartCard title={t("Severity", "Schweregrade")}>
                     <SeverityChart data={stats.vulnerabilities.severities} />
                   </ChartCard>
                 </div>
@@ -71,34 +76,34 @@ export const StatsPage = () => {
                   <ChartCard title="Top 5 CWEs">
                     <CweChart data={stats.vulnerabilities.topCwes} />
                   </ChartCard>
-                  <ChartCard title="EPSS Score">
+                  <ChartCard title={t("EPSS Score", "EPSS-Score")}>
                     <EpssChart data={stats.vulnerabilities.epssRanges} />
                   </ChartCard>
                 </div>
 
-                <ChartCard title="Veröffentlichungstrend (letzte 30 Tage)">
+                <ChartCard title={t("Publication trend (last 30 days)", "Veröffentlichungstrend (letzte 30 Tage)")}>
                   <TimelineChart data={stats.vulnerabilities.timeline} />
                 </ChartCard>
 
-                <ChartCard title="Historischer Überblick von veröffentlichten Schwachstellen">
+                <ChartCard title={t("Historical overview of published vulnerabilities", "Historischer Überblick von veröffentlichten Schwachstellen")}>
                   <TimelineSummaryChart data={stats.vulnerabilities.timelineSummary} />
                 </ChartCard>
 
                 <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                  <ChartCard title="Most named Vendors">
-                    <TopList data={stats.vulnerabilities.topVendors} emptyMessage="Keine Vendors." limit={8} />
+                  <ChartCard title={t("Most named vendors", "Meistgenannte Hersteller")}>
+                    <TopList data={stats.vulnerabilities.topVendors} emptyMessage={t("No vendors.", "Keine Vendors.")} limit={8} />
                   </ChartCard>
-                  <ChartCard title="Most named Products">
-                    <TopList data={stats.vulnerabilities.topProducts} emptyMessage="Keine Produkte." limit={8} />
+                  <ChartCard title={t("Most named products", "Meistgenannte Produkte")}>
+                    <TopList data={stats.vulnerabilities.topProducts} emptyMessage={t("No products.", "Keine Produkte.")} limit={8} />
                   </ChartCard>
                 </div>
 
                 <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                  <ChartCard title="Top Reference Domains">
-                    <TopList data={stats.vulnerabilities.referenceDomains} emptyMessage="Keine Referenzen." limit={10} />
+                  <ChartCard title={t("Top reference domains", "Top-Referenzdomains")}>
+                    <TopList data={stats.vulnerabilities.referenceDomains} emptyMessage={t("No references.", "Keine Referenzen.")} limit={10} />
                   </ChartCard>
-                  <ChartCard title="Top Assigners">
-                    <TopList data={stats.vulnerabilities.topAssigners} emptyMessage="Keine Assigner." limit={10} />
+                  <ChartCard title={t("Top assigners", "Top-Assigners")}>
+                    <TopList data={stats.vulnerabilities.topAssigners} emptyMessage={t("No assigners.", "Keine Assigner.")} limit={10} />
                   </ChartCard>
                 </div>
               </div>
@@ -213,40 +218,46 @@ const StatsSkeleton = () => (
   </div>
 );
 
-const SummaryGrid = ({ stats }: { stats: StatsResponse }) => (
-  <div
-    style={{
-      display: "grid",
-      gap: "1rem",
-      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-    }}
-  >
-    <StatCard label="Vulnerabilities" value={stats.vulnerabilities.total} accent="#5c84ff" />
-    <StatCard label="Exploited (KEV)" value={stats.vulnerabilities.exploitedCount} accent="#ff6b6b" />
-    <StatCard label="Vendors" value={stats.assets.vendorTotal} accent="#66d9e8" />
-    <StatCard label="Products" value={stats.assets.productTotal} accent="#ffd43b" />
-    <StatCard label="Versions" value={stats.assets.versionTotal} accent="#a855f7" />
-  </div>
-);
-
-const StatCard = ({ label, value, accent }: { label: string; value: number; accent: string }) => (
-  <div
-    style={{
-      background: "rgba(255,255,255,0.04)",
-      borderRadius: "12px",
-      padding: "1rem 1.25rem",
-      border: `1px solid ${accent}30`,
-      boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset",
-    }}
-  >
-    <span className="muted" style={{ fontSize: "0.85rem" }}>
-      {label}
-    </span>
-    <div style={{ fontSize: "1.8rem", fontWeight: 600, marginTop: "0.25rem", color: accent }}>
-      {value.toLocaleString()}
+const SummaryGrid = ({ stats }: { stats: StatsResponse }) => {
+  const { t } = useI18n();
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: "1rem",
+        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+      }}
+    >
+      <StatCard label={t("Vulnerabilities", "Schwachstellen")} value={stats.vulnerabilities.total} accent="#5c84ff" />
+      <StatCard label={t("Exploited (KEV)", "Ausgenutzt (KEV)")} value={stats.vulnerabilities.exploitedCount} accent="#ff6b6b" />
+      <StatCard label={t("Vendors", "Hersteller")} value={stats.assets.vendorTotal} accent="#66d9e8" />
+      <StatCard label={t("Products", "Produkte")} value={stats.assets.productTotal} accent="#ffd43b" />
+      <StatCard label={t("Versions", "Versionen")} value={stats.assets.versionTotal} accent="#a855f7" />
     </div>
-  </div>
-);
+  );
+};
+
+const StatCard = ({ label, value, accent }: { label: string; value: number; accent: string }) => {
+  const { locale } = useI18n();
+  return (
+    <div
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        borderRadius: "12px",
+        padding: "1rem 1.25rem",
+        border: `1px solid ${accent}30`,
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset",
+      }}
+    >
+      <span className="muted" style={{ fontSize: "0.85rem" }}>
+        {label}
+      </span>
+      <div style={{ fontSize: "1.8rem", fontWeight: 600, marginTop: "0.25rem", color: accent }}>
+        {value.toLocaleString(locale)}
+      </div>
+    </div>
+  );
+};
 
 const ChartCard = ({ title, children }: { title: string; children: ReactNode }) => (
   <div
@@ -279,6 +290,7 @@ const severityLabels: Record<string, string> = {
 };
 
 const SeverityChart = ({ data }: { data: TermsBucket[] }) => {
+  const { t, locale } = useI18n();
   const normalized = useMemo(() => {
     if (!data.length) {
       return [];
@@ -297,7 +309,7 @@ const SeverityChart = ({ data }: { data: TermsBucket[] }) => {
   }, [data]);
 
   if (normalized.length === 0) {
-    return <p className="muted">Keine Severity-Angaben.</p>;
+    return <p className="muted">{t("No severity information.", "Keine Severity-Angaben.")}</p>;
   }
 
   const maxValue = Math.max(...normalized.map((item) => item.doc_count));
@@ -321,10 +333,10 @@ const SeverityChart = ({ data }: { data: TermsBucket[] }) => {
                 boxShadow: `0 0 12px ${color}40`,
                 transition: "height 0.3s ease",
               }}
-              title={`${label}: ${item.doc_count.toLocaleString()}`}
+              title={`${label}: ${item.doc_count.toLocaleString(locale)}`}
             />
             <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString()}</strong>
+              <strong>{item.doc_count.toLocaleString(locale)}</strong>
               <div className="muted" style={{ fontSize: "0.7rem", color }}>{label}</div>
             </div>
           </div>
@@ -344,10 +356,11 @@ const sourceColors = [
 ];
 
 const SourcesChart = ({ data }: { data: TermsBucket[] }) => {
+  const { t, locale } = useI18n();
   const items = useMemo(() => data.filter((item) => item.doc_count > 0).slice(0, 6), [data]);
 
   if (items.length === 0) {
-    return <p className="muted">Keine Quellen erfasst.</p>;
+    return <p className="muted">{t("No sources recorded.", "Keine Quellen erfasst.")}</p>;
   }
 
   const maxValue = Math.max(...items.map((item) => item.doc_count));
@@ -371,10 +384,10 @@ const SourcesChart = ({ data }: { data: TermsBucket[] }) => {
                 boxShadow: `0 0 16px ${color}30`,
                 transition: "height 0.3s ease",
               }}
-              title={`${item.key}: ${item.doc_count.toLocaleString()}`}
+              title={`${item.key}: ${item.doc_count.toLocaleString(locale)}`}
             />
             <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString()}</strong>
+              <strong>{item.doc_count.toLocaleString(locale)}</strong>
               <div style={{ fontSize: "0.7rem", color, opacity: 0.9 }}>
                 {item.key.length > 14 ? `${item.key.slice(0, 12)}…` : item.key || "–"}
               </div>
@@ -395,6 +408,7 @@ const cweColors = [
 ];
 
 const CweChart = ({ data }: { data: TermsBucket[] }) => {
+  const { t, locale } = useI18n();
   const items = useMemo(
     () =>
       data
@@ -404,7 +418,7 @@ const CweChart = ({ data }: { data: TermsBucket[] }) => {
   );
 
   if (items.length === 0) {
-    return <p className="muted">Keine CWEs erfasst.</p>;
+    return <p className="muted">{t("No CWEs recorded.", "Keine CWEs erfasst.")}</p>;
   }
 
   const maxValue = Math.max(...items.map((item) => item.doc_count));
@@ -428,10 +442,10 @@ const CweChart = ({ data }: { data: TermsBucket[] }) => {
                 boxShadow: `0 0 12px ${color}40`,
                 transition: "height 0.3s ease",
               }}
-              title={`${item.key}: ${item.doc_count.toLocaleString()}`}
+              title={`${item.key}: ${item.doc_count.toLocaleString(locale)}`}
             />
             <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString()}</strong>
+              <strong>{item.doc_count.toLocaleString(locale)}</strong>
               <div style={{ fontSize: "0.7rem", color, opacity: 0.9 }}>
                 {item.key.length > 12 ? `${item.key.slice(0, 10)}…` : item.key || "–"}
               </div>
@@ -460,8 +474,9 @@ const epssLabels: Record<string, string> = {
 };
 
 const EpssChart = ({ data }: { data: TermsBucket[] }) => {
+  const { t, locale } = useI18n();
   if (!data.length) {
-    return <p className="muted">Keine EPSS-Daten.</p>;
+    return <p className="muted">{t("No EPSS data.", "Keine EPSS-Daten.")}</p>;
   }
 
   const maxValue = Math.max(...data.map((item) => item.doc_count), 1);
@@ -486,10 +501,10 @@ const EpssChart = ({ data }: { data: TermsBucket[] }) => {
                 boxShadow: `0 0 12px ${color}40`,
                 transition: "height 0.3s ease",
               }}
-              title={`${label}: ${item.doc_count.toLocaleString()}`}
+              title={`${label}: ${item.doc_count.toLocaleString(locale)}`}
             />
             <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString()}</strong>
+              <strong>{item.doc_count.toLocaleString(locale)}</strong>
               <div className="muted" style={{ fontSize: "0.7rem", color }}>
                 {label}
               </div>
@@ -522,6 +537,7 @@ const useContainerWidth = (ref: React.RefObject<HTMLElement | null>, fallback = 
 };
 
 const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
+  const { t, locale } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
@@ -535,7 +551,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   }, []);
 
   if (!data.length) {
-    return <p className="muted">Noch keine Zeitreihendaten.</p>;
+    return <p className="muted">{t("No timeline data yet.", "Noch keine Zeitreihendaten.")}</p>;
   }
 
   const baseWidth = containerWidth;
@@ -582,7 +598,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   // Format timestamp to readable date
   const formatDateTime = (timestamp: number) => {
     const date = new Date(timestamp);
-    const day = date.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    const day = date.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
     return { day };
   };
 
@@ -780,7 +796,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
 
         {/* Time axis labels */}
         {timeLabels.map(({ x, date }, i) => {
-          const dayLabel = date.toLocaleDateString("de-DE", { day: "numeric", month: "short" });
+          const dayLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
           const yearLabel = date.getFullYear().toString();
 
           return (
@@ -817,7 +833,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
             fill="rgba(255,255,255,0.4)"
             fontSize="10"
           >
-            {Math.round(maxValue * ratio).toLocaleString()}
+            {Math.round(maxValue * ratio).toLocaleString(locale)}
           </text>
         ))}
       </svg>
@@ -850,7 +866,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
             WebkitTextFillColor: "transparent",
             marginBottom: "0.25rem",
           }}>
-            {hoveredPoint.count.toLocaleString()} Vulnerabilities
+            {hoveredPoint.count.toLocaleString(locale)} {t("Vulnerabilities", "Schwachstellen")}
           </div>
           {hoveredPoint.timestamp && (() => {
             const { day } = formatDateTime(hoveredPoint.timestamp);
@@ -873,6 +889,7 @@ interface CumulativePoint extends TimelinePoint {
 }
 
 const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
+  const { t, locale } = useI18n();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -888,7 +905,7 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   }, [data]);
 
   if (!data.length) {
-    return <p className="muted">Noch keine Zeitreihendaten.</p>;
+    return <p className="muted">{t("No timeline data yet.", "Noch keine Zeitreihendaten.")}</p>;
   }
 
   const width = containerWidth;
@@ -923,7 +940,7 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   const lastPoint = cumulativeData[cumulativeData.length - 1];
   const formatMonth = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleDateString("de-DE", { month: "short", year: "numeric" });
+    return date.toLocaleDateString(locale, { month: "short", year: "numeric" });
   };
 
   const hoveredPoint = hoveredIndex !== null ? chartPoints[hoveredIndex] : null;
@@ -1005,7 +1022,7 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
 
         {/* Y-axis labels */}
         <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize="9">
-          {maxValue.toLocaleString()}
+          {maxValue.toLocaleString(locale)}
         </text>
         <text x={padding.left - 8} y={height - padding.bottom} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize="9">
           0
@@ -1039,10 +1056,10 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
           }}
         >
           <div style={{ color: "#66d9e8", fontWeight: 600, fontSize: "0.9rem" }}>
-            {hoveredPoint.cumulative.toLocaleString()} total
+            {hoveredPoint.cumulative.toLocaleString(locale)} {t("total", "gesamt")}
           </div>
           <div style={{ color: "#adb5bd", fontSize: "0.7rem" }}>
-            +{hoveredPoint.count.toLocaleString()} this month
+            +{hoveredPoint.count.toLocaleString(locale)} {t("this month", "diesen Monat")}
           </div>
           <div style={{ color: "#868e96", fontSize: "0.65rem", marginTop: "0.2rem" }}>
             {hoveredPoint.timestamp ? formatMonth(hoveredPoint.timestamp) : hoveredPoint.key}
@@ -1054,6 +1071,7 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
 };
 
 const TopList = ({ data, emptyMessage, limit = 6 }: { data: TermsBucket[]; emptyMessage: string; limit?: number }) => {
+  const { locale } = useI18n();
   const items = useMemo(
     () =>
       data
@@ -1083,7 +1101,7 @@ const TopList = ({ data, emptyMessage, limit = 6 }: { data: TermsBucket[]; empty
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
               <span>{item.key || "–"}</span>
               <span className="muted" style={{ fontSize: "0.75rem" }}>
-                {item.doc_count.toLocaleString()}
+                {item.doc_count.toLocaleString(locale)}
               </span>
             </div>
             <div
@@ -1113,22 +1131,25 @@ const AssetSection = ({
   assets,
 }: {
   assets: StatsResponse["assets"];
-}) => (
-  <div
-    style={{
-      display: "grid",
-      gap: "1.25rem",
-      gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    }}
-  >
-    <ChartCard title="Asset Vendors">
-      <CatalogSampleList items={assets.sampleVendors} emptyMessage="Keine Vendors verfügbar." />
-    </ChartCard>
-    <ChartCard title="Asset Produkte">
-      <CatalogSampleList items={assets.sampleProducts} emptyMessage="Keine Produkte verfügbar." />
-    </ChartCard>
-  </div>
-);
+}) => {
+  const { t } = useI18n();
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: "1.25rem",
+        gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+      }}
+    >
+      <ChartCard title={t("Asset Vendors", "Asset-Hersteller")}>
+        <CatalogSampleList items={assets.sampleVendors} emptyMessage={t("No vendors available.", "Keine Vendors verfügbar.")} />
+      </ChartCard>
+      <ChartCard title={t("Asset Products", "Asset-Produkte")}>
+        <CatalogSampleList items={assets.sampleProducts} emptyMessage={t("No products available.", "Keine Produkte verfügbar.")} />
+      </ChartCard>
+    </div>
+  );
+};
 
 const truncateList = (values: string[], maxLength: number): string => {
   const joined = values.join(", ");
@@ -1136,6 +1157,7 @@ const truncateList = (values: string[], maxLength: number): string => {
 };
 
 const CatalogSampleList = ({ items, emptyMessage }: { items: CatalogSample[]; emptyMessage: string }) => {
+  const { t } = useI18n();
   if (!items.length) {
     return <p className="muted">{emptyMessage}</p>;
   }
@@ -1150,7 +1172,7 @@ const CatalogSampleList = ({ items, emptyMessage }: { items: CatalogSample[]; em
               {truncateList(item.aliases, 60)}
             </span>
           ) : (
-            <span className="muted" style={{ fontSize: "0.75rem" }}>Keine zusätzlichen Aliase.</span>
+            <span className="muted" style={{ fontSize: "0.75rem" }}>{t("No additional aliases.", "Keine zusätzlichen Aliase.")}</span>
           )}
         </li>
       ))}

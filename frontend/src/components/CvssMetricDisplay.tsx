@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ParsedCvssMetric } from "../utils/cvss";
 import { getCvssExplanation } from "../utils/cvssExplanations";
+import { useI18n } from "../i18n/context";
 
 interface CvssMetricDisplayProps {
   metric: ParsedCvssMetric | null;
@@ -86,17 +87,18 @@ export const CvssMetricDisplay = ({
   showVector = true,
   showScores = true,
 }: CvssMetricDisplayProps) => {
+  const { t } = useI18n();
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
   if (!metric) {
     return (
       <div className={`cvss-card ${compact ? "compact" : ""}`}>
         <div className="cvss-details">
-          <div className="cvss-empty">Keine CVSS-Daten verfügbar.</div>
+          <div className="cvss-empty">{t("No CVSS data available.", "Keine CVSS-Daten verfügbar.")}</div>
         </div>
         <div className="cvss-score-ring severity-unknown">
           <span className="cvss-score-value">—</span>
-          <span className="cvss-score-label">Keine Daten</span>
+          <span className="cvss-score-label">{t("No Data", "Keine Daten")}</span>
           <span className="cvss-score-version">CVSS</span>
         </div>
       </div>
@@ -220,18 +222,18 @@ export const CvssMetricDisplay = ({
               <div className="cvss-subscores">
                 {metric.exploitabilityScore != null && (
                   <span className="cvss-subscore">
-                    Exploitability: {formatScore(metric.exploitabilityScore)}
+                    {t("Exploitability", "Ausnutzbarkeit")}: {formatScore(metric.exploitabilityScore)}
                   </span>
                 )}
                 {metric.impactScore != null && (
-                  <span className="cvss-subscore">Impact: {formatScore(metric.impactScore)}</span>
+                  <span className="cvss-subscore">{t("Impact", "Auswirkung")}: {formatScore(metric.impactScore)}</span>
                 )}
               </div>
             )}
 
             {showVectorInfo && (
               <div className="cvss-vector">
-                <span className="cvss-badge-label">Vector</span>
+                <span className="cvss-badge-label">{t("Vector", "Vektor")}</span>
                 {vectorLink ? (
                   <a href={vectorLink} target="_blank" rel="noreferrer">
                     <code>{metric.vectorString}</code>
@@ -243,7 +245,9 @@ export const CvssMetricDisplay = ({
             )}
           </>
         ) : (
-          <div className="cvss-empty">{compact ? "Keine CVSS-Details" : "Keine Detaildaten vorhanden."}</div>
+          <div className="cvss-empty">
+            {compact ? t("No CVSS details", "Keine CVSS-Details") : t("No detailed data available.", "Keine Detaildaten vorhanden.")}
+          </div>
         )}
       </div>
 

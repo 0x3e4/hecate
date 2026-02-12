@@ -6,6 +6,7 @@
  */
 
 import { config } from '../config';
+import { getCurrentLanguage, getCurrentLocale } from "../i18n/language";
 
 export type DateFormatStyle = 'short' | 'medium' | 'long' | 'full';
 
@@ -32,8 +33,13 @@ export function formatDate(
   value?: string | number | Date | null,
   options: DateFormatOptions = {}
 ): string {
+  const language = getCurrentLanguage();
+  const locale = getCurrentLocale();
+  const unknownLabel = language === "de" ? "unbekannt" : "unknown";
+  const invalidLabel = language === "de" ? "ungueltig" : "invalid";
+
   if (!value) {
-    return 'unbekannt';
+    return unknownLabel;
   }
 
   try {
@@ -42,7 +48,7 @@ export function formatDate(
       : value;
 
     if (isNaN(date.getTime())) {
-      return typeof value === 'string' ? value : 'ungültig';
+      return typeof value === "string" ? value : invalidLabel;
     }
 
     const {
@@ -54,7 +60,7 @@ export function formatDate(
     } = options;
 
     if (includeTime) {
-      return date.toLocaleString('de-DE', {
+      return date.toLocaleString(locale, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -64,7 +70,7 @@ export function formatDate(
         timeZone: timezone,
       });
     } else {
-      return date.toLocaleDateString('de-DE', {
+      return date.toLocaleDateString(locale, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -72,7 +78,7 @@ export function formatDate(
       });
     }
   } catch (error) {
-    return typeof value === 'string' ? value : 'ungültig';
+    return typeof value === "string" ? value : invalidLabel;
   }
 }
 
@@ -105,8 +111,9 @@ export function formatPublished(
   value?: string | null,
   format: 'date' | 'datetime' = 'date'
 ): string {
+  const unknownLabel = getCurrentLanguage() === "de" ? "unbekannt" : "unknown";
   if (!value) {
-    return 'unbekannt';
+    return unknownLabel;
   }
   return formatDate(value, { includeTime: format === 'datetime' });
 }

@@ -1,14 +1,15 @@
 /**
- * German explanations for all CVSS metric values across versions 2.0, 3.x, and 4.0.
+ * Explanations for CVSS metric values across versions 2.0, 3.x, and 4.0.
  *
  * Keys match the attribute labels used in CvssMetricDisplay.
  * Value keys are the UPPERCASE display values produced by formatEnumValue().
  */
+import { getCurrentLanguage } from "../i18n/language";
 
 export interface CvssValueExplanation {
-  /** German description of what the metric measures */
+  /** Description of what the metric measures */
   metric: string;
-  /** Map of normalized display value -> German explanation */
+  /** Map of normalized display value -> explanation */
   values: Record<string, string>;
 }
 
@@ -335,13 +336,16 @@ const resolveEntry = (label: string): CvssValueExplanation | undefined => {
 };
 
 /**
- * Look up the German explanation for a CVSS metric label + display value.
+ * Look up the explanation for a CVSS metric label + display value.
  * Falls back to the base metric for "Modified ..." labels.
  */
 export const getCvssExplanation = (
   label: string,
   displayValue: string
 ): { metric: string; value: string | null } | null => {
+  if (getCurrentLanguage() !== "de") {
+    return null;
+  }
   const entry = resolveEntry(label);
   if (!entry) {
     return null;

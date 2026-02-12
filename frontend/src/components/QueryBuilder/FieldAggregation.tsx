@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { getFieldAggregation } from "../../api/vulnerabilities";
+import { useI18n } from "../../i18n/context";
+import { getCurrentLocale } from "../../i18n/language";
 import type { DQLFieldValueBucket } from "../../types";
 
 interface FieldAggregationProps {
@@ -8,6 +10,7 @@ interface FieldAggregationProps {
 }
 
 export const FieldAggregation = ({ fieldName, onValueClick }: FieldAggregationProps) => {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [buckets, setBuckets] = useState<DQLFieldValueBucket[]>([]);
@@ -21,19 +24,19 @@ export const FieldAggregation = ({ fieldName, onValueClick }: FieldAggregationPr
         setBuckets(result.buckets);
       } catch (err) {
         console.error(`Failed to load aggregation for field ${fieldName}:`, err);
-        setError("Fehler beim Laden der Werte");
+        setError(t("Error loading values", "Fehler beim Laden der Werte"));
       } finally {
         setLoading(false);
       }
     };
 
     fetchAggregation();
-  }, [fieldName]);
+  }, [fieldName, t]);
 
   if (loading) {
     return (
       <div className="field-aggregation loading">
-        <p>Lade Werte...</p>
+        <p>{t("Loading values...", "Lade Werte...")}</p>
       </div>
     );
   }
@@ -49,7 +52,7 @@ export const FieldAggregation = ({ fieldName, onValueClick }: FieldAggregationPr
   if (buckets.length === 0) {
     return (
       <div className="field-aggregation empty">
-        <p>Keine Werte verfügbar</p>
+        <p>{t("No values available", "Keine Werte verfügbar")}</p>
       </div>
     );
   }
@@ -57,7 +60,7 @@ export const FieldAggregation = ({ fieldName, onValueClick }: FieldAggregationPr
   return (
     <div className="field-aggregation">
       <div className="aggregation-header">
-        <span>Top {buckets.length} Werte:</span>
+        <span>{t(`Top ${buckets.length} values:`, `Top ${buckets.length} Werte:`)}</span>
       </div>
       <table className="aggregation-table">
         <tbody>
@@ -71,7 +74,7 @@ export const FieldAggregation = ({ fieldName, onValueClick }: FieldAggregationPr
                 <code>{bucket.value}</code>
               </td>
               <td className="aggregation-count">
-                ({bucket.count.toLocaleString("de-DE")})
+                ({bucket.count.toLocaleString(getCurrentLocale())})
               </td>
             </tr>
           ))}

@@ -18,8 +18,10 @@ import {
 } from "../types";
 import { VulnerabilitySelector } from "../components/AIAnalyse/VulnerabilitySelector";
 import { BatchAnalysisDisplay } from "../components/AIAnalyse/BatchAnalysisDisplay";
+import { useI18n } from "../i18n/context";
 
 export const AIAnalysePage = () => {
+  const { t, locale } = useI18n();
   const [selectedVulnIds, setSelectedVulnIds] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<AIProviderId | null>(null);
   const [additionalContext, setAdditionalContext] = useState<string>("");
@@ -44,11 +46,11 @@ export const AIAnalysePage = () => {
 
   // Set document title
   useEffect(() => {
-    document.title = "Hecate Cyber Defense - AI-Analyse";
+    document.title = t("Hecate Cyber Defense - AI Analysis", "Hecate Cyber Defense - AI-Analyse");
     return () => {
       document.title = "Hecate Cyber Defense";
     };
-  }, []);
+  }, [t]);
 
   // Load AI providers on mount
   useEffect(() => {
@@ -81,11 +83,11 @@ export const AIAnalysePage = () => {
       setSingleTotal(singleData.total);
     } catch (err) {
       console.error("Failed to load AI analyses history:", err);
-      setHistoryError("AI-Analysen konnten nicht geladen werden.");
+      setHistoryError(t("Could not load AI analyses.", "AI-Analysen konnten nicht geladen werden."));
     } finally {
       setHistoryLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadHistory(historyPage);
@@ -132,12 +134,12 @@ export const AIAnalysePage = () => {
 
   const handleRunAnalysis = async () => {
     if (!selectedProvider) {
-      setError("Bitte wählen Sie einen AI-Provider aus.");
+      setError(t("Please select an AI provider.", "Bitte wählen Sie einen AI-Provider aus."));
       return;
     }
 
     if (selectedVulnIds.length === 0) {
-      setError("Bitte wählen Sie mindestens eine Schwachstelle aus.");
+      setError(t("Please select at least one vulnerability.", "Bitte wählen Sie mindestens eine Schwachstelle aus."));
       return;
     }
 
@@ -166,14 +168,17 @@ export const AIAnalysePage = () => {
       // Handle specific error cases
       if (err.response?.status === 429) {
         setError(
-          "API-Kontingent erschöpft. Bitte versuchen Sie es später erneut oder wenden Sie sich an Ihren Administrator."
+          t(
+            "API quota exhausted. Please try again later or contact your administrator.",
+            "API-Kontingent erschöpft. Bitte versuchen Sie es später erneut oder wenden Sie sich an Ihren Administrator."
+          )
         );
       } else if (err.response?.status === 404) {
-        setError("Eine oder mehrere Schwachstellen wurden nicht gefunden.");
+        setError(t("One or more vulnerabilities were not found.", "Eine oder mehrere Schwachstellen wurden nicht gefunden."));
       } else if (err.response?.data?.detail) {
         setError(err.response.data.detail);
       } else {
-        setError("Fehler bei der AI-Analyse. Bitte versuchen Sie es erneut.");
+        setError(t("Error during AI analysis. Please try again.", "Fehler bei der AI-Analyse. Bitte versuchen Sie es erneut."));
       }
       shouldAnimateSummaryRef.current = false;
     } finally {
@@ -205,15 +210,20 @@ export const AIAnalysePage = () => {
   return (
     <div className="page ai-analyse-page">
       <section className="card">
-        <h2>AI-Analyse</h2>
+        <h2>{t("AI Analysis", "AI-Analyse")}</h2>
         <p className="muted">
-          Wählen Sie mehrere Schwachstellen für eine kombinierte KI-Analyse aus.
-          Die KI identifiziert Zusammenhänge, gemeinsame Angriffsvektoren und priorisiert Ihre Maßnahmen.
+          {t(
+            "Select multiple vulnerabilities for a combined AI analysis. The AI identifies relationships, common attack vectors, and helps prioritize actions.",
+            "Wählen Sie mehrere Schwachstellen für eine kombinierte KI-Analyse aus. Die KI identifiziert Zusammenhänge, gemeinsame Angriffsvektoren und priorisiert Ihre Maßnahmen."
+          )}
         </p>
 
         {!hasAiProviders ? (
           <div className="alert alert-warning" style={{ marginTop: "1.5rem" }}>
-            Keine AI-Provider konfiguriert. Bitte konfigurieren Sie mindestens einen AI-Provider in den Systemeinstellungen.
+            {t(
+              "No AI providers configured. Please configure at least one provider in system settings.",
+              "Keine AI-Provider konfiguriert. Bitte konfigurieren Sie mindestens einen AI-Provider in den Systemeinstellungen."
+            )}
           </div>
         ) : (
           <div className="ai-analyse-layout">
@@ -231,7 +241,7 @@ export const AIAnalysePage = () => {
               {/* Controls */}
               <div className="ai-analyse-controls">
                 <div className="form-group">
-                  <label htmlFor="ai-provider">AI-Provider</label>
+                  <label htmlFor="ai-provider">{t("AI Provider", "AI-Provider")}</label>
                   <select
                     id="ai-provider"
                     value={selectedProvider || ""}
@@ -248,14 +258,17 @@ export const AIAnalysePage = () => {
 
                 <div className="form-group">
                   <label htmlFor="additional-context">
-                    Zusätzlicher Kontext (optional)
+                    {t("Additional context (optional)", "Zusätzlicher Kontext (optional)")}
                   </label>
                   <textarea
                     id="additional-context"
                     rows={3}
                     value={additionalContext}
                     onChange={(e) => setAdditionalContext(e.target.value)}
-                    placeholder="z.B. spezifische Versionen, Umgebungsdetails, besondere Anforderungen..."
+                    placeholder={t(
+                      "e.g. specific versions, environment details, special requirements...",
+                      "z.B. spezifische Versionen, Umgebungsdetails, besondere Anforderungen..."
+                    )}
                     disabled={loading}
                   />
                 </div>
@@ -266,7 +279,7 @@ export const AIAnalysePage = () => {
                   disabled={loading || selectedVulnIds.length === 0}
                   style={{ width: "100%" }}
                 >
-                  {loading ? "Analyse läuft..." : "Analyse starten"}
+                  {loading ? t("Analysis running...", "Analyse läuft...") : t("Start analysis", "Analyse starten")}
                 </button>
 
                 {error && (
@@ -290,15 +303,15 @@ export const AIAnalysePage = () => {
       </section>
 
       <section className="card">
-        <h2>Historie</h2>
+        <h2>{t("History", "Historie")}</h2>
         <p className="muted">
-          Übersicht aller AI-Analysen.
+          {t("Overview of all AI analyses.", "Übersicht aller AI-Analysen.")}
         </p>
 
         {historyTotalCombined > 0 && (
           <div style={{ margin: "1rem 0", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.75rem", flexWrap: "wrap" }}>
             <span className="muted" style={{ fontSize: "0.85rem" }}>
-              Seite {historyPage + 1} · Gesamt: {historyTotalCombined} Einträge
+              {t("Page", "Seite")} {historyPage + 1} · {t("Total", "Gesamt")}: {historyTotalCombined.toLocaleString(locale)} {t("entries", "Einträge")}
             </span>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button
@@ -306,21 +319,21 @@ export const AIAnalysePage = () => {
                 onClick={() => setHistoryPage((current) => Math.max(0, current - 1))}
                 disabled={!hasPreviousHistoryPage || historyLoading}
               >
-                Zurück
+                {t("Previous", "Zurück")}
               </button>
               <button
                 type="button"
                 onClick={() => setHistoryPage((current) => current + 1)}
                 disabled={!hasNextHistoryPage || historyLoading}
               >
-                Weiter
+                {t("Next", "Weiter")}
               </button>
             </div>
           </div>
         )}
 
         {historyLoading && (
-          <div className="muted">AI-Analysen werden geladen...</div>
+          <div className="muted">{t("Loading AI analyses...", "AI-Analysen werden geladen...")}</div>
         )}
         {historyError && (
           <div className="alert alert-error" style={{ marginTop: "1rem" }}>
@@ -328,7 +341,7 @@ export const AIAnalysePage = () => {
           </div>
         )}
         {!historyLoading && !historyError && batchHistory.length === 0 && singleHistory.length === 0 && (
-          <div className="muted">Keine AI-Analysen vorhanden.</div>
+          <div className="muted">{t("No AI analyses available.", "Keine AI-Analysen vorhanden.")}</div>
         )}
         {!historyLoading && !historyError && (batchHistory.length > 0 || singleHistory.length > 0) && (
           <div className="ai-analysis__batch-list">
@@ -354,7 +367,7 @@ export const AIAnalysePage = () => {
                         <span className="ai-analysis__batch-id">{batch.batch_id}</span>
                         <span className="chip chip-batch">Batch</span>
                         <span className="muted" style={{ fontSize: "0.85rem", marginLeft: "auto" }}>
-                          {batch.vulnerability_count} Schwachstellen
+                          {batch.vulnerability_count.toLocaleString(locale)} {t("vulnerabilities", "Schwachstellen")}
                         </span>
                       </div>
                       {summary ? (
@@ -362,7 +375,7 @@ export const AIAnalysePage = () => {
                           <Markdown>{summary}</Markdown>
                         </div>
                       ) : (
-                        <div className="muted">Keine Zusammenfassung verfügbar.</div>
+                        <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
                       )}
                       {batch.vulnerability_ids?.length > 0 && (
                         <div className="vuln-aliases" style={{ marginTop: "0.75rem" }}>
@@ -380,8 +393,8 @@ export const AIAnalysePage = () => {
                       {(providerLabel || batch.language || batch.timestamp) && (
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
-                          {batch.language && <span> · Sprache: {batch.language.toUpperCase()}</span>}
-                          {batch.timestamp && <span> · {new Date(batch.timestamp).toLocaleString()}</span>}
+                          {batch.language && <span> · {t("Language", "Sprache")}: {batch.language.toUpperCase()}</span>}
+                          {batch.timestamp && <span> · {new Date(batch.timestamp).toLocaleString(locale)}</span>}
                         </div>
                       )}
                     </div>
@@ -399,7 +412,7 @@ export const AIAnalysePage = () => {
                         >
                           {single.vulnerability_id}
                         </Link>
-                        <span className="chip chip-single">Einzel</span>
+                        <span className="chip chip-single">{t("Single", "Einzel")}</span>
                       </div>
                       {single.title && (
                         <div className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
@@ -411,13 +424,13 @@ export const AIAnalysePage = () => {
                           <Markdown>{summary}</Markdown>
                         </div>
                       ) : (
-                        <div className="muted">Keine Zusammenfassung verfügbar.</div>
+                        <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
                       )}
                       {(providerLabel || single.language || single.timestamp) && (
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
-                          {single.language && <span> · Sprache: {single.language.toUpperCase()}</span>}
-                          {single.timestamp && <span> · {new Date(single.timestamp).toLocaleString()}</span>}
+                          {single.language && <span> · {t("Language", "Sprache")}: {single.language.toUpperCase()}</span>}
+                          {single.timestamp && <span> · {new Date(single.timestamp).toLocaleString(locale)}</span>}
                         </div>
                       )}
                     </div>

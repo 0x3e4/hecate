@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchIngestionLogs } from "../api/audit";
 import { IngestionLogEntry } from "../types";
 import { SkeletonBlock } from "../components/Skeleton";
+import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 
 const JOB_LABELS: Record<string, string> = {
@@ -19,10 +20,10 @@ const JOB_LABELS: Record<string, string> = {
   capec_sync: "CAPEC Cache Refresh",
   capec_initial_sync: "CAPEC Initial Cache Prefetch",
   circl_sync: "CIRCL Enrichment Sync",
-  manual_refresh: "Manueller Refresh",
-  saved_search_created: "Gespeicherte Suche erstellt",
-  saved_search_deleted: "Gespeicherte Suche gelöscht",
-  ai_investigation: "AI-Analyse",
+  manual_refresh: "Manual Refresh",
+  saved_search_created: "Saved search created",
+  saved_search_deleted: "Saved search deleted",
+  ai_investigation: "AI analysis",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -34,16 +35,10 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "#9ca3af",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  completed: "Abgeschlossen",
-  running: "Läuft",
-  failed: "Fehlgeschlagen",
-  cancelled: "Abgebrochen",
-};
-
 const PAGE_SIZE = 50;
 
 export const AuditLogPage = () => {
+  const { t, locale } = useI18n();
   const [logs, setLogs] = useState<IngestionLogEntry[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
@@ -52,12 +47,42 @@ export const AuditLogPage = () => {
   const [page, setPage] = useState<number>(0);
 
   useEffect(() => {
-    document.title = "Hecate Cyber Defense - Audit Log";
+    document.title = t("Hecate Cyber Defense - Audit Log", "Hecate Cyber Defense - Audit-Log");
 
     return () => {
       document.title = "Hecate Cyber Defense";
     };
-  }, []);
+  }, [t]);
+
+  const localizeJobLabel = (jobName: string, fallbackLabel: string) => {
+    switch (jobName) {
+      case "manual_refresh":
+        return t("Manual Refresh", "Manueller Refresh");
+      case "saved_search_created":
+        return t("Saved search created", "Gespeicherte Suche erstellt");
+      case "saved_search_deleted":
+        return t("Saved search deleted", "Gespeicherte Suche gelöscht");
+      case "ai_investigation":
+        return t("AI analysis", "AI-Analyse");
+      default:
+        return fallbackLabel;
+    }
+  };
+
+  const localizeStatus = (status: string) => {
+    switch (status) {
+      case "running":
+        return t("Running", "Läuft");
+      case "completed":
+        return t("Completed", "Abgeschlossen");
+      case "failed":
+        return t("Failed", "Fehlgeschlagen");
+      case "cancelled":
+        return t("Cancelled", "Abgebrochen");
+      default:
+        return status;
+    }
+  };
 
   useEffect(() => {
     if (page === 0) {
@@ -101,11 +126,12 @@ export const AuditLogPage = () => {
         const statusColor = STATUS_COLOR[statusKey] ?? "#d1d5db";
         const statusLabel =
           isOverdue && entry.status === "running"
-            ? "Läuft (Überfällig)"
-            : STATUS_LABELS[entry.status] ?? entry.status;
+            ? t("Running (Overdue)", "Läuft (Überfällig)")
+            : localizeStatus(entry.status);
         const cancelledNote = entry.status === "cancelled" && entry.error != null ? entry.error : undefined;
         const errorText = entry.error != null && entry.status !== "cancelled" ? entry.error : undefined;
-        const hintText = entry.overdueReason ?? (cancelledNote ? `Job abgebrochen: ${cancelledNote}` : undefined);
+        const hintText =
+          entry.overdueReason ?? (cancelledNote ? t(`Job cancelled: ${cancelledNote}`, `Job abgebrochen: ${cancelledNote}`) : undefined);
         const progressJson = entry.progress ? JSON.stringify(entry.progress, null, 2) : undefined;
         const resultJson = entry.result ? JSON.stringify(entry.result, null, 2) : undefined;
         const metadata = (entry.metadata ?? {}) as { label?: unknown; clientIp?: unknown };
@@ -122,20 +148,20 @@ export const AuditLogPage = () => {
         }
         let detailNode: ReactNode | null = null;
         if (errorText) {
-          detailElements.push(`Fehler: ${errorText}`);
+          detailElements.push(t(`Error: ${errorText}`, `Fehler: ${errorText}`));
         } else if (hintText) {
-          detailElements.push(`Hinweis: ${hintText}`);
+          detailElements.push(t(`Hint: ${hintText}`, `Hinweis: ${hintText}`));
         } else if (progressJson) {
           detailElements.push(
             <details>
-              <summary style={{ cursor: "pointer" }}>Fortschritt anzeigen</summary>
+              <summary style={{ cursor: "pointer" }}>{t("Show progress", "Fortschritt anzeigen")}</summary>
               <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{progressJson}</pre>
             </details>,
           );
         } else if (resultJson) {
           detailElements.push(
             <details>
-              <summary style={{ cursor: "pointer" }}>Details anzeigen</summary>
+              <summary style={{ cursor: "pointer" }}>{t("Show details", "Details anzeigen")}</summary>
               <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{resultJson}</pre>
             </details>,
           );
@@ -154,7 +180,7 @@ export const AuditLogPage = () => {
           );
         }
 
-        const jobLabel = metaLabel ?? JOB_LABELS[entry.jobName] ?? entry.jobName;
+        const jobLabel = metaLabel ?? localizeJobLabel(entry.jobName, JOB_LABELS[entry.jobName] ?? entry.jobName);
 
         return (
           <tr key={entry.id}>
@@ -184,7 +210,7 @@ export const AuditLogPage = () => {
           </tr>
         );
       }),
-    [logs]
+    [logs, t]
   );
 
   const showSkeleton = loading && logs.length === 0;
@@ -206,13 +232,17 @@ export const AuditLogPage = () => {
       <section className="card">
         <h2>Audit Log</h2>
         <p className="muted">
-          Logs werden bei bestimmten Ereignissen generiert, die von Interesse sein könnten. Gesamt: {total} Einträge.
+          {t(
+            "Logs are generated for selected events that may be relevant. Total:",
+            "Logs werden bei bestimmten Ereignissen generiert, die von Interesse sein könnten. Gesamt:"
+          )}{" "}
+          {total.toLocaleString(locale)} {t("entries.", "Einträge.")}
         </p>
 
         <div style={{ margin: "1rem 0", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
           <label style={{ display: "flex", flexDirection: "column", minWidth: "220px" }}>
             <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-              Job-Filter
+              {t("Job Filter", "Job-Filter")}
             </span>
             <select
               value={jobFilter}
@@ -221,7 +251,7 @@ export const AuditLogPage = () => {
                 setPage(0);
               }}
             >
-              <option value="">Alle Jobs</option>
+              <option value="">{t("All jobs", "Alle Jobs")}</option>
               <option value="euvd_ingestion">EUVD Sync</option>
               <option value="euvd_initial_sync">EUVD Initial Sync</option>
               <option value="cpe_sync">CPE Sync</option>
@@ -235,15 +265,15 @@ export const AuditLogPage = () => {
               <option value="capec_sync">CAPEC Cache Refresh</option>
               <option value="capec_initial_sync">CAPEC Initial Cache Prefetch</option>
               <option value="circl_sync">CIRCL Enrichment Sync</option>
-              <option value="manual_refresh">Manueller Refresh</option>
-              <option value="saved_search_created">Gespeicherte Suche erstellt</option>
-              <option value="saved_search_deleted">Gespeicherte Suche gelöscht</option>
-              <option value="ai_investigation">AI-Analyse</option>
+              <option value="manual_refresh">{t("Manual Refresh", "Manueller Refresh")}</option>
+              <option value="saved_search_created">{t("Saved search created", "Gespeicherte Suche erstellt")}</option>
+              <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
+              <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", minWidth: "180px" }}>
             <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-              Status-Filter
+              {t("Status Filter", "Status-Filter")}
             </span>
             <select
               value={statusFilter}
@@ -252,27 +282,27 @@ export const AuditLogPage = () => {
                 setPage(0);
               }}
             >
-              <option value="">Alle Status</option>
-              <option value="running">Läuft</option>
-              <option value="completed">Abgeschlossen</option>
-              <option value="failed">Fehlgeschlagen</option>
-              <option value="cancelled">Abgebrochen</option>
+              <option value="">{t("All statuses", "Alle Status")}</option>
+              <option value="running">{t("Running", "Läuft")}</option>
+              <option value="completed">{t("Completed", "Abgeschlossen")}</option>
+              <option value="failed">{t("Failed", "Fehlgeschlagen")}</option>
+              <option value="cancelled">{t("Cancelled", "Abgebrochen")}</option>
             </select>
           </label>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
             <span className="muted" style={{ fontSize: "0.85rem" }}>
-              Zeige {total === 0 ? 0 : pageStartIndex}–{pageEndIndex} von {total}
+              {t("Showing", "Zeige")} {total === 0 ? 0 : pageStartIndex}–{pageEndIndex} {t("of", "von")} {total.toLocaleString(locale)}
             </span>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={!hasPreviousPage || loading}>
-                Zurück
+                {t("Previous", "Zurück")}
               </button>
               <button
                 type="button"
                 onClick={() => setPage((current) => current + 1)}
                 disabled={!hasNextPage || loading}
               >
-                Weiter
+                {t("Next", "Weiter")}
               </button>
             </div>
           </div>
@@ -282,12 +312,12 @@ export const AuditLogPage = () => {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th>Job</th>
-                <th>Status</th>
-                <th>Gestartet</th>
-                <th>Beendet</th>
-                <th>Dauer</th>
-                <th>Ergebnis / Fehler</th>
+                <th>{t("Job", "Job")}</th>
+                <th>{t("Status", "Status")}</th>
+                <th>{t("Started", "Gestartet")}</th>
+                <th>{t("Finished", "Beendet")}</th>
+                <th>{t("Duration", "Dauer")}</th>
+                <th>{t("Result / Error", "Ergebnis / Fehler")}</th>
               </tr>
             </thead>
             <tbody>
@@ -296,7 +326,7 @@ export const AuditLogPage = () => {
               {isEmptyState && (
                 <tr>
                   <td colSpan={6} style={{ padding: "1.5rem 0", textAlign: "center", color: "rgba(255,255,255,0.45)" }}>
-                    Keine Einträge vorhanden.
+                    {t("No entries available.", "Keine Einträge vorhanden.")}
                   </td>
                 </tr>
               )}

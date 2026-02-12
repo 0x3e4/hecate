@@ -2,21 +2,23 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChangelogEntry, ChangelogResponse, fetchChangelog } from "../api/changelog";
 import { SkeletonBlock } from "../components/Skeleton";
+import { useI18n, type TranslateFn } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 
 export const ChangelogPage = () => {
+  const { t } = useI18n();
   const [data, setData] = useState<ChangelogResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const showSkeleton = loading && !data;
 
   useEffect(() => {
-    document.title = "Hecate Cyber Defense - Changelog";
+    document.title = t("Hecate Cyber Defense - Changelog", "Hecate Cyber Defense - Changelog");
 
     return () => {
       document.title = "Hecate Cyber Defense";
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const load = async () => {
@@ -27,21 +29,24 @@ export const ChangelogPage = () => {
         setData(response);
       } catch (err) {
         console.error("Failed to load changelog", err);
-        setError("Changelog konnte nicht geladen werden.");
+        setError(t("Failed to load changelog.", "Changelog konnte nicht geladen werden."));
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, []);
+  }, [t]);
 
   return (
     <div className="page">
       <section className="card">
         <h2>Changelog</h2>
         <p className="muted">
-          Übersicht über die neuesten Erstellungen und Aktualisierungen von Schwachstellen.
+          {t(
+            "Overview of the latest created and updated vulnerabilities.",
+            "Übersicht über die neuesten Erstellungen und Aktualisierungen von Schwachstellen."
+          )}
         </p>
 
         {showSkeleton && <ChangelogSkeleton />}
@@ -50,10 +55,10 @@ export const ChangelogPage = () => {
         {!showSkeleton && data && (
           <div style={{ display: "grid", gap: "0.75rem" }}>
             {data.entries.length === 0 && (
-              <p className="muted">Keine Änderungen verfügbar.</p>
+              <p className="muted">{t("No changes available.", "Keine Änderungen verfügbar.")}</p>
             )}
             {data.entries.map((entry) => (
-              <ChangelogEntryCard key={entry.vulnId} entry={entry} />
+              <ChangelogEntryCard key={entry.vulnId} entry={entry} t={t} />
             ))}
           </div>
         )}
@@ -84,12 +89,12 @@ const ChangelogSkeleton = () => (
   </div>
 );
 
-const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
+const ChangelogEntryCard = ({ entry, t }: { entry: ChangelogEntry; t: TranslateFn }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   // Use latestChange.changeType for the badge, as it represents the actual change in this entry
   const actualChangeType = entry.latestChange?.changeType ?? entry.changeType;
   const changeTypeColor = actualChangeType === "insert" ? "#66d9e8" : "#ffd43b";
-  const changeTypeLabel = actualChangeType === "insert" ? "Erstellt" : "Aktualisiert";
+  const changeTypeLabel = actualChangeType === "insert" ? t("Created", "Erstellt") : t("Updated", "Aktualisiert");
 
   const severityColors: Record<string, string> = {
     critical: "#ff6b6b",
@@ -110,7 +115,7 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
       return <span className="muted">—</span>;
     }
     if (typeof value === "boolean") {
-      return value ? "ja" : "nein";
+      return value ? t("yes", "ja") : t("no", "nein");
     }
     if (typeof value === "number") {
       return value.toString();
@@ -257,14 +262,14 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
                 {entry.latestChange.jobLabel ?? entry.latestChange.jobName}
               </span>
               <span className="change-history-entry__type">
-                {entry.latestChange.changeType === "insert" ? "Erstellt" : "Aktualisiert"}
+                {entry.latestChange.changeType === "insert" ? t("Created", "Erstellt") : t("Updated", "Aktualisiert")}
               </span>
               <span className="change-history-entry__fields">
                 {entry.latestChange.fields.length === 0
-                  ? "Keine Feldänderungen"
+                  ? t("No field changes", "Keine Feldänderungen")
                   : entry.latestChange.fields.length === 1
-                  ? "1 Feld geändert"
-                  : `${entry.latestChange.fields.length} Felder geändert`}
+                  ? t("1 field changed", "1 Feld geändert")
+                  : t(`${entry.latestChange.fields.length} fields changed`, `${entry.latestChange.fields.length} Felder geändert`)}
               </span>
             </summary>
             <div className="change-history-entry__body">
@@ -277,11 +282,11 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
                     >
                       <div className="change-history-field-name">{field.name}</div>
                       <div className="change-history-field-values">
-                        <span className="change-history-field-label">Alt</span>
+                        <span className="change-history-field-label">{t("Old", "Alt")}</span>
                         <div className="change-history-field-value">
                           {renderChangeValue(field.previous)}
                         </div>
-                        <span className="change-history-field-label">Neu</span>
+                        <span className="change-history-field-label">{t("New", "Neu")}</span>
                         <div className="change-history-field-value">
                           {renderChangeValue(field.current)}
                         </div>
@@ -290,7 +295,7 @@ const ChangelogEntryCard = ({ entry }: { entry: ChangelogEntry }) => {
                   ))}
                 </div>
               ) : (
-                <div className="muted">Keine Feldänderungen erfasst.</div>
+                <div className="muted">{t("No field changes recorded.", "Keine Feldänderungen erfasst.")}</div>
               )}
             </div>
           </details>

@@ -3,6 +3,7 @@ import AsyncSelect from "react-select/async";
 
 import { fetchProducts, fetchVendors, fetchVersions } from "../api/assets";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { useI18n } from "../i18n/context";
 import type {
   CatalogProduct,
   CatalogVendor,
@@ -77,6 +78,7 @@ const buildSelectionKey = (selection?: AssetFiltersSelection): string | null => 
 };
 
 export const AssetFilters = ({ onChange, selection }: Props) => {
+  const { t } = useI18n();
   const [selectedVendors, setSelectedVendors] = usePersistentState<VendorOption[]>(
     "assetFilter:vendors",
     [],
@@ -530,7 +532,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
     <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-            Vendors
+            {t("Vendors", "Vendors")}
           </span>
           <AsyncSelect<VendorOption, true>
             isMulti
@@ -541,12 +543,14 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             onChange={(options) => {
               setSelectedVendors(Array.isArray(options) ? options : []);
             }}
-            placeholder="Vendors auswählen…"
+            placeholder={t("Select vendors...", "Vendors auswählen...")}
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
             noOptionsMessage={({ inputValue }) =>
-              inputValue ? `Keine Vendors gefunden für "${inputValue}"` : "Tippen Sie, um zu suchen"
+              inputValue
+                ? t(`No vendors found for "${inputValue}"`, `Keine Vendors gefunden für "${inputValue}"`)
+                : t("Type to search", "Tippen Sie, um zu suchen")
             }
             formatOptionLabel={(option) => (
               <span style={{ display: "flex", flexDirection: "column" }}>
@@ -564,7 +568,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-            Produkte
+            {t("Products", "Produkte")}
           </span>
           <AsyncSelect<ProductOption, true>
             isMulti
@@ -577,13 +581,17 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
               setSelectedProducts(Array.isArray(options) ? options : []);
             }}
             placeholder={
-              selectedVendors.length === 0 ? "Erst Vendor wählen" : "Produkte auswählen…"
+              selectedVendors.length === 0
+                ? t("Select a vendor first", "Erst Vendor wählen")
+                : t("Select products...", "Produkte auswählen...")
             }
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
             noOptionsMessage={({ inputValue }) =>
-              inputValue ? `Keine Produkte gefunden für "${inputValue}"` : "Tippen Sie, um zu suchen"
+              inputValue
+                ? t(`No products found for "${inputValue}"`, `Keine Produkte gefunden für "${inputValue}"`)
+                : t("Type to search", "Tippen Sie, um zu suchen")
             }
             formatOptionLabel={(option) => (
               <span style={{ display: "flex", flexDirection: "column" }}>
@@ -601,7 +609,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-            Versionen
+            {t("Versions", "Versionen")}
           </span>
           <AsyncSelect<VersionOption, true>
             isMulti
@@ -615,14 +623,16 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             }}
             placeholder={
               isVersionDisabled
-                ? "Genau ein Produkt wählen"
-                : "Versionen auswählen…"
+                ? t("Select exactly one product", "Genau ein Produkt wählen")
+                : t("Select versions...", "Versionen auswählen...")
             }
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
             noOptionsMessage={({ inputValue }) =>
-              inputValue ? `Keine Versionen gefunden für "${inputValue}"` : "Tippen Sie, um zu suchen"
+              inputValue
+                ? t(`No versions found for "${inputValue}"`, `Keine Versionen gefunden für "${inputValue}"`)
+                : t("Type to search", "Tippen Sie, um zu suchen")
             }
           />
         </div>

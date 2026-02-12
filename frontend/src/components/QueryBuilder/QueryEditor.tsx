@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { LuCopy, LuSave, LuPlay } from "react-icons/lu";
+import { useI18n } from "../../i18n/context";
 
 interface QueryEditorProps {
   query: string;
@@ -18,6 +19,7 @@ export const QueryEditor = ({
   onCopyURL,
   onExecute
 }: QueryEditorProps) => {
+  const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleInsertOperator = (operator: string) => {
@@ -54,7 +56,7 @@ export const QueryEditor = ({
     <div className="query-editor-panel">
       <div className="query-editor-header">
         <h3>DQL Query</h3>
-        <span className="character-count">{query.length} Zeichen</span>
+        <span className="character-count">{query.length} {t("characters", "Zeichen")}</span>
       </div>
 
       <textarea
@@ -62,26 +64,29 @@ export const QueryEditor = ({
         className="query-input"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="DQL Query eingeben oder Felder aus dem Browser links klicken..."
+        placeholder={t(
+          "Enter DQL query or click fields from the left browser...",
+          "DQL Query eingeben oder Felder aus dem Browser links klicken..."
+        )}
         rows={10}
         spellCheck={false}
       />
 
       <div className="operator-buttons">
-        <span className="operator-label">Operatoren:</span>
-        <button type="button" onClick={() => handleInsertOperator("AND")} title="AND Operator">
+        <span className="operator-label">{t("Operators:", "Operatoren:")}</span>
+        <button type="button" onClick={() => handleInsertOperator("AND")} title={t("AND operator", "AND Operator")}>
           AND
         </button>
-        <button type="button" onClick={() => handleInsertOperator("OR")} title="OR Operator">
+        <button type="button" onClick={() => handleInsertOperator("OR")} title={t("OR operator", "OR Operator")}>
           OR
         </button>
-        <button type="button" onClick={() => handleInsertOperator("NOT")} title="NOT Operator">
+        <button type="button" onClick={() => handleInsertOperator("NOT")} title={t("NOT operator", "NOT Operator")}>
           NOT
         </button>
-        <button type="button" onClick={() => handleInsertOperator("*")} title="Wildcard">
+        <button type="button" onClick={() => handleInsertOperator("*")} title={t("Wildcard", "Wildcard")}>
           *
         </button>
-        <button type="button" onClick={() => handleInsertOperator("?")} title="Single character wildcard">
+        <button type="button" onClick={() => handleInsertOperator("?")} title={t("Single character wildcard", "Einzelzeichen-Wildcard")}>
           ?
         </button>
       </div>
@@ -92,10 +97,10 @@ export const QueryEditor = ({
           className="btn btn-secondary"
           onClick={onSave}
           disabled={!query.trim()}
-          title="Query speichern"
+          title={t("Save query", "Query speichern")}
         >
           <LuSave />
-          <span>Speichern</span>
+          <span>{t("Save", "Speichern")}</span>
         </button>
 
         <button
@@ -103,10 +108,10 @@ export const QueryEditor = ({
           className="btn btn-secondary"
           onClick={onCopyURL}
           disabled={!query.trim()}
-          title="URL kopieren"
+          title={t("Copy URL", "URL kopieren")}
         >
           <LuCopy />
-          <span>URL kopieren</span>
+          <span>{t("Copy URL", "URL kopieren")}</span>
         </button>
 
         <button
@@ -114,21 +119,21 @@ export const QueryEditor = ({
           className="btn btn-primary"
           onClick={onExecute}
           disabled={!query.trim()}
-          title="Query ausführen"
+          title={t("Execute query", "Query ausführen")}
         >
           <LuPlay />
-          <span>Query ausführen</span>
+          <span>{t("Execute query", "Query ausführen")}</span>
         </button>
       </div>
 
       <div className="query-help">
         <p>
-          <strong>Syntax-Beispiele:</strong> <code>vuln_id:CVE-2024-*</code>,{" "}
+          <strong>{t("Syntax examples:", "Syntax-Beispiele:")}</strong> <code>vuln_id:CVE-2024-*</code>,{" "}
           <code>cvss.severity:critical</code>,{" "}
           <code>vendors:microsoft AND exploited:true</code>
         </p>
         <p>
-          Mehr Informationen:{" "}
+          {t("More information:", "Mehr Informationen:")}{" "}
           <a
             href="https://docs.opensearch.org/latest/dashboards/dql/"
             target="_blank"
