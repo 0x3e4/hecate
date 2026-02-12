@@ -1,6 +1,7 @@
 services:
   backend:
     image: ghcr.io/0x3e4/hecate-backend:latest
+    restart: unless-stopped
     env_file: ".env"
     ports:
       - "8000:8000"
@@ -12,6 +13,7 @@ services:
 
   frontend:
     image: ghcr.io/0x3e4/hecate-frontend:latest
+    restart: unless-stopped
     env_file: ".env"
     ports:
       - "4173:4173"
@@ -40,6 +42,7 @@ services:
 
   opensearch:
     image: opensearchproject/opensearch:3
+    restart: unless-stopped
     environment:
       discovery.type: single-node
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD}
