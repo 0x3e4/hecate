@@ -390,6 +390,20 @@ const TodayStats = () => {
     );
   }
 
+  const todayDate = data.todayDate;
+
+  const dqlQuote = (v: string) => `"${v.replace(/\//g, "\\/")}"`;
+
+  const vendorDql = (vendorName: string) => {
+    const q = `vendors:${dqlQuote(vendorName)} AND published:>=${todayDate}`;
+    return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
+  };
+
+  const productDql = (vendorName: string, productName: string) => {
+    const q = `vendors:${dqlQuote(vendorName)} AND products:${dqlQuote(productName)} AND published:>=${todayDate}`;
+    return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
+  };
+
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
@@ -405,15 +419,15 @@ const TodayStats = () => {
           gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
         }}
       >
-        <TodayMiniCard title="Top Vendors">
-          {data.topVendors.length === 0 ? (
+        <TodayMiniCard title="Vendors">
+          {data.vendors.length === 0 ? (
             <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>Keine Vendor-Daten.</p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
-              {data.topVendors.map((v) => (
+              {data.vendors.map((v) => (
                 <TodayListItem
                   key={v.slug}
-                  to={`/vulnerabilities?vendor=${encodeURIComponent(v.slug)}`}
+                  to={vendorDql(v.name)}
                   label={v.name}
                   count={v.doc_count}
                 />
@@ -422,16 +436,17 @@ const TodayStats = () => {
           )}
         </TodayMiniCard>
 
-        <TodayMiniCard title="Top Produkte">
-          {data.topProducts.length === 0 ? (
+        <TodayMiniCard title="Produkte">
+          {data.products.length === 0 ? (
             <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>Keine Produkt-Daten.</p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
-              {data.topProducts.map((p) => (
+              {data.products.map((p) => (
                 <TodayListItem
-                  key={p.slug}
-                  to={`/vulnerabilities?product=${encodeURIComponent(p.slug)}`}
+                  key={`${p.vendorSlug}:${p.slug}`}
+                  to={productDql(p.vendorName, p.name)}
                   label={p.name}
+                  sublabel={p.vendorName}
                   count={p.doc_count}
                 />
               ))}
@@ -440,7 +455,7 @@ const TodayStats = () => {
         </TodayMiniCard>
 
         <TodayMiniCard title="CVEs nach Schweregrad">
-          <TodayCveList cves={data.cves} />
+          <TodayCveList cves={data.cves} todayDate={todayDate} />
         </TodayMiniCard>
       </div>
     </section>
@@ -454,14 +469,17 @@ const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode
       borderRadius: "12px",
       padding: "1rem 1.25rem",
       border: "1px solid rgba(255,255,255,0.06)",
+      minWidth: 0,
     }}
   >
     <h3 style={{ fontSize: "0.9rem", margin: "0 0 0.75rem" }}>{title}</h3>
-    {children}
+    <div className="today-mini-card-scroll" style={{ maxHeight: "700px", overflowY: "auto", overflowX: "hidden" }}>
+      {children}
+    </div>
   </div>
 );
 
-const TodayListItem = ({ to, label, count }: { to: string; label: string; count: number }) => {
+const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: string; sublabel?: string; count: number }) => {
   const [hovered, setHovered] = useState(false);
   return (
     <li>
@@ -480,10 +498,16 @@ const TodayListItem = ({ to, label, count }: { to: string; label: string; count:
           fontSize: "0.85rem",
           transition: "background 0.15s ease",
           background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
+          minWidth: 0,
         }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
           {label}
+          {sublabel && (
+            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "0.4rem" }}>
+              {sublabel}
+            </span>
+          )}
         </span>
         <span
           style={{
@@ -500,7 +524,7 @@ const TodayListItem = ({ to, label, count }: { to: string; label: string; count:
   );
 };
 
-const TodayCveList = ({ cves }: { cves: TodayCve[] }) => {
+const TodayCveList = ({ cves, todayDate }: { cves: TodayCve[]; todayDate: string }) => {
   const grouped = useMemo(() => {
     const groups: Record<string, TodayCve[]> = {};
     for (const cve of cves) {
@@ -511,69 +535,93 @@ const TodayCveList = ({ cves }: { cves: TodayCve[] }) => {
     return groups;
   }, [cves]);
 
+  const severityDql = (severity: string) => {
+    const q = `cvss.severity:${severity} AND published:>=${todayDate}`;
+    return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
+  };
+
   return (
-    <div style={{ display: "grid", gap: "0.75rem", maxHeight: "320px", overflowY: "auto" }}>
+    <div style={{ display: "grid", gap: "0.75rem" }}>
       {SEVERITY_ORDER.map((severity) => {
         const items = grouped[severity];
         if (!items || items.length === 0) return null;
         const color = SEVERITY_COLORS[severity] ?? "#808080";
         return (
           <div key={severity}>
-            <div
+            <Link
+              to={severityDql(severity)}
+              className="today-severity-header"
               style={{
+                display: "inline-block",
                 fontSize: "0.75rem",
                 fontWeight: 600,
                 color,
                 marginBottom: "0.35rem",
                 textTransform: "uppercase",
+                textDecoration: "none",
+                padding: "0.15rem 0.4rem",
+                borderRadius: "4px",
+                transition: "background 0.15s ease",
               }}
             >
               {severity} ({items.length})
-            </div>
+            </Link>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.15rem" }}>
               {items.map((cve) => (
-                <li key={cve.vulnId}>
-                  <Link
-                    to={`/vulnerability/${encodeURIComponent(cve.vulnId)}`}
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "#f5f7fa",
-                      textDecoration: "none",
-                      display: "flex",
-                      gap: "0.5rem",
-                      alignItems: "baseline",
-                      padding: "0.15rem 0",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: "0.75rem",
-                        color,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {cve.vulnId}
-                    </span>
-                    <span
-                      className="muted"
-                      style={{
-                        fontSize: "0.75rem",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {cve.title}
-                    </span>
-                  </Link>
-                </li>
+                <TodayCveItem key={cve.vulnId} cve={cve} color={color} />
               ))}
             </ul>
           </div>
         );
       })}
     </div>
+  );
+};
+
+const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <li>
+      <Link
+        to={`/vulnerability/${encodeURIComponent(cve.vulnId)}`}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          fontSize: "0.8rem",
+          color: "#f5f7fa",
+          textDecoration: "none",
+          display: "flex",
+          gap: "0.5rem",
+          alignItems: "baseline",
+          padding: "0.2rem 0.4rem",
+          borderRadius: "6px",
+          transition: "background 0.15s ease",
+          background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: "0.75rem",
+            color,
+            flexShrink: 0,
+          }}
+        >
+          {cve.vulnId}
+        </span>
+        <span
+          className="muted"
+          style={{
+            fontSize: "0.75rem",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {cve.title}
+        </span>
+      </Link>
+    </li>
   );
 };
 
