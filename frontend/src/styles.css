@@ -3384,6 +3384,6 @@ table thead th {
 
 @media (max-width: 768px) {
   .today-mini-card-scroll {
-    max-height: 300px !important;
+    max-height: 150px !important;
   }
 }
