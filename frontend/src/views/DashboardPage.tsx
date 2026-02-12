@@ -209,9 +209,8 @@ const SingleVulnQuery = ({
 
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-        <h2 style={{ margin: 0 }}>Schwachstelle abrufen</h2>
-        {isLoading && (
+      {isLoading && (
+        <div style={{ marginBottom: "0.5rem" }}>
           <span
             style={{
               display: "inline-block",
@@ -223,8 +222,8 @@ const SingleVulnQuery = ({
               animation: "spin 0.8s linear infinite",
             }}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       <div style={{ position: "relative", width: "100%", overflow: "hidden" }}>
         <input
@@ -384,8 +383,7 @@ const TodayStats = () => {
   if (!data || data.total === 0) {
     return (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
-        <h2 style={{ margin: 0 }}>Schwachstellen heute</h2>
-        <p className="muted" style={{ marginTop: "0.5rem" }}>
+        <p className="muted" style={{ margin: 0 }}>
           Heute wurden noch keine Schwachstellen veröffentlicht.
         </p>
       </section>
@@ -395,9 +393,8 @@ const TodayStats = () => {
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-        <h2 style={{ margin: 0 }}>Schwachstellen heute</h2>
         <span className="muted" style={{ fontSize: "0.9rem" }}>
-          {data.total.toLocaleString()} gesamt
+          {data.total.toLocaleString()} Schwachstellen heute
         </span>
       </div>
 
