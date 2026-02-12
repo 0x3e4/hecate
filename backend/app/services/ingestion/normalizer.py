@@ -217,20 +217,30 @@ def _parse_datetime(
     allow_none: bool = False,
 ) -> datetime | None:
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
     if isinstance(value, str) and value:
         try:
-            return parser.isoparse(value).astimezone(UTC)
+            dt = parser.isoparse(value)
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=UTC)
+            return dt.astimezone(UTC)
         except (ValueError, TypeError):
             try:
-                return parser.parse(value).astimezone(UTC)
+                dt = parser.parse(value)
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
             except (ValueError, TypeError):
                 log.debug("normalizer.invalid_datetime", value=value)
     if fallback is not None:
+        if fallback.tzinfo is None:
+            return fallback.replace(tzinfo=UTC)
         return fallback.astimezone(UTC)
     if allow_none:
         return None
-    return datetime.now(tz=UTC).astimezone(UTC)
+    return datetime.now(tz=UTC)
 
 
 def _extract_cvss(data: dict[str, Any]) -> CvssScore:

@@ -734,17 +734,13 @@ class StatsService:
 
     async def get_today_summary(self) -> dict[str, Any]:
         """Return today's vulnerability stats: top vendors, top products, severity breakdown, CVE list."""
-        now = datetime.now(tz=UTC)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_start_ms = int(today_start.timestamp() * 1000)
-
         body: dict[str, Any] = {
             "size": 100,
             "track_total_hits": True,
             "query": {
                 "bool": {
                     "filter": [
-                        {"range": {"published": {"gte": today_start_ms}}},
+                        {"range": {"published": {"gte": "now/d"}}},
                     ]
                 }
             },
