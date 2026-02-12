@@ -6,12 +6,14 @@ import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } 
 import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../api/stats";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
+import { useI18n, type TranslateFn } from "../i18n/context";
 import { getPublishedDisplay } from "../utils/published";
 import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
 import { ExploitationSummary } from "../components/ExploitationSummary";
 import { getPreferredCvssMetric } from "../utils/cvss";
 
 export const DashboardPage = () => {
+  const { t, locale } = useI18n();
   const navigate = useNavigate();
   const [vulnerabilities, setVulnerabilities] = useState<VulnerabilityPreview[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -73,12 +75,12 @@ export const DashboardPage = () => {
       if (axiosError.response?.status === 404) {
         setQueryNotFound(trimmed);
       } else {
-        setToast({ type: "error", message: `Fehler beim Abrufen: ${trimmed}` });
+        setToast({ type: "error", message: t(`Failed to fetch: ${trimmed}`, `Fehler beim Abrufen: ${trimmed}`) });
       }
     } finally {
       setQueryLoading(false);
     }
-  }, [queryInput, navigate]);
+  }, [queryInput, navigate, t]);
 
   const handleManualSync = useCallback(async () => {
     if (!queryNotFound) return;
@@ -104,27 +106,36 @@ export const DashboardPage = () => {
         setQueryInput("");
         navigate(`/vulnerability/${encodeURIComponent(queryNotFound)}`);
       } else if (errors.length > 0) {
-        const errorMessages = errors.map((e) => e.message || "Unbekannter Fehler").join("; ");
+        const errorMessages = errors.map((e) => e.message || t("Unknown error", "Unbekannter Fehler")).join("; ");
         setToast({
           type: "error",
-          message: `Schwachstelle nicht in NVD/EUVD gefunden: ${errorMessages}`,
+          message: t(
+            `Vulnerability not found in NVD/EUVD: ${errorMessages}`,
+            `Schwachstelle nicht in NVD/EUVD gefunden: ${errorMessages}`
+          ),
         });
       } else {
         setToast({
           type: "error",
-          message: `Schwachstelle "${queryNotFound}" konnte nicht synchronisiert werden. Nicht in NVD oder EUVD vorhanden.`,
+          message: t(
+            `Vulnerability "${queryNotFound}" could not be synchronized. Not available in NVD or EUVD.`,
+            `Schwachstelle "${queryNotFound}" konnte nicht synchronisiert werden. Nicht in NVD oder EUVD vorhanden.`
+          ),
         });
       }
     } catch (error) {
       console.error("Manual sync failed", error);
       setToast({
         type: "error",
-        message: `Synchronisation fehlgeschlagen. NVD/EUVD haben diese Schwachstelle möglicherweise nicht.`,
+        message: t(
+          "Synchronization failed. NVD/EUVD may not contain this vulnerability.",
+          "Synchronisation fehlgeschlagen. NVD/EUVD haben diese Schwachstelle möglicherweise nicht."
+        ),
       });
     } finally {
       setSyncLoading(false);
     }
-  }, [queryNotFound, navigate]);
+  }, [queryNotFound, navigate, t]);
 
   const handleQueryKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -144,6 +155,7 @@ export const DashboardPage = () => {
   return (
     <div className="page">
       <SingleVulnQuery
+        t={t}
         queryInput={queryInput}
         setQueryInput={setQueryInput}
         queryLoading={queryLoading}
@@ -154,8 +166,8 @@ export const DashboardPage = () => {
         onKeyDown={handleQueryKeyDown}
         onClear={handleClear}
       />
-      <TodayStats />
-      <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} />
+      <TodayStats t={t} locale={locale} />
+      <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />
 
       {/* Toast notification */}
       {toast && (
@@ -183,6 +195,7 @@ export const DashboardPage = () => {
 };
 
 interface SingleVulnQueryProps {
+  t: TranslateFn;
   queryInput: string;
   setQueryInput: (value: string) => void;
   queryLoading: boolean;
@@ -195,6 +208,7 @@ interface SingleVulnQueryProps {
 }
 
 const SingleVulnQuery = ({
+  t,
   queryInput,
   setQueryInput,
   queryLoading,
@@ -233,7 +247,7 @@ const SingleVulnQuery = ({
             setQueryInput(e.target.value);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Vulnerability ID eingeben und Enter drücken"
+          placeholder={t("Enter vulnerability ID and press Enter", "Vulnerability ID eingeben und Enter drücken")}
           disabled={isLoading}
           autoComplete="off"
           style={{
@@ -269,7 +283,7 @@ const SingleVulnQuery = ({
               fontSize: "1.1rem",
               lineHeight: 1,
             }}
-            title="Eingabe löschen"
+            title={t("Clear input", "Eingabe löschen")}
           >
             ×
           </button>
@@ -279,13 +293,13 @@ const SingleVulnQuery = ({
       {/* Status messages */}
       {queryLoading && (
         <p style={{ margin: "0.75rem 0 0", color: "rgba(255,255,255,0.6)", fontSize: "0.9rem" }}>
-          Suche in lokaler Datenbank…
+          {t("Searching local database...", "Suche in lokaler Datenbank…")}
         </p>
       )}
 
       {syncLoading && (
         <p style={{ margin: "0.75rem 0 0", color: "rgba(255,193,7,0.9)", fontSize: "0.9rem" }}>
-          Lade von NVD/EUVD…
+          {t("Loading from NVD/EUVD...", "Lade von NVD/EUVD…")}
         </p>
       )}
 
@@ -303,10 +317,13 @@ const SingleVulnQuery = ({
             <span style={{ fontSize: "1.25rem", lineHeight: 1 }}>⚠️</span>
             <div style={{ flex: 1 }}>
               <p style={{ margin: 0, fontWeight: 500 }}>
-                „{queryNotFound}" nicht in lokaler Datenbank
+                {t(`"${queryNotFound}" not found in local database`, `„${queryNotFound}" nicht in lokaler Datenbank`)}
               </p>
               <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.9rem" }}>
-                Die Schwachstelle wurde noch nicht synchronisiert. Soll sie von den offiziellen Quellen abgerufen werden?
+                {t(
+                  "This vulnerability has not been synchronized yet. Load it from official sources?",
+                  "Die Schwachstelle wurde noch nicht synchronisiert. Soll sie von den offiziellen Quellen abgerufen werden?"
+                )}
               </p>
               <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 <button
@@ -320,7 +337,7 @@ const SingleVulnQuery = ({
                     fontWeight: 500,
                   }}
                 >
-                  Von NVD/EUVD laden
+                  {t("Load from NVD/EUVD", "Von NVD/EUVD laden")}
                 </button>
                 <button
                   onClick={onClear}
@@ -331,7 +348,7 @@ const SingleVulnQuery = ({
                     border: "1px solid rgba(255,255,255,0.2)",
                   }}
                 >
-                  Abbrechen
+                  {t("Cancel", "Abbrechen")}
                 </button>
               </div>
             </div>
@@ -360,7 +377,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   unknown: "#808080",
 };
 
-const TodayStats = () => {
+const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -384,7 +401,7 @@ const TodayStats = () => {
     return (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
         <p className="muted" style={{ margin: 0 }}>
-          Heute wurden noch keine Schwachstellen veröffentlicht.
+          {t("No vulnerabilities published yet today.", "Heute wurden noch keine Schwachstellen veröffentlicht.")}
         </p>
       </section>
     );
@@ -408,7 +425,10 @@ const TodayStats = () => {
     <section className="card" style={{ marginBottom: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
         <span className="muted" style={{ fontSize: "0.9rem" }}>
-          {data.total.toLocaleString()} Schwachstellen heute
+          {t(
+            `${data.total.toLocaleString(locale)} vulnerabilities today`,
+            `${data.total.toLocaleString(locale)} Schwachstellen heute`
+          )}
         </span>
       </div>
 
@@ -419,9 +439,11 @@ const TodayStats = () => {
           gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
         }}
       >
-        <TodayMiniCard title="Vendors">
+        <TodayMiniCard title={t("Vendors", "Hersteller")}>
           {data.vendors.length === 0 ? (
-            <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>Keine Vendor-Daten.</p>
+            <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+              {t("No vendor data.", "Keine Vendor-Daten.")}
+            </p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
               {data.vendors.map((v) => (
@@ -436,9 +458,11 @@ const TodayStats = () => {
           )}
         </TodayMiniCard>
 
-        <TodayMiniCard title="Produkte">
+        <TodayMiniCard title={t("Products", "Produkte")}>
           {data.products.length === 0 ? (
-            <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>Keine Produkt-Daten.</p>
+            <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+              {t("No product data.", "Keine Produkt-Daten.")}
+            </p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
               {data.products.map((p) => (
@@ -454,7 +478,7 @@ const TodayStats = () => {
           )}
         </TodayMiniCard>
 
-        <TodayMiniCard title="CVEs nach Schweregrad">
+        <TodayMiniCard title={t("CVEs by severity", "CVEs nach Schweregrad")}>
           <TodayCveList cves={data.cves} todayDate={todayDate} />
         </TodayMiniCard>
       </div>
@@ -660,9 +684,10 @@ const TodayStatsSkeleton = () => (
 interface VulnerabilityListProps {
   vulnerabilities: VulnerabilityPreview[];
   loading: boolean;
+  t: TranslateFn;
 }
 
-const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps) => {
+const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListProps) => {
   const hasResults = vulnerabilities.length > 0;
   const showSkeleton = loading && !hasResults;
 
@@ -671,7 +696,7 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
       vulnerabilities.map((vuln) => {
         const hasCve = Boolean(vuln.vulnId && vuln.vulnId.startsWith("CVE-"));
         const hasSource = Boolean(vuln.sourceId && (!hasCve || vuln.sourceId !== vuln.vulnId));
-        const primaryId = vuln.vulnId || vuln.sourceId || "Unbekannte-ID";
+        const primaryId = vuln.vulnId || vuln.sourceId || t("Unknown-ID", "Unbekannte-ID");
         const { text: published, isReserved: isPublishedReserved } = getPublishedDisplay(
           vuln.published,
           "datetime"
@@ -851,7 +876,7 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
             </div>
 
             <div className="vuln-meta">
-              <MetaItem label="Quelle" value={vuln.source ?? "EUVD"} />
+              <MetaItem label={t("Source", "Quelle")} value={vuln.source ?? "EUVD"} />
               {vuln.epssScore != null && (
                 <MetaItem label="EPSS" value={epss} />
               )}
@@ -861,17 +886,17 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
                   value={<ExploitationSummary exploited={vuln.exploited} exploitation={vuln.exploitation} />}
                 />
               )}
-              <MetaItem label="Assigner" value={vuln.assigner ?? "—"} />
+              <MetaItem label={t("Assigner", "Assigner")} value={vuln.assigner ?? "—"} />
               <MetaItem
-                label="Veröffentlicht"
+                label={t("Published", "Veröffentlicht")}
                 value={isPublishedReserved ? <ReservedBadge /> : published}
               />
             </div>
 
             <div className="vuln-meta">
-              <MetaItem label="Vendors" value={vendors} />
-              <MetaItem label="Produkte" value={products} />
-              <MetaItem label="Versionen" value={versions} />
+              <MetaItem label={t("Vendors", "Hersteller")} value={vendors} />
+              <MetaItem label={t("Products", "Produkte")} value={products} />
+              <MetaItem label={t("Versions", "Versionen")} value={versions} />
             </div>
 
             <div className={`vuln-summary ${preferredCvss ? "cvss-summary" : ""}`}>
@@ -897,22 +922,22 @@ const VulnerabilityList = ({ vulnerabilities, loading }: VulnerabilityListProps)
           </article>
         );
       }),
-    [vulnerabilities]
+    [vulnerabilities, t]
   );
 
   return (
     <section className="card">
-      <h2>Neueste Treffer</h2>
+      <h2>{t("Latest Findings", "Neueste Treffer")}</h2>
       {showSkeleton ? (
         <DashboardSkeleton />
       ) : hasResults ? (
         rows
       ) : (
-        <p>Keine Daten geladen.</p>
+        <p>{t("No data loaded.", "Keine Daten geladen.")}</p>
       )}
       {loading && hasResults && (
         <p className="muted" style={{ marginTop: "0.75rem" }}>
-          Aktualisiere Ergebnisse…
+          {t("Refreshing results...", "Aktualisiere Ergebnisse…")}
         </p>
       )}
     </section>

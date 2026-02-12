@@ -4,9 +4,11 @@ import { FieldBrowser } from "../components/QueryBuilder/FieldBrowser";
 import { QueryEditor } from "../components/QueryBuilder/QueryEditor";
 import { FieldAggregation } from "../components/QueryBuilder/FieldAggregation";
 import { useSavedSearches } from "../hooks/useSavedSearches";
+import { useI18n } from "../i18n/context";
 import { DQL_FIELD_HINTS } from "../constants/dqlFields";
 
 export const QueryBuilderPage = () => {
+  const { t } = useI18n();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const initialQuery = searchParams.get("search") || "";
@@ -21,12 +23,12 @@ export const QueryBuilderPage = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    document.title = "Hecate Cyber Defense - Query Builder";
+    document.title = t("Hecate Cyber Defense - Query Builder", "Hecate Cyber Defense - Query Builder");
 
     return () => {
       document.title = "Hecate Cyber Defense";
     };
-  }, []);
+  }, [t]);
 
   // Insert text at cursor position in the query
   const handleInsertText = (text: string) => {
@@ -91,12 +93,12 @@ export const QueryBuilderPage = () => {
         dqlQuery: currentQuery,
       });
 
-      showToast("Suche gespeichert", "success");
+      showToast(t("Search saved", "Suche gespeichert"), "success");
       setShowSaveDialog(false);
       setSaveName("");
     } catch (error) {
       console.error("Failed to save query:", error);
-      showToast("Speichern fehlgeschlagen", "error");
+      showToast(t("Saving failed", "Speichern fehlgeschlagen"), "error");
     }
   };
 
@@ -107,10 +109,10 @@ export const QueryBuilderPage = () => {
 
     try {
       await navigator.clipboard.writeText(url);
-      showToast("URL in Zwischenablage kopiert", "success");
+      showToast(t("URL copied to clipboard", "URL in Zwischenablage kopiert"), "success");
     } catch (error) {
       console.error("Failed to copy URL:", error);
-      showToast("Kopieren fehlgeschlagen", "error");
+      showToast(t("Copy failed", "Kopieren fehlgeschlagen"), "error");
     }
   };
 
@@ -136,8 +138,10 @@ export const QueryBuilderPage = () => {
       <section className="card">
         <h2>Query Builder</h2>
         <p className="muted">
-          Erstelle DQL-Abfragen mit einem intuitiven visuellen Interface. Klicke auf Felder, um sie
-          zur Query hinzuzufügen.
+          {t(
+            "Create DQL queries with an intuitive visual interface. Click fields to add them to the query.",
+            "Erstelle DQL-Abfragen mit einem intuitiven visuellen Interface. Klicke auf Felder, um sie zur Query hinzuzufügen."
+          )}
         </p>
 
         <div className="query-builder-layout">
@@ -162,7 +166,7 @@ export const QueryBuilderPage = () => {
             {/* Show aggregations for expanded fields */}
             {expandedFieldsWithAggregation.length > 0 && (
               <div className="expanded-aggregations">
-                <h4>Feldwerte</h4>
+                <h4>{t("Field Values", "Feldwerte")}</h4>
                 {expandedFieldsWithAggregation.map((fieldName) => (
                   <div key={fieldName} className="aggregation-section">
                     <h5>
@@ -181,13 +185,13 @@ export const QueryBuilderPage = () => {
       {showSaveDialog && (
         <div className="dialog-overlay" onClick={() => setShowSaveDialog(false)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Query speichern</h3>
-            <p>Gebe einen Namen für die gespeicherte Query ein:</p>
+            <h3>{t("Save Query", "Query speichern")}</h3>
+            <p>{t("Enter a name for the saved query:", "Gebe einen Namen für die gespeicherte Query ein:")}</p>
             <input
               type="text"
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
-              placeholder="Query-Name..."
+              placeholder={t("Query name...", "Query-Name...")}
               maxLength={200}
               autoFocus
               onKeyDown={(e) => {
@@ -204,7 +208,7 @@ export const QueryBuilderPage = () => {
                 className="btn btn-secondary"
                 onClick={() => setShowSaveDialog(false)}
               >
-                Abbrechen
+                {t("Cancel", "Abbrechen")}
               </button>
               <button
                 type="button"
@@ -212,7 +216,7 @@ export const QueryBuilderPage = () => {
                 onClick={handleSave}
                 disabled={!saveName.trim()}
               >
-                Speichern
+                {t("Save", "Speichern")}
               </button>
             </div>
           </div>

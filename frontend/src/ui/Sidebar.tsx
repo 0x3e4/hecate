@@ -4,6 +4,7 @@ import { useMemo } from "react";
 
 import { config } from "../config";
 import { useSavedSearches } from "../hooks/useSavedSearches";
+import { useI18n } from "../i18n/context";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -16,17 +17,43 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: LuLayoutDashboard },
   { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
   { to: "/query-builder", label: "Query Builder", icon: LuWrench },
-  ...(config.aiFeatures.enabled ? [{ to: "/ai-analyse", label: "AI-Analyse", icon: LuBrain }] : []),
-  { to: "/stats", label: "Statistiken", icon: LuFileChartColumnIncreasing },
+  ...(config.aiFeatures.enabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
+  { to: "/stats", label: "Statistics", icon: LuFileChartColumnIncreasing },
   { to: "/changelog", label: "Changelog", icon: LuHistory },
   { to: "/audit", label: "Audit Log", icon: LuLogs },
   { to: "/system", label: "System", icon: LuSettings },
-];
+] as const;
 
 export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileMenuClose }: SidebarProps) => {
+  const { t } = useI18n();
   const { savedSearches } = useSavedSearches();
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
+  const localizedNavItems = useMemo(
+    () =>
+      navItems.map((item) => {
+        const germanLabel = item.to === "/"
+          ? "Dashboard"
+          : item.to === "/vulnerabilities"
+          ? "Schwachstellen"
+          : item.to === "/query-builder"
+          ? "Query-Builder"
+          : item.to === "/ai-analyse"
+          ? "AI-Analyse"
+          : item.to === "/stats"
+          ? "Statistiken"
+          : item.to === "/changelog"
+          ? "Changelog"
+          : item.to === "/audit"
+          ? "Audit-Log"
+          : "System";
+        return {
+          ...item,
+          label: t(item.label, germanLabel),
+        };
+      }),
+    [t]
+  );
 
   const handleLinkClick = () => {
     if (onMobileMenuClose) {
@@ -37,7 +64,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   return (
     <aside className={`app-sidebar${collapsed ? " collapsed" : ""}${mobileMenuOpen ? " mobile-open" : ""}`}>
       <nav className="sidebar-nav">
-        {navItems.map((item) => {
+        {localizedNavItems.map((item) => {
           const Icon = item.icon;
           const isVulnerabilitySection = item.to === "/vulnerabilities";
           return (
@@ -57,7 +84,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                 <span className="sidebar-link-text">{item.label}</span>
               </NavLink>
               {isVulnerabilitySection && savedSearches.length > 0 && (
-                <div className="sidebar-subnav" aria-label="Saved vulnerability searches">
+                <div className="sidebar-subnav" aria-label={t("Saved vulnerability searches", "Gespeicherte Schwachstellen-Suchen")}>
                   {savedSearches.map((saved) => {
                     const savedKey = normalizeSearchParams(saved.queryParams);
                     const isActive = savedKey === currentParamsKey;
@@ -94,12 +121,12 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
         className="sidebar-collapse-button"
         onClick={onToggleCollapse}
         aria-pressed={collapsed}
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? t("Expand sidebar", "Sidebar ausklappen") : t("Collapse sidebar", "Sidebar einklappen")}
       >
         <span aria-hidden="true" className="sidebar-collapse-icon">
           {collapsed ? <LuChevronRight /> : <LuChevronLeft />}
         </span>
-        <span className="sidebar-collapse-label">{collapsed ? "Expand" : "Collapse"}</span>
+        <span className="sidebar-collapse-label">{collapsed ? t("Expand", "Ausklappen") : t("Collapse", "Einklappen")}</span>
       </button>
     </aside>
   );

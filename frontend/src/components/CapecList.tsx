@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { CAPECInfo } from "../api/capec";
 import { getCapecFromCwes } from "../api/capec";
+import { useI18n } from "../i18n/context";
 
 const INITIAL_DISPLAY_COUNT = 5;
 
@@ -17,6 +18,7 @@ interface CapecListProps {
 }
 
 export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
+  const { t } = useI18n();
   const [capecInfo, setCapecInfo] = useState<Record<string, CAPECInfo>>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,21 +40,21 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
         onCountChange?.(Object.keys(response.capecs).length);
       } catch (err) {
         console.error("Failed to fetch CAPEC information", err);
-        setError("CAPEC-Informationen konnten nicht geladen werden");
+        setError(t("Failed to load CAPEC information", "CAPEC-Informationen konnten nicht geladen werden"));
       } finally {
         setLoading(false);
       }
     };
 
     fetchCapecInfo();
-  }, [cwes]);
+  }, [cwes, onCountChange, t]);
 
   if (!cwes.length) {
-    return <span className="muted">Keine CWEs vorhanden, CAPEC-Zuordnung nicht möglich.</span>;
+    return <span className="muted">{t("No CWEs available, CAPEC mapping not possible.", "Keine CWEs vorhanden, CAPEC-Zuordnung nicht möglich.")}</span>;
   }
 
   if (loading) {
-    return <div className="muted">CAPEC-Informationen werden geladen...</div>;
+    return <div className="muted">{t("Loading CAPEC information...", "CAPEC-Informationen werden geladen...")}</div>;
   }
 
   if (error) {
@@ -62,7 +64,7 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
   const entries = Object.entries(capecInfo);
 
   if (!entries.length) {
-    return <span className="muted">Keine CAPEC-Zuordnungen für die vorhandenen CWEs gefunden.</span>;
+    return <span className="muted">{t("No CAPEC mappings found for available CWEs.", "Keine CAPEC-Zuordnungen für die vorhandenen CWEs gefunden.")}</span>;
   }
 
   const hasMore = entries.length > INITIAL_DISPLAY_COUNT;
@@ -102,7 +104,7 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
             )}
             {info.likelihood && (
               <span className="muted" style={{ fontSize: "0.8rem" }}>
-                Likelihood: {info.likelihood}
+                {t("Likelihood", "Wahrscheinlichkeit")}: {info.likelihood}
               </span>
             )}
           </div>
@@ -129,8 +131,11 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
           }}
         >
           {expanded
-            ? "Weniger anzeigen"
-            : `Alle ${entries.length} anzeigen (${entries.length - INITIAL_DISPLAY_COUNT} weitere)`}
+            ? t("Show less", "Weniger anzeigen")
+            : t(
+                `Show all ${entries.length} (${entries.length - INITIAL_DISPLAY_COUNT} more)`,
+                `Alle ${entries.length} anzeigen (${entries.length - INITIAL_DISPLAY_COUNT} weitere)`
+              )}
         </button>
       )}
     </div>

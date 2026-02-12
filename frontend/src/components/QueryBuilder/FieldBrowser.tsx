@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { LuChevronDown, LuChevronRight, LuSearch } from "react-icons/lu";
 import { DQL_FIELD_HINTS, FIELD_CATEGORIES } from "../../constants/dqlFields";
+import { useI18n } from "../../i18n/context";
 import { FieldItem } from "./FieldItem";
 
 interface FieldBrowserProps {
@@ -10,6 +11,7 @@ interface FieldBrowserProps {
 }
 
 export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: FieldBrowserProps) => {
+  const { t } = useI18n();
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(FIELD_CATEGORIES.map(c => c.name))
@@ -54,12 +56,12 @@ export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: Fi
   return (
     <div className="field-browser">
       <div className="field-browser-header">
-        <h3>Verfügbare Felder</h3>
+        <h3>{t("Available Fields", "Verfügbare Felder")}</h3>
         <div className="field-browser-search">
           <LuSearch className="search-icon" />
           <input
             type="text"
-            placeholder="Felder durchsuchen..."
+            placeholder={t("Search fields...", "Felder durchsuchen...")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
@@ -101,7 +103,7 @@ export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: Fi
 
         {categorizedFields.length === 0 && (
           <div className="no-results">
-            Keine Felder gefunden für "{searchTerm}"
+            {t(`No fields found for "${searchTerm}"`, `Keine Felder gefunden für "${searchTerm}"`)}
           </div>
         )}
       </div>

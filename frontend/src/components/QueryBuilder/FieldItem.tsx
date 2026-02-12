@@ -1,5 +1,6 @@
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import type { DQLFieldHint } from "../../constants/dqlFields";
+import { useI18n } from "../../i18n/context";
 
 interface FieldItemProps {
   field: DQLFieldHint;
@@ -25,8 +26,53 @@ const getTypeColor = (type: string): string => {
   }
 };
 
+const toEnglishDescription = (description: string): string => {
+  const replacements: Array<[RegExp, string]> = [
+    [/z\.B\./g, "e.g."],
+    [/Name der Quelle/g, "Source name"],
+    [/Weitere Identifier \/ Aliasse/g, "Additional identifiers / aliases"],
+    [/Schwachstellen Auftraggeber/g, "Vulnerability assigner"],
+    [/Titel des Eintrags/g, "Entry title"],
+    [/Beschreibungstext/g, "Description text"],
+    [/CWE Klassifizierung/g, "CWE classification"],
+    [/CPE Einträge/g, "CPE entries"],
+    [/True\/False für aktive Exploitation \(KEV\)/g, "True/false for active exploitation (KEV)"],
+    [/True\/False für abgelehnte Schwachstellen/g, "True/false for rejected vulnerabilities"],
+    [/Basisscore/g, "Base score"],
+    [/Vektor/g, "Vector"],
+    [/Angriffsvektor/g, "Attack vector"],
+    [/Angriffskomplexität/g, "Attack complexity"],
+    [/Angriffsvoraussetzungen/g, "Attack requirements"],
+    [/benötigte Privilegien/g, "Privileges required"],
+    [/Benutzerinteraktion/g, "User interaction"],
+    [/Vertraulichkeit/g, "Confidentiality"],
+    [/Integrität/g, "Integrity"],
+    [/Verfügbarkeit/g, "Availability"],
+    [/Quelle/g, "Source"],
+    [/Typ/g, "Type"],
+    [/Betroffener Hersteller/g, "Affected vendor"],
+    [/Betroffenes Produkt/g, "Affected product"],
+    [/Betroffene Versionen/g, "Affected versions"],
+    [/Betroffene Umgebungen/g, "Affected environments"],
+    [/Verwundbar/g, "Vulnerable"],
+    [/Liste der betroffenen Hersteller/g, "List of affected vendors"],
+    [/Liste der Produkte/g, "List of products"],
+    [/Produktversionen \(Text\)/g, "Product versions (text)"],
+    [/Produktversions-IDs aus dem Katalog/g, "Product version IDs from the catalog"],
+    [/Datum der Veröffentlichung/g, "Publication date"],
+    [/Datum des Imports/g, "Ingestion date"],
+  ];
+  let translated = description;
+  replacements.forEach(([pattern, value]) => {
+    translated = translated.replace(pattern, value);
+  });
+  return translated;
+};
+
 export const FieldItem = ({ field, onClick, onExpand, isExpanded }: FieldItemProps) => {
+  const { language, t } = useI18n();
   const typeColor = getTypeColor(field.type);
+  const description = language === "de" ? field.description : toEnglishDescription(field.description);
 
   return (
     <div className="field-item">
@@ -36,7 +82,7 @@ export const FieldItem = ({ field, onClick, onExpand, isExpanded }: FieldItemPro
           <span className="field-type-badge" style={{ backgroundColor: typeColor }}>
             {field.type.toUpperCase()}
           </span>
-          <p className="field-description">{field.description}</p>
+          <p className="field-description">{description}</p>
         </div>
 
         {field.aggregatable && (
@@ -47,7 +93,7 @@ export const FieldItem = ({ field, onClick, onExpand, isExpanded }: FieldItemPro
               onExpand();
             }}
             type="button"
-            title="Werte anzeigen"
+            title={t("Show values", "Werte anzeigen")}
           >
             {isExpanded ? <LuChevronDown /> : <LuChevronRight />}
           </button>

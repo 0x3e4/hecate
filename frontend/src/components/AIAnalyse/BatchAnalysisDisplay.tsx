@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Markdown from "react-markdown";
 import { AIBatchInvestigationResponse, VulnerabilityPreview } from "../../types";
+import { useI18n } from "../../i18n/context";
 
 interface BatchAnalysisDisplayProps {
   response: AIBatchInvestigationResponse | null;
@@ -19,6 +20,7 @@ export const BatchAnalysisDisplay = ({
   typing,
   displayText,
 }: BatchAnalysisDisplayProps) => {
+  const { t, locale } = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("combined");
   const normalizeId = (value: string) => value.trim().toUpperCase();
   const resolveIndividualSummary = (id: string) => {
@@ -43,9 +45,9 @@ export const BatchAnalysisDisplay = ({
   if (loading) {
     return (
       <div className="batch-analysis-display">
-        <div className="loading-spinner">
+          <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Analyse läuft...</p>
+          <p>{t("Analysis running...", "Analyse läuft...")}</p>
         </div>
       </div>
     );
@@ -55,7 +57,10 @@ export const BatchAnalysisDisplay = ({
     return (
       <div className="batch-analysis-display">
         <p className="muted">
-          Wählen Sie Schwachstellen aus und starten Sie die Analyse, um die Ergebnisse hier anzuzeigen.
+          {t(
+            "Select vulnerabilities and start the analysis to display results here.",
+            "Wählen Sie Schwachstellen aus und starten Sie die Analyse, um die Ergebnisse hier anzuzeigen."
+          )}
         </p>
       </div>
     );
@@ -86,7 +91,7 @@ export const BatchAnalysisDisplay = ({
         }
       }
     } else {
-      contentToDisplay = resolveIndividualSummary(activeTab) || "Keine Analyse verfügbar";
+      contentToDisplay = resolveIndividualSummary(activeTab) || t("No analysis available", "Keine Analyse verfügbar");
     }
   }
 
@@ -98,7 +103,7 @@ export const BatchAnalysisDisplay = ({
           className={`batch-analysis-tab ${activeTab === "combined" ? "active" : ""}`}
           onClick={() => setActiveTab("combined")}
         >
-          Kombinierte Analyse
+          {t("Combined Analysis", "Kombinierte Analyse")}
         </button>
         {vulnerabilities.map((vuln) => (
           <button
@@ -126,15 +131,15 @@ export const BatchAnalysisDisplay = ({
             </span>
             {" · "}
             <span className="muted">
-              Language: <strong>{response.language}</strong>
+              {t("Language", "Sprache")}: <strong>{response.language}</strong>
             </span>
             {" · "}
             <span className="muted">
-              Vulnerabilities: <strong>{response.vulnerabilityCount}</strong>
+              {t("Vulnerabilities", "Schwachstellen")}: <strong>{response.vulnerabilityCount.toLocaleString(locale)}</strong>
             </span>
             {" · "}
             <span className="muted">
-              Generated: <strong>{new Date(response.generatedAt).toLocaleString()}</strong>
+              {t("Generated", "Erstellt")}: <strong>{new Date(response.generatedAt).toLocaleString(locale)}</strong>
             </span>
           </div>
         )}

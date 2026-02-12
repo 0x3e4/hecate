@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import type { CWEInfo } from "../api/cwe";
 import { getCweBulk } from "../api/cwe";
+import { useI18n } from "../i18n/context";
 
 interface CweListProps {
   cwes: string[];
 }
 
 export const CweList = ({ cwes }: CweListProps) => {
+  const { t } = useI18n();
   const [cweInfo, setCweInfo] = useState<Record<string, CWEInfo>>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,21 +27,21 @@ export const CweList = ({ cwes }: CweListProps) => {
         setCweInfo(response.cwes);
       } catch (err) {
         console.error("Failed to fetch CWE information", err);
-        setError("CWE-Informationen konnten nicht geladen werden");
+        setError(t("Failed to load CWE information", "CWE-Informationen konnten nicht geladen werden"));
       } finally {
         setLoading(false);
       }
     };
 
     fetchCweInfo();
-  }, [cwes]);
+  }, [cwes, t]);
 
   if (!cwes.length) {
     return <span>—</span>;
   }
 
   if (loading) {
-    return <div className="muted">CWE-Informationen werden geladen...</div>;
+    return <div className="muted">{t("Loading CWE information...", "CWE-Informationen werden geladen...")}</div>;
   }
 
   if (error) {
@@ -84,7 +86,7 @@ export const CweList = ({ cwes }: CweListProps) => {
                 </span>
               ) : (
                 <span className="muted" style={{ fontSize: "0.9rem" }}>
-                  See CWE database for details
+                  {t("See CWE database for details", "Siehe CWE-Datenbank für Details")}
                 </span>
               )}
             </div>
