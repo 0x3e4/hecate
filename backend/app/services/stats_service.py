@@ -732,6 +732,124 @@ class StatsService:
             month_cursor = month_cursor + relativedelta(months=1)
         return timeline
 
+    async def get_today_summary(self) -> dict[str, Any]:
+        """Return today's vulnerability stats: top vendors, top products, severity breakdown, CVE list."""
+        now = datetime.now(tz=UTC)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start_ms = int(today_start.timestamp() * 1000)
+
+        body: dict[str, Any] = {
+            "size": 100,
+            "track_total_hits": True,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"range": {"published": {"gte": today_start_ms}}},
+                    ]
+                }
+            },
+            "_source": ["vuln_id", "title", "cvss.severity"],
+            "sort": [{"published": {"order": "desc"}}],
+            "aggs": {
+                "top_vendors": {
+                    "terms": {"field": "vendorSlugs", "size": 5},
+                    "aggs": {
+                        "display_name": {"terms": {"field": "vendors", "size": 1}},
+                    },
+                },
+                "top_products": {
+                    "terms": {"field": "productSlugs", "size": 5},
+                    "aggs": {
+                        "display_name": {"terms": {"field": "products", "size": 1}},
+                    },
+                },
+                "severity_breakdown": {
+                    "terms": {"field": "cvss.severity", "size": 10, "missing": "unknown"},
+                },
+            },
+        }
+
+        response = await async_search(
+            settings.opensearch_index,
+            body,
+            suppress_exceptions=True,
+        )
+
+        aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
+
+        top_vendors = self._map_slug_with_name(aggregations.get("top_vendors"), limit=5)
+        top_products = self._map_slug_with_name(aggregations.get("top_products"), limit=5)
+        severities = self._map_terms_aggregation(
+            aggregations.get("severity_breakdown"),
+            value_transform=lambda v: str(v).lower(),
+        )
+
+        hits = response.get("hits", {}).get("hits", [])
+        cves: list[dict[str, Any]] = []
+        for hit in hits:
+            source = hit.get("_source", {})
+            if not isinstance(source, dict):
+                continue
+            vuln_id = source.get("vuln_id")
+            if not vuln_id:
+                continue
+            severity = "unknown"
+            cvss = source.get("cvss")
+            if isinstance(cvss, dict):
+                severity = (cvss.get("severity") or "unknown").lower()
+            cves.append({
+                "vulnId": vuln_id,
+                "title": source.get("title", ""),
+                "severity": severity,
+            })
+
+        total = self._resolve_total(response)
+
+        return {
+            "total": total,
+            "topVendors": top_vendors,
+            "topProducts": top_products,
+            "severities": severities,
+            "cves": cves,
+        }
+
+    @staticmethod
+    def _map_slug_with_name(
+        aggregation: dict[str, Any] | None,
+        *,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Map a terms aggregation on a slug field with a nested display_name sub-agg."""
+        if not isinstance(aggregation, dict):
+            return []
+        buckets = aggregation.get("buckets")
+        if not isinstance(buckets, list):
+            return []
+
+        results: list[dict[str, Any]] = []
+        for bucket in buckets:
+            if not isinstance(bucket, dict):
+                continue
+            slug = bucket.get("key")
+            if not slug or not isinstance(slug, str):
+                continue
+            count = bucket.get("doc_count", 0)
+            if not isinstance(count, (int, float)):
+                continue
+
+            display_name_agg = bucket.get("display_name", {})
+            display_buckets = display_name_agg.get("buckets", [])
+            if display_buckets and isinstance(display_buckets, list) and display_buckets[0]:
+                name = display_buckets[0].get("key", slug)
+            else:
+                name = slug.replace("-", " ").title()
+
+            results.append({"slug": slug, "name": name, "doc_count": int(count)})
+            if len(results) >= limit:
+                break
+
+        return results
+
     @staticmethod
     def _map_group_results(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []

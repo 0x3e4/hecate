@@ -8,3 +8,8 @@ router = APIRouter()
 @router.get("/overview")
 async def get_overview(service: StatsService = Depends(get_stats_service)) -> dict:
     return await service.get_overview()
+
+
+@router.get("/today")
+async def get_today_summary(service: StatsService = Depends(get_stats_service)) -> dict:
+    return await service.get_today_summary()

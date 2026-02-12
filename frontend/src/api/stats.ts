@@ -45,3 +45,28 @@ export const fetchStatsOverview = async (): Promise<StatsResponse> => {
   const response = await api.get<StatsResponse>("/v1/stats/overview");
   return response.data;
 };
+
+export interface SlugBucket {
+  slug: string;
+  name: string;
+  doc_count: number;
+}
+
+export interface TodayCve {
+  vulnId: string;
+  title: string;
+  severity: string;
+}
+
+export interface TodaySummaryResponse {
+  total: number;
+  topVendors: SlugBucket[];
+  topProducts: SlugBucket[];
+  severities: TermsBucket[];
+  cves: TodayCve[];
+}
+
+export const fetchTodaySummary = async (): Promise<TodaySummaryResponse> => {
+  const response = await api.get<TodaySummaryResponse>("/v1/stats/today");
+  return response.data;
+};

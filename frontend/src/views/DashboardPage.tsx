@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
 import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
+import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../api/stats";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { getPublishedDisplay } from "../utils/published";
@@ -153,6 +154,7 @@ export const DashboardPage = () => {
         onKeyDown={handleQueryKeyDown}
         onClear={handleClear}
       />
+      <TodayStats />
       <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} />
 
       {/* Toast notification */}
@@ -347,6 +349,268 @@ const SingleVulnQuery = ({
     </section>
   );
 };
+
+/* ---------- Today's Vulnerability Statistics ---------- */
+
+const SEVERITY_ORDER = ["critical", "high", "medium", "low", "unknown"];
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "#ff6b6b",
+  high: "#ff922b",
+  medium: "#fcc419",
+  low: "#69db7c",
+  unknown: "#808080",
+};
+
+const TodayStats = () => {
+  const [data, setData] = useState<TodaySummaryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const result = await fetchTodaySummary();
+        setData(result);
+      } catch (err) {
+        console.error("Failed to load today stats", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading) return <TodayStatsSkeleton />;
+  if (!data || data.total === 0) {
+    return (
+      <section className="card" style={{ marginBottom: "1.5rem" }}>
+        <h2 style={{ margin: 0 }}>Schwachstellen heute</h2>
+        <p className="muted" style={{ marginTop: "0.5rem" }}>
+          Heute wurden noch keine Schwachstellen veröffentlicht.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card" style={{ marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+        <h2 style={{ margin: 0 }}>Schwachstellen heute</h2>
+        <span className="muted" style={{ fontSize: "0.9rem" }}>
+          {data.total.toLocaleString()} gesamt
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: "1rem",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+        }}
+      >
+        <TodayMiniCard title="Top Vendors">
+          {data.topVendors.length === 0 ? (
+            <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>Keine Vendor-Daten.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
+              {data.topVendors.map((v) => (
+                <TodayListItem
+                  key={v.slug}
+                  to={`/vulnerabilities?vendor=${encodeURIComponent(v.slug)}`}
+                  label={v.name}
+                  count={v.doc_count}
+                />
+              ))}
+            </ul>
+          )}
+        </TodayMiniCard>
+
+        <TodayMiniCard title="Top Produkte">
+          {data.topProducts.length === 0 ? (
+            <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>Keine Produkt-Daten.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
+              {data.topProducts.map((p) => (
+                <TodayListItem
+                  key={p.slug}
+                  to={`/vulnerabilities?product=${encodeURIComponent(p.slug)}`}
+                  label={p.name}
+                  count={p.doc_count}
+                />
+              ))}
+            </ul>
+          )}
+        </TodayMiniCard>
+
+        <TodayMiniCard title="CVEs nach Schweregrad">
+          <TodayCveList cves={data.cves} />
+        </TodayMiniCard>
+      </div>
+    </section>
+  );
+};
+
+const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode }) => (
+  <div
+    style={{
+      background: "rgba(255,255,255,0.03)",
+      borderRadius: "12px",
+      padding: "1rem 1.25rem",
+      border: "1px solid rgba(255,255,255,0.06)",
+    }}
+  >
+    <h3 style={{ fontSize: "0.9rem", margin: "0 0 0.75rem" }}>{title}</h3>
+    {children}
+  </div>
+);
+
+const TodayListItem = ({ to, label, count }: { to: string; label: string; count: number }) => {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <li>
+      <Link
+        to={to}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.35rem 0.5rem",
+          borderRadius: "6px",
+          textDecoration: "none",
+          color: "#f5f7fa",
+          fontSize: "0.85rem",
+          transition: "background 0.15s ease",
+          background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: "0.75rem",
+            color: "rgba(255,255,255,0.5)",
+            flexShrink: 0,
+            marginLeft: "0.5rem",
+          }}
+        >
+          {count}
+        </span>
+      </Link>
+    </li>
+  );
+};
+
+const TodayCveList = ({ cves }: { cves: TodayCve[] }) => {
+  const grouped = useMemo(() => {
+    const groups: Record<string, TodayCve[]> = {};
+    for (const cve of cves) {
+      const sev = cve.severity || "unknown";
+      if (!groups[sev]) groups[sev] = [];
+      groups[sev].push(cve);
+    }
+    return groups;
+  }, [cves]);
+
+  return (
+    <div style={{ display: "grid", gap: "0.75rem", maxHeight: "320px", overflowY: "auto" }}>
+      {SEVERITY_ORDER.map((severity) => {
+        const items = grouped[severity];
+        if (!items || items.length === 0) return null;
+        const color = SEVERITY_COLORS[severity] ?? "#808080";
+        return (
+          <div key={severity}>
+            <div
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color,
+                marginBottom: "0.35rem",
+                textTransform: "uppercase",
+              }}
+            >
+              {severity} ({items.length})
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.15rem" }}>
+              {items.map((cve) => (
+                <li key={cve.vulnId}>
+                  <Link
+                    to={`/vulnerability/${encodeURIComponent(cve.vulnId)}`}
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "#f5f7fa",
+                      textDecoration: "none",
+                      display: "flex",
+                      gap: "0.5rem",
+                      alignItems: "baseline",
+                      padding: "0.15rem 0",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
+                        color,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {cve.vulnId}
+                    </span>
+                    <span
+                      className="muted"
+                      style={{
+                        fontSize: "0.75rem",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {cve.title}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const TodayStatsSkeleton = () => (
+  <section className="card" style={{ marginBottom: "1.5rem" }}>
+    <SkeletonBlock height="1.2rem" width="200px" style={{ marginBottom: "1rem" }} />
+    <div
+      style={{
+        display: "grid",
+        gap: "1rem",
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+      }}
+    >
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            borderRadius: "12px",
+            padding: "1rem 1.25rem",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <SkeletonBlock height="0.9rem" width="120px" style={{ marginBottom: "0.75rem" }} />
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            {Array.from({ length: 5 }).map((_, j) => (
+              <SkeletonBlock key={j} height="1.4rem" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+);
 
 interface VulnerabilityListProps {
   vulnerabilities: VulnerabilityPreview[];
