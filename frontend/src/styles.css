@@ -2028,7 +2028,7 @@ table thead th {
   /* Search input */
   input[type="search"],
   input[type="text"] {
-    font-size: 16px; /* Prevents zoom on iOS */
+    font-size: 14px; /* Prevents zoom on iOS */
   }
 
   /* DQL toggle button on mobile */
@@ -3380,4 +3380,10 @@ table thead th {
 
 .today-mini-card-scroll::-webkit-scrollbar {
   display: none;
+}
+
+@media (max-width: 768px) {
+  .today-mini-card-scroll {
+    max-height: 300px !important;
+  }
 }

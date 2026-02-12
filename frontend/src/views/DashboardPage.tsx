@@ -249,7 +249,7 @@ const SingleVulnQuery = ({
               ? "rgba(255,193,7,0.08)"
               : "rgba(15, 18, 30, 0.85)",
             color: "#f5f7fa",
-            fontSize: "1rem",
+            fontSize: "14px",
             transition: "border-color 0.2s, background 0.2s",
           }}
         />
