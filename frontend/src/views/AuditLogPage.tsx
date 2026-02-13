@@ -24,6 +24,7 @@ const JOB_LABELS: Record<string, string> = {
   saved_search_created: "Saved search created",
   saved_search_deleted: "Saved search deleted",
   ai_investigation: "AI analysis",
+  ai_batch_investigation: "AI batch analysis",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -64,6 +65,8 @@ export const AuditLogPage = () => {
         return t("Saved search deleted", "Gespeicherte Suche gelöscht");
       case "ai_investigation":
         return t("AI analysis", "AI-Analyse");
+      case "ai_batch_investigation":
+        return t("AI batch analysis", "AI Batch-Analyse");
       default:
         return fallbackLabel;
     }
@@ -269,6 +272,7 @@ export const AuditLogPage = () => {
               <option value="saved_search_created">{t("Saved search created", "Gespeicherte Suche erstellt")}</option>
               <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
               <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
+              <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", minWidth: "180px" }}>
