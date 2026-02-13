@@ -1588,9 +1588,16 @@ def _format_version_range(match: Mapping[str, Any]) -> str | None:
     end_exc = match.get("versionEndExcluding")
     exact = match.get("version")
 
+    has_end = (isinstance(end_exc, str) and end_exc.strip()) or (
+        isinstance(end_inc, str) and end_inc.strip()
+    )
+
     parts: list[str] = []
     if isinstance(start_inc, str) and start_inc.strip():
-        parts.append(f">= {start_inc.strip()}")
+        if has_end:
+            parts.append(f">= {start_inc.strip()}")
+        else:
+            parts.append(start_inc.strip())
     elif isinstance(start_exc, str) and start_exc.strip():
         parts.append(f"> {start_exc.strip()}")
 
@@ -1600,7 +1607,7 @@ def _format_version_range(match: Mapping[str, Any]) -> str | None:
         parts.append(f"<= {end_inc.strip()}")
 
     if not parts and isinstance(exact, str) and exact.strip():
-        parts.append(f"= {exact.strip()}")
+        parts.append(exact.strip())
 
     if not parts:
         return None
