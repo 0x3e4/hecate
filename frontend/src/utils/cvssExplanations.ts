@@ -4,7 +4,7 @@
  * Keys match the attribute labels used in CvssMetricDisplay.
  * Value keys are the UPPERCASE display values produced by formatEnumValue().
  */
-import { getCurrentLanguage } from "../i18n/language";
+import { AppLanguage, getCurrentLanguage } from "../i18n/language";
 
 export interface CvssValueExplanation {
   /** Description of what the metric measures */
@@ -13,7 +13,9 @@ export interface CvssValueExplanation {
   values: Record<string, string>;
 }
 
-const CVSS_EXPLANATIONS: Record<string, CvssValueExplanation> = {
+type ExplanationMap = Record<string, CvssValueExplanation>;
+
+const CVSS_EXPLANATIONS_DE: ExplanationMap = {
   // -- Common across versions ------------------------------------------
 
   "Attack Vector": {
@@ -306,6 +308,304 @@ const CVSS_EXPLANATIONS: Record<string, CvssValueExplanation> = {
   },
 };
 
+const CVSS_EXPLANATIONS_EN: ExplanationMap = {
+  // -- Common across versions ------------------------------------------
+
+  "Attack Vector": {
+    metric: "Describes how an attacker can gain access to the vulnerable system.",
+    values: {
+      NETWORK:
+        "The attack can be carried out over the network, e.g. from the Internet. The attacker does not need physical or local access.",
+      ADJACENT:
+        "The attack is limited to a logically adjacent network, e.g. Bluetooth, NFC, or the same local subnet.",
+      "ADJACENT NETWORK":
+        "The attack is limited to a logically adjacent network, e.g. the same local subnet.",
+      LOCAL:
+        "The attacker needs local access to the system, e.g. via a terminal session, or the attack requires user interaction (e.g. opening a file).",
+      PHYSICAL:
+        "The attacker must be able to physically touch or manipulate the vulnerable system.",
+    },
+  },
+
+  "Attack Complexity": {
+    metric: "Describes conditions beyond the attacker's control that must exist for a successful attack.",
+    values: {
+      LOW: "No special prerequisites are needed. The attack is repeatable and reliably executable.",
+      MEDIUM:
+        "The attack requires specific circumstances or information that are not always present.",
+      HIGH: "The attack requires bypassing security mechanisms (e.g. ASLR, DEP) or knowledge of system-specific secrets. Success is not guaranteed.",
+    },
+  },
+
+  // -- CVSS 4.0 --------------------------------------------------------
+
+  "Attack Requirements": {
+    metric: "Describes whether the attack depends on specific deployment or execution conditions of the target system (CVSS 4.0).",
+    values: {
+      NONE: "The attack succeeds regardless of the target system's configuration or environment.",
+      PRESENT:
+        "Success depends on specific conditions, e.g. a race condition, a particular network configuration, or the need for a man-in-the-middle position.",
+    },
+  },
+
+  // -- CVSS 3.x / 4.0 -------------------------------------------------
+
+  "Privileges Required": {
+    metric: "Describes what level of privileges an attacker needs before the attack.",
+    values: {
+      NONE: "The attacker requires no authentication or access rights.",
+      LOW: "The attacker needs basic privileges typically corresponding to a normal user.",
+      HIGH: "The attacker needs administrative or extensive system privileges.",
+    },
+  },
+
+  "User Interaction": {
+    metric: "Describes whether a user (other than the attacker) must actively participate in the attack.",
+    values: {
+      NONE: "The attack requires no user participation.",
+      REQUIRED:
+        "A user must perform an action before the vulnerability can be exploited (e.g. clicking a link or opening a file).",
+      PASSIVE:
+        "The attack requires limited, involuntary user interaction, e.g. visiting a manipulated website (CVSS 4.0).",
+      ACTIVE:
+        "The attack requires deliberate, targeted user interaction, e.g. importing a file or submitting a form (CVSS 4.0).",
+    },
+  },
+
+  // -- CVSS 3.x --------------------------------------------------------
+
+  Scope: {
+    metric: "Describes whether the impact extends beyond the vulnerable system to other systems (CVSS 3.x).",
+    values: {
+      UNCHANGED:
+        "The impact is limited to the vulnerable system itself.",
+      CHANGED:
+        "The impact extends beyond the vulnerable system and can affect other components or systems.",
+    },
+  },
+
+  // -- CVSS 2.0 --------------------------------------------------------
+
+  Authentication: {
+    metric: "Indicates how many times an attacker must authenticate to exploit the vulnerability (CVSS 2.0).",
+    values: {
+      NONE: "The attacker does not need to authenticate.",
+      SINGLE:
+        "The attacker must authenticate once to carry out the attack.",
+      MULTIPLE:
+        "The attacker must authenticate multiple times to carry out the attack.",
+    },
+  },
+
+  // -- Impact: CVSS 2.0 (None/Partial/Complete), 3.x (None/Low/High) --
+
+  "Confidentiality Impact": {
+    metric: "Describes the extent of confidentiality loss.",
+    values: {
+      NONE: "No loss of confidentiality.",
+      PARTIAL:
+        "Access to some protected information, but the attacker does not have full control over the scope (CVSS 2.0).",
+      COMPLETE:
+        "Complete loss of confidentiality - all information on the system is disclosed (CVSS 2.0).",
+      LOW: "Access to some restricted information, but without serious direct damage.",
+      HIGH: "Complete loss of confidentiality - all system data can be disclosed.",
+    },
+  },
+
+  "Integrity Impact": {
+    metric: "Describes the extent of data integrity compromise.",
+    values: {
+      NONE: "No integrity compromise.",
+      PARTIAL:
+        "Data can be partially modified, but the attacker does not control the full scope (CVSS 2.0).",
+      COMPLETE:
+        "Complete loss of integrity - the attacker can modify any data on the system (CVSS 2.0).",
+      LOW: "Data can be modified in a limited way, without serious direct consequences.",
+      HIGH: "Complete loss of integrity - the attacker can modify any data.",
+    },
+  },
+
+  "Availability Impact": {
+    metric: "Describes the extent of availability impact.",
+    values: {
+      NONE: "No availability impact.",
+      PARTIAL:
+        "Performance is reduced or interruptions occur, but the service is not completely blocked (CVSS 2.0).",
+      COMPLETE:
+        "Complete loss of availability - the attacker can completely block access (CVSS 2.0).",
+      LOW: "Performance is reduced or interruptions occur, but the service remains generally accessible.",
+      HIGH: "Complete loss of availability - access to the system can be completely blocked.",
+    },
+  },
+
+  // -- CVSS 4.0: Vulnerable System impacts -----------------------------
+
+  "Vuln. Confidentiality": {
+    metric: "Describes the confidentiality loss in the directly vulnerable system (CVSS 4.0).",
+    values: {
+      NONE: "No confidentiality loss in the vulnerable system.",
+      LOW: "Limited access to protected information of the vulnerable system, without serious direct damage.",
+      HIGH: "Complete loss of confidentiality - all information of the vulnerable system can be disclosed.",
+    },
+  },
+
+  "Vuln. Integrity": {
+    metric: "Describes the integrity impact on the directly vulnerable system (CVSS 4.0).",
+    values: {
+      NONE: "No integrity impact on the vulnerable system.",
+      LOW: "Limited ability to modify data in the vulnerable system.",
+      HIGH: "Complete loss of integrity - any data of the vulnerable system can be modified.",
+    },
+  },
+
+  "Vuln. Availability": {
+    metric: "Describes the availability impact on the directly vulnerable system (CVSS 4.0).",
+    values: {
+      NONE: "No availability impact on the vulnerable system.",
+      LOW: "Performance of the vulnerable system is reduced or interruptions occur.",
+      HIGH: "Complete loss of availability - access to the vulnerable system can be completely blocked.",
+    },
+  },
+
+  // -- CVSS 4.0: Subsequent System impacts -----------------------------
+
+  "Sub. Confidentiality": {
+    metric: "Describes the confidentiality loss in subsequent systems that are not directly vulnerable (CVSS 4.0).",
+    values: {
+      NONE: "No confidentiality loss in subsequent systems.",
+      LOW: "Limited access to protected information of subsequent systems.",
+      HIGH: "Complete loss of confidentiality in subsequent systems - disclosed information has severe impact.",
+    },
+  },
+
+  "Sub. Integrity": {
+    metric: "Describes the integrity impact on subsequent systems (CVSS 4.0).",
+    values: {
+      NONE: "No integrity impact on subsequent systems.",
+      LOW: "Limited ability to modify data in subsequent systems.",
+      HIGH: "Complete loss of integrity in subsequent systems - any data can be modified.",
+    },
+  },
+
+  "Sub. Availability": {
+    metric: "Describes the availability impact on subsequent systems (CVSS 4.0).",
+    values: {
+      NONE: "No availability impact on subsequent systems.",
+      LOW: "Performance of subsequent systems is reduced or interruptions occur.",
+      HIGH: "Complete loss of availability in subsequent systems.",
+    },
+  },
+
+  // -- CVSS 4.0: Threat Metrics ----------------------------------------
+
+  "Exploit Maturity": {
+    metric: "Describes the current state of exploitation techniques or availability of exploit code (CVSS 4.0).",
+    values: {
+      ATTACKED:
+        "Attacks on this vulnerability have already been observed, or publicly available exploit tools exist.",
+      "PROOF OF CONCEPT":
+        "A publicly available proof-of-concept exploit exists, but no active attacks have been reported.",
+      UNREPORTED:
+        "No public exploits or attack reports are known.",
+    },
+  },
+
+  // -- CVSS 4.0: Supplemental Metrics ----------------------------------
+
+  Safety: {
+    metric: "Indicates whether exploitation of the vulnerability can impact the safety of people (IEC 61508).",
+    values: {
+      PRESENT:
+        'The consequences can lead to injuries classified as "marginal", "critical", or "catastrophic" according to IEC 61508.',
+      NEGLIGIBLE:
+        'The consequences are classified as "negligible" according to IEC 61508 - at most minor injuries.',
+    },
+  },
+
+  Automatable: {
+    metric: "Indicates whether an attacker can reliably automate all four steps of the kill chain (reconnaissance, weaponization, delivery, exploitation).",
+    values: {
+      NO: "The kill chain cannot be fully automated - manual steps are required.",
+      YES: "All four steps of the kill chain can be reliably automated, increasing the scalability of the attack.",
+    },
+  },
+
+  Recovery: {
+    metric: "Describes the system's ability to recover after an attack.",
+    values: {
+      AUTOMATIC:
+        "The system automatically restores its services after the attack.",
+      USER: "Recovery requires manual intervention by an administrator.",
+      IRRECOVERABLE:
+        "The system's services cannot be restored after the attack.",
+    },
+  },
+
+  "Value Density": {
+    metric: "Describes the resource density of the vulnerable system.",
+    values: {
+      DIFFUSE:
+        "The system has limited resources. The yield for the attacker is relatively low.",
+      CONCENTRATED:
+        "The system is resource-rich (e.g. a server). A successful attack can yield high returns.",
+    },
+  },
+
+  "Response Effort": {
+    metric: "Describes the effort required to remediate the vulnerability.",
+    values: {
+      LOW: "Low effort - e.g. documentation, workarounds, or simple configuration changes suffice.",
+      MODERATE:
+        "Moderate effort - e.g. a simple update or driver installation with minimal service disruption.",
+      HIGH: "Significant effort - e.g. a privileged update, BIOS update, or hardware replacement with potential extended downtime.",
+    },
+  },
+
+  "Provider Urgency": {
+    metric: "Urgency rating set by the vendor or provider.",
+    values: {
+      RED: "Highest urgency - immediate action recommended.",
+      AMBER: "Medium urgency - timely action recommended.",
+      GREEN: "Low urgency - action can be planned.",
+      CLEAR: "Informational - no immediate action required.",
+    },
+  },
+
+  // -- CVSS 4.0: Environmental Requirements ----------------------------
+
+  "Confidentiality Requirement": {
+    metric: "Indicates the importance of confidentiality for the affected system.",
+    values: {
+      LOW: "A loss of confidentiality would have only limited impact.",
+      MEDIUM: "A loss of confidentiality would have serious impact.",
+      HIGH: "A loss of confidentiality would have catastrophic impact.",
+    },
+  },
+
+  "Integrity Requirement": {
+    metric: "Indicates the importance of integrity for the affected system.",
+    values: {
+      LOW: "A loss of integrity would have only limited impact.",
+      MEDIUM: "A loss of integrity would have serious impact.",
+      HIGH: "A loss of integrity would have catastrophic impact.",
+    },
+  },
+
+  "Availability Requirement": {
+    metric: "Indicates the importance of availability for the affected system.",
+    values: {
+      LOW: "A loss of availability would have only limited impact.",
+      MEDIUM: "A loss of availability would have serious impact.",
+      HIGH: "A loss of availability would have catastrophic impact.",
+    },
+  },
+};
+
+const EXPLANATIONS_BY_LANG: Record<AppLanguage, ExplanationMap> = {
+  de: CVSS_EXPLANATIONS_DE,
+  en: CVSS_EXPLANATIONS_EN,
+};
+
 const MODIFIED_PREFIX = "Modified ";
 
 /**
@@ -313,22 +613,22 @@ const MODIFIED_PREFIX = "Modified ";
  * Handles "Modified ..." prefixes and period/no-period differences
  * (e.g. "Modified Vuln Confidentiality" -> "Vuln. Confidentiality").
  */
-const resolveEntry = (label: string): CvssValueExplanation | undefined => {
-  const direct = CVSS_EXPLANATIONS[label];
+const resolveEntry = (label: string, map: ExplanationMap): CvssValueExplanation | undefined => {
+  const direct = map[label];
   if (direct) return direct;
 
   // Strip "Modified " prefix
   let base = label;
   if (base.startsWith(MODIFIED_PREFIX)) {
     base = base.slice(MODIFIED_PREFIX.length);
-    const fromBase = CVSS_EXPLANATIONS[base];
+    const fromBase = map[base];
     if (fromBase) return fromBase;
   }
 
   // Try adding period after "Vuln" / "Sub" (label uses "Vuln " but map key uses "Vuln. ")
   const withPeriod = base.replace(/^(Vuln|Sub)\s/, "$1. ");
   if (withPeriod !== base) {
-    const fromPeriod = CVSS_EXPLANATIONS[withPeriod];
+    const fromPeriod = map[withPeriod];
     if (fromPeriod) return fromPeriod;
   }
 
@@ -343,10 +643,9 @@ export const getCvssExplanation = (
   label: string,
   displayValue: string
 ): { metric: string; value: string | null } | null => {
-  if (getCurrentLanguage() !== "de") {
-    return null;
-  }
-  const entry = resolveEntry(label);
+  const lang = getCurrentLanguage();
+  const map = EXPLANATIONS_BY_LANG[lang];
+  const entry = resolveEntry(label, map);
   if (!entry) {
     return null;
   }
