@@ -506,7 +506,7 @@ const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode
 const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: string; sublabel?: string; count: number }) => {
   const [hovered, setHovered] = useState(false);
   return (
-    <li>
+    <li style={{ minWidth: 0, overflow: "hidden" }}>
       <Link
         to={to}
         onMouseEnter={() => setHovered(true)}
@@ -515,7 +515,6 @@ const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: stri
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: "0.35rem 0.5rem",
           borderRadius: "6px",
           textDecoration: "none",
           color: "#f5f7fa",
@@ -617,7 +616,6 @@ const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
           display: "flex",
           gap: "0.5rem",
           alignItems: "baseline",
-          padding: "0.2rem 0.4rem",
           borderRadius: "6px",
           transition: "background 0.15s ease",
           background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
