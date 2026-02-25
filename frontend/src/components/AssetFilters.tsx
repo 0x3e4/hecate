@@ -529,8 +529,8 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
   const isVersionDisabled = selectedProducts.length !== 1;
 
   return (
-    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
+    <div className="asset-filter-selects" style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
             {t("Vendors", "Vendors")}
           </span>
@@ -566,7 +566,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
+        <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
             {t("Products", "Produkte")}
           </span>
@@ -607,7 +607,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", minWidth: "240px" }}>
+        <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
             {t("Versions", "Versionen")}
           </span>
@@ -660,12 +660,16 @@ const mapVersionToOption = (item: CatalogVersion): VersionOption => ({
 });
 
 const selectStyles = {
-  control: (provided: any) => ({
+  control: (provided: any, state: any) => ({
     ...provided,
     background: "rgba(15, 18, 30, 0.85)",
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: state.isFocused ? "rgba(255, 212, 59, 0.7)" : "rgba(255, 255, 255, 0.12)",
     borderRadius: "8px",
     color: "#f5f7fa",
+    boxShadow: "none",
+    "&:hover": {
+      borderColor: state.isFocused ? "rgba(255, 212, 59, 0.7)" : "rgba(255, 255, 255, 0.25)",
+    },
   }),
   menu: (provided: any) => ({
     ...provided,
