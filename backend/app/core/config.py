@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     euvd_timeout_seconds: int = 30
     euvd_page_size: int = 250
     euvd_rate_limit_seconds: float = 1.0
+    euvd_max_retries: int = 3
+    euvd_retry_backoff_seconds: float = 5.0
     euvd_max_records_per_run: OptionalInt = None
     vulnerability_initial_backfill_since: str | None = None
 
