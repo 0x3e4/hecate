@@ -66,6 +66,8 @@ body {
   gap: 1.2rem;
   flex: 1;
   min-width: 0;
+  text-decoration: none;
+  color: inherit;
 }
 
 .header-logo {
@@ -145,6 +147,29 @@ body {
 .sidebar-link.active {
   background-color: rgba(92, 132, 255, 0.18);
   color: #f5f7fa;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 0.6rem 0.75rem 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-section-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0.5rem 0.5rem;
 }
 
 .sidebar-subnav {
@@ -3394,10 +3419,24 @@ table thead th {
 }
 
 .vuln-search-input {
-  border: 1px solid rgba(245, 247, 250, 0.7);
+  border: none;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.vuln-search-input:focus,
+.vuln-search-container {
+  border: 1px solid rgba(245, 247, 250, 0.7);
+  transition: border-color 0.15s ease;
+}
+
+.vuln-search-container:focus-within {
+  border: 1px solid rgba(255, 212, 59, 0.7);
+}
+
+.vuln-search-input:focus {
+  outline: none;
+}
+
 .vuln-select:focus {
   outline: none;
   border: 1px solid rgba(255, 212, 59, 0.7) !important;
