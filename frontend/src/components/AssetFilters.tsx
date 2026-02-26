@@ -528,6 +528,9 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
 
   const isVersionDisabled = selectedProducts.length !== 1;
 
+  const hasVendors = selectedVendors.length > 0;
+  const hasProducts = selectedProducts.length > 0;
+
   return (
     <div className="asset-filter-selects" style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
         <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
@@ -566,6 +569,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           />
         </div>
 
+        {hasVendors && (
         <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
             {t("Products", "Produkte")}
@@ -575,16 +579,11 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             cacheOptions
             defaultOptions={false}
             loadOptions={loadProductOptions}
-            isDisabled={selectedVendors.length === 0}
             value={selectedProducts}
             onChange={(options) => {
               setSelectedProducts(Array.isArray(options) ? options : []);
             }}
-            placeholder={
-              selectedVendors.length === 0
-                ? t("Select a vendor first", "Erst Vendor wählen")
-                : t("Select products...", "Produkte auswählen...")
-            }
+            placeholder={t("Select products...", "Produkte auswählen...")}
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
@@ -606,7 +605,9 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             )}
           />
         </div>
+        )}
 
+        {hasProducts && !isVersionDisabled && (
         <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
           <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
             {t("Versions", "Versionen")}
@@ -616,16 +617,11 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             cacheOptions
             defaultOptions={false}
             loadOptions={loadVersionOptions}
-            isDisabled={isVersionDisabled}
             value={selectedVersions}
             onChange={(options) => {
               setSelectedVersions(Array.isArray(options) ? options : []);
             }}
-            placeholder={
-              isVersionDisabled
-                ? t("Select exactly one product", "Genau ein Produkt wählen")
-                : t("Select versions...", "Versionen auswählen...")
-            }
+            placeholder={t("Select versions...", "Versionen auswählen...")}
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
@@ -636,6 +632,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             }
           />
         </div>
+        )}
     </div>
   );
 };
@@ -693,9 +690,18 @@ const selectStyles = {
     ...provided,
     color: "#f5f7fa",
   }),
+  indicatorSeparator: () => ({
+    display: "none",
+  }),
   input: (provided: any) => ({
     ...provided,
     color: "#f5f7fa",
+    caretColor: "transparent",
+    "& input": {
+      outline: "none !important",
+      boxShadow: "none !important",
+      border: "none !important",
+    },
   }),
   singleValue: (provided: any) => ({
     ...provided,
