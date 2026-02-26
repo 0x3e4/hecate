@@ -13,45 +13,61 @@ type SidebarProps = {
   onMobileMenuClose?: () => void;
 };
 
-const navItems = [
-  { to: "/", label: "Dashboard", icon: LuLayoutDashboard },
-  { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
-  { to: "/query-builder", label: "Query Builder", icon: LuWrench },
-  ...(config.aiFeatures.enabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
-  { to: "/stats", label: "Statistics", icon: LuFileChartColumnIncreasing },
-  { to: "/changelog", label: "Changelog", icon: LuHistory },
-  { to: "/audit", label: "Audit Log", icon: LuLogs },
-  { to: "/system", label: "System", icon: LuSettings },
-] as const;
+type NavItem = { to: string; label: string; icon: typeof LuLayoutDashboard };
+type NavSection = { titleEn: string; titleDe: string; items: NavItem[] };
+
+const navSections: NavSection[] = [
+  {
+    titleEn: "", titleDe: "",
+    items: [{ to: "/", label: "Dashboard", icon: LuLayoutDashboard }],
+  },
+  {
+    titleEn: "Vulnerabilities", titleDe: "Schwachstellen",
+    items: [
+      { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
+      { to: "/query-builder", label: "Query Builder", icon: LuWrench },
+      ...(config.aiFeatures.enabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
+    ],
+  },
+  {
+    titleEn: "Analysis", titleDe: "Analyse",
+    items: [
+      { to: "/stats", label: "Statistics", icon: LuFileChartColumnIncreasing },
+      { to: "/changelog", label: "Changelog", icon: LuHistory },
+      { to: "/audit", label: "Audit Log", icon: LuLogs },
+    ],
+  },
+  {
+    titleEn: "Administration", titleDe: "Verwaltung",
+    items: [{ to: "/system", label: "System", icon: LuSettings }],
+  },
+];
 
 export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileMenuClose }: SidebarProps) => {
   const { t } = useI18n();
   const { savedSearches } = useSavedSearches();
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
-  const localizedNavItems = useMemo(
+  const germanLabels: Record<string, string> = {
+    "/": "Dashboard",
+    "/vulnerabilities": "Schwachstellen",
+    "/query-builder": "Query-Builder",
+    "/ai-analyse": "AI-Analyse",
+    "/stats": "Statistiken",
+    "/changelog": "Changelog",
+    "/audit": "Audit-Log",
+    "/system": "System",
+  };
+
+  const localizedSections = useMemo(
     () =>
-      navItems.map((item) => {
-        const germanLabel = item.to === "/"
-          ? "Dashboard"
-          : item.to === "/vulnerabilities"
-          ? "Schwachstellen"
-          : item.to === "/query-builder"
-          ? "Query-Builder"
-          : item.to === "/ai-analyse"
-          ? "AI-Analyse"
-          : item.to === "/stats"
-          ? "Statistiken"
-          : item.to === "/changelog"
-          ? "Changelog"
-          : item.to === "/audit"
-          ? "Audit-Log"
-          : "System";
-        return {
+      navSections.map((section) => ({
+        title: section.titleEn ? t(section.titleEn, section.titleDe) : "",
+        items: section.items.map((item) => ({
           ...item,
-          label: t(item.label, germanLabel),
-        };
-      }),
+          label: t(item.label, germanLabels[item.to] ?? item.label),
+        })),
+      })),
     [t]
   );
 
@@ -64,57 +80,67 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   return (
     <aside className={`app-sidebar${collapsed ? " collapsed" : ""}${mobileMenuOpen ? " mobile-open" : ""}`}>
       <nav className="sidebar-nav">
-        {localizedNavItems.map((item) => {
-          const Icon = item.icon;
-          const isVulnerabilitySection = item.to === "/vulnerabilities";
-          return (
-            <div key={item.to} className="sidebar-nav-group">
-              <NavLink
-                to={item.to}
-                title={item.label}
-                aria-label={item.label}
-                className={({ isActive }) =>
-                  `sidebar-link${isActive ? " active" : ""}`
-                }
-                onClick={handleLinkClick}
-              >
-                <span className="sidebar-link-short">
-                  <Icon aria-hidden="true" focusable="false" />
-                </span>
-                <span className="sidebar-link-text">{item.label}</span>
-              </NavLink>
-              {isVulnerabilitySection && savedSearches.length > 0 && (
-                <div className="sidebar-subnav" aria-label={t("Saved vulnerability searches", "Gespeicherte Schwachstellen-Suchen")}>
-                  {savedSearches.map((saved) => {
-                    const savedKey = normalizeSearchParams(saved.queryParams);
-                    const isActive = savedKey === currentParamsKey;
-                    const searchFragment = saved.queryParams ? `?${saved.queryParams}` : "";
-                    return (
-                      <Link
-                        key={saved.id}
-                        to={{
-                          pathname: "/vulnerabilities",
-                          search: searchFragment,
-                        }}
-                        className={`sidebar-subnav-link${isActive ? " active" : ""}`}
-                        title={saved.name}
-                        onClick={(event) => {
-                          if (isActive) {
-                            event.preventDefault();
-                          } else {
-                            handleLinkClick();
-                          }
-                        }}
-                      >
-                        <span className="sidebar-subnav-text">{saved.name}</span>
-                      </Link>
-                    );
-                  })}
+        {localizedSections.map((section, sectionIdx) => (
+          <div key={sectionIdx} className="sidebar-section">
+            {section.title && !collapsed && (
+              <div className="sidebar-section-title">{section.title}</div>
+            )}
+            {section.title && collapsed && (
+              <div className="sidebar-section-divider" />
+            )}
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const isVulnerabilitySection = item.to === "/vulnerabilities";
+              return (
+                <div key={item.to} className="sidebar-nav-group">
+                  <NavLink
+                    to={item.to}
+                    title={item.label}
+                    aria-label={item.label}
+                    className={({ isActive }) =>
+                      `sidebar-link${isActive ? " active" : ""}`
+                    }
+                    onClick={handleLinkClick}
+                  >
+                    <span className="sidebar-link-short">
+                      <Icon aria-hidden="true" focusable="false" />
+                    </span>
+                    <span className="sidebar-link-text">{item.label}</span>
+                  </NavLink>
+                  {isVulnerabilitySection && savedSearches.length > 0 && (
+                    <div className="sidebar-subnav" aria-label={t("Saved vulnerability searches", "Gespeicherte Schwachstellen-Suchen")}>
+                      {savedSearches.map((saved) => {
+                        const savedKey = normalizeSearchParams(saved.queryParams);
+                        const isActive = savedKey === currentParamsKey;
+                        const searchFragment = saved.queryParams ? `?${saved.queryParams}` : "";
+                        return (
+                          <Link
+                            key={saved.id}
+                            to={{
+                              pathname: "/vulnerabilities",
+                              search: searchFragment,
+                            }}
+                            className={`sidebar-subnav-link${isActive ? " active" : ""}`}
+                            title={saved.name}
+                            onClick={(event) => {
+                              if (isActive) {
+                                event.preventDefault();
+                              } else {
+                                handleLinkClick();
+                              }
+                            }}
+                          >
+                            <span className="sidebar-subnav-text">{saved.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
       </nav>
       <button
         type="button"

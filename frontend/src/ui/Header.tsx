@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useI18n } from "../i18n/context";
 
 type HeaderProps = {
@@ -10,13 +11,13 @@ export const Header = ({ onMenuToggle, isMobileMenuOpen }: HeaderProps) => {
 
   return (
     <header className="app-header">
-      <div className="header-branding">
+      <Link to="/" className="header-branding">
         <img src="/logo.png" alt="Hecate Logo" className="header-logo" />
         <div>
           <h1>Hecate Cyber Defense</h1>
           <p>{t("AI-powered vulnerability analysis", "KI-gestützte Schwachstellenanalyse")}</p>
         </div>
-      </div>
+      </Link>
       {onMenuToggle && (
         <button
           type="button"
