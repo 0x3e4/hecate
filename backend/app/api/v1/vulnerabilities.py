@@ -334,6 +334,7 @@ async def create_batch_ai_investigation(
         summary=result.summary,
         individual_summaries=result.individual_summaries,
         additional_context=payload.additional_context,
+        token_usage=result.token_usage,
     )
 
     # Audit logging

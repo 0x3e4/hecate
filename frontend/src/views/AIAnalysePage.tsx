@@ -366,19 +366,9 @@ export const AIAnalysePage = () => {
                       <div className="ai-analysis__batch-header">
                         <span className="ai-analysis__batch-id">{batch.batch_id}</span>
                         <span className="chip chip-batch">Batch</span>
-                        <span className="muted" style={{ fontSize: "0.85rem", marginLeft: "auto" }}>
-                          {batch.vulnerability_count.toLocaleString(locale)} {t("vulnerabilities", "Schwachstellen")}
-                        </span>
                       </div>
-                      {summary ? (
-                        <div className="ai-analysis__text markdown-content">
-                          <Markdown>{summary}</Markdown>
-                        </div>
-                      ) : (
-                        <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
-                      )}
                       {batch.vulnerability_ids?.length > 0 && (
-                        <div className="vuln-aliases" style={{ marginTop: "0.75rem" }}>
+                        <div className="vuln-aliases" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
                           {batch.vulnerability_ids.map((id) => (
                             <Link
                               key={`${batch.batch_id}-${id}`}
@@ -390,11 +380,21 @@ export const AIAnalysePage = () => {
                           ))}
                         </div>
                       )}
-                      {(providerLabel || batch.language || batch.timestamp) && (
+                      {summary ? (
+                        <div className="ai-analysis__text markdown-content">
+                          <Markdown>{summary}</Markdown>
+                        </div>
+                      ) : (
+                        <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
+                      )}
+                      {(providerLabel || batch.language || batch.timestamp || batch.token_usage) && (
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
                           {batch.language && <span> · {t("Language", "Sprache")}: {batch.language.toUpperCase()}</span>}
                           {batch.timestamp && <span> · {new Date(batch.timestamp).toLocaleString(locale)}</span>}
+                          {batch.token_usage && (
+                            <span> · {t("Tokens", "Tokens")}: {batch.token_usage.inputTokens.toLocaleString(locale)} in / {batch.token_usage.outputTokens.toLocaleString(locale)} out</span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -414,6 +414,15 @@ export const AIAnalysePage = () => {
                         </Link>
                         <span className="chip chip-single">{t("Single", "Einzel")}</span>
                       </div>
+                      <div style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+                        <Link
+                          to={`/vulnerability/${encodeURIComponent(single.vulnerability_id)}`}
+                          className="chip chip-link"
+                          style={{ textDecoration: "none" }}
+                        >
+                          {single.vulnerability_id}
+                        </Link>
+                      </div>
                       {single.title && (
                         <div className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
                           {single.title}
@@ -426,11 +435,14 @@ export const AIAnalysePage = () => {
                       ) : (
                         <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
                       )}
-                      {(providerLabel || single.language || single.timestamp) && (
+                      {(providerLabel || single.language || single.timestamp || single.token_usage) && (
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
                           {single.language && <span> · {t("Language", "Sprache")}: {single.language.toUpperCase()}</span>}
                           {single.timestamp && <span> · {new Date(single.timestamp).toLocaleString(locale)}</span>}
+                          {single.token_usage && (
+                            <span> · {t("Tokens", "Tokens")}: {single.token_usage.inputTokens.toLocaleString(locale)} in / {single.token_usage.outputTokens.toLocaleString(locale)} out</span>
+                          )}
                         </div>
                       )}
                     </div>
