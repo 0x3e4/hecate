@@ -141,6 +141,14 @@ export const BatchAnalysisDisplay = ({
             <span className="muted">
               {t("Generated", "Erstellt")}: <strong>{new Date(response.generatedAt).toLocaleString(locale)}</strong>
             </span>
+            {response.tokenUsage && (
+              <>
+                {" · "}
+                <span className="muted">
+                  {t("Tokens", "Tokens")}: <strong>{response.tokenUsage.inputTokens.toLocaleString(locale)} in / {response.tokenUsage.outputTokens.toLocaleString(locale)} out</strong>
+                </span>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -66,6 +66,7 @@ export interface AIBatchInvestigationResponse {
   individualSummaries: Record<string, string>;
   generatedAt: string;
   vulnerabilityCount: number;
+  tokenUsage?: { inputTokens: number; outputTokens: number } | null;
 }
 
 export interface BatchAnalysisItem {
@@ -78,6 +79,7 @@ export interface BatchAnalysisItem {
   additional_context?: string | null;
   vulnerability_count: number;
   timestamp: string;
+  token_usage?: { inputTokens: number; outputTokens: number } | null;
 }
 
 export interface BatchAnalysisListResponse {

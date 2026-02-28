@@ -116,6 +116,7 @@ export interface SingleAnalysisItem {
   language: string;
   summary: string;
   timestamp: string;
+  token_usage?: { inputTokens: number; outputTokens: number } | null;
 }
 
 export interface SingleAnalysisListResponse {
