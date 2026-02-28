@@ -1,0 +1,676 @@
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
+
+import { config } from "../config";
+
+import {
+  fetchScanTargets,
+  fetchScans,
+  submitManualScan,
+  deleteScanTarget,
+  updateScanTarget,
+} from "../api/scans";
+import { SkeletonBlock } from "../components/Skeleton";
+import { useI18n } from "../i18n/context";
+import { formatDateTime } from "../utils/dateFormat";
+import type {
+  ScanTarget,
+  Scan,
+  ScanSummary,
+  SubmitScanResponse,
+} from "../types";
+
+type Tab = "targets" | "scans" | "manual";
+
+export const ScansPage = () => {
+  const { t } = useI18n();
+  const [tab, setTab] = useState<Tab>("targets");
+  const [targets, setTargets] = useState<ScanTarget[]>([]);
+  const [scans, setScans] = useState<Scan[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Scan filter (from target card click)
+  const [scanFilterTargetId, setScanFilterTargetId] = useState<string | null>(null);
+  const [scanFilterTargetName, setScanFilterTargetName] = useState<string | null>(null);
+
+  // Manual scan form
+  const [scanTarget, setScanTarget] = useState("");
+  const [scanType, setScanType] = useState<"container_image" | "source_repo">("container_image");
+  const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "osv-scanner"]);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<SubmitScanResponse | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = t("Hecate Cyber Defense - SCA Scans", "Hecate Cyber Defense - SCA-Scans");
+    return () => { document.title = "Hecate Cyber Defense"; };
+  }, [t]);
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, [tab, scanFilterTargetId]);
+
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (tab === "targets") {
+        const res = await fetchScanTargets({ limit: 100 });
+        setTargets(res.items);
+      } else if (tab === "scans") {
+        const res = await fetchScans({ limit: 100, targetId: scanFilterTargetId || undefined });
+        setScans(res.items);
+      }
+    } catch (err) {
+      console.error("Failed to load scan data", err);
+      setError(t("Could not load data.", "Daten konnten nicht geladen werden."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-poll every 4s while any scan is running/pending (both tabs)
+  useEffect(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    const hasRunningScans = tab === "scans" && scans.some((s: Scan) => s.status === "running" || s.status === "pending");
+    const hasRunningTargets = tab === "targets" && targets.some((t: ScanTarget) => t.hasRunningScan);
+    if (hasRunningScans || hasRunningTargets) {
+      pollRef.current = setInterval(async () => {
+        try {
+          if (tab === "scans") {
+            const res = await fetchScans({ limit: 100, targetId: scanFilterTargetId || undefined });
+            setScans(res.items);
+          } else if (tab === "targets") {
+            const res = await fetchScanTargets({ limit: 100 });
+            setTargets(res.items);
+          }
+        } catch { /* ignore poll errors */ }
+      }, 4000);
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [tab, scans, targets]);
+
+  const handleScannerToggle = (name: string) => {
+    setScanners(prev =>
+      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
+    );
+  };
+
+  const handleSubmitScan = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!scanTarget.trim() || scanners.length === 0) return;
+    setScanning(true);
+    setScanResult(null);
+    setScanError(null);
+    try {
+      const effectiveScanners = scanType === "container_image"
+        ? scanners.filter((s: string) => s !== "osv-scanner")
+        : scanners;
+      const result = await submitManualScan({
+        target: scanTarget.trim(),
+        type: scanType,
+        scanners: effectiveScanners,
+      });
+      setScanResult(result);
+      // Switch to scans tab to show the running scan
+      setTab("scans");
+    } catch (err: any) {
+      console.error("Scan failed", err);
+      setScanError(err?.response?.data?.detail || t("Scan failed.", "Scan fehlgeschlagen."));
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleRescan = async (target: ScanTarget) => {
+    try {
+      const rescanScanners = target.type === "container_image"
+        ? ["trivy", "grype", "syft"]
+        : ["trivy", "grype", "syft", "osv-scanner"];
+      await submitManualScan({
+        target: target.id,
+        type: target.type,
+        scanners: rescanScanners,
+      });
+      setTab("scans");
+    } catch (err) {
+      console.error("Rescan failed", err);
+    }
+  };
+
+  const handleDeleteTarget = async (targetId: string) => {
+    if (!confirm(t("Delete this target and all its scan data?", "Dieses Ziel und alle zugehörigen Scan-Daten löschen?"))) return;
+    try {
+      await deleteScanTarget(targetId);
+      setTargets(prev => prev.filter(t => t.id !== targetId));
+    } catch (err) {
+      console.error("Delete failed", err);
+    }
+  };
+
+  const handleToggleAutoScan = async (target: ScanTarget) => {
+    const newValue = target.autoScan === false; // toggle; default is true
+    try {
+      await updateScanTarget(target.id, { autoScan: newValue });
+      setTargets(prev => prev.map((tt: ScanTarget) => tt.id === target.id ? { ...tt, autoScan: newValue } : tt));
+    } catch (err) {
+      console.error("Toggle auto-scan failed", err);
+    }
+  };
+
+  return (
+    <div className="page">
+      <section className="card">
+        <h2>{t("Software Composition Analysis", "Software-Kompositionsanalyse")}</h2>
+        <p className="muted">
+          {t(
+            "Scan container images and source repositories for vulnerabilities and generate SBOMs.",
+            "Container-Images und Quellcode-Repositories auf Schwachstellen scannen und SBOMs generieren."
+          )}
+        </p>
+
+        {/* Tab navigation */}
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", marginTop: "1rem", flexWrap: "wrap" }}>
+          {(["targets", "scans", "manual"] as Tab[]).map(t_tab => (
+            <button
+              key={t_tab}
+              type="button"
+              onClick={() => setTab(t_tab)}
+              style={{
+                padding: "0.5rem 1rem",
+                borderRadius: "6px",
+                border: tab === t_tab ? "1px solid rgba(255,193,7,0.5)" : "1px solid rgba(255,255,255,0.1)",
+                background: tab === t_tab ? "rgba(255,193,7,0.15)" : "transparent",
+                color: tab === t_tab ? "#ffd43b" : "rgba(255,255,255,0.6)",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                flex: "1 1 auto",
+                minWidth: 0,
+              }}
+            >
+              {t_tab === "targets" ? t("Targets", "Ziele") : t_tab === "scans" ? t("Recent Scans", "Letzte Scans") : t("Manual Scan", "Manueller Scan")}
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="muted">{error}</p>}
+
+        {/* Targets tab */}
+        {tab === "targets" && (
+          <div>
+            {loading && (
+              <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <SkeletonBlock key={i} height={140} radius={8} />
+                ))}
+              </div>
+            )}
+            {!loading && targets.length === 0 && (
+              <p className="muted">{t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")}</p>
+            )}
+            {!loading && targets.length > 0 && (
+              <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
+                {targets.map(target => (
+                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setTab("scans"); }} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Recent scans tab */}
+        {tab === "scans" && (
+          <div>
+            {scanFilterTargetName && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                marginBottom: "1rem",
+                padding: "0.5rem 0.75rem",
+                background: "rgba(255,193,7,0.08)",
+                border: "1px solid rgba(255,193,7,0.2)",
+                borderRadius: "6px",
+                fontSize: "0.8125rem",
+              }}>
+                <span style={{ color: "rgba(255,255,255,0.6)" }}>
+                  {t("Filtered by", "Gefiltert nach")}:
+                </span>
+                <span style={{ color: "#ffd43b", fontWeight: 500 }}>{scanFilterTargetName}</span>
+                <button
+                  type="button"
+                  onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); }}
+                  style={{
+                    marginLeft: "auto",
+                    background: "none",
+                    border: "none",
+                    color: "rgba(255,255,255,0.4)",
+                    cursor: "pointer",
+                    fontSize: "0.875rem",
+                    padding: "0 0.25rem",
+                  }}
+                  title={t("Clear filter", "Filter entfernen")}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            {loading && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonBlock key={i} height={40} radius={4} />
+                ))}
+              </div>
+            )}
+            {!loading && scans.length === 0 && (
+              <p className="muted">{t("No scans yet.", "Noch keine Scans.")}</p>
+            )}
+            {!loading && scans.length > 0 && (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                      <th style={thStyle}>{t("Target", "Ziel")}</th>
+                      <th style={thStyle}>{t("Scanners", "Scanner")}</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>{t("Findings", "Ergebnisse")}</th>
+                      <th style={thStyle}>{t("Source", "Quelle")}</th>
+                      <th style={thStyle}>{t("Date", "Datum")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scans.map(scan => (
+                      <tr key={scan.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                        <td style={tdStyle}>
+                          <Link to={`/scans/${scan.id}`} style={{ color: "#ffd43b", textDecoration: "none" }}>
+                            {scan.targetName || scan.targetId}
+                          </Link>
+                        </td>
+                        <td style={tdStyle}>{scan.scanners.join(", ")}</td>
+                        <td style={tdStyle}><StatusBadge status={scan.status} /></td>
+                        <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>
+                        <td style={tdStyle}>{scan.source === "ci_cd" ? "CI/CD" : t("Manual", "Manuell")}</td>
+                        <td style={tdStyle}>{scan.startedAt ? formatDateTime(scan.startedAt) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Manual scan tab */}
+        {tab === "manual" && (
+          <div>
+            <form onSubmit={handleSubmitScan} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <label style={labelStyle}>{t("Type", "Typ")}</label>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                    <input
+                      type="radio"
+                      name="scanType"
+                      value="container_image"
+                      checked={scanType === "container_image"}
+                      onChange={() => setScanType("container_image")}
+                    />
+                    Container Image
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                    <input
+                      type="radio"
+                      name="scanType"
+                      value="source_repo"
+                      checked={scanType === "source_repo"}
+                      onChange={() => setScanType("source_repo")}
+                    />
+                    Source Repository
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  {scanType === "container_image"
+                    ? t("Image Reference", "Image-Referenz")
+                    : t("Repository URL", "Repository-URL")}
+                </label>
+                <input
+                  type="text"
+                  value={scanTarget}
+                  onChange={e => setScanTarget(e.target.value)}
+                  placeholder={scanType === "container_image" ? "github.com/hecate/hecate-backend:latest" : "https://github.com/org/repo"}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>{t("Scanners", "Scanner")}</label>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  {["trivy", "grype", "syft", "osv-scanner"].map(name => {
+                    const disabled = name === "osv-scanner" && scanType === "container_image";
+                    return (
+                      <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: disabled ? "not-allowed" : "pointer", color: disabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.8)" }}>
+                        <input
+                          type="checkbox"
+                          checked={!disabled && scanners.includes(name)}
+                          onChange={() => !disabled && handleScannerToggle(name)}
+                          disabled={disabled}
+                        />
+                        {name}
+                        {disabled && <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>({t("source only", "nur Source")})</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="submit"
+                  disabled={scanning || !scanTarget.trim() || scanners.length === 0}
+                  style={{
+                    padding: "0.625rem 1.5rem",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(255,193,7,0.5)",
+                    background: scanning ? "rgba(255,193,7,0.15)" : "rgba(255,193,7,0.3)",
+                    color: "#ffd43b",
+                    cursor: scanning ? "wait" : "pointer",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {scanning ? t("Scanning...", "Scannt...") : t("Start Scan", "Scan starten")}
+                </button>
+              </div>
+            </form>
+
+            {scanError && (
+              <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", background: "rgba(255,107,107,0.1)", border: "1px solid rgba(255,107,107,0.3)", borderRadius: "6px", color: "#ff6b6b" }}>
+                {scanError}
+              </div>
+            )}
+
+            {scanResult && (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ marginBottom: "0.75rem" }}>{t("Scan Result", "Scan-Ergebnis")}</h3>
+                <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+                  <StatBox label="Status" value={scanResult.status} />
+                  <StatBox label={t("Findings", "Ergebnisse")} value={scanResult.findingsCount.toString()} />
+                  <StatBox label={t("SBOM Components", "SBOM-Komponenten")} value={scanResult.sbomComponentCount.toString()} />
+                </div>
+                <SeverityBadges summary={scanResult.summary} style={{ marginTop: "0.75rem" }} />
+                {scanResult.error && (
+                  <p style={{ marginTop: "0.5rem", color: "#ff922b", fontSize: "0.8125rem" }}>{scanResult.error}</p>
+                )}
+                <Link
+                  to={`/scans/${scanResult.scanId}`}
+                  style={{ display: "inline-block", marginTop: "0.75rem", color: "#ffd43b", textDecoration: "none", fontSize: "0.875rem" }}
+                >
+                  {t("View scan details", "Scan-Details anzeigen")} →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+};
+
+// --- Sub-components ---
+
+const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onFilterScans }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onFilterScans: (id: string, name: string) => void }) => {
+  const { t } = useI18n();
+  const isRunning = !!target.hasRunningScan;
+  const autoScan = target.autoScan !== false; // default true
+  return (
+    <div style={{
+      padding: "1rem 1.25rem",
+      border: isRunning ? "1px solid rgba(92,132,255,0.3)" : "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "8px",
+      background: isRunning ? "rgba(92,132,255,0.04)" : "rgba(255,255,255,0.02)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.25rem" }}>
+        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ display: "block", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {target.type === "container_image" ? "Container" : "Source"}
+            </span>
+            {isRunning && <ScanningBadge />}
+          </div>
+          {target.latestScanId ? (
+            <Link to={`/scans/${target.latestScanId}`} style={{ textDecoration: "none" }}>
+              <h3 style={{ margin: "0.25rem 0 0", fontSize: "1rem", fontWeight: 600, color: "#ffd43b", wordBreak: "break-word" }}>{target.name}</h3>
+            </Link>
+          ) : (
+            <h3 style={{ margin: "0.25rem 0 0", fontSize: "1rem", fontWeight: 600, wordBreak: "break-word" }}>{target.name}</h3>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onDelete(target.id)}
+          title={t("Delete", "Löschen")}
+          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: "1rem", padding: "0.25rem", flexShrink: 0 }}
+        >
+          ×
+        </button>
+      </div>
+      <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0 0 0.75rem", wordBreak: "break-all" }}>
+        {target.id}
+      </p>
+      {target.latestSummary && <SeverityBadges summary={target.latestSummary} />}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "1rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => onFilterScans(target.id, target.name)}
+            onKeyDown={e => e.key === "Enter" && onFilterScans(target.id, target.name)}
+            style={{ cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "2px" }}
+            title={t("Show scans for this target", "Scans für dieses Ziel anzeigen")}
+          >
+            {target.scanCount} {t("scans", "Scans")}
+          </span>
+          {target.lastScanAt && <span>{t("Last", "Letzter")}: {formatDateTime(target.lastScanAt)}</span>}
+        </div>
+        <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", marginLeft: "auto" }}>
+          <button
+            type="button"
+            onClick={() => !isRunning && onRescan(target)}
+            disabled={isRunning}
+            title={isRunning ? t("Scan in progress", "Scan läuft") : t("Rescan", "Erneut scannen")}
+            style={{
+              background: isRunning ? "rgba(255,255,255,0.05)" : "rgba(255,193,7,0.15)",
+              border: isRunning ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(255,193,7,0.3)",
+              color: isRunning ? "rgba(255,255,255,0.3)" : "#ffd43b",
+              cursor: isRunning ? "not-allowed" : "pointer",
+              fontSize: "0.7rem",
+              padding: "0.2rem 0.5rem",
+              borderRadius: "4px",
+              fontWeight: 500,
+            }}
+          >
+            ↻ Scan
+          </button>
+          {config.scaFeatures.autoScanEnabled && (
+            <button
+              type="button"
+              onClick={() => onToggleAutoScan(target)}
+              title={autoScan ? t("Disable auto-scan", "Auto-Scan deaktivieren") : t("Enable auto-scan", "Auto-Scan aktivieren")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.375rem",
+                padding: "0.2rem 0.5rem",
+                borderRadius: "4px",
+                fontSize: "0.7rem",
+                fontWeight: 500,
+                border: autoScan ? "1px solid rgba(105,219,124,0.3)" : "1px solid rgba(255,255,255,0.1)",
+                background: autoScan ? "rgba(105,219,124,0.1)" : "rgba(255,255,255,0.03)",
+                color: autoScan ? "#69db7c" : "rgba(255,255,255,0.35)",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{
+                display: "inline-block",
+                width: "24px",
+                height: "14px",
+                borderRadius: "7px",
+                background: autoScan ? "rgba(105,219,124,0.4)" : "rgba(255,255,255,0.15)",
+                position: "relative",
+                transition: "background 0.2s",
+              }}>
+                <span style={{
+                  position: "absolute",
+                  top: "2px",
+                  left: autoScan ? "12px" : "2px",
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "50%",
+                  background: autoScan ? "#69db7c" : "rgba(255,255,255,0.4)",
+                  transition: "left 0.2s, background 0.2s",
+                }} />
+              </span>
+              Auto-Scan
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SeverityBadges = ({ summary, style }: { summary: ScanSummary; style?: React.CSSProperties }) => {
+  if (summary.total === 0) return <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)", ...style }}>—</span>;
+  const badges: { label: string; count: number; color: string }[] = [
+    { label: "C", count: summary.critical, color: "#ff6b6b" },
+    { label: "H", count: summary.high, color: "#ff922b" },
+    { label: "M", count: summary.medium, color: "#fcc419" },
+    { label: "L", count: summary.low, color: "#69db7c" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", ...style }}>
+      {badges.filter(b => b.count > 0).map(b => (
+        <span
+          key={b.label}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.25rem",
+            padding: "0.125rem 0.5rem",
+            borderRadius: "4px",
+            fontSize: "0.75rem",
+            fontWeight: 600,
+            background: `${b.color}20`,
+            color: b.color,
+          }}
+        >
+          {b.label}: {b.count}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+const ScanningBadge = () => (
+  <span style={{
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.25rem",
+    padding: "0.125rem 0.5rem",
+    borderRadius: "4px",
+    fontSize: "0.675rem",
+    fontWeight: 600,
+    background: "rgba(92,132,255,0.15)",
+    color: "#5c84ff",
+    animation: "pulse-badge 1.5s ease-in-out infinite",
+  }}>
+    <span style={{
+      width: "6px",
+      height: "6px",
+      borderRadius: "50%",
+      background: "#5c84ff",
+      animation: "pulse-dot 1.5s ease-in-out infinite",
+    }} />
+    Scanning...
+    <style>{`
+      @keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+      @keyframes pulse-dot { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.5; } }
+    `}</style>
+  </span>
+);
+
+const StatusBadge = ({ status }: { status: string }) => {
+  const colors: Record<string, string> = {
+    completed: "#69db7c",
+    running: "#5c84ff",
+    pending: "#fcc419",
+    failed: "#ff6b6b",
+  };
+  const color = colors[status] || "rgba(255,255,255,0.4)";
+  return (
+    <span style={{
+      padding: "0.125rem 0.5rem",
+      borderRadius: "4px",
+      fontSize: "0.75rem",
+      fontWeight: 600,
+      background: `${color}20`,
+      color,
+    }}>
+      {status}
+    </span>
+  );
+};
+
+const StatBox = ({ label, value }: { label: string; value: string }) => (
+  <div style={{
+    padding: "0.75rem",
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: "6px",
+  }}>
+    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.25rem" }}>{label}</div>
+    <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>{value}</div>
+  </div>
+);
+
+// Styles
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "0.5rem 0.75rem",
+  color: "rgba(255,255,255,0.5)",
+  fontWeight: 500,
+  fontSize: "0.8125rem",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "0.625rem 0.75rem",
+  verticalAlign: "middle",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
+  color: "rgba(255,255,255,0.6)",
+  marginBottom: "0.375rem",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "0.5rem 0.75rem",
+  borderRadius: "6px",
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.05)",
+  color: "#fff",
+  fontSize: "0.875rem",
+  outline: "none",
+  boxSizing: "border-box",
+};

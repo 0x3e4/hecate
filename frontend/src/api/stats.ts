@@ -61,6 +61,7 @@ export interface TodayCve {
   vulnId: string;
   title: string;
   severity: string;
+  aliases: string[];
 }
 
 export interface TodaySummaryResponse {

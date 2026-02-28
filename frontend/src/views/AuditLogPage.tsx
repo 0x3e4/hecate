@@ -25,6 +25,7 @@ const JOB_LABELS: Record<string, string> = {
   saved_search_deleted: "Saved search deleted",
   ai_investigation: "AI analysis",
   ai_batch_investigation: "AI batch analysis",
+  "sca-scan": "SCA Scan",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -145,15 +146,60 @@ export const AuditLogPage = () => {
         const metaLabel =
           typeof metadata.label === "string" && metadata.label.trim().length > 0 ? (metadata.label as string) : undefined;
 
+        const isAiJob = entry.jobName === "ai_investigation" || entry.jobName === "ai_batch_investigation";
+        const tokenUsage =
+          isAiJob && entry.result != null && typeof entry.result === "object"
+            ? (entry.result as Record<string, unknown>).tokenUsage
+            : undefined;
+        const tokenUsageTyped =
+          tokenUsage != null &&
+          typeof tokenUsage === "object" &&
+          "inputTokens" in tokenUsage &&
+          "outputTokens" in tokenUsage
+            ? (tokenUsage as { inputTokens: number; outputTokens: number })
+            : undefined;
+
         const detailElements: ReactNode[] = [];
         if (metaClientIp) {
           detailElements.push(<span key="ip">Client IP: {metaClientIp}</span>);
         }
+        if (tokenUsageTyped != null) {
+          detailElements.push(
+            <span key="tokens" style={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+              {t("Tokens", "Tokens")}: {tokenUsageTyped.inputTokens.toLocaleString(locale)} {t("in", "in")} / {tokenUsageTyped.outputTokens.toLocaleString(locale)} {t("out", "out")}
+            </span>,
+          );
+        }
         let detailNode: ReactNode | null = null;
+        const ERROR_TRUNCATE_LEN = 120;
         if (errorText) {
-          detailElements.push(t(`Error: ${errorText}`, `Fehler: ${errorText}`));
+          const prefix = t("Error: ", "Fehler: ");
+          if (errorText.length > ERROR_TRUNCATE_LEN) {
+            detailElements.push(
+              <details key="error">
+                <summary style={{ cursor: "pointer" }}>
+                  {prefix}{errorText.slice(0, ERROR_TRUNCATE_LEN)}…
+                </summary>
+                <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>{errorText}</pre>
+              </details>,
+            );
+          } else {
+            detailElements.push(prefix + errorText);
+          }
         } else if (hintText) {
-          detailElements.push(t(`Hint: ${hintText}`, `Hinweis: ${hintText}`));
+          const prefix = t("Hint: ", "Hinweis: ");
+          if (hintText.length > ERROR_TRUNCATE_LEN) {
+            detailElements.push(
+              <details key="hint">
+                <summary style={{ cursor: "pointer" }}>
+                  {prefix}{hintText.slice(0, ERROR_TRUNCATE_LEN)}…
+                </summary>
+                <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>{hintText}</pre>
+              </details>,
+            );
+          } else {
+            detailElements.push(prefix + hintText);
+          }
         } else if (progressJson) {
           detailElements.push(
             <details>
@@ -273,6 +319,7 @@ export const AuditLogPage = () => {
               <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
               <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
               <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
+              <option value="sca-scan">SCA Scan</option>
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", minWidth: "180px" }}>

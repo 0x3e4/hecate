@@ -1,6 +1,6 @@
 # Hecate
 
-KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Anwendung aggregiert Daten aus EUVD, NVD, CISA KEV, CIRCL, CWE und CAPEC, reichert sie mit KI-Unterstützung an und macht sie über ein React-Frontend sowie eine REST-API nutzbar.
+KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Anwendung aggregiert Daten aus EUVD, NVD, CISA KEV, CIRCL, CWE und CAPEC, reichert sie mit KI-Unterstützung an und macht sie über ein React-Frontend sowie eine REST-API nutzbar. Zusaetzlich koennen Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
 
 ## Architektur
 
@@ -56,6 +56,13 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 │   │   └── styles.css    # Globales Dark-Theme CSS
 │   ├── package.json      # Node-Abhängigkeiten (npm)
 │   └── Dockerfile        # Multi-Stage Build (node:24-alpine)
+├── scanner/              # Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner)
+│   ├── app/
+│   │   ├── main.py           # FastAPI-App (POST /scan, GET /health)
+│   │   ├── models.py         # Request/Response-Schemata
+│   │   └── scanners.py       # Subprocess-Wrapper fuer Scanner-Tools
+│   ├── pyproject.toml    # Python-Abhaengigkeiten (Poetry)
+│   └── Dockerfile        # Multi-Stage Build mit Scanner-Binaries
 ├── docs/                 # Architektur- und Konzeptdokumente
 ├── .gitea/workflows/     # CI/CD (Build, Grype-Scan, SonarQube, Trivy)
 ├── .env.example          # Umgebungsvariablen-Vorlage
@@ -70,6 +77,14 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 - **Normalisierung:** Alle Quellen werden in ein einheitliches `VulnerabilityDocument`-Schema überführt
 - **Asset-Katalog:** Vendoren, Produkte und Versionen werden aus ingestierten Daten extrahiert
 - **Change-Tracking:** Änderungshistorien für Schwachstellen, vollständiger Audit-Trail
+
+### SCA-Scanning (Software Composition Analysis)
+- **Scanner-Sidecar:** Trivy, Grype, Syft und OSV Scanner als Docker-Container
+- **CI/CD-Integration:** Container-Images und Source-Repos ueber API scannen (`POST /api/v1/scans`)
+- **Manueller Scan:** Scans direkt aus dem Frontend starten
+- **SBOM-Generierung:** CycloneDX-Format via Syft
+- **Deduplizierung:** Automatische Zusammenfuehrung von Ergebnissen mehrerer Scanner
+- **Audit-Trail:** Scan-Ereignisse im Ingestion-Log protokolliert
 
 ### Suche & Analyse
 - **OpenSearch-Volltext** mit DQL-Unterstützung (Domain-Specific Query Language) und Relevanzsortierung
@@ -89,6 +104,8 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
+| SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
+| Scan-Detail | Findings-Tabelle, SBOM-Komponenten, Severity-Zusammenfassung |
 | System | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
 
 ### Betrieb
@@ -125,6 +142,7 @@ docker compose up --build
 | Health Check | http://localhost:8000/api/v1/status/health |
 | MongoDB | mongodb://localhost:27017 |
 | OpenSearch | https://localhost:9200 |
+| Scanner Sidecar | http://localhost:8080 |
 
 ## Lokale Entwicklung
 
@@ -161,6 +179,15 @@ Vite proxied `/api`-Anfragen im Dev-Modus automatisch an `http://backend:8000` (
 - `GET /api/v1/cpe/entries|vendors|products` - CPE-Katalog
 - `GET /api/v1/assets/vendors|products|versions` - Asset-Katalog
 
+### SCA-Scans
+- `POST /api/v1/scans` - Scan einreichen (CI/CD, API-Key erforderlich)
+- `POST /api/v1/scans/manual` - Manueller Scan aus dem Frontend
+- `GET /api/v1/scans/targets` - Scan-Ziele auflisten
+- `GET /api/v1/scans` - Scans auflisten
+- `GET /api/v1/scans/{scanId}` - Scan-Details
+- `GET /api/v1/scans/{scanId}/findings` - Findings eines Scans
+- `GET /api/v1/scans/{scanId}/sbom` - SBOM-Komponenten eines Scans
+
 ### Verwaltung
 - `GET/POST/DELETE /api/v1/saved-searches` - Gespeicherte Suchen
 - `GET /api/v1/stats/overview` - Statistik-Aggregationen
@@ -192,11 +219,12 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
+| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `VITE_SCA_FEATURES_ENABLED` |
 
 ## CI/CD
 
 Gitea-Workflows in `.gitea/workflows/`:
-- **build.yml:** Docker-Image Build & Push, Grype-Vulnerability-Scan (SARIF)
+- **build.yml:** Docker-Image Build & Push, Grype-Vulnerability-Scan (SARIF), Hecate SCA-Scan nach Image-Push
 - **scan.yml:** SonarQube Code-Analyse, Trivy Dependency-Scan
 
 ## Technologie-Stack
@@ -210,4 +238,5 @@ Gitea-Workflows in `.gitea/workflows/`:
 | HTTP-Client | httpx 0.28 (async) |
 | Logging | structlog 25.5 |
 | KI | OpenAI, Anthropic, Google Gemini |
+| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, FastAPI |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |

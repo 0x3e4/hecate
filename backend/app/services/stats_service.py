@@ -746,7 +746,7 @@ class StatsService:
                     ]
                 }
             },
-            "_source": ["vuln_id", "title", "cvss.severity"],
+            "_source": ["vuln_id", "title", "cvss.severity", "aliases"],
             "sort": [{"published": {"order": "desc"}}],
             "aggs": {
                 "vendors": {
@@ -834,10 +834,13 @@ class StatsService:
             cvss = source.get("cvss")
             if isinstance(cvss, dict):
                 severity = (cvss.get("severity") or "unknown").lower()
+            raw_aliases = source.get("aliases")
+            aliases = raw_aliases if isinstance(raw_aliases, list) else []
             cves.append({
                 "vulnId": vuln_id,
                 "title": source.get("title", ""),
                 "severity": severity,
+                "aliases": aliases,
             })
 
         total = self._resolve_total(response)

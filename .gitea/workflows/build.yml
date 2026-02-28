@@ -96,3 +96,38 @@ jobs:
       with:
         sarif_file: ${{ steps.scan.outputs.sarif }}
         category: grype-frontend
+
+    # Scan images via Hecate SCA API (optional, requires HECATE_URL and SCA_API_KEY secrets)
+    - name: Scan backend image via Hecate
+      if: ${{ secrets.HECATE_URL != '' && secrets.SCA_API_KEY != '' }}
+      continue-on-error: true
+      run: |
+        curl -sS -X POST "${{ secrets.HECATE_URL }}/api/v1/scans" \
+          -H "X-API-Key: ${{ secrets.SCA_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "target": "${{ env.GITEA_REGISTRY }}/${{ github.repository }}/backend:latest",
+            "type": "container_image",
+            "scanners": ["trivy", "grype", "syft"],
+            "commitSha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "pipelineUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "source": "ci_cd"
+          }'
+
+    - name: Scan frontend image via Hecate
+      if: ${{ secrets.HECATE_URL != '' && secrets.SCA_API_KEY != '' }}
+      continue-on-error: true
+      run: |
+        curl -sS -X POST "${{ secrets.HECATE_URL }}/api/v1/scans" \
+          -H "X-API-Key: ${{ secrets.SCA_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "target": "${{ env.GITEA_REGISTRY }}/${{ github.repository }}/frontend:latest",
+            "type": "container_image",
+            "scanners": ["trivy", "grype", "syft"],
+            "commitSha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "pipelineUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "source": "ci_cd"
+          }'

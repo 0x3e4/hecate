@@ -10,11 +10,12 @@
 - FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
 - OpenSearch dient als performanter Query-Index, MongoDB haelt Normalformdaten und Jobzustand.
 - Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
+- Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner) fuehrt aktive SCA-Scans fuer Container-Images und Source-Repositories durch.
 
 ## Backend Architecture
 
 ### API Layer
-- 12 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+- 13 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
   - `status.py` - Health Check / Liveness Probe
   - `vulnerabilities.py` - Suche, Lookup, Refresh, AI-Analyse
   - `cwe.py` - CWE-Abfragen (einzeln & bulk)
@@ -27,6 +28,7 @@
   - `saved_searches.py` - Gespeicherte Suchen (CRUD)
   - `audit.py` - Ingestion-Logs
   - `changelog.py` - Letzte Aenderungen
+  - `scans.py` - SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM)
 - Standardpraefix `/api/v1` (konfigurierbar) und CORS-Allower fuer lokale Integration.
 - Responses basieren auf Pydantic-Schemas; Validierung erfolgt auf Eingabe- und Ausgabeseite.
 - Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
@@ -45,6 +47,7 @@
   - `ChangelogService` - Change-Tracking
   - `SavedSearchService` - Gespeicherte Suchen
   - `AssetCatalogService` - Asset-Katalog aus ingestierten Daten
+  - `ScanService` - SCA-Scan-Orchestrierung (Scanner-Sidecar, Ergebnisverarbeitung)
 - Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + Mongo Operations.
 - Asset-Katalog wird aus ingestierten Daten abgeleitet (Vendor-/Produkt-/Versions-Slugs) und fuettert Filter-UI.
 
@@ -85,7 +88,7 @@
 
 ### Persistence
 
-#### MongoDB (11 Collections)
+#### MongoDB (15 Collections)
 
 | Collection | Beschreibung |
 |-----------|-------------|
@@ -100,6 +103,10 @@
 | `ingestion_state` | Sync-Job-Status (Running/Completed/Failed) |
 | `ingestion_logs` | Detaillierte Job-Logs mit Metadaten |
 | `saved_searches` | Gespeicherte Suchanfragen |
+| `scan_targets` | Scan-Ziele (Container-Images, Source-Repos) |
+| `scans` | Scan-Durchlaeufe mit Status und Zusammenfassung |
+| `scan_findings` | Schwachstellen-Funde aus SCA-Scans |
+| `scan_sbom_components` | SBOM-Komponenten aus SCA-Scans |
 
 - Repositories auf Basis von Motor (async) kapseln Abfragen und Updates.
 - Repository-Pattern: `create()` Classmethod erstellt Indexes, `_id` = Entity-ID, `upsert()` gibt `"inserted"` / `"updated"` / `"unchanged"` zurueck.
@@ -110,6 +117,15 @@
 - Text-Felder fuer Volltext-Suche, `.keyword`-Felder fuer Aggregationen, nested `sources`-Pfad.
 - DQL (Domain-Specific Query Language) fuer erweiterte Suchanfragen.
 - Konfiguration: `max_result_window` = 200.000, `total_fields.limit` = 2.000.
+
+### SCA-Scanning (Software Composition Analysis)
+- **Scanner-Sidecar:** Separater Docker-Container mit Trivy, Grype, Syft und OSV Scanner.
+- **Scan-Ablauf:** CI/CD oder manuelle Anfrage → Backend → Scanner-Sidecar → Ergebnisse parsen → MongoDB speichern → Antwort.
+- **Image-Pull:** Scanner-Tools ziehen Container-Images direkt ueber Registry-APIs (kein Docker-Socket).
+- **Registry-Auth:** Konfigurierbar ueber `SCANNER_REGISTRY_AUTH` Umgebungsvariable.
+- **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON werden in einheitliche Modelle ueberfuehrt.
+- **Deduplizierung:** Gleiche CVE + Paket-Kombination ueber mehrere Scanner wird zusammengefuehrt.
+- **Audit-Integration:** Scan-Ereignisse werden im Ingestion-Log protokolliert.
 
 ### AI & Analysis
 - `AIClient` verwaltet verfuegbare Provider anhand gesetzter API-Schluessel (OpenAI, Anthropic, Google Gemini).
@@ -157,6 +173,8 @@ poetry run python -m app.cli sync-kev [--initial]
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Aenderungen an Schwachstellen (erstellt/aktualisiert) |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM und Severity-Zusammenfassung |
 
 ### State-Management
 - Kein Redux/Zustand - basiert auf Reacts eingebauten Mechanismen:
@@ -237,9 +255,16 @@ Alle Quellen werden ueber `normalizer.py` in ein einheitliches `VulnerabilityDoc
                     +-----v-----+
                     |  Backend  |  FastAPI / Python 3.13 / Poetry
                     |  :8000    |  REST-API, Scheduler, Pipelines
-                    +--+-----+--+
-                       |     |
-              +--------+     +--------+
+                    +--+--+--+--+
+                       |  |  |
+                       |  |  +--------+
+                       |  |           |
+                       |  |     +-----v-----+
+                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV Scanner
+                       |  |     |  :8080    |  FastAPI Sidecar
+                       |  |     +-----------+
+                       |  |
+              +--------+  +--------+
               |                       |
         +-----v-----+         +------v------+
         |  MongoDB   |         | OpenSearch  |
@@ -248,7 +273,7 @@ Alle Quellen werden ueber `normalizer.py` in ein einheitliches `VulnerabilityDoc
          Persistenz             Volltext-Index
 ```
 
-- Docker Compose Orchestrierung: backend, frontend, mongo, opensearch + externes `dmz00` Netzwerk.
+- Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch + externes `dmz00` Netzwerk.
 - Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend}:latest`.
 - CI/CD: Gitea Actions (`build.yml` Docker Build + Grype-Scan, `scan.yml` SonarQube + Trivy).
 
@@ -263,4 +288,5 @@ Alle Quellen werden ueber `normalizer.py` in ein einheitliches `VulnerabilityDoc
 | HTTP-Client | httpx 0.28 (async), Axios 1.13 (Frontend) |
 | Logging | structlog 25.5 |
 | KI | OpenAI, Anthropic, Google Gemini |
+| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, FastAPI |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
