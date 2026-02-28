@@ -274,11 +274,13 @@ async def create_ai_investigation(
         "provider": payload.provider,
     }
     metadata = {key: value for key, value in metadata.items() if value}
-    result_payload = {
+    result_payload: dict[str, Any] = {
         "vulnerabilityId": identifier,
         "language": result.language,
         "summary": result.summary,
     }
+    if result.token_usage:
+        result_payload["tokenUsage"] = result.token_usage
     await audit_service.record_event(
         "ai_investigation",
         metadata=metadata or None,
@@ -344,12 +346,14 @@ async def create_batch_ai_investigation(
         "batchId": batch_id,
     }
     metadata = {key: value for key, value in metadata.items() if value}
-    result_payload = {
+    result_payload: dict[str, Any] = {
         "batchId": batch_id,
         "vulnerabilityIds": payload.vulnerability_ids,
         "language": result.language,
         "vulnerabilityCount": result.vulnerability_count,
     }
+    if result.token_usage:
+        result_payload["tokenUsage"] = result.token_usage
     await audit_service.record_event(
         "ai_batch_investigation",
         metadata=metadata or None,

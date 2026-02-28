@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "hecate-scanner"
+version = "0.1.0"
+description = "Scanner sidecar for Hecate SCA scanning (Trivy, Grype, Syft, OSV Scanner)."
+authors = ["Hecate Team <devnull@example.com>"]
+readme = "README.md"
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+fastapi = "*"
+uvicorn = "*"
+pydantic = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     mongo_cwe_collection: str = "cwe_catalog"
     mongo_capec_collection: str = "capec_catalog"
     mongo_saved_searches_collection: str = "saved_searches"
+    mongo_scan_targets_collection: str = "scan_targets"
+    mongo_scans_collection: str = "scans"
+    mongo_scan_findings_collection: str = "scan_findings"
+    mongo_scan_sbom_collection: str = "scan_sbom_components"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
@@ -106,6 +110,15 @@ class Settings(BaseSettings):
     scheduler_nvd_full_sync_enabled: bool = True
     scheduler_nvd_full_sync_cron_hour: int = 2  # 2 AM UTC
     scheduler_nvd_full_sync_cron_day_of_week: str = "wed"  # Wednesday
+
+    # SCA Scanning
+    sca_enabled: bool = True
+    sca_api_key: str | None = None
+    sca_scanner_url: str = "http://scanner:8080"
+    sca_scanner_timeout_seconds: int = 600
+    sca_default_scanners: str = "trivy,grype,syft,osv-scanner"
+    vite_sca_auto_scan_enabled: bool = False
+    sca_auto_scan_interval_hours: int = 24
 
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"

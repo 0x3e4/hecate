@@ -370,3 +370,159 @@ export interface TriggerSyncResponse {
   message: string;
   jobName: string;
 }
+
+// --- SCA Scanning ---
+
+export interface ScanSummary {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  negligible: number;
+  unknown: number;
+  total: number;
+}
+
+export interface ScanTarget {
+  id: string;
+  type: "container_image" | "source_repo";
+  name: string;
+  registry?: string | null;
+  repositoryUrl?: string | null;
+  description?: string | null;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastScanAt?: string | null;
+  scanCount: number;
+  latestSummary?: ScanSummary | null;
+  latestScanId?: string | null;
+  hasRunningScan?: boolean;
+  autoScan?: boolean;
+}
+
+export interface ScanTargetListResponse {
+  total: number;
+  items: ScanTarget[];
+}
+
+export interface Scan {
+  id: string;
+  targetId: string;
+  targetName?: string | null;
+  scanners: string[];
+  status: "pending" | "running" | "completed" | "failed";
+  source: "ci_cd" | "manual";
+  imageRef?: string | null;
+  commitSha?: string | null;
+  branch?: string | null;
+  pipelineUrl?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  durationSeconds?: number | null;
+  summary: ScanSummary;
+  sbomComponentCount?: number | null;
+  error?: string | null;
+}
+
+export interface ScanListResponse {
+  total: number;
+  items: Scan[];
+}
+
+export interface ScanFinding {
+  id: string;
+  scanId: string;
+  targetId: string;
+  vulnerabilityId?: string | null;
+  matchedFrom?: string | null;
+  scanner: string;
+  packageName: string;
+  packageVersion: string;
+  packageType: string;
+  packagePath?: string | null;
+  severity: string;
+  title?: string | null;
+  description?: string | null;
+  fixVersion?: string | null;
+  fixState: string;
+  dataSource?: string | null;
+  urls?: string[];
+  cvssScore?: number | null;
+  cvssVector?: string | null;
+}
+
+export interface ScanFindingListResponse {
+  total: number;
+  items: ScanFinding[];
+}
+
+export interface SbomComponent {
+  id: string;
+  scanId: string;
+  targetId: string;
+  name: string;
+  version: string;
+  type: string;
+  purl?: string | null;
+  cpe?: string | null;
+  licenses: string[];
+  supplier?: string | null;
+  filePath?: string | null;
+}
+
+export interface SbomComponentListResponse {
+  total: number;
+  items: SbomComponent[];
+}
+
+export interface ScanHistoryEntry {
+  scanId: string;
+  startedAt: string;
+  status: string;
+  summary: ScanSummary;
+  durationSeconds?: number | null;
+}
+
+export interface ScanHistoryResponse {
+  targetId: string;
+  items: ScanHistoryEntry[];
+}
+
+export interface ScanComparisonFinding {
+  vulnerabilityId?: string | null;
+  packageName: string;
+  packageVersion: string;
+  severity: string;
+  fixVersion?: string | null;
+}
+
+export interface ScanComparisonResponse {
+  scanIdA: string;
+  scanIdB: string;
+  summaryA: ScanSummary;
+  summaryB: ScanSummary;
+  added: ScanComparisonFinding[];
+  removed: ScanComparisonFinding[];
+  unchangedCount: number;
+}
+
+export interface SubmitScanRequest {
+  target: string;
+  type: "container_image" | "source_repo";
+  scanners?: string[];
+  commitSha?: string;
+  branch?: string;
+  pipelineUrl?: string;
+  source?: string;
+}
+
+export interface SubmitScanResponse {
+  scanId: string;
+  targetId: string;
+  status: string;
+  findingsCount: number;
+  sbomComponentCount: number;
+  summary: ScanSummary;
+  error?: string | null;
+}

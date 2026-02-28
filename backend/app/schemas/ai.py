@@ -27,6 +27,9 @@ class AIInvestigationResponse(BaseModel):
     language: str
     summary: str
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
+    token_usage: dict[str, int] | None = Field(
+        default=None, alias="tokenUsage", serialization_alias="tokenUsage"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -60,6 +63,9 @@ class AIBatchInvestigationResponse(BaseModel):
     )
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
     vulnerability_count: int = Field(alias="vulnerabilityCount", serialization_alias="vulnerabilityCount")
+    token_usage: dict[str, int] | None = Field(
+        default=None, alias="tokenUsage", serialization_alias="tokenUsage"
+    )
 
     model_config = {"populate_by_name": True}
 

@@ -17,6 +17,7 @@ src/
 │   ├── sync.ts                  # Sync-Trigger & Status
 │   ├── backup.ts                # Export/Import (10 min Timeout)
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
+│   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM)
 │   └── savedSearches.ts         # Gespeicherte Suchen (CRUD)
 ├── views/                       # Seitenkomponenten
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
@@ -27,6 +28,8 @@ src/
 │   ├── StatsPage.tsx            # Statistik-Dashboard
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
+│   ├── ScansPage.tsx            # SCA-Scan-Uebersicht (Ziele, Scans, manueller Scan)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings, SBOM, Severity)
 │   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
@@ -79,8 +82,11 @@ src/
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM und Severity |
 
 Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
+Die SCA-Scans-Seite wird nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
 
 ## State-Management
 
@@ -125,6 +131,7 @@ Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
 | `VITE_TIMEZONE` | `UTC` | Zeitzone für Datumsanzeige |
 | `VITE_AI_FEATURES_ENABLED` | `true` | KI-Analyse aktivieren/deaktivieren |
 | `VITE_DOMAIN` | `hecate.pw` | Domain für Share-URLs |
+| `VITE_SCA_FEATURES_ENABLED` | `true` | SCA-Scans aktivieren/deaktivieren |
 
 ## Entwicklung
 

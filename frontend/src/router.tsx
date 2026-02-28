@@ -11,6 +11,8 @@ import { AIAnalysePage } from "./views/AIAnalysePage";
 import { StatsPage } from "./views/StatsPage";
 import { ChangelogPage } from "./views/ChangelogPage";
 import { SystemPage } from "./views/SystemPage";
+import { ScansPage } from "./views/ScansPage";
+import { ScanDetailPage } from "./views/ScanDetailPage";
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +25,10 @@ export const router = createBrowserRouter([
       { path: "vulnerability", element: <Navigate to="/vulnerabilities" replace /> },
       { path: "query-builder", element: <QueryBuilderPage /> },
       ...(config.aiFeatures.enabled ? [{ path: "ai-analyse", element: <AIAnalysePage /> }] : []),
+      ...(config.scaFeatures.enabled ? [
+        { path: "scans", element: <ScansPage /> },
+        { path: "scans/:scanId", element: <ScanDetailPage /> },
+      ] : []),
       { path: "audit", element: <AuditLogPage /> },
       { path: "stats", element: <StatsPage /> },
       { path: "changelog", element: <ChangelogPage /> },

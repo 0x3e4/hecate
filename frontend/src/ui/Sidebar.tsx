@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine } from "react-icons/lu";
 import { useMemo } from "react";
 
 import { config } from "../config";
@@ -27,13 +27,19 @@ const navSections: NavSection[] = [
       { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
       { to: "/query-builder", label: "Query Builder", icon: LuWrench },
       ...(config.aiFeatures.enabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
+      { to: "/changelog", label: "Changelog", icon: LuHistory },
     ],
   },
+  ...(config.scaFeatures.enabled ? [{
+    titleEn: "Security", titleDe: "Sicherheit",
+    items: [
+      { to: "/scans", label: "SCA Scans", icon: LuScanLine },
+    ],
+  }] : []),
   {
     titleEn: "Analysis", titleDe: "Analyse",
     items: [
       { to: "/stats", label: "Statistics", icon: LuFileChartColumnIncreasing },
-      { to: "/changelog", label: "Changelog", icon: LuHistory },
       { to: "/audit", label: "Audit Log", icon: LuLogs },
     ],
   },
@@ -56,6 +62,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/stats": "Statistiken",
     "/changelog": "Changelog",
     "/audit": "Audit-Log",
+    "/scans": "SCA-Scans",
     "/system": "System",
   };
 

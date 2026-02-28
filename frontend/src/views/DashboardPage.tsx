@@ -497,7 +497,7 @@ const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode
     }}
   >
     <h3 style={{ fontSize: "0.9rem", margin: "0 0 0.75rem" }}>{title}</h3>
-    <div className="today-mini-card-scroll" style={{ maxHeight: "500px", overflowY: "auto", overflowX: "hidden" }}>
+    <div className="today-mini-card-scroll" style={{ maxHeight: "300px", overflowY: "auto", overflowX: "hidden" }}>
       {children}
     </div>
   </div>
@@ -603,6 +603,9 @@ const TodayCveList = ({ cves, todayDate }: { cves: TodayCve[]; todayDate: string
 
 const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
   const [hovered, setHovered] = useState(false);
+  const aliases = (cve.aliases ?? []).filter(
+    (a) => a && a.toUpperCase() !== cve.vulnId.toUpperCase()
+  );
   return (
     <li>
       <Link
@@ -614,11 +617,12 @@ const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
           color: "#f5f7fa",
           textDecoration: "none",
           display: "flex",
-          gap: "0.5rem",
+          gap: "0 0.5rem",
           alignItems: "baseline",
           borderRadius: "6px",
           transition: "background 0.15s ease",
           background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
+          flexWrap: "wrap",
         }}
       >
         <span
@@ -631,17 +635,19 @@ const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
         >
           {cve.vulnId}
         </span>
-        <span
-          className="muted"
-          style={{
-            fontSize: "0.75rem",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {cve.title}
-        </span>
+        {aliases.map((alias) => (
+          <span
+            key={alias}
+            style={{
+              fontFamily: "monospace",
+              fontSize: "0.7rem",
+              color: "rgba(255,255,255,0.45)",
+              flexShrink: 0,
+            }}
+          >
+            {alias}
+          </span>
+        ))}
       </Link>
     </li>
   );

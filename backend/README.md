@@ -19,6 +19,7 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM)
 │   └── status.py            # Health Check
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
@@ -30,6 +31,7 @@ app/
 │   ├── vulnerability.py     # VulnerabilityDocument (Hauptschema)
 │   ├── cwe.py               # CWEEntry
 │   ├── capec.py             # CAPECEntry
+│   ├── scan.py              # SCA-Scan-Modelle (Target, Scan, Finding, SBOM)
 │   └── kev.py               # CisaKevEntry, CisaKevCatalog
 ├── repositories/            # Datenzugriffsschicht
 │   ├── vulnerability_repository.py
@@ -40,12 +42,17 @@ app/
 │   ├── asset_repository.py
 │   ├── saved_search_repository.py
 │   ├── ingestion_state_repository.py
-│   └── ingestion_log_repository.py
+│   ├── ingestion_log_repository.py
+│   ├── scan_target_repository.py
+│   ├── scan_repository.py
+│   ├── scan_finding_repository.py
+│   └── scan_sbom_repository.py
 ├── schemas/                 # API Request/Response Schemata
 │   ├── vulnerability.py     # VulnerabilityQuery, VulnerabilityDetail
 │   ├── cwe.py, capec.py, cpe.py, assets.py
 │   ├── ai.py                # AI-Analyse Schemata
 │   ├── backup.py, sync.py, audit.py, changelog.py
+│   ├── scan.py              # SCA-Scan API-Schemata
 │   └── saved_search.py
 ├── services/                # Business-Logik
 │   ├── vulnerability_service.py   # Suche, Refresh, Lookup
@@ -60,6 +67,8 @@ app/
 │   ├── saved_search_service.py    # Gespeicherte Suchen
 │   ├── cpe_service.py             # CPE-Katalog
 │   ├── asset_catalog_service.py   # Asset-Katalog
+│   ├── scan_service.py          # SCA-Scan-Orchestrierung
+│   ├── scan_parser.py           # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
 │   ├── http/
 │   │   └── rate_limiter.py        # HTTP Rate-Limiting
 │   ├── ingestion/                 # Datenpipelines
@@ -105,6 +114,10 @@ app/
 | `ingestion_state` | - | Sync-Job-Status (Running/Completed/Failed) |
 | `ingestion_logs` | - | Detaillierte Job-Logs mit Metadaten |
 | `saved_searches` | - | Gespeicherte Suchanfragen |
+| `scan_targets` | `ScanTargetDocument` | Scan-Ziele (Container-Images, Source-Repos) |
+| `scans` | `ScanDocument` | Scan-Durchlaeufe mit Status und Zusammenfassung |
+| `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
+| `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 

@@ -80,15 +80,15 @@ class AIClient:
         if provider == "openai":
             if not settings.openai_api_key:
                 raise ValueError("OpenAI provider is not configured.")
-            summary = await self._call_openai(system_prompt, user_prompt)
+            summary, token_usage = await self._call_openai(system_prompt, user_prompt)
         elif provider == "anthropic":
             if not settings.anthropic_api_key:
                 raise ValueError("Anthropic provider is not configured.")
-            summary = await self._call_anthropic(system_prompt, user_prompt)
+            summary, token_usage = await self._call_anthropic(system_prompt, user_prompt)
         elif provider == "gemini":
             if not settings.google_gemini_api_key:
                 raise ValueError("Google Gemini provider is not configured.")
-            summary = await self._call_gemini(system_prompt, user_prompt)
+            summary, token_usage = await self._call_gemini(system_prompt, user_prompt)
         else:  # pragma: no cover - defensive programming
             raise ValueError(f"Unsupported provider '{provider}'.")
 
@@ -97,6 +97,7 @@ class AIClient:
             language=normalized_language,
             summary=summary,
             generatedAt=_isoformat_utc_now(),
+            tokenUsage=token_usage,
         )
 
     async def analyze_vulnerabilities_batch(
@@ -122,15 +123,15 @@ class AIClient:
         if provider == "openai":
             if not settings.openai_api_key:
                 raise ValueError("OpenAI provider is not configured.")
-            combined_response = await self._call_openai(system_prompt, user_prompt)
+            combined_response, token_usage = await self._call_openai(system_prompt, user_prompt)
         elif provider == "anthropic":
             if not settings.anthropic_api_key:
                 raise ValueError("Anthropic provider is not configured.")
-            combined_response = await self._call_anthropic(system_prompt, user_prompt)
+            combined_response, token_usage = await self._call_anthropic(system_prompt, user_prompt)
         elif provider == "gemini":
             if not settings.google_gemini_api_key:
                 raise ValueError("Google Gemini provider is not configured.")
-            combined_response = await self._call_gemini(system_prompt, user_prompt)
+            combined_response, token_usage = await self._call_gemini(system_prompt, user_prompt)
         else:  # pragma: no cover - defensive programming
             raise ValueError(f"Unsupported provider '{provider}'.")
 
@@ -144,6 +145,7 @@ class AIClient:
             individualSummaries=individual_summaries,
             generatedAt=_isoformat_utc_now(),
             vulnerabilityCount=len(vulnerabilities),
+            tokenUsage=token_usage,
         )
 
     @asynccontextmanager
@@ -154,7 +156,7 @@ class AIClient:
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             yield client
 
-    async def _call_openai(self, system_prompt: str, user_prompt: str) -> str:
+    async def _call_openai(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
         payload = {
             "model": (settings.openai_model or "gpt-4o-mini"),
             "messages": [
@@ -189,9 +191,17 @@ class AIClient:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:  # pragma: no cover - defensive
             raise AIProviderError("OpenAI response format was not recognised.") from exc
-        return content.strip()
 
-    async def _call_anthropic(self, system_prompt: str, user_prompt: str) -> str:
+        token_usage: dict[str, int] | None = None
+        usage = data.get("usage")
+        if isinstance(usage, dict):
+            token_usage = {
+                "inputTokens": int(usage.get("prompt_tokens", 0)),
+                "outputTokens": int(usage.get("completion_tokens", 0)),
+            }
+        return content.strip(), token_usage
+
+    async def _call_anthropic(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
         payload = {
             "model": settings.anthropic_model or "claude-3-haiku-20240307",
             "max_tokens": 4000,
@@ -233,6 +243,7 @@ class AIClient:
         except httpx.HTTPError as exc:  # pragma: no cover - network failure
             raise AIProviderError(f"Anthropic request failed: {exc}") from exc
 
+        extracted_text: str | None = None
         content_blocks = data.get("content")
         if isinstance(content_blocks, list):
             for block in content_blocks:
@@ -240,18 +251,32 @@ class AIClient:
                     continue
                 text = block.get("text")
                 if isinstance(text, str) and text.strip():
-                    return text.strip()
+                    extracted_text = text.strip()
+                    break
                 inner_parts = block.get("content")
                 if isinstance(inner_parts, list):
                     for part in inner_parts:
                         if isinstance(part, dict):
                             inner_text = part.get("text")
                             if isinstance(inner_text, str) and inner_text.strip():
-                                return inner_text.strip()
+                                extracted_text = inner_text.strip()
+                                break
+                if extracted_text is not None:
+                    break
 
-        raise AIProviderError("Anthropic response did not contain any text.")
+        if extracted_text is None:
+            raise AIProviderError("Anthropic response did not contain any text.")
 
-    async def _call_gemini(self, system_prompt: str, user_prompt: str) -> str:
+        token_usage: dict[str, int] | None = None
+        usage = data.get("usage")
+        if isinstance(usage, dict):
+            token_usage = {
+                "inputTokens": int(usage.get("input_tokens", 0)),
+                "outputTokens": int(usage.get("output_tokens", 0)),
+            }
+        return extracted_text, token_usage
+
+    async def _call_gemini(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
         if genai is None or genai_types is None:
             raise AIProviderError(
                 "Gemini provider requires the google-genai package. Install it to continue."
@@ -268,7 +293,7 @@ class AIClient:
 
         model_name = settings.google_gemini_model or "gemini-1.5-flash"
 
-        def _invoke() -> str:
+        def _invoke() -> tuple[str, dict[str, int] | None]:
             _genai = genai
             _genai_types = genai_types
             assert _genai is not None and _genai_types is not None
@@ -322,13 +347,24 @@ class AIClient:
                 prompt_preview=user_prompt[:200],
             )
 
+            usage_metadata = getattr(response, "usage_metadata", None)
+            token_usage: dict[str, int] | None = None
+            if usage_metadata is not None:
+                input_tokens = getattr(usage_metadata, "prompt_token_count", None)
+                output_tokens = getattr(usage_metadata, "candidates_token_count", None)
+                if input_tokens is not None and output_tokens is not None:
+                    token_usage = {
+                        "inputTokens": int(input_tokens),
+                        "outputTokens": int(output_tokens),
+                    }
+
             try:
                 text = getattr(response, "text", None)
             except ValueError:
                 text = None
             if isinstance(text, str) and text.strip():
                 logger.debug("gemini.response.text", length=len(text))
-                return text.strip()
+                return text.strip(), token_usage
 
             candidates = getattr(response, "candidates", None) or []
             for candidate in candidates:
@@ -351,7 +387,7 @@ class AIClient:
                             elif finish_value not in {"STOP", "FINISH_REASON_STOP"}:
                                 logger.warning("gemini.response.ended_early", finish_reason=finish_value)
                         logger.debug("gemini.response.part_text", length=len(combined_text))
-                        return combined_text
+                        return combined_text, token_usage
 
                 finish_reason = getattr(candidate, "finish_reason", None)
                 if finish_reason:

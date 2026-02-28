@@ -18,6 +18,7 @@ from app.services.ingestion.job_tracker import JobTracker
 from app.services.capec_service import get_capec_service
 from app.services.cwe_service import get_cwe_service
 from app.repositories.ingestion_state_repository import IngestionStateRepository
+from app.services.scan_service import get_scan_service
 
 log = structlog.get_logger()
 
@@ -112,6 +113,15 @@ class SchedulerManager:
                     timezone=settings.scheduler_timezone,
                 ),
                 id="euvd_full_sync",
+                replace_existing=True,
+            )
+
+        # SCA auto-scan
+        if settings.sca_enabled and settings.vite_sca_auto_scan_enabled:
+            self.scheduler.add_job(
+                _scheduled_auto_scans,
+                trigger=IntervalTrigger(hours=settings.sca_auto_scan_interval_hours),
+                id="sca_auto_scan",
                 replace_existing=True,
             )
 
@@ -470,3 +480,38 @@ async def _execute_circl_sync() -> None:
         log.exception("scheduler.circl_sync_failed", error=str(exc))
     finally:
         await pipeline.close()
+
+
+async def _scheduled_auto_scans() -> None:
+    """Submit scans for all targets with auto_scan enabled."""
+    try:
+        scan_service = await get_scan_service()
+        targets = await scan_service.list_auto_scan_targets()
+        if not targets:
+            log.info("scheduler.auto_scan_no_targets")
+            return
+
+        scanners = [s.strip() for s in settings.sca_default_scanners.split(",") if s.strip()]
+        submitted = 0
+        for target in targets:
+            target_id = target.get("target_id", "")
+            target_type = target.get("type", "container_image")
+            effective_scanners = (
+                [s for s in scanners if s != "osv-scanner"]
+                if target_type == "container_image"
+                else scanners
+            )
+            try:
+                await scan_service.submit_scan(
+                    target=target_id,
+                    target_type=target_type,
+                    scanners=effective_scanners,
+                    source="scheduled",
+                )
+                submitted += 1
+            except Exception as exc:  # noqa: BLE001
+                log.warning("scheduler.auto_scan_target_failed", target_id=target_id, error=str(exc))
+
+        log.info("scheduler.auto_scan_completed", targets=len(targets), submitted=submitted)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("scheduler.auto_scan_failed", error=str(exc))
