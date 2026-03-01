@@ -189,8 +189,12 @@ async def _run_osv_scanner(target: str, target_type: str) -> ScannerResult:
 
         stdout, stderr, rc = await _run_command(cmd)
         # osv-scanner returns exit code 1 when vulnerabilities are found (expected)
-        if rc not in (0, 1) and not stdout.strip():
-            return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=f"OSV Scanner failed (exit {rc}): {stderr}")
+        # exit 128 with "No package sources found" means the repo has no lockfiles/manifests — not an error
+        if rc not in (0, 1):
+            if "No package sources found" in stderr:
+                return ScannerResult(scanner="osv-scanner", format="osv-json", report={})
+            if not stdout.strip():
+                return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=f"OSV Scanner failed (exit {rc}): {stderr}")
         return _parse_json_output(stdout, "osv-scanner", "osv-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=str(exc))

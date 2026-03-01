@@ -5,6 +5,35 @@
   color: #f5f7fa;
 }
 
+/*** Works on common browsers ***/
+::selection {
+    background-color: #ffd43b57;
+    color: #fff;
+}
+
+/*** Mozilla based browsers ***/
+::-moz-selection {
+    background-color: #ffd43b57;
+    color: #fff;
+}
+
+/***For Other Browsers ***/
+::-o-selection {
+    background-color: #ffd43b57;
+    color: #fff;
+}
+
+::-ms-selection {
+    background-color: #ffd43b57;
+    color: #fff;
+}
+
+/*** For Webkit ***/
+::-webkit-selection {
+    background-color: #ffd43b57;
+    color: #fff;
+}
+
 body {
   margin: 0;
   overflow-x: hidden;
@@ -3371,7 +3400,7 @@ table thead th {
   width: 40px;
   height: 40px;
   border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: rgba(92, 132, 255, 0.8);
+  border-top-color: rgba(255, 212, 59, 0.8);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
