@@ -34,8 +34,8 @@ export const config = {
     /**
      * Enable or disable the per-target auto-scan toggle in the UI.
      * Should match SCA_AUTO_SCAN_ENABLED on the backend.
-     * Default: true (enabled)
+     * Default: false (disabled)
      */
-    autoScanEnabled: import.meta.env.VITE_SCA_AUTO_SCAN_ENABLED !== 'false',
+    autoScanEnabled: import.meta.env.VITE_SCA_AUTO_SCAN_ENABLED === 'true',
   },
 } as const;

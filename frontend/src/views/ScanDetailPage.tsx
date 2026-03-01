@@ -71,8 +71,14 @@ function buildSourceUrl(scan: Scan): string | null {
   if (!ref) return null;
   // If it already looks like a URL
   if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
-  // For container images like git.nohub.lol/rk/hecate-backend:latest → https://git.nohub.lol/rk/hecate-backend
-  const cleaned = ref.split("@")[0].split(":")[0];
+  const withoutDigest = ref.split("@")[0];
+  const cleaned = withoutDigest.split(":")[0];
+  const tag = withoutDigest.includes(":") ? withoutDigest.split(":").pop() : "latest";
+  // Docker Hub images: docker.io/library/X or docker.io/org/X → hub.docker.com/layers/...
+  if (cleaned.startsWith("docker.io/")) {
+    const path = cleaned.replace("docker.io/", "");
+    return `https://hub.docker.com/layers/${path}/${tag}/images`;
+  }
   if (cleaned.includes(".") && cleaned.includes("/")) {
     return `https://${cleaned}`;
   }
@@ -99,6 +105,13 @@ function getImageTag(imageRef: string | null | undefined): string | null {
 }
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, unknown: 4 };
+
+/** Strip common version prefixes (go1.24.6 → 1.24.6, v1.25.5 → 1.25.5) for comparison */
+function normalizeVersion(v: string): string {
+  if (v.startsWith("go")) return v.slice(2);
+  if (v.startsWith("v")) return v.slice(1);
+  return v;
+}
 
 /** Merged finding: same CVE + package across scanners */
 interface MergedFinding {
@@ -131,11 +144,11 @@ function pickBestFixVersion(packageVersion: string, candidates: (string | null |
 function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
   const map = new Map<string, MergedFinding & { _fixCandidates: (string | null)[] }>();
   for (const f of findings) {
-    const key = `${f.vulnerabilityId ?? ""}:${f.packageName}:${f.packageVersion}`;
+    const key = `${f.vulnerabilityId ?? ""}:${f.packageName}:${normalizeVersion(f.packageVersion)}`;
     const existing = map.get(key);
     if (existing) {
       if (!existing.scanners.includes(f.scanner)) existing.scanners.push(f.scanner);
-      if (f.fixVersion) existing._fixCandidates.push(f.fixVersion);
+      if (f.fixVersion) existing._fixCandidates.push(normalizeVersion(f.fixVersion));
       if (!existing.cvssScore && f.cvssScore) existing.cvssScore = f.cvssScore;
       if (!existing.packageType && f.packageType) existing.packageType = f.packageType;
       if (!existing.matchedFrom && f.matchedFrom) existing.matchedFrom = f.matchedFrom;
@@ -145,14 +158,14 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
         vulnerabilityId: f.vulnerabilityId ?? null,
         matchedFrom: f.matchedFrom ?? null,
         packageName: f.packageName,
-        packageVersion: f.packageVersion,
+        packageVersion: normalizeVersion(f.packageVersion),
         packageType: f.packageType ?? "",
         severity: f.severity,
         fixVersion: f.fixVersion ?? null,
         fixState: f.fixState,
         scanners: [f.scanner],
         cvssScore: f.cvssScore ?? null,
-        _fixCandidates: f.fixVersion ? [f.fixVersion] : [],
+        _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
       });
     }
   }
