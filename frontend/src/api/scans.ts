@@ -74,6 +74,10 @@ export const deleteScanTarget = async (targetId: string): Promise<void> => {
   await api.delete(`/v1/scans/targets/${encodeURIComponent(targetId)}`);
 };
 
+export const deleteScan = async (scanId: string): Promise<void> => {
+  await api.delete(`/v1/scans/${encodeURIComponent(scanId)}`);
+};
+
 export const updateScanTarget = async (
   targetId: string,
   data: { autoScan?: boolean }
