@@ -182,6 +182,14 @@ class ScanRepository:
             log.warning("scan_repository.get_history_failed", target_id=target_id, error=str(exc))
             return []
 
+    async def delete(self, scan_id: str) -> bool:
+        try:
+            result = await self.collection.delete_one({"_id": ObjectId(scan_id)})
+            return result.deleted_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_repository.delete_failed", scan_id=scan_id, error=str(exc))
+            return False
+
     async def delete_by_target(self, target_id: str) -> int:
         try:
             result = await self.collection.delete_many({"target_id": target_id})

@@ -268,6 +268,16 @@ async def get_findings_by_cve(
 # --- Dynamic scan routes ---
 
 
+@router.delete("/{scan_id}", status_code=204)
+async def delete_scan(
+    scan_id: str,
+    service: ScanService = Depends(get_scan_service),
+) -> None:
+    deleted = await service.delete_scan(scan_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+
 @router.get("/{scan_id}", response_model=ScanResponse)
 async def get_scan(
     scan_id: str,

@@ -8,6 +8,7 @@ import {
   fetchScans,
   submitManualScan,
   deleteScanTarget,
+  deleteScan,
   updateScanTarget,
 } from "../api/scans";
 import { SkeletonBlock } from "../components/Skeleton";
@@ -22,6 +23,12 @@ import type {
 
 type Tab = "targets" | "scans" | "manual";
 
+interface ConfirmModal {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+}
+
 export const ScansPage = () => {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("targets");
@@ -29,6 +36,7 @@ export const ScansPage = () => {
   const [scans, setScans] = useState<Scan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<ConfirmModal | null>(null);
 
   // Scan filter (from target card click)
   const [scanFilterTargetId, setScanFilterTargetId] = useState<string | null>(null);
@@ -141,14 +149,42 @@ export const ScansPage = () => {
     }
   };
 
-  const handleDeleteTarget = async (targetId: string) => {
-    if (!confirm(t("Delete this target and all its scan data?", "Dieses Ziel und alle zugehörigen Scan-Daten löschen?"))) return;
-    try {
-      await deleteScanTarget(targetId);
-      setTargets(prev => prev.filter(t => t.id !== targetId));
-    } catch (err) {
-      console.error("Delete failed", err);
-    }
+  const handleDeleteTarget = (targetId: string) => {
+    setConfirmModal({
+      title: t("Delete Target", "Ziel löschen"),
+      message: t(
+        "Delete this target and all its scan data? This action cannot be undone.",
+        "Dieses Ziel und alle zugehörigen Scan-Daten löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+      ),
+      onConfirm: async () => {
+        try {
+          await deleteScanTarget(targetId);
+          setTargets(prev => prev.filter(t => t.id !== targetId));
+        } catch (err) {
+          console.error("Delete failed", err);
+        }
+        setConfirmModal(null);
+      },
+    });
+  };
+
+  const handleDeleteScan = (scanId: string, scanName: string) => {
+    setConfirmModal({
+      title: t("Delete Scan", "Scan löschen"),
+      message: t(
+        `Delete scan "${scanName}"? Findings and SBOM data will be removed.`,
+        `Scan „${scanName}" löschen? Ergebnisse und SBOM-Daten werden entfernt.`
+      ),
+      onConfirm: async () => {
+        try {
+          await deleteScan(scanId);
+          setScans(prev => prev.filter(s => s.id !== scanId));
+        } catch (err) {
+          console.error("Delete scan failed", err);
+        }
+        setConfirmModal(null);
+      },
+    });
   };
 
   const handleToggleAutoScan = async (target: ScanTarget) => {
@@ -280,6 +316,7 @@ export const ScansPage = () => {
                       <th style={thStyle}>{t("Findings", "Ergebnisse")}</th>
                       <th style={thStyle}>{t("Source", "Quelle")}</th>
                       <th style={thStyle}>{t("Date", "Datum")}</th>
+                      <th style={{ ...thStyle, width: "2.5rem" }} />
                     </tr>
                   </thead>
                   <tbody>
@@ -295,6 +332,16 @@ export const ScansPage = () => {
                         <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>
                         <td style={tdStyle}>{scan.source === "ci_cd" ? "CI/CD" : t("Manual", "Manuell")}</td>
                         <td style={tdStyle}>{scan.startedAt ? formatDateTime(scan.startedAt) : "—"}</td>
+                        <td style={tdStyle}>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}
+                            title={t("Delete scan", "Scan löschen")}
+                            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: "0.875rem", padding: "0.125rem 0.25rem" }}
+                          >
+                            ×
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -420,6 +467,54 @@ export const ScansPage = () => {
           </div>
         )}
       </section>
+
+      {/* Confirmation modal */}
+      {confirmModal && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          }}
+          onClick={() => setConfirmModal(null)}
+        >
+          <div
+            style={{
+              background: "#1a1d23", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "10px", padding: "1.5rem", minWidth: "340px", maxWidth: "440px",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 600 }}>{confirmModal.title}</h3>
+            <p style={{ margin: "0 0 1.25rem", fontSize: "0.875rem", color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>
+              {confirmModal.message}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                style={{
+                  padding: "0.4rem 1rem", borderRadius: "6px", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer",
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.7)",
+                }}
+              >
+                {t("Cancel", "Abbrechen")}
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                style={{
+                  padding: "0.4rem 1rem", borderRadius: "6px", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer",
+                  background: "rgba(255,107,107,0.15)", border: "1px solid rgba(255,107,107,0.35)", color: "#ff6b6b",
+                }}
+              >
+                {t("Delete", "Löschen")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

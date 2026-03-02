@@ -279,6 +279,12 @@ class ScanService:
         await self.scan_repo.delete_by_target(target_id)
         return await self.target_repo.delete(target_id)
 
+    async def delete_scan(self, scan_id: str) -> bool:
+        """Delete a single scan and its associated findings and SBOM components."""
+        await self.finding_repo.delete_by_scan(scan_id)
+        await self.sbom_repo.delete_by_scan(scan_id)
+        return await self.scan_repo.delete(scan_id)
+
     async def list_scans(
         self,
         target_id: str | None = None,
@@ -705,9 +711,21 @@ class ScanService:
         counts: dict[str, int] = {
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
+        seen: set[str] = set()
         for f in findings:
+            # Strip go/v prefixes for dedup (go1.24.6 == v1.24.6 == 1.24.6)
+            ver = f.package_version
+            if ver.startswith("go"):
+                ver = ver[2:]
+            elif ver.startswith("v"):
+                ver = ver[1:]
+            dedup_key = f"{f.vulnerability_id or ''}:{f.package_name}:{ver}"
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
             key = f.severity if f.severity in counts else "unknown"
             counts[key] += 1
+        total = len(seen)
         return ScanSummary(
             critical=counts["critical"],
             high=counts["high"],
@@ -715,7 +733,7 @@ class ScanService:
             low=counts["low"],
             negligible=counts["negligible"],
             unknown=counts["unknown"],
-            total=len(findings),
+            total=total,
         )
 
 
