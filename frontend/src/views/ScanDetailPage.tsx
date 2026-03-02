@@ -891,7 +891,15 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
     ? Array.from({ length: maxCount }, (_, i) => i)
     : [0, Math.round((maxCount - 1) / 2), maxCount - 1];
 
-  // Deterministic x-jitter per package name
+  // CVSS ranges per severity zone for x-axis positioning within each zone
+  const CVSS_RANGES: Record<string, [number, number]> = {
+    low: [0.1, 3.9],
+    medium: [4.0, 6.9],
+    high: [7.0, 8.9],
+    critical: [9.0, 10.0],
+  };
+
+  // Deterministic small jitter for bubbles with identical CVSS to avoid perfect overlap
   const hashStr = (s: string) => {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
@@ -908,8 +916,8 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
       </div>
       <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>
         {t(
-          "Each bubble is a library. X-axis: severity, Y-axis: count, size: count. Hover for details.",
-          "Jede Blase ist eine Bibliothek. X-Achse: Schweregrad, Y-Achse: Anzahl, Größe: Anzahl. Hover für Details."
+          "Each bubble is a library. X-axis: severity & CVSS score, Y-axis: count, size: count. Hover for details.",
+          "Jede Blase ist eine Bibliothek. X-Achse: Schweregrad & CVSS-Score, Y-Achse: Anzahl, Größe: Anzahl. Hover für Details."
         )}
       </div>
       <div ref={containerRef} style={{ width: "100%", position: "relative", overflow: "visible" }}>
@@ -945,10 +953,20 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
           {bubbles.map((b, i) => {
             const zoneIdx = SEVERITY_ZONES.indexOf(b.severity as typeof SEVERITY_ZONES[number]);
             if (zoneIdx === -1) return null;
-            const jitter = ((hashStr(b.packageName) % 1000) / 1000 - 0.5) * (zoneWidth * 0.7);
-            const cx = padding.left + (zoneIdx + 0.5) * zoneWidth + jitter;
-            const cy = padding.top + chartH - (b.count / maxCount) * chartH;
             const r = Math.max(4, Math.sqrt(b.count / maxCount) * maxR);
+            // Position within zone based on CVSS score
+            const [rangeMin, rangeMax] = CVSS_RANGES[b.severity] ?? [0, 10];
+            const cvss = b.maxCvss ?? (rangeMin + rangeMax) / 2;
+            const rangeSpan = rangeMax - rangeMin || 1;
+            const cvssNorm = Math.max(0, Math.min(1, (cvss - rangeMin) / rangeSpan));
+            // Map to zone with margin so bubbles don't sit on zone edges
+            const margin = r + 4;
+            const usableWidth = Math.max(0, zoneWidth - 2 * margin);
+            const baseX = padding.left + zoneIdx * zoneWidth + margin + cvssNorm * usableWidth;
+            // Tiny deterministic jitter to separate overlapping bubbles (same CVSS)
+            const microJitter = ((hashStr(b.packageName) % 100) / 100 - 0.5) * Math.min(r * 2, usableWidth * 0.1);
+            const cx = Math.max(padding.left + zoneIdx * zoneWidth + r, Math.min(padding.left + (zoneIdx + 1) * zoneWidth - r, baseX + microJitter));
+            const cy = padding.top + chartH - (b.count / maxCount) * chartH;
             const color = SEVERITY_COLORS[b.severity] ?? "#888";
             const isHovered = hovered?.packageName === b.packageName && hovered?.severity === b.severity;
             return (
