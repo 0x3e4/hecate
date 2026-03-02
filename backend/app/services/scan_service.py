@@ -765,19 +765,114 @@ class ScanService:
         """Override scanner-reported severity with local vulnerability DB severity.
 
         The local DB (NVD/EUVD) is considered more accurate than scanner output.
+        Also corrects CVE mappings using GHSA alias lookup when a scanner's
+        reported CVE doesn't exist locally but its GHSA advisory does.
         """
+        import re
         from app.db.mongo import get_database
 
-        # Collect unique CVE IDs
+        db = await get_database()
+        vuln_col = db[settings.mongo_vulnerabilities_collection]
+
+        # --- Phase 1: GHSA alias-based CVE correction ---
+        ghsa_pattern = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}", re.IGNORECASE)
+
+        # Build map: finding index -> GHSA IDs extracted from data_source + urls
+        finding_ghsa: dict[int, list[str]] = {}
+        all_ghsa_ids: set[str] = set()
+        for idx, f in enumerate(findings):
+            ghsa_ids: list[str] = []
+            for text in [f.data_source or ""] + (f.urls or []):
+                for m in ghsa_pattern.finditer(text):
+                    gid = m.group(0).upper()
+                    if gid not in ghsa_ids:
+                        ghsa_ids.append(gid)
+            if ghsa_ids:
+                finding_ghsa[idx] = ghsa_ids
+                all_ghsa_ids.update(ghsa_ids)
+
+        # Lookup GHSA -> CVE mapping from aliases
+        ghsa_to_cve: dict[str, tuple[str, str | None, float | None]] = {}
+        if all_ghsa_ids:
+            cursor = vuln_col.find(
+                {"aliases": {"$in": list(all_ghsa_ids)}},
+                {"_id": 1, "aliases": 1, "cvss.severity": 1, "cvss.base_score": 1},
+            )
+            async for doc in cursor:
+                cve_id = doc["_id"]
+                cvss = doc.get("cvss", {})
+                sev = cvss.get("severity")
+                score = cvss.get("base_score")
+                for alias in doc.get("aliases", []):
+                    if isinstance(alias, str) and alias.upper() in all_ghsa_ids:
+                        ghsa_to_cve[alias.upper()] = (
+                            cve_id,
+                            sev.lower() if isinstance(sev, str) else None,
+                            score,
+                        )
+
+        # Correct findings where GHSA resolves to a different CVE than reported
+        cve_corrected = 0
+        for idx, ghsa_ids in finding_ghsa.items():
+            f = findings[idx]
+            for gid in ghsa_ids:
+                if gid not in ghsa_to_cve:
+                    continue
+                real_cve, db_sev, db_score = ghsa_to_cve[gid]
+                if f.vulnerability_id and f.vulnerability_id != real_cve:
+                    # Check if the scanner-reported CVE's products match the finding's package
+                    existing = await vuln_col.find_one(
+                        {"_id": f.vulnerability_id}, {"_id": 1, "products": 1}
+                    )
+                    if existing:
+                        existing_products = [p.lower() for p in (existing.get("products") or [])]
+                        pkg_lower = f.package_name.lower()
+                        # If the existing CVE's products contain the package name, it's likely correct
+                        if pkg_lower in existing_products:
+                            break
+                        # Products don't match — check if GHSA-resolved CVE's products match better
+                        ghsa_cve_doc = await vuln_col.find_one(
+                            {"_id": real_cve}, {"_id": 1, "products": 1}
+                        )
+                        ghsa_products = [p.lower() for p in (ghsa_cve_doc.get("products") or [])] if ghsa_cve_doc else []
+                        if pkg_lower not in ghsa_products:
+                            # Neither matches well — keep scanner's original mapping
+                            break
+                    log.info(
+                        "scan_service.ghsa_cve_correction",
+                        scan_id=scan_id,
+                        ghsa=gid,
+                        old_cve=f.vulnerability_id,
+                        new_cve=real_cve,
+                        package=f.package_name,
+                    )
+                    old_vuln_id = f.vulnerability_id
+                    f.vulnerability_id = real_cve
+                    if db_sev:
+                        f.severity = db_sev
+                    if db_score is not None:
+                        f.cvss_score = db_score
+                    # Update in DB
+                    await self.finding_repo.collection.update_many(
+                        {"scan_id": scan_id, "vulnerability_id": old_vuln_id,
+                         "package_name": f.package_name},
+                        {"$set": {
+                            "vulnerability_id": real_cve,
+                            **({"severity": db_sev} if db_sev else {}),
+                            **({"cvss_score": db_score} if db_score is not None else {}),
+                        }},
+                    )
+                    cve_corrected += 1
+                    break
+        if cve_corrected:
+            log.info("scan_service.ghsa_corrections", scan_id=scan_id, corrected=cve_corrected)
+
+        # --- Phase 2: Severity override from local vuln DB ---
         cve_ids = {f.vulnerability_id for f in findings if f.vulnerability_id}
         if not cve_ids:
             return
 
-        # Batch lookup from vulnerabilities collection
-        db = await get_database()
-        vuln_col = db[settings.mongo_vulnerabilities_collection]
-        severity_map: dict[str, tuple[str, float | None]] = {}  # cve_id -> (severity, score)
-
+        severity_map: dict[str, tuple[str, float | None]] = {}
         cursor = vuln_col.find(
             {"_id": {"$in": list(cve_ids)}},
             {"_id": 1, "cvss.severity": 1, "cvss.base_score": 1},
@@ -805,7 +900,6 @@ class ScanService:
                 updated_count += 1
 
         if updated_count > 0:
-            # Batch update in DB
             for cve_id, (db_sev, db_score) in severity_map.items():
                 update_fields: dict[str, Any] = {"severity": db_sev}
                 if db_score is not None:

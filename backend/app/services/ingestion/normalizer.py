@@ -22,6 +22,21 @@ CVSS_METRIC_VERSION_PREFERENCE: tuple[tuple[str, str | None], ...] = (
     ("other", None),
 )
 
+_GHSA_PATTERN = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}", re.IGNORECASE)
+
+
+def extract_ghsa_ids(references: list[str]) -> list[str]:
+    """Extract unique GHSA IDs from reference URLs."""
+    ghsa_ids: list[str] = []
+    for ref in references:
+        if not isinstance(ref, str):
+            continue
+        for m in _GHSA_PATTERN.finditer(ref):
+            ghsa_id = m.group(0).upper()
+            if ghsa_id not in ghsa_ids:
+                ghsa_ids.append(ghsa_id)
+    return ghsa_ids
+
 
 def _parse_cvss_vector_string(vector_string: str) -> dict[str, str]:
     """
@@ -457,6 +472,10 @@ def build_document(
     # Add the EUVD source ID to aliases if present and not already included
     if source_id and source_id not in aliases and source_id != cve_id:
         aliases.append(source_id)
+    # Extract GHSA IDs from references and add as aliases
+    for ghsa_id in extract_ghsa_ids(references):
+        if ghsa_id not in aliases:
+            aliases.append(ghsa_id)
 
     assigner = _ensure_str(euvd_record.get("assigner"))
     exploited = _to_optional_bool(euvd_record.get("exploited"))
@@ -2012,7 +2031,7 @@ def build_document_from_nvd(
         cpe_configurations=cpe_configurations,  # Pass dicts directly
         cpe_version_tokens=_merge_unique_strings(cpe_version_tokens),
         impacted_products=impacted_products,
-        aliases=[],
+        aliases=extract_ghsa_ids(references),
         rejected=_determine_rejected(record, cve_wrapper),
         assigner=_ensure_str(cve_wrapper.get("sourceIdentifier")),
         exploited=None,
