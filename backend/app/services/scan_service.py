@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
+from bson import ObjectId
 
 from app.core.config import settings
 from app.models.scan import (
@@ -202,6 +203,9 @@ class ScanService:
         # Fix version correction: replace scanner-reported downgrade fixes with correct versions from vuln DB
         await self._fix_downgrade_fix_versions(scan_id, all_findings)
 
+        # Severity override: prefer local vuln DB severity over scanner-reported severity
+        await self._override_severity_from_vuln_db(scan_id, all_findings)
+
         # Final dedup pass: remove cross-scanner duplicates from DB
         # (findings dedup happens at display time via frontend merge; SBOM needs cleanup)
         # Recompute final summary after all scanners
@@ -219,6 +223,16 @@ class ScanService:
             sbom_component_count=len(all_components),
             error=error_text,
         )
+        # Mark summary as deduped (v2) and severity as overridden so lazy corrections are skipped
+        try:
+            from app.db.mongo import get_database
+            db = await get_database()
+            await db[settings.mongo_scans_collection].update_one(
+                {"_id": ObjectId(scan_id)},
+                {"$set": {"summary_version": 2, "severity_overridden": True}},
+            )
+        except Exception:
+            pass
         await self.target_repo.update_last_scan(target_id, finished_at)
 
         log.info(
@@ -245,6 +259,71 @@ class ScanService:
             error=error_text,
         )
 
+    async def _get_deduped_summary(self, scan: dict[str, Any]) -> dict[str, Any]:
+        """Return the deduped summary for a scan, lazily correcting if needed."""
+        if scan.get("summary_version") == 2:
+            return scan.get("summary", {})
+        # Recompute from findings with dedup
+        scan_id = str(scan.get("_id", ""))
+        _, findings = await self.finding_repo.list_by_scan(scan_id, limit=10000)
+        nv = self._normalize_ver
+        counts: dict[str, int] = {
+            "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
+        }
+        # First pass: keyed entries with CVE; collect no-CVE separately
+        keyed: dict[str, str] = {}
+        no_cve: list[dict[str, Any]] = []
+        for f in findings:
+            ver = nv(f.get("package_version", ""))
+            vuln_id = f.get("vulnerability_id", "")
+            if not vuln_id:
+                no_cve.append(f)
+                continue
+            dedup_key = f"{vuln_id}:{f.get('package_name', '')}:{ver}"
+            if dedup_key not in keyed:
+                keyed[dedup_key] = f.get("severity", "unknown")
+
+        # Build fix index for merging no-CVE findings
+        fix_index: dict[str, str] = {}
+        for f in findings:
+            vuln_id = f.get("vulnerability_id", "")
+            fix_ver = f.get("fix_version", "")
+            if vuln_id and fix_ver:
+                idx_key = f"{f.get('package_name', '')}:{nv(f.get('package_version', ''))}:{nv(fix_ver)}"
+                if idx_key not in fix_index:
+                    fix_index[idx_key] = f"{vuln_id}:{f.get('package_name', '')}:{nv(f.get('package_version', ''))}"
+
+        for f in no_cve:
+            ver = nv(f.get("package_version", ""))
+            fix = nv(f.get("fix_version", "")) if f.get("fix_version") else ""
+            if fix:
+                idx_key = f"{f.get('package_name', '')}:{ver}:{fix}"
+                if idx_key in fix_index:
+                    continue
+            dedup_key = f":{f.get('package_name', '')}:{ver}"
+            if dedup_key not in keyed:
+                keyed[dedup_key] = f.get("severity", "unknown")
+
+        for sev in keyed.values():
+            key = sev if sev in counts else "unknown"
+            counts[key] += 1
+        summary = {**counts, "total": len(keyed)}
+        # Persist corrected summary so we don't recompute next time
+        await self.scan_repo.update_status(
+            scan_id, scan.get("status", "completed"),
+            summary=ScanSummary(**summary),
+        )
+        try:
+            from app.db.mongo import get_database
+            db = await get_database()
+            await db[settings.mongo_scans_collection].update_one(
+                {"_id": ObjectId(scan_id)},
+                {"$set": {"summary_version": 2}},
+            )
+        except Exception:
+            pass
+        return summary
+
     async def list_targets(
         self,
         type_filter: str | None = None,
@@ -258,7 +337,7 @@ class ScanService:
             if target_id:
                 latest = await self.scan_repo.get_latest_by_target(target_id)
                 if latest:
-                    item["latest_summary"] = latest.get("summary")
+                    item["latest_summary"] = await self._get_deduped_summary(latest)
                     item["latest_scan_id"] = str(latest.get("_id", ""))
                 item["has_running_scan"] = await self.scan_repo.has_running_scan(target_id)
         return total, items
@@ -268,7 +347,7 @@ class ScanService:
         if target:
             latest = await self.scan_repo.get_latest_by_target(target_id)
             if latest:
-                target["latest_summary"] = latest.get("summary")
+                target["latest_summary"] = await self._get_deduped_summary(latest)
                 target["latest_scan_id"] = str(latest.get("_id", ""))
         return target
 
@@ -295,12 +374,14 @@ class ScanService:
         total, items = await self.scan_repo.list_all(
             target_id=target_id, status=status, limit=limit, offset=offset
         )
-        # Enrich with target name
+        # Enrich with target name + deduped summary
         for item in items:
             tid = item.get("target_id")
             if tid:
                 target = await self.target_repo.get(tid)
                 item["target_name"] = target.get("name") if target else tid
+            if item.get("status") == "completed":
+                item["summary"] = await self._get_deduped_summary(item)
         return total, items
 
     async def get_scan(self, scan_id: str) -> dict[str, Any] | None:
@@ -310,6 +391,7 @@ class ScanService:
             if tid:
                 target = await self.target_repo.get(tid)
                 scan["target_name"] = target.get("name") if target else tid
+            scan["summary"] = await self._get_deduped_summary(scan)
         return scan
 
     async def get_scan_findings(
@@ -319,6 +401,9 @@ class ScanService:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
+        # Lazy severity override for scans completed before the override was added
+        await self._lazy_severity_override(scan_id)
+
         total, items = await self.finding_repo.list_by_scan(scan_id, severity=severity, limit=limit, offset=offset)
 
         # Lazy fix-version correction for scans completed before the correction pass was added.
@@ -330,9 +415,9 @@ class ScanService:
         ]
         if needs_correction:
             # Convert dicts to ScanFindingDocument-like objects for the correction method
-            from app.models.scan import ScanFindingDocument
+            from app.models.scan import ScanFindingDocument as SFD
             docs = [
-                ScanFindingDocument(
+                SFD(
                     scan_id=str(item.get("scan_id", scan_id)),
                     target_id=str(item.get("target_id", "")),
                     scanner=item.get("scanner", ""),
@@ -350,6 +435,38 @@ class ScanService:
             total, items = await self.finding_repo.list_by_scan(scan_id, severity=severity, limit=limit, offset=offset)
 
         return total, items
+
+    async def _lazy_severity_override(self, scan_id: str) -> None:
+        """One-time severity override for existing scans that predate the override feature."""
+        from app.db.mongo import get_database
+        db = await get_database()
+        scan_col = db[settings.mongo_scans_collection]
+        scan_doc = await scan_col.find_one({"_id": ObjectId(scan_id)}, {"severity_overridden": 1})
+        if not scan_doc or scan_doc.get("severity_overridden"):
+            return
+        # Fetch all findings for this scan, build ScanFindingDocument objects, run override
+        _, all_items = await self.finding_repo.list_by_scan(scan_id, limit=10000)
+        docs = [
+            ScanFindingDocument(
+                scan_id=str(item.get("scan_id", scan_id)),
+                target_id=str(item.get("target_id", "")),
+                scanner=item.get("scanner", ""),
+                package_name=item.get("package_name", ""),
+                package_version=item.get("package_version", ""),
+                vulnerability_id=item.get("vulnerability_id"),
+                fix_version=item.get("fix_version"),
+                package_type=item.get("package_type", ""),
+                severity=item.get("severity", "unknown"),
+                cvss_score=item.get("cvss_score"),
+            )
+            for item in all_items
+        ]
+        await self._override_severity_from_vuln_db(scan_id, docs)
+        # Mark as done + invalidate summary cache
+        await scan_col.update_one(
+            {"_id": ObjectId(scan_id)},
+            {"$set": {"severity_overridden": True, "summary_version": 0}},
+        )
 
     @staticmethod
     def _is_downgrade(package_version: str, fix_version: str) -> bool:
@@ -642,6 +759,68 @@ class ScanService:
             log.warning("scan_service.cve_search_failed", package=package_name, error=str(exc))
         return None
 
+    async def _override_severity_from_vuln_db(
+        self, scan_id: str, findings: list[ScanFindingDocument]
+    ) -> None:
+        """Override scanner-reported severity with local vulnerability DB severity.
+
+        The local DB (NVD/EUVD) is considered more accurate than scanner output.
+        """
+        from app.db.mongo import get_database
+
+        # Collect unique CVE IDs
+        cve_ids = {f.vulnerability_id for f in findings if f.vulnerability_id}
+        if not cve_ids:
+            return
+
+        # Batch lookup from vulnerabilities collection
+        db = await get_database()
+        vuln_col = db[settings.mongo_vulnerabilities_collection]
+        severity_map: dict[str, tuple[str, float | None]] = {}  # cve_id -> (severity, score)
+
+        cursor = vuln_col.find(
+            {"_id": {"$in": list(cve_ids)}},
+            {"_id": 1, "cvss.severity": 1, "cvss.base_score": 1},
+        )
+        async for doc in cursor:
+            cve_id = doc["_id"]
+            cvss = doc.get("cvss", {})
+            sev = cvss.get("severity")
+            score = cvss.get("base_score")
+            if sev and isinstance(sev, str):
+                severity_map[cve_id] = (sev.lower(), score)
+
+        if not severity_map:
+            return
+
+        updated_count = 0
+        for f in findings:
+            if not f.vulnerability_id or f.vulnerability_id not in severity_map:
+                continue
+            db_sev, db_score = severity_map[f.vulnerability_id]
+            if db_sev and db_sev != f.severity:
+                f.severity = db_sev
+                if db_score is not None:
+                    f.cvss_score = db_score
+                updated_count += 1
+
+        if updated_count > 0:
+            # Batch update in DB
+            for cve_id, (db_sev, db_score) in severity_map.items():
+                update_fields: dict[str, Any] = {"severity": db_sev}
+                if db_score is not None:
+                    update_fields["cvss_score"] = db_score
+                await self.finding_repo.collection.update_many(
+                    {"scan_id": scan_id, "vulnerability_id": cve_id},
+                    {"$set": update_fields},
+                )
+            log.info(
+                "scan_service.severity_override",
+                scan_id=scan_id,
+                overridden=updated_count,
+                total_with_cve=len(cve_ids),
+            )
+
     async def _call_scanner_sidecar(
         self, target: str, target_type: str, scanners: list[str]
     ) -> list[dict[str, Any]]:
@@ -707,25 +886,56 @@ class ScanService:
         return deduped
 
     @staticmethod
+    @staticmethod
+    def _normalize_ver(v: str) -> str:
+        if v.startswith("go"):
+            return v[2:]
+        if v.startswith("v"):
+            return v[1:]
+        return v
+
+    @staticmethod
     def _compute_summary(findings: list[ScanFindingDocument]) -> ScanSummary:
         counts: dict[str, int] = {
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
-        seen: set[str] = set()
+        nv = ScanService._normalize_ver
+        # First pass: collect all findings keyed by (vuln_id, pkg, ver)
+        # Track no-CVE findings separately so we can merge them with CVE entries
+        keyed: dict[str, str] = {}  # dedup_key -> severity
+        no_cve: list[ScanFindingDocument] = []
         for f in findings:
-            # Strip go/v prefixes for dedup (go1.24.6 == v1.24.6 == 1.24.6)
-            ver = f.package_version
-            if ver.startswith("go"):
-                ver = ver[2:]
-            elif ver.startswith("v"):
-                ver = ver[1:]
-            dedup_key = f"{f.vulnerability_id or ''}:{f.package_name}:{ver}"
-            if dedup_key in seen:
+            ver = nv(f.package_version)
+            if not f.vulnerability_id:
+                no_cve.append(f)
                 continue
-            seen.add(dedup_key)
-            key = f.severity if f.severity in counts else "unknown"
+            dedup_key = f"{f.vulnerability_id}:{f.package_name}:{ver}"
+            if dedup_key not in keyed:
+                keyed[dedup_key] = f.severity
+
+        # Second pass: merge no-CVE findings if same pkg+ver+fix exists with a CVE
+        fix_index: dict[str, str] = {}  # "pkg:ver:fix" -> dedup_key (with CVE)
+        for f in findings:
+            if f.vulnerability_id and f.fix_version:
+                idx_key = f"{f.package_name}:{nv(f.package_version)}:{nv(f.fix_version)}"
+                if idx_key not in fix_index:
+                    fix_index[idx_key] = f"{f.vulnerability_id}:{f.package_name}:{nv(f.package_version)}"
+
+        for f in no_cve:
+            ver = nv(f.package_version)
+            fix = nv(f.fix_version) if f.fix_version else ""
+            if fix:
+                idx_key = f"{f.package_name}:{ver}:{fix}"
+                if idx_key in fix_index:
+                    continue  # merged into CVE entry
+            dedup_key = f":{f.package_name}:{ver}"
+            if dedup_key not in keyed:
+                keyed[dedup_key] = f.severity
+
+        for sev in keyed.values():
+            key = sev if sev in counts else "unknown"
             counts[key] += 1
-        total = len(seen)
+        total = len(keyed)
         return ScanSummary(
             critical=counts["critical"],
             high=counts["high"],

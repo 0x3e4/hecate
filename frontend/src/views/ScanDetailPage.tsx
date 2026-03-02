@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScans, fetchTargetHistory, compareScans } from "../api/scans";
 import { SkeletonBlock } from "../components/Skeleton";
@@ -142,31 +142,75 @@ function pickBestFixVersion(packageVersion: string, candidates: (string | null |
 }
 
 function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
-  const map = new Map<string, MergedFinding & { _fixCandidates: (string | null)[] }>();
+  type Entry = MergedFinding & { _fixCandidates: (string | null)[] };
+  const map = new Map<string, Entry>();
+
+  const mergeInto = (existing: Entry, f: ScanFinding) => {
+    if (!existing.scanners.includes(f.scanner)) existing.scanners.push(f.scanner);
+    if (f.fixVersion) existing._fixCandidates.push(normalizeVersion(f.fixVersion));
+    if (!existing.cvssScore && f.cvssScore) existing.cvssScore = f.cvssScore;
+    if (!existing.packageType && f.packageType) existing.packageType = f.packageType;
+    if (!existing.matchedFrom && f.matchedFrom) existing.matchedFrom = f.matchedFrom;
+    // Promote CVE if the existing entry has none
+    if (!existing.vulnerabilityId && f.vulnerabilityId) existing.vulnerabilityId = f.vulnerabilityId;
+  };
+
   for (const f of findings) {
-    const key = `${f.vulnerabilityId ?? ""}:${f.packageName}:${normalizeVersion(f.packageVersion)}`;
+    const ver = normalizeVersion(f.packageVersion);
+    const fix = f.fixVersion ? normalizeVersion(f.fixVersion) : "";
+    const key = `${f.vulnerabilityId ?? ""}:${f.packageName}:${ver}`;
+
+    // If this finding has no CVE, try to merge into an existing entry with a CVE
+    // that shares the same package + version + fix
+    if (!f.vulnerabilityId && fix) {
+      let merged = false;
+      for (const entry of map.values()) {
+        if (entry.packageName === f.packageName && entry.packageVersion === ver
+          && entry._fixCandidates.length > 0 && entry._fixCandidates.includes(fix)) {
+          mergeInto(entry, f);
+          merged = true;
+          break;
+        }
+      }
+      if (merged) continue;
+    }
+
     const existing = map.get(key);
     if (existing) {
-      if (!existing.scanners.includes(f.scanner)) existing.scanners.push(f.scanner);
-      if (f.fixVersion) existing._fixCandidates.push(normalizeVersion(f.fixVersion));
-      if (!existing.cvssScore && f.cvssScore) existing.cvssScore = f.cvssScore;
-      if (!existing.packageType && f.packageType) existing.packageType = f.packageType;
-      if (!existing.matchedFrom && f.matchedFrom) existing.matchedFrom = f.matchedFrom;
+      mergeInto(existing, f);
     } else {
-      map.set(key, {
-        key,
-        vulnerabilityId: f.vulnerabilityId ?? null,
-        matchedFrom: f.matchedFrom ?? null,
-        packageName: f.packageName,
-        packageVersion: normalizeVersion(f.packageVersion),
-        packageType: f.packageType ?? "",
-        severity: f.severity,
-        fixVersion: f.fixVersion ?? null,
-        fixState: f.fixState,
-        scanners: [f.scanner],
-        cvssScore: f.cvssScore ?? null,
-        _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
-      });
+      // If this finding HAS a CVE, check if there's a no-CVE entry with same pkg+ver+fix to absorb
+      let absorbKey: string | null = null;
+      if (f.vulnerabilityId && fix) {
+        const noCveKey = `:${f.packageName}:${ver}`;
+        const noCveEntry = map.get(noCveKey);
+        if (noCveEntry && noCveEntry._fixCandidates.includes(fix)) {
+          absorbKey = noCveKey;
+        }
+      }
+      if (absorbKey) {
+        const absorbed = map.get(absorbKey)!;
+        map.delete(absorbKey);
+        absorbed.key = key;
+        absorbed.vulnerabilityId = f.vulnerabilityId ?? null;
+        mergeInto(absorbed, f);
+        map.set(key, absorbed);
+      } else {
+        map.set(key, {
+          key,
+          vulnerabilityId: f.vulnerabilityId ?? null,
+          matchedFrom: f.matchedFrom ?? null,
+          packageName: f.packageName,
+          packageVersion: ver,
+          packageType: f.packageType ?? "",
+          severity: f.severity,
+          fixVersion: f.fixVersion ?? null,
+          fixState: f.fixState,
+          scanners: [f.scanner],
+          cvssScore: f.cvssScore ?? null,
+          _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
+        });
+      }
     }
   }
   const results: MergedFinding[] = Array.from(map.values()).map(({ _fixCandidates, ...f }) => ({
@@ -335,7 +379,7 @@ export const ScanDetailPage = () => {
   return (
     <div className="page">
       {/* Header */}
-      <section className="card">
+      <section className="card" style={{ overflow: "visible" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
           <div>
             <Link to="/scans" style={{ color: "rgba(255,255,255,0.4)", textDecoration: "none", fontSize: "0.8125rem" }}>
@@ -407,6 +451,9 @@ export const ScanDetailPage = () => {
 
         {/* Severity summary bar */}
         <SeveritySummaryBar summary={merged.length > 0 ? mergedSummary : scan.summary} />
+
+        {/* Library vulnerability bubble chart */}
+        {merged.length > 0 && <BubbleChart findings={merged} />}
       </section>
 
       {/* Findings / SBOM / History / Compare tabs */}
@@ -784,6 +831,193 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: "#69db7c",
 };
 
+const SEVERITY_ZONES = ["low", "medium", "high", "critical"] as const;
+
+interface BubbleData {
+  packageName: string;
+  severity: string;
+  count: number;
+  cves: string[];
+  maxCvss: number | null;
+}
+
+const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(600);
+  const [hovered, setHovered] = useState<BubbleData | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) setWidth(entry.contentRect.width);
+    });
+    observer.observe(containerRef.current);
+    setWidth(containerRef.current.clientWidth);
+    return () => observer.disconnect();
+  }, []);
+
+  // Group by package + severity, collect CVE IDs
+  const bubbles = useMemo(() => {
+    const map = new Map<string, BubbleData>();
+    for (const f of findings) {
+      const sev = f.severity.toLowerCase();
+      if (!(sev in SEVERITY_COLORS)) continue;
+      const key = `${f.packageName}:${sev}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.count++;
+        if (f.vulnerabilityId && !existing.cves.includes(f.vulnerabilityId)) existing.cves.push(f.vulnerabilityId);
+        if (f.cvssScore != null && (existing.maxCvss == null || f.cvssScore > existing.maxCvss)) existing.maxCvss = f.cvssScore;
+      } else {
+        map.set(key, { packageName: f.packageName, severity: sev, count: 1, cves: f.vulnerabilityId ? [f.vulnerabilityId] : [], maxCvss: f.cvssScore ?? null });
+      }
+    }
+    return Array.from(map.values());
+  }, [findings]);
+
+  if (bubbles.length === 0) return null;
+
+  const height = 200;
+  const padding = { top: 16, right: 20, bottom: 32, left: 44 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+
+  // Add +1 headroom so count=maxCount doesn't sit at the very top edge
+  const maxCount = Math.max(...bubbles.map(b => b.count), 1) + 1;
+  const yTicks = maxCount <= 5
+    ? Array.from({ length: maxCount }, (_, i) => i)
+    : [0, Math.round((maxCount - 1) / 2), maxCount - 1];
+
+  // Deterministic x-jitter per package name
+  const hashStr = (s: string) => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return h;
+  };
+
+  const zoneWidth = chartW / SEVERITY_ZONES.length;
+  const maxR = Math.min(zoneWidth / 4, chartH / 6, 24);
+
+  return (
+    <div style={{ marginTop: "1rem" }}>
+      <div style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.125rem" }}>
+        {t("Library Vulnerability Analysis", "Bibliothek-Schwachstellen-Analyse")}
+      </div>
+      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>
+        {t(
+          "Each bubble is a library. X-axis: severity, Y-axis: count, size: count. Hover for details.",
+          "Jede Blase ist eine Bibliothek. X-Achse: Schweregrad, Y-Achse: Anzahl, Größe: Anzahl. Hover für Details."
+        )}
+      </div>
+      <div ref={containerRef} style={{ width: "100%", position: "relative", overflow: "visible" }}>
+        <svg
+          width={width} height={height} style={{ overflow: "visible" }}
+          onMouseMove={e => {
+            const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+            setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          }}
+          onMouseLeave={() => setHovered(null)}
+        >
+          {/* Grid lines */}
+          {yTicks.map(tick => {
+            const y = padding.top + chartH - (tick / maxCount) * chartH;
+            return (
+              <g key={tick}>
+                <line x1={padding.left} x2={padding.left + chartW} y1={y} y2={y} stroke="rgba(255,255,255,0.06)" />
+                <text x={padding.left - 8} y={y + 4} fill="rgba(255,255,255,0.3)" fontSize="10" textAnchor="end">{tick}</text>
+              </g>
+            );
+          })}
+          {/* Zone separators */}
+          {SEVERITY_ZONES.map((_, i) => i > 0 && (
+            <line key={i} x1={padding.left + i * zoneWidth} x2={padding.left + i * zoneWidth} y1={padding.top} y2={padding.top + chartH} stroke="rgba(255,255,255,0.04)" />
+          ))}
+          {/* Zone labels */}
+          {SEVERITY_ZONES.map((sev, i) => (
+            <text key={sev} x={padding.left + (i + 0.5) * zoneWidth} y={height - 6} fill={SEVERITY_COLORS[sev] ?? "rgba(255,255,255,0.3)"} fontSize="10" textAnchor="middle" opacity={0.7}>
+              {sev.charAt(0).toUpperCase() + sev.slice(1)}
+            </text>
+          ))}
+          {/* Bubbles */}
+          {bubbles.map((b, i) => {
+            const zoneIdx = SEVERITY_ZONES.indexOf(b.severity as typeof SEVERITY_ZONES[number]);
+            if (zoneIdx === -1) return null;
+            const jitter = ((hashStr(b.packageName) % 1000) / 1000 - 0.5) * (zoneWidth * 0.7);
+            const cx = padding.left + (zoneIdx + 0.5) * zoneWidth + jitter;
+            const cy = padding.top + chartH - (b.count / maxCount) * chartH;
+            const r = Math.max(4, Math.sqrt(b.count / maxCount) * maxR);
+            const color = SEVERITY_COLORS[b.severity] ?? "#888";
+            const isHovered = hovered?.packageName === b.packageName && hovered?.severity === b.severity;
+            return (
+              <circle
+                key={i}
+                cx={cx} cy={cy} r={isHovered ? r + 2 : r}
+                fill={color}
+                fillOpacity={isHovered ? 0.9 : 0.55}
+                stroke={color}
+                strokeWidth={isHovered ? 2 : 1}
+                strokeOpacity={0.8}
+                style={{ cursor: "pointer", transition: "r 0.1s, fill-opacity 0.1s" }}
+                onMouseEnter={() => setHovered(b)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={() => {
+                  if (b.cves.length > 0) {
+                    const query = `vuln_id:(${b.cves.join(" OR ")})`;
+                    navigate(`/vulnerabilities?search=${encodeURIComponent(query)}&mode=dql`);
+                  }
+                }}
+              />
+            );
+          })}
+        </svg>
+        {/* Tooltip */}
+        {hovered && (
+          <div
+            style={{
+              position: "absolute",
+              top: Math.max(0, mousePos.y - 10),
+              ...(mousePos.x > width * 0.6 ? { right: width - mousePos.x + 12 } : { left: mousePos.x + 12 }),
+              background: "rgba(15,15,25,0.95)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "6px",
+              padding: "0.5rem 0.75rem",
+              fontSize: "0.75rem",
+              pointerEvents: "none",
+              zIndex: 10,
+              maxWidth: "220px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: "0.25rem", wordBreak: "break-all", lineHeight: 1.3 }}>{hovered.packageName}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", color: SEVERITY_COLORS[hovered.severity], lineHeight: 1.6 }}>
+              <span>{hovered.severity.charAt(0).toUpperCase() + hovered.severity.slice(1)}</span>
+              <span style={{ fontWeight: 600 }}>{hovered.count} CVE{hovered.count !== 1 ? "s" : ""}</span>
+            </div>
+            {hovered.maxCvss != null && (
+              <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                CVSS: <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{hovered.maxCvss.toFixed(1)}</span>
+              </div>
+            )}
+            {hovered.cves.length > 0 && (
+              <div style={{ marginTop: "0.25rem", borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: "0.25rem" }}>
+                {hovered.cves.slice(0, 8).map(cve => (
+                  <div key={cve} style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.6875rem", lineHeight: 1.5 }}>{cve}</div>
+                ))}
+                {hovered.cves.length > 8 && (
+                  <div style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6875rem" }}>+{hovered.cves.length - 8} more</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
@@ -1069,12 +1303,12 @@ const SeveritySummaryBar = ({ summary }: { summary: ScanSummary }) => {
   }
 
   const segments = [
-    { label: "Critical", count: summary.critical, color: "#ff6b6b" },
-    { label: "High", count: summary.high, color: "#ff922b" },
-    { label: "Medium", count: summary.medium, color: "#fcc419" },
-    { label: "Low", count: summary.low, color: "#69db7c" },
-    { label: "Negligible", count: summary.negligible, color: "#868e96" },
     { label: "Unknown", count: summary.unknown, color: "#495057" },
+    { label: "Negligible", count: summary.negligible, color: "#868e96" },
+    { label: "Low", count: summary.low, color: "#69db7c" },
+    { label: "Medium", count: summary.medium, color: "#fcc419" },
+    { label: "High", count: summary.high, color: "#ff922b" },
+    { label: "Critical", count: summary.critical, color: "#ff6b6b" },
   ].filter(s => s.count > 0);
 
   return (
