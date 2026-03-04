@@ -51,6 +51,10 @@ class SubmitScanRequest(BaseModel):
         default=None, alias="pipelineUrl", serialization_alias="pipelineUrl"
     )
     source: str = Field(default="manual", description="ci_cd or manual")
+    source_archive_base64: str | None = Field(
+        default=None, alias="sourceArchiveBase64", serialization_alias="sourceArchiveBase64"
+    )
+    one_time: bool = Field(default=False, alias="oneTime", serialization_alias="oneTime")
 
     model_config = {"populate_by_name": True}
 

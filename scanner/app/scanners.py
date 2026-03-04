@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
+import io
 import json
 import os
 import shutil
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -60,16 +63,62 @@ def setup_auth(auth_entries: str) -> None:
             gitconfig_path.write_text(gitconfig_content)
 
 
-async def run_scanner(scanner_name: str, target: str, target_type: str) -> ScannerResult:
+def extract_source_archive(source_archive_base64: str) -> str:
+    """Extract a base64-encoded zip archive into a temporary directory."""
+    try:
+        archive_bytes = base64.b64decode(source_archive_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise RuntimeError(f"Invalid source archive data: {exc}") from exc
+
+    tmp_dir = tempfile.mkdtemp(prefix="hecate-upload-")
+    root = Path(tmp_dir).resolve()
+    extracted_files = 0
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
+            for member in zf.infolist():
+                member_path = Path(member.filename)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise RuntimeError("Archive contains unsafe paths")
+
+                destination = (root / member_path).resolve()
+                if destination != root and root not in destination.parents:
+                    raise RuntimeError("Archive contains unsafe paths")
+
+                if member.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member, "r") as source_file, destination.open("wb") as output_file:
+                    shutil.copyfileobj(source_file, output_file)
+                extracted_files += 1
+    except Exception as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise RuntimeError(f"Invalid ZIP archive: {exc}") from exc
+
+    if extracted_files == 0:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise RuntimeError("Uploaded archive is empty")
+
+    return tmp_dir
+
+
+async def run_scanner(
+    scanner_name: str,
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
     """Run a scanner tool and return parsed results."""
     if scanner_name == "trivy":
-        return await _run_trivy(target, target_type)
+        return await _run_trivy(target, target_type, source_dir)
     elif scanner_name == "grype":
-        return await _run_grype(target, target_type)
+        return await _run_grype(target, target_type, source_dir)
     elif scanner_name == "syft":
-        return await _run_syft(target, target_type)
+        return await _run_syft(target, target_type, source_dir)
     elif scanner_name == "osv-scanner":
-        return await _run_osv_scanner(target, target_type)
+        return await _run_osv_scanner(target, target_type, source_dir)
     else:
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
@@ -111,15 +160,18 @@ def _parse_json_output(stdout: str, scanner: str, fmt: str) -> ScannerResult:
         return ScannerResult(scanner=scanner, format=fmt, report={}, error=f"Invalid JSON output: {exc}")
 
 
-async def _run_trivy(target: str, target_type: str) -> ScannerResult:
+async def _run_trivy(target: str, target_type: str, source_dir: str | None = None) -> ScannerResult:
     """Run Trivy scanner."""
     clone_dir: str | None = None
     try:
         if target_type == "container_image":
             cmd = ["trivy", "image", "--format", "json", "--quiet", target]
         else:
-            clone_dir = await _clone_repo(target)
-            cmd = ["trivy", "fs", "--format", "json", "--quiet", clone_dir]
+            scan_dir = source_dir
+            if not scan_dir:
+                clone_dir = await _clone_repo(target)
+                scan_dir = clone_dir
+            cmd = ["trivy", "fs", "--format", "json", "--quiet", scan_dir]
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
@@ -132,15 +184,18 @@ async def _run_trivy(target: str, target_type: str) -> ScannerResult:
             shutil.rmtree(clone_dir, ignore_errors=True)
 
 
-async def _run_grype(target: str, target_type: str) -> ScannerResult:
+async def _run_grype(target: str, target_type: str, source_dir: str | None = None) -> ScannerResult:
     """Run Grype scanner."""
     clone_dir: str | None = None
     try:
         if target_type == "container_image":
             cmd = ["grype", target, "-o", "json", "--quiet"]
         else:
-            clone_dir = await _clone_repo(target)
-            cmd = ["grype", f"dir:{clone_dir}", "-o", "json", "--quiet"]
+            scan_dir = source_dir
+            if not scan_dir:
+                clone_dir = await _clone_repo(target)
+                scan_dir = clone_dir
+            cmd = ["grype", f"dir:{scan_dir}", "-o", "json", "--quiet"]
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
@@ -153,15 +208,18 @@ async def _run_grype(target: str, target_type: str) -> ScannerResult:
             shutil.rmtree(clone_dir, ignore_errors=True)
 
 
-async def _run_syft(target: str, target_type: str) -> ScannerResult:
+async def _run_syft(target: str, target_type: str, source_dir: str | None = None) -> ScannerResult:
     """Run Syft SBOM generator."""
     clone_dir: str | None = None
     try:
         if target_type == "container_image":
             cmd = ["syft", target, "-o", "cyclonedx-json", "--quiet"]
         else:
-            clone_dir = await _clone_repo(target)
-            cmd = ["syft", f"dir:{clone_dir}", "-o", "cyclonedx-json", "--quiet"]
+            scan_dir = source_dir
+            if not scan_dir:
+                clone_dir = await _clone_repo(target)
+                scan_dir = clone_dir
+            cmd = ["syft", f"dir:{scan_dir}", "-o", "cyclonedx-json", "--quiet"]
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
@@ -174,7 +232,11 @@ async def _run_syft(target: str, target_type: str) -> ScannerResult:
             shutil.rmtree(clone_dir, ignore_errors=True)
 
 
-async def _run_osv_scanner(target: str, target_type: str) -> ScannerResult:
+async def _run_osv_scanner(
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
     """Run OSV Scanner. Only supports source repos (lockfile scanning)."""
     if target_type == "container_image":
         return ScannerResult(
@@ -184,8 +246,11 @@ async def _run_osv_scanner(target: str, target_type: str) -> ScannerResult:
 
     clone_dir: str | None = None
     try:
-        clone_dir = await _clone_repo(target)
-        cmd = ["osv-scanner", "scan", "--format", "json", "-r", clone_dir]
+        scan_dir = source_dir
+        if not scan_dir:
+            clone_dir = await _clone_repo(target)
+            scan_dir = clone_dir
+        cmd = ["osv-scanner", "scan", "--format", "json", "-r", scan_dir]
 
         stdout, stderr, rc = await _run_command(cmd)
         # osv-scanner returns exit code 1 when vulnerabilities are found (expected)

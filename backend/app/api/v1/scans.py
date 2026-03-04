@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -36,6 +38,23 @@ async def verify_sca_api_key(x_api_key: str = Header(..., alias="X-API-Key")) ->
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
+def _validate_source_archive_payload(source_archive_base64: str | None) -> None:
+    if not source_archive_base64:
+        return
+
+    try:
+        archive_bytes = base64.b64decode(source_archive_base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="sourceArchiveBase64 is not valid base64")
+    if len(archive_bytes) > settings.sca_source_archive_max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Archive too large (max {settings.sca_source_archive_max_bytes // (1024 * 1024)} MB)",
+        )
+    if not archive_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded archive is empty")
+
+
 # --- Scan submission ---
 
 
@@ -52,15 +71,21 @@ async def submit_scan(
     if request.type not in ("container_image", "source_repo"):
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
-    result = await service.submit_scan(
-        target=request.target,
-        target_type=request.type,
-        scanners=request.scanners,
-        source=request.source,
-        commit_sha=request.commit_sha,
-        branch=request.branch,
-        pipeline_url=request.pipeline_url,
-    )
+    _validate_source_archive_payload(request.source_archive_base64)
+    try:
+        result = await service.submit_scan(
+            target=request.target,
+            target_type=request.type,
+            scanners=request.scanners,
+            source=request.source,
+            commit_sha=request.commit_sha,
+            branch=request.branch,
+            pipeline_url=request.pipeline_url,
+            source_archive_base64=request.source_archive_base64,
+            one_time=request.one_time or bool(request.source_archive_base64),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return SubmitScanResponse(
         scan_id=result["scan_id"],
         target_id=result["target_id"],
@@ -84,12 +109,20 @@ async def submit_manual_scan(
     if request.type not in ("container_image", "source_repo"):
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
-    result = await service.submit_scan(
-        target=request.target,
-        target_type=request.type,
-        scanners=request.scanners,
-        source="manual",
-    )
+    _validate_source_archive_payload(request.source_archive_base64)
+
+    try:
+        result = await service.submit_scan(
+            target=request.target,
+            target_type=request.type,
+            scanners=request.scanners,
+            source="manual",
+            source_archive_base64=request.source_archive_base64,
+            one_time=request.one_time or bool(request.source_archive_base64),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return SubmitScanResponse(
         scan_id=result["scan_id"],
         target_id=result["target_id"],

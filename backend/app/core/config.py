@@ -116,6 +116,7 @@ class Settings(BaseSettings):
     sca_api_key: str | None = None
     sca_scanner_url: str = "http://scanner:8080"
     sca_scanner_timeout_seconds: int = 600
+    sca_source_archive_max_bytes: int = 50 * 1024 * 1024
     sca_default_scanners: str = "trivy,grype,syft,osv-scanner"
     vite_sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_hours: int = 24

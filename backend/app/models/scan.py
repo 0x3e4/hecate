@@ -37,6 +37,7 @@ class ScanDocument(BaseModel):
     """An individual scan run linked to a target."""
 
     target_id: str
+    target_name: str | None = None
     scanners: list[str] = Field(default_factory=list)
     status: str = Field(default="pending", description="pending, running, completed, failed")
     source: str = Field(default="manual", description="ci_cd or manual")

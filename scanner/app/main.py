@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+import shutil
 
 from fastapi import FastAPI, HTTPException
 
 from app.models import ScanRequest, ScanResponse, ScannerResult
-from app.scanners import run_scanner, setup_auth
+from app.scanners import extract_source_archive, run_scanner, setup_auth
 
 app = FastAPI(title="Hecate Scanner Sidecar", version="0.1.0")
 
@@ -36,9 +37,22 @@ async def scan(request: ScanRequest) -> ScanResponse:
     if request.type not in ("container_image", "source_repo"):
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
+    source_dir: str | None = None
+    if request.source_archive_base64:
+        if request.type != "source_repo":
+            raise HTTPException(status_code=400, detail="sourceArchiveBase64 is only valid for source_repo scans")
+        try:
+            source_dir = extract_source_archive(request.source_archive_base64)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     results: list[ScannerResult] = []
-    for scanner_name in request.scanners:
-        result = await run_scanner(scanner_name, request.target, request.type)
-        results.append(result)
+    try:
+        for scanner_name in request.scanners:
+            result = await run_scanner(scanner_name, request.target, request.type, source_dir=source_dir)
+            results.append(result)
+    finally:
+        if source_dir:
+            shutil.rmtree(source_dir, ignore_errors=True)
 
     return ScanResponse(target=request.target, type=request.type, results=results)
