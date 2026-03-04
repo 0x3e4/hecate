@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from app.core.config import settings
 from app.schemas.ai import (
@@ -27,6 +27,16 @@ from app.services.audit_service import AuditService, get_audit_service
 from app.utils.request import get_client_ip
 
 router = APIRouter()
+
+
+def _require_ai_analysis_password(
+    ai_analysis_password: str | None = Header(default=None, alias="X-AI-Analysis-Password"),
+) -> None:
+    configured_password = settings.ai_analysis_password
+    if not configured_password:
+        return
+    if ai_analysis_password != configured_password:
+        raise HTTPException(status_code=401, detail="Invalid or missing AI analysis password.")
 
 
 @router.post("/search", response_model=list[VulnerabilityPreview])
@@ -219,7 +229,9 @@ async def get_field_aggregation(
 
 
 @router.get("/ai/providers", response_model=list[AIProviderInfo])
-async def list_ai_providers(ai_client: AIClient = Depends(get_ai_client)) -> list[AIProviderInfo]:
+async def list_ai_providers(
+    ai_client: AIClient = Depends(get_ai_client),
+) -> list[AIProviderInfo]:
     return ai_client.get_available_providers()
 
 
@@ -242,6 +254,7 @@ async def create_ai_investigation(
     identifier: str,
     payload: AIInvestigationRequest,
     request: Request,
+    _: None = Depends(_require_ai_analysis_password),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
@@ -294,6 +307,7 @@ async def create_ai_investigation(
 async def create_batch_ai_investigation(
     payload: AIBatchInvestigationRequest,
     request: Request,
+    _: None = Depends(_require_ai_analysis_password),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
@@ -368,6 +382,7 @@ async def create_batch_ai_investigation(
 async def list_batch_analyses(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    _: None = Depends(_require_ai_analysis_password),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> dict[str, Any]:
     """
@@ -379,6 +394,7 @@ async def list_batch_analyses(
 @router.get("/ai-investigation/batch/{batch_id}", response_model=dict[str, Any])
 async def get_batch_analysis(
     batch_id: str,
+    _: None = Depends(_require_ai_analysis_password),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> dict[str, Any]:
     """
@@ -394,6 +410,7 @@ async def get_batch_analysis(
 async def list_single_ai_analyses(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    _: None = Depends(_require_ai_analysis_password),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> dict[str, Any]:
     """

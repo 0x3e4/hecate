@@ -19,11 +19,13 @@ import {
 import { VulnerabilitySelector } from "../components/AIAnalyse/VulnerabilitySelector";
 import { BatchAnalysisDisplay } from "../components/AIAnalyse/BatchAnalysisDisplay";
 import { useI18n } from "../i18n/context";
+import { usePersistentState } from "../hooks/usePersistentState";
 
 export const AIAnalysePage = () => {
   const { t, locale } = useI18n();
   const [selectedVulnIds, setSelectedVulnIds] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<AIProviderId | null>(null);
+  const [aiAnalysisPassword, setAiAnalysisPassword] = usePersistentState<string>("ai_analysis_password", "");
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiProviders, setAiProviders] = useState<AIProviderInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -38,6 +40,8 @@ export const AIAnalysePage = () => {
   const [historyPage, setHistoryPage] = useState<number>(0);
   const [batchTotal, setBatchTotal] = useState<number>(0);
   const [singleTotal, setSingleTotal] = useState<number>(0);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState<boolean>(false);
+  const [passwordDraft, setPasswordDraft] = useState<string>(aiAnalysisPassword);
 
   const HISTORY_PAGE_SIZE = 20;
 
@@ -56,17 +60,19 @@ export const AIAnalysePage = () => {
   useEffect(() => {
     const loadProviders = async () => {
       try {
-        const providers = await getAiProviders();
+        const providers = await getAiProviders(aiAnalysisPassword);
         setAiProviders(providers);
-        if (providers.length > 0 && !selectedProvider) {
-          setSelectedProvider(providers[0].id);
-        }
+        setSelectedProvider((current) => current ?? (providers.length > 0 ? providers[0].id : null));
       } catch (err) {
         console.error("Failed to load AI providers:", err);
+        const status = (err as any)?.response?.status;
+        if (status === 401) {
+          setError(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."));
+        }
       }
     };
     loadProviders();
-  }, []);
+  }, [aiAnalysisPassword, t]);
 
   const loadHistory = useCallback(async (page: number) => {
     setHistoryLoading(true);
@@ -74,8 +80,8 @@ export const AIAnalysePage = () => {
     try {
       const offset = page * HISTORY_PAGE_SIZE;
       const [batchData, singleData] = await Promise.all([
-        listBatchAnalyses({ limit: HISTORY_PAGE_SIZE, offset }),
-        listSingleAiAnalyses({ limit: HISTORY_PAGE_SIZE, offset }),
+        listBatchAnalyses({ limit: HISTORY_PAGE_SIZE, offset }, aiAnalysisPassword),
+        listSingleAiAnalyses({ limit: HISTORY_PAGE_SIZE, offset }, aiAnalysisPassword),
       ]);
       setBatchHistory(batchData.items || []);
       setSingleHistory(singleData.items || []);
@@ -83,11 +89,16 @@ export const AIAnalysePage = () => {
       setSingleTotal(singleData.total);
     } catch (err) {
       console.error("Failed to load AI analyses history:", err);
-      setHistoryError(t("Could not load AI analyses.", "AI-Analysen konnten nicht geladen werden."));
+      const status = (err as any)?.response?.status;
+      if (status === 401) {
+        setHistoryError(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."));
+      } else {
+        setHistoryError(t("Could not load AI analyses.", "AI-Analysen konnten nicht geladen werden."));
+      }
     } finally {
       setHistoryLoading(false);
     }
-  }, [t]);
+  }, [HISTORY_PAGE_SIZE, aiAnalysisPassword, t]);
 
   useEffect(() => {
     loadHistory(historyPage);
@@ -132,7 +143,7 @@ export const AIAnalysePage = () => {
     };
   }, [response]);
 
-  const handleRunAnalysis = async () => {
+  const handleRunAnalysis = async (passwordOverride?: string) => {
     if (!selectedProvider) {
       setError(t("Please select an AI provider.", "Bitte wählen Sie einen AI-Provider aus."));
       return;
@@ -157,7 +168,7 @@ export const AIAnalysePage = () => {
         provider: selectedProvider,
         language: "de",
         additionalContext: additionalContext.trim() || null,
-      });
+      }, passwordOverride ?? aiAnalysisPassword);
 
       setResponse(result);
       setHistoryPage(0);
@@ -173,6 +184,8 @@ export const AIAnalysePage = () => {
             "API-Kontingent erschöpft. Bitte versuchen Sie es später erneut oder wenden Sie sich an Ihren Administrator."
           )
         );
+      } else if (err.response?.status === 401) {
+        setError(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."));
       } else if (err.response?.status === 404) {
         setError(t("One or more vulnerabilities were not found.", "Eine oder mehrere Schwachstellen wurden nicht gefunden."));
       } else if (err.response?.data?.detail) {
@@ -184,6 +197,27 @@ export const AIAnalysePage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenPasswordDialog = () => {
+    if (!selectedProvider) {
+      setError(t("Please select an AI provider.", "Bitte wählen Sie einen AI-Provider aus."));
+      return;
+    }
+    if (selectedVulnIds.length === 0) {
+      setError(t("Please select at least one vulnerability.", "Bitte wählen Sie mindestens eine Schwachstelle aus."));
+      return;
+    }
+    setError(null);
+    setPasswordDraft(aiAnalysisPassword);
+    setPasswordDialogOpen(true);
+  };
+
+  const handleConfirmPasswordDialog = async () => {
+    const normalizedPassword = passwordDraft.trim();
+    setAiAnalysisPassword(normalizedPassword);
+    setPasswordDialogOpen(false);
+    await handleRunAnalysis(normalizedPassword);
   };
 
   // Get vulnerability preview objects for display
@@ -219,12 +253,18 @@ export const AIAnalysePage = () => {
         </p>
 
         {!hasAiProviders ? (
-          <div className="alert alert-warning" style={{ marginTop: "1.5rem" }}>
-            {t(
-              "No AI providers configured. Please configure at least one provider in system settings.",
-              "Keine AI-Provider konfiguriert. Bitte konfigurieren Sie mindestens einen AI-Provider in den Systemeinstellungen."
-            )}
-          </div>
+          error ? (
+            <div className="alert alert-error" style={{ marginTop: "1.5rem" }}>
+              {error}
+            </div>
+          ) : (
+            <div className="alert alert-warning" style={{ marginTop: "1.5rem" }}>
+              {t(
+                "No AI providers configured. Please configure at least one provider in system settings.",
+                "Keine AI-Provider konfiguriert. Bitte konfigurieren Sie mindestens einen AI-Provider in den Systemeinstellungen."
+              )}
+            </div>
+          )
         ) : (
           <div className="ai-analyse-layout">
             {/* Left column: Vulnerability selector */}
@@ -275,7 +315,7 @@ export const AIAnalysePage = () => {
 
                 <button
                   className="btn btn-primary"
-                  onClick={handleRunAnalysis}
+                  onClick={handleOpenPasswordDialog}
                   disabled={loading || selectedVulnIds.length === 0}
                   style={{ width: "100%" }}
                 >
@@ -452,6 +492,45 @@ export const AIAnalysePage = () => {
           </div>
         )}
       </section>
+
+      {passwordDialogOpen && (
+        <div className="dialog-overlay" onClick={() => setPasswordDialogOpen(false)}>
+          <div className="dialog" onClick={(event) => event.stopPropagation()}>
+            <h3>{t("AI password", "AI-Passwort")}</h3>
+            <p>{t("Enter the password to start analysis.", "Passwort eingeben, um die Analyse zu starten.")}</p>
+            <input
+              type="password"
+              value={passwordDraft}
+              onChange={(event) => setPasswordDraft(event.target.value)}
+              placeholder={t("Enter AI password", "AI-Passwort eingeben")}
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleConfirmPasswordDialog();
+                } else if (event.key === "Escape") {
+                  setPasswordDialogOpen(false);
+                }
+              }}
+            />
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setPasswordDialogOpen(false)}
+              >
+                {t("Cancel", "Abbrechen")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleConfirmPasswordDialog()}
+              >
+                {t("Start analysis", "Analyse starten")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
