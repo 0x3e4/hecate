@@ -15,6 +15,16 @@ import {
   VulnerabilityRefreshResponse,
 } from "../types";
 
+const getAiAnalysisHeaders = (
+  aiAnalysisPassword?: string | null
+): Record<string, string> | undefined => {
+  const password = aiAnalysisPassword?.trim();
+  if (!password) {
+    return undefined;
+  }
+  return { "X-AI-Analysis-Password": password };
+};
+
 export const searchVulnerabilities = async (
   query: VulnerabilityQuery
 ): Promise<VulnerabilityPreview[]> => {
@@ -63,8 +73,12 @@ export const listVulnerabilities = async (
   return response.data;
 };
 
-export const getAiProviders = async (): Promise<AIProviderInfo[]> => {
-  const response = await api.get<AIProviderInfo[]>("/v1/vulnerabilities/ai/providers");
+export const getAiProviders = async (
+  aiAnalysisPassword?: string | null
+): Promise<AIProviderInfo[]> => {
+  const response = await api.get<AIProviderInfo[]>("/v1/vulnerabilities/ai/providers", {
+    headers: getAiAnalysisHeaders(aiAnalysisPassword),
+  });
   return response.data;
 };
 
@@ -72,7 +86,8 @@ export const requestAiInvestigation = async (
   identifier: string,
   provider: AIProviderId,
   language?: string | null,
-  additionalContext?: string | null
+  additionalContext?: string | null,
+  aiAnalysisPassword?: string | null
 ): Promise<AIInvestigationResponse> => {
   const payload: { provider: AIProviderId; language?: string | null; additionalContext?: string | null } = { provider };
   if (language) {
@@ -83,27 +98,38 @@ export const requestAiInvestigation = async (
   }
   const response = await api.post<AIInvestigationResponse>(
     `/v1/vulnerabilities/${encodeURIComponent(identifier)}/ai-investigation`,
-    payload
+    payload,
+    {
+      headers: getAiAnalysisHeaders(aiAnalysisPassword),
+    }
   );
   return response.data;
 };
 
 export const requestBatchAiInvestigation = async (
-  request: AIBatchInvestigationRequest
+  request: AIBatchInvestigationRequest,
+  aiAnalysisPassword?: string | null
 ): Promise<AIBatchInvestigationResponse> => {
   const response = await api.post<AIBatchInvestigationResponse>(
     "/v1/vulnerabilities/ai-investigation/batch",
-    request
+    request,
+    {
+      headers: getAiAnalysisHeaders(aiAnalysisPassword),
+    }
   );
   return response.data;
 };
 
 export const listBatchAnalyses = async (
-  params?: { limit?: number; offset?: number }
+  params?: { limit?: number; offset?: number },
+  aiAnalysisPassword?: string | null
 ): Promise<BatchAnalysisListResponse> => {
   const response = await api.get<BatchAnalysisListResponse>(
     "/v1/vulnerabilities/ai-investigation/batch",
-    { params }
+    {
+      params,
+      headers: getAiAnalysisHeaders(aiAnalysisPassword),
+    }
   );
   return response.data;
 };
@@ -127,11 +153,15 @@ export interface SingleAnalysisListResponse {
 }
 
 export const listSingleAiAnalyses = async (
-  params?: { limit?: number; offset?: number }
+  params?: { limit?: number; offset?: number },
+  aiAnalysisPassword?: string | null
 ): Promise<SingleAnalysisListResponse> => {
   const response = await api.get<SingleAnalysisListResponse>(
     "/v1/vulnerabilities/ai-investigation/single",
-    { params }
+    {
+      params,
+      headers: getAiAnalysisHeaders(aiAnalysisPassword),
+    }
   );
   return response.data;
 };
