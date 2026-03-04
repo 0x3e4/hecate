@@ -517,6 +517,8 @@ export interface SubmitScanRequest {
   branch?: string;
   pipelineUrl?: string;
   source?: string;
+  sourceArchiveBase64?: string;
+  oneTime?: boolean;
 }
 
 export interface SubmitScanResponse {

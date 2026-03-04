@@ -62,6 +62,38 @@ export const submitManualScan = async (request: SubmitScanRequest): Promise<Subm
   return response.data;
 };
 
+export const submitManualSourceArchiveScan = async (params: {
+  archive: File;
+  scanners?: string[];
+  targetName?: string;
+}): Promise<SubmitScanResponse> => {
+  const sourceArchiveBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Failed to read archive as base64"));
+        return;
+      }
+      const comma = reader.result.indexOf(",");
+      resolve(comma >= 0 ? reader.result.slice(comma + 1) : reader.result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read archive"));
+    reader.readAsDataURL(params.archive);
+  });
+
+  const derivedName = params.archive.name.replace(/\.zip$/i, "").trim();
+  const response = await api.post<SubmitScanResponse>("/v1/scans/manual", {
+    target: params.targetName?.trim() || derivedName || "uploaded-source",
+    type: "source_repo",
+    scanners: params.scanners,
+    sourceArchiveBase64,
+    oneTime: true,
+  }, {
+    timeout: 300000,
+  });
+  return response.data;
+};
+
 export const fetchFindingsByCve = async (
   cveId: string,
   params?: { limit?: number; offset?: number }

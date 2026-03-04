@@ -12,6 +12,11 @@ class ScanRequest(BaseModel):
         default_factory=lambda: ["trivy", "grype", "syft"],
         description="List of scanners to run",
     )
+    source_archive_base64: str | None = Field(
+        default=None, alias="sourceArchiveBase64", serialization_alias="sourceArchiveBase64"
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class ScannerResult(BaseModel):

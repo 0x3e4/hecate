@@ -7,6 +7,7 @@ import {
   fetchScanTargets,
   fetchScans,
   submitManualScan,
+  submitManualSourceArchiveScan,
   deleteScanTarget,
   deleteScan,
   updateScanTarget,
@@ -22,6 +23,7 @@ import type {
 } from "../types";
 
 type Tab = "targets" | "scans" | "manual";
+type SourceRepoInputMode = "url" | "zip";
 
 interface ConfirmModal {
   title: string;
@@ -44,6 +46,9 @@ export const ScansPage = () => {
 
   // Manual scan form
   const [scanTarget, setScanTarget] = useState("");
+  const [sourceRepoInputMode, setSourceRepoInputMode] = useState<SourceRepoInputMode>("url");
+  const [sourceArchiveFile, setSourceArchiveFile] = useState<File | null>(null);
+  const [sourceArchiveTargetName, setSourceArchiveTargetName] = useState("");
   const [scanType, setScanType] = useState<"container_image" | "source_repo">("container_image");
   const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "osv-scanner"]);
   const [scanning, setScanning] = useState(false);
@@ -109,7 +114,8 @@ export const ScansPage = () => {
 
   const handleSubmitScan = async (e: FormEvent) => {
     e.preventDefault();
-    if (!scanTarget.trim() || scanners.length === 0) return;
+    const needsTextTarget = scanType === "container_image" || (scanType === "source_repo" && sourceRepoInputMode === "url");
+    if ((needsTextTarget && !scanTarget.trim()) || (!needsTextTarget && !sourceArchiveFile) || scanners.length === 0) return;
     setScanning(true);
     setScanResult(null);
     setScanError(null);
@@ -117,11 +123,22 @@ export const ScansPage = () => {
       const effectiveScanners = scanType === "container_image"
         ? scanners.filter((s: string) => s !== "osv-scanner")
         : scanners;
-      const result = await submitManualScan({
-        target: scanTarget.trim(),
-        type: scanType,
-        scanners: effectiveScanners,
-      });
+      if (scanType === "source_repo" && sourceRepoInputMode === "zip" && sourceArchiveFile && !sourceArchiveFile.name.toLowerCase().endsWith(".zip")) {
+        setScanError(t("Please upload a .zip archive.", "Bitte eine .zip-Datei hochladen."));
+        setScanning(false);
+        return;
+      }
+      const result = scanType === "source_repo" && sourceRepoInputMode === "zip" && sourceArchiveFile
+        ? await submitManualSourceArchiveScan({
+          archive: sourceArchiveFile,
+          scanners: effectiveScanners,
+          targetName: sourceArchiveTargetName.trim() || undefined,
+        })
+        : await submitManualScan({
+          target: scanTarget.trim(),
+          type: scanType,
+          scanners: effectiveScanners,
+        });
       setScanResult(result);
       // Switch to scans tab to show the running scan
       setTab("scans");
@@ -196,6 +213,15 @@ export const ScansPage = () => {
       console.error("Toggle auto-scan failed", err);
     }
   };
+
+  const isSubmitDisabled =
+    scanning
+    || scanners.length === 0
+    || (
+      scanType === "source_repo"
+        ? (sourceRepoInputMode === "url" ? !scanTarget.trim() : !sourceArchiveFile)
+        : !scanTarget.trim()
+    );
 
   return (
     <div className="page">
@@ -364,7 +390,12 @@ export const ScansPage = () => {
                       name="scanType"
                       value="container_image"
                       checked={scanType === "container_image"}
-                      onChange={() => setScanType("container_image")}
+                      onChange={() => {
+                        setScanType("container_image");
+                        setSourceRepoInputMode("url");
+                        setSourceArchiveFile(null);
+                        setSourceArchiveTargetName("");
+                      }}
                     />
                     Container Image
                   </label>
@@ -381,21 +412,85 @@ export const ScansPage = () => {
                 </div>
               </div>
 
-              <div>
-                <label style={labelStyle}>
-                  {scanType === "container_image"
-                    ? t("Image Reference", "Image-Referenz")
-                    : t("Repository URL", "Repository-URL")}
-                </label>
-                <input
-                  type="text"
-                  value={scanTarget}
-                  onChange={e => setScanTarget(e.target.value)}
-                  placeholder={scanType === "container_image" ? "github.com/hecate/hecate-backend:latest" : "https://github.com/org/repo"}
-                  style={inputStyle}
-                  required
-                />
-              </div>
+              {scanType === "source_repo" && (
+                <div>
+                  <label style={labelStyle}>{t("Source Input", "Quell-Input")}</label>
+                  <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                      <input
+                        type="radio"
+                        name="sourceRepoInputMode"
+                        value="url"
+                        checked={sourceRepoInputMode === "url"}
+                        onChange={() => setSourceRepoInputMode("url")}
+                      />
+                      {t("Repository URL", "Repository-URL")}
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                      <input
+                        type="radio"
+                        name="sourceRepoInputMode"
+                        value="zip"
+                        checked={sourceRepoInputMode === "zip"}
+                        onChange={() => {
+                          setSourceRepoInputMode("zip");
+                          setScanTarget("");
+                        }}
+                      />
+                      {t("Upload ZIP (one-time)", "ZIP hochladen (einmalig)")}
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {(scanType === "container_image" || (scanType === "source_repo" && sourceRepoInputMode === "url")) && (
+                <div>
+                  <label style={labelStyle}>
+                    {scanType === "container_image"
+                      ? t("Image Reference", "Image-Referenz")
+                      : t("Repository URL", "Repository-URL")}
+                  </label>
+                  <input
+                    type="text"
+                    value={scanTarget}
+                    onChange={e => setScanTarget(e.target.value)}
+                    placeholder={scanType === "container_image" ? "github.com/hecate/hecate-backend:latest" : "https://github.com/org/repo"}
+                    style={inputStyle}
+                    required={scanType === "container_image" || sourceRepoInputMode === "url"}
+                  />
+                </div>
+              )}
+
+              {scanType === "source_repo" && sourceRepoInputMode === "zip" && (
+                <>
+                  <div>
+                    <label style={labelStyle}>{t("Repository ZIP", "Repository-ZIP")}</label>
+                    <input
+                      type="file"
+                      accept=".zip,application/zip"
+                      onChange={e => setSourceArchiveFile(e.target.files?.[0] || null)}
+                      style={inputStyle}
+                      required
+                    />
+                    <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "rgba(255,255,255,0.45)" }}>
+                      {t(
+                        "Uploads a source archive for a one-time scan.",
+                        "Lädt ein Quellcode-Archiv für einen einmaligen Scan hoch."
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>{t("Scan Name (optional)", "Scan-Name (optional)")}</label>
+                    <input
+                      type="text"
+                      value={sourceArchiveTargetName}
+                      onChange={e => setSourceArchiveTargetName(e.target.value)}
+                      placeholder={t("Derived from filename", "Wird aus Dateinamen abgeleitet")}
+                      style={inputStyle}
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label style={labelStyle}>{t("Scanners", "Scanner")}</label>
@@ -421,7 +516,7 @@ export const ScansPage = () => {
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button
                   type="submit"
-                  disabled={scanning || !scanTarget.trim() || scanners.length === 0}
+                  disabled={isSubmitDisabled}
                   style={{
                     padding: "0.625rem 1.5rem",
                     borderRadius: "6px",

@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import httpx
 import structlog
@@ -57,6 +58,8 @@ class ScanService:
         commit_sha: str | None = None,
         branch: str | None = None,
         pipeline_url: str | None = None,
+        source_archive_base64: str | None = None,
+        one_time: bool = False,
     ) -> dict[str, Any]:
         """Submit a scan request. Creates scan record and kicks off background processing.
 
@@ -66,25 +69,34 @@ class ScanService:
         if scanners is None:
             scanners = [s.strip() for s in settings.sca_default_scanners.split(",") if s.strip()]
 
-        # 1. Upsert scan target
-        target_id = self._derive_target_id(target, target_type)
-        target_name = self._derive_target_name(target)
-        registry = self._extract_registry(target) if target_type == "container_image" else None
-        repo_url = target if target_type == "source_repo" else None
+        if source_archive_base64 and target_type != "source_repo":
+            raise ValueError("source archive is only supported for source_repo scans")
 
-        target_doc = ScanTargetDocument(
-            target_id=target_id,
-            type=target_type,
-            name=target_name,
-            registry=registry,
-            repository_url=repo_url,
+        # 1. Upsert scan target (unless one-time scan)
+        target_id = (
+            f"one-time-upload:{uuid4().hex}"
+            if one_time
+            else self._derive_target_id(target, target_type)
         )
-        await self.target_repo.upsert(target_doc)
+        target_name = self._derive_target_name(target)
+        if not one_time:
+            registry = self._extract_registry(target) if target_type == "container_image" else None
+            repo_url = target if target_type == "source_repo" else None
+
+            target_doc = ScanTargetDocument(
+                target_id=target_id,
+                type=target_type,
+                name=target_name,
+                registry=registry,
+                repository_url=repo_url,
+            )
+            await self.target_repo.upsert(target_doc)
 
         # 2. Create scan record (status=running)
         started_at = datetime.now(tz=UTC)
         scan_doc = ScanDocument(
             target_id=target_id,
+            target_name=target_name,
             scanners=scanners,
             status="running",
             source=source,
@@ -106,6 +118,7 @@ class ScanService:
                 scanners=scanners,
                 source=source,
                 started_at=started_at,
+                source_archive_base64=source_archive_base64,
             )
         )
 
@@ -128,6 +141,7 @@ class ScanService:
         scanners: list[str],
         source: str,
         started_at: datetime,
+        source_archive_base64: str | None = None,
     ) -> None:
         """Execute scan in background. Each scanner runs independently and results are
         stored incrementally so the frontend can display partial results while other
@@ -141,7 +155,12 @@ class ScanService:
         async def _run_single_scanner(scanner_name: str) -> None:
             """Run one scanner via the sidecar, parse & store results immediately."""
             try:
-                results = await self._call_scanner_sidecar(target, target_type, [scanner_name])
+                results = await self._call_scanner_sidecar(
+                    target=target,
+                    target_type=target_type,
+                    scanners=[scanner_name],
+                    source_archive_base64=source_archive_base64,
+                )
             except Exception as exc:
                 errors.append(f"{scanner_name}: {exc}")
                 log.warning("scan_service.scanner_call_failed", scanner=scanner_name, error=str(exc))
@@ -377,9 +396,9 @@ class ScanService:
         # Enrich with target name + deduped summary
         for item in items:
             tid = item.get("target_id")
-            if tid:
+            if not item.get("target_name") and tid:
                 target = await self.target_repo.get(tid)
-                item["target_name"] = target.get("name") if target else tid
+                item["target_name"] = target.get("name") if target else item.get("target_name") or tid
             if item.get("status") == "completed":
                 item["summary"] = await self._get_deduped_summary(item)
         return total, items
@@ -388,9 +407,9 @@ class ScanService:
         scan = await self.scan_repo.get(scan_id)
         if scan:
             tid = scan.get("target_id")
-            if tid:
+            if not scan.get("target_name") and tid:
                 target = await self.target_repo.get(tid)
-                scan["target_name"] = target.get("name") if target else tid
+                scan["target_name"] = target.get("name") if target else scan.get("target_name") or tid
             scan["summary"] = await self._get_deduped_summary(scan)
         return scan
 
@@ -916,7 +935,11 @@ class ScanService:
             )
 
     async def _call_scanner_sidecar(
-        self, target: str, target_type: str, scanners: list[str]
+        self,
+        target: str,
+        target_type: str,
+        scanners: list[str],
+        source_archive_base64: str | None = None,
     ) -> list[dict[str, Any]]:
         """Call the scanner sidecar HTTP API."""
         url = f"{settings.sca_scanner_url}/scan"
@@ -925,6 +948,8 @@ class ScanService:
             "type": target_type,
             "scanners": scanners,
         }
+        if source_archive_base64:
+            payload["sourceArchiveBase64"] = source_archive_base64
         async with httpx.AsyncClient(timeout=settings.sca_scanner_timeout_seconds) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
