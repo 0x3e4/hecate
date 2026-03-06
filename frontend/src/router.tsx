@@ -32,7 +32,8 @@ export const router = createBrowserRouter([
       { path: "audit", element: <AuditLogPage /> },
       { path: "stats", element: <StatsPage /> },
       { path: "changelog", element: <ChangelogPage /> },
-      { path: "system", element: <SystemPage /> }
+      { path: "system", element: <SystemPage /> },
+      { path: "*", element: <Navigate to="/" replace /> }
     ]
   }
 ]);
