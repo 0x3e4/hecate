@@ -53,6 +53,12 @@ class GhsaPipeline:
         state_repo = await IngestionStateRepository.create()
         tracker = JobTracker(state_repo)
         effective_limit = self._resolve_limit(limit)
+        if initial_sync and effective_limit is not None:
+            log.info(
+                "ghsa_pipeline.initial_sync_unbounded",
+                configured_limit=effective_limit,
+            )
+            effective_limit = None
         job_name = "ghsa_initial_sync" if initial_sync else "ghsa_sync"
         label = "GHSA Initial Sync" if initial_sync else "GHSA Sync"
         ctx = await tracker.start(
@@ -152,6 +158,7 @@ class GhsaPipeline:
             "skipped": skipped,
             "failures": failures,
             "limit": effective_limit,
+            "modified_since": modified_since,
             "timed_out": timed_out,
         }
         await tracker.finish(ctx, **result)
