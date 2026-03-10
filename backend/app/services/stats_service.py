@@ -542,7 +542,8 @@ class StatsService:
         if not isinstance(buckets, Iterable):
             return []
 
-        results: list[dict[str, Any]] = []
+        merged: dict[Any, int] = {}
+        order: list[Any] = []
         for bucket in buckets:
             if not isinstance(bucket, dict):
                 continue
@@ -564,8 +565,15 @@ class StatsService:
             if not isinstance(count, (int, float)):
                 continue
 
-            results.append({"key": key, "doc_count": int(count)})
+            if key in merged:
+                merged[key] += int(count)
+            else:
+                merged[key] = int(count)
+                order.append(key)
 
+        results: list[dict[str, Any]] = []
+        for key in order:
+            results.append({"key": key, "doc_count": merged[key]})
             if limit is not None and len(results) >= limit:
                 break
 
@@ -772,19 +780,28 @@ class StatsService:
 
         aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
 
-        # Collect all product slugs so we can look up correct display names from MongoDB
+        # Collect all vendor/product slugs so we can look up correct display names from MongoDB
         vendors_agg = aggregations.get("vendors", {})
+        all_vendor_slugs: set[str] = set()
         all_product_slugs: set[str] = set()
         for vb in (vendors_agg.get("buckets") or []):
+            vslug = vb.get("key")
+            if vslug and isinstance(vslug, str):
+                all_vendor_slugs.add(vslug)
             for pb in (vb.get("products", {}).get("buckets") or []):
                 pslug = pb.get("key")
                 if pslug and isinstance(pslug, str):
                     all_product_slugs.add(pslug)
 
-        # Look up correct product display names from asset catalog
+        # Look up correct display names from asset catalog
+        asset_repo = await AssetRepository.create()
+        vendor_name_map: dict[str, str] = {}
         product_name_map: dict[str, str] = {}
+        if all_vendor_slugs:
+            vendor_docs = await asset_repo.find_vendors_by_slugs(all_vendor_slugs)
+            for doc in vendor_docs:
+                vendor_name_map[doc["_id"]] = doc.get("displayName") or doc["_id"]
         if all_product_slugs:
-            asset_repo = await AssetRepository.create()
             product_docs = await asset_repo.find_products_by_slugs(all_product_slugs)
             for doc in product_docs:
                 product_name_map[doc["_id"]] = doc.get("displayName") or doc["_id"]
@@ -797,8 +814,7 @@ class StatsService:
             vslug = vb.get("key")
             if not vslug or not isinstance(vslug, str):
                 continue
-            vname_buckets = vb.get("display_name", {}).get("buckets", [])
-            vname = vname_buckets[0]["key"] if vname_buckets else vslug.replace("-", " ").title()
+            vname = vendor_name_map.get(vslug, vslug.replace("-", " ").title())
             vendors.append({"slug": vslug, "name": vname, "doc_count": int(vb.get("doc_count", 0))})
 
             for pb in (vb.get("products", {}).get("buckets") or []):

@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     circl_rate_limit_seconds: float = 1.0
     circl_max_records_per_run: OptionalInt = 1000
 
+    ghsa_base_url: str = "https://api.github.com/advisories"
+    ghsa_token: str | None = None
+    ghsa_timeout_seconds: int = 30
+    ghsa_rate_limit_seconds: float = 1.0
+    ghsa_max_records_per_run: OptionalInt = 5000
+
     ingestion_user_agent: str = "hecate-ingestion/0.1"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True
@@ -103,6 +109,7 @@ class Settings(BaseSettings):
     scheduler_cwe_interval_days: int = 7
     scheduler_capec_interval_days: int = 7
     scheduler_circl_interval_minutes: int = 120
+    scheduler_ghsa_interval_minutes: int = 120
 
     # Full sync scheduling (weekly verification runs)
     scheduler_euvd_full_sync_enabled: bool = True

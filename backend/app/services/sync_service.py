@@ -12,6 +12,7 @@ from app.schemas.sync import SyncState
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
+from app.services.ingestion.ghsa_pipeline import GhsaPipeline
 from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 from app.services.scheduling.manager import _execute_capec_sync, _execute_cwe_sync, get_scheduler
@@ -33,6 +34,8 @@ SYNC_JOBS = [
     ("capec_sync", "CAPEC Cache Refresh"),
     ("capec_initial_sync", "CAPEC Initial Cache Prefetch"),
     ("circl_sync", "CIRCL Enrichment Sync"),
+    ("ghsa_sync", "GHSA Sync"),
+    ("ghsa_initial_sync", "GHSA Initial Sync"),
 ]
 
 
@@ -262,6 +265,27 @@ class SyncService:
             log.info("sync.circl_completed", **result)
         except Exception as exc:  # noqa: BLE001
             log.exception("sync.circl_failed", error=str(exc))
+        finally:
+            await pipeline.close()
+
+    async def trigger_ghsa_sync(self, *, initial: bool) -> dict[str, Any]:
+        """Trigger GHSA sync (normal or initial)."""
+        log.info("sync.trigger_ghsa", initial=initial)
+        asyncio.create_task(self._execute_ghsa_sync(initial=initial))
+        return {
+            "success": True,
+            "message": f"{'Initial' if initial else 'Normal'} GHSA sync triggered",
+            "jobName": "ghsa_initial_sync" if initial else "ghsa_sync",
+        }
+
+    async def _execute_ghsa_sync(self, *, initial: bool) -> None:
+        """Execute GHSA sync in background."""
+        pipeline = GhsaPipeline()
+        try:
+            result = await pipeline.sync(initial_sync=initial)
+            log.info("sync.ghsa_completed", initial=initial, **result)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("sync.ghsa_failed", initial=initial, error=str(exc))
         finally:
             await pipeline.close()
 
