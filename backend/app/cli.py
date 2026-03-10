@@ -122,7 +122,9 @@ def main() -> None:
     elif args.command == "sync-ghsa":
         if args.since:
             parser.error("The --since option is not supported for sync-ghsa.")
-        result = asyncio.run(run_ghsa_sync_once(limit=args.limit, initial_sync=args.initial))
+        # For initial sync without explicit --limit, use 0 (no limit)
+        effective_limit = args.limit if args.limit is not None else (0 if args.initial else None)
+        result = asyncio.run(run_ghsa_sync_once(limit=effective_limit, initial_sync=args.initial))
         print(f"GHSA sync finished: {result}")
     elif args.command == "reindex-opensearch":
         if args.limit is not None:

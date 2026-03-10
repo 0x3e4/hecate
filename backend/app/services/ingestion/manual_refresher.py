@@ -18,18 +18,26 @@ from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.circl_client import CirclClient
 from app.services.ingestion.circl_pipeline import _build_impacted_products_from_affected
 from app.services.ingestion.euvd_client import EUVDClient
+from app.services.ingestion.ghsa_client import GhsaClient
 from app.services.ingestion.nvd_client import NVDClient
-from app.services.ingestion.normalizer import build_document, build_document_from_nvd
+from app.services.ingestion.normalizer import (
+    build_document,
+    build_document_from_nvd,
+    build_document_from_ghsa,
+    _extract_ghsa_package_info,
+    _extract_ghsa_cvss,
+)
 
 log = structlog.get_logger()
 
 CVE_PATTERN = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
 EUVD_PATTERN = re.compile(r"EUVD-\d{4}-\d{4,7}", re.IGNORECASE)
+GHSA_PATTERN = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}", re.IGNORECASE)
 
 
 class ManualRefresher:
     """
-    Fetches individual vulnerabilities from NVD, EUVD, and CIRCL on demand.
+    Fetches individual vulnerabilities from NVD, EUVD, CIRCL, and GHSA on demand.
     Creates reserved placeholders when upstream data is not yet published.
     When NVD is the priority DB, also enriches with CIRCL data for vendor/product/version.
     """
@@ -40,10 +48,12 @@ class ManualRefresher:
         nvd_client: NVDClient | None = None,
         euvd_client: EUVDClient | None = None,
         circl_client: CirclClient | None = None,
+        ghsa_client: GhsaClient | None = None,
     ) -> None:
         self._nvd_client = nvd_client or NVDClient()
         self._euvd_client = euvd_client or EUVDClient()
         self._circl_client = circl_client or CirclClient()
+        self._ghsa_client = ghsa_client or GhsaClient()
 
     async def refresh(
         self,
@@ -59,6 +69,7 @@ class ManualRefresher:
             await self._nvd_client.close()
             await self._euvd_client.close()
             await self._circl_client.close()
+            await self._ghsa_client.close()
             return []
 
         log_repo = await IngestionLogRepository.create()
@@ -131,6 +142,7 @@ class ManualRefresher:
             await self._nvd_client.close()
             await self._euvd_client.close()
             await self._circl_client.close()
+            await self._ghsa_client.close()
 
         return statuses
 
@@ -181,6 +193,14 @@ class ManualRefresher:
                     kev_metadata=kev_metadata,
                     is_cve=is_cve,
                     ingested_at=ingested_at,
+                )
+            elif source_upper == "GHSA":
+                return await self._refresh_from_ghsa(
+                    original_identifier=original_identifier,
+                    normalized_identifier=normalized_identifier,
+                    repository=repository,
+                    asset_catalog=asset_catalog,
+                    is_cve=is_cve,
                 )
 
         # No specific source requested - use default behavior (fetch from all sources)
@@ -578,6 +598,158 @@ class ManualRefresher:
             provider="EUVD",
             status="inserted" if upsert_result.inserted else "updated",
             changed_fields=upsert_result.changed_fields,
+        )
+
+    async def _refresh_from_ghsa(
+        self,
+        *,
+        original_identifier: str,
+        normalized_identifier: str,
+        repository: VulnerabilityRepository,
+        asset_catalog: AssetCatalogService,
+        is_cve: bool,
+    ) -> VulnerabilityRefreshStatus:
+        """Refresh vulnerability data from GitHub Security Advisories."""
+        from app.utils.strings import slugify
+
+        upper_normalized = normalized_identifier.upper()
+        is_ghsa = GHSA_PATTERN.fullmatch(upper_normalized) is not None
+
+        # Fetch advisory - by GHSA ID directly or by CVE ID
+        advisory = None
+        if is_ghsa:
+            advisory = await self._ghsa_client.fetch_advisory_by_id(upper_normalized)
+        elif is_cve:
+            advisory = await self._ghsa_client.fetch_advisory_by_cve(upper_normalized)
+
+        if not advisory:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="GHSA",
+                status="skipped",
+                message="No advisory found in GitHub Security Advisories.",
+            )
+
+        ghsa_id = advisory.get("ghsa_id")
+        if not isinstance(ghsa_id, str) or not ghsa_id.strip():
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="GHSA",
+                status="skipped",
+                message="Advisory has no GHSA ID.",
+            )
+        ghsa_id = ghsa_id.strip().upper()
+
+        cve_id = advisory.get("cve_id")
+        has_cve = isinstance(cve_id, str) and cve_id.strip()
+        vuln_id = cve_id if has_cve else ghsa_id
+
+        # Extract package info
+        vendors, products, product_versions, product_version_map, impacted_products = _extract_ghsa_package_info(advisory)
+
+        # Extract CVSS
+        cvss, cvss_metrics = _extract_ghsa_cvss(advisory)
+
+        # Extract references
+        references: list[str] = []
+        refs_raw = advisory.get("references") or []
+        if isinstance(refs_raw, list):
+            for ref in refs_raw:
+                if isinstance(ref, str):
+                    references.append(ref)
+
+        # Extract CWEs
+        cwes: list[str] = []
+        cwes_raw = advisory.get("cwes") or []
+        if isinstance(cwes_raw, list):
+            for cwe in cwes_raw:
+                if isinstance(cwe, dict):
+                    cwe_id = cwe.get("cwe_id")
+                    if isinstance(cwe_id, str) and cwe_id.strip():
+                        cwes.append(cwe_id.strip())
+
+        # Extract aliases (case-insensitive dedup)
+        aliases: list[str] = [ghsa_id]
+        seen_upper: set[str] = {ghsa_id.upper()}
+        if has_cve:
+            aliases.append(cve_id)
+            seen_upper.add(cve_id.upper())
+        identifiers = advisory.get("identifiers") or []
+        if isinstance(identifiers, list):
+            for ident in identifiers:
+                if isinstance(ident, dict):
+                    val = ident.get("value")
+                    if isinstance(val, str) and val.strip() and val.strip().upper() not in seen_upper:
+                        seen_upper.add(val.strip().upper())
+                        aliases.append(val.strip())
+
+        # Record assets
+        catalog_result = None
+        try:
+            catalog_result = await asset_catalog.record_assets(
+                vendors=vendors,
+                product_versions=product_version_map,
+                cpes=[],
+                cpe_configurations=None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("manual_refresher.ghsa_asset_catalog_failed", ghsa_id=ghsa_id, error=str(exc))
+
+        change_context = {
+            "job_name": "manual_refresh",
+            "job_label": "Manual Refresh",
+            "metadata": {"trigger": "manual", "provider": "GHSA", "identifier": original_identifier},
+        }
+
+        # Build document for creation mode (GHSA-only, no CVE)
+        document = None
+        if not has_cve:
+            build_result = build_document_from_ghsa(advisory, ingested_at=datetime.now(tz=UTC))
+            if build_result is not None:
+                document = build_result[0]
+
+        result = await repository.upsert_from_ghsa(
+            vuln_id=vuln_id,
+            ghsa_id=ghsa_id,
+            document=document,
+            vendors=vendors,
+            products=products,
+            product_versions=product_versions,
+            vendor_slugs=catalog_result.vendor_slugs if catalog_result else [slugify(v) or v.lower() for v in vendors],
+            product_slugs=catalog_result.product_slugs if catalog_result else [slugify(p) or p.lower() for p in products],
+            product_version_ids=catalog_result.version_ids if catalog_result else [],
+            impacted_products=impacted_products,
+            references=references,
+            aliases=aliases,
+            cwes=cwes,
+            cvss=cvss,
+            cvss_metrics=cvss_metrics,
+            summary=advisory.get("summary"),
+            published=None,
+            modified=None,
+            ghsa_raw=advisory,
+            change_context=change_context,
+        )
+
+        if result == "inserted":
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="GHSA",
+                status="inserted",
+                message="Created from GHSA advisory.",
+            )
+        elif result == "updated":
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="GHSA",
+                status="updated",
+                message="Enriched with GHSA data.",
+            )
+        return VulnerabilityRefreshStatus(
+            identifier=original_identifier,
+            provider="GHSA",
+            status="skipped",
+            message="No new data from GHSA.",
         )
 
     async def _refresh_from_circl(

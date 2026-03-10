@@ -258,7 +258,7 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   sources?: SourceEntry[];
 }
 
-export type RefreshSourceType = "NVD" | "EUVD" | "CIRCL";
+export type RefreshSourceType = "NVD" | "EUVD" | "CIRCL" | "GHSA";
 
 export interface VulnerabilityRefreshRequest {
   vulnIds?: string[];
