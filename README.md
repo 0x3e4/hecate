@@ -1,6 +1,6 @@
 # Hecate
 
-KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen. Die Anwendung aggregiert Daten aus EUVD, NVD, CISA KEV, CIRCL, CWE und CAPEC, reichert sie mit KI-Unterstützung an und macht sie über ein React-Frontend sowie eine REST-API nutzbar. Zusaetzlich koennen Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
+Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherung und Analyse von Sicherheitslücken. Die Anwendung sammelt Daten aus 8 externen Quellen (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA), normalisiert sie in ein einheitliches Schema und stellt sie über eine REST-API sowie ein React-Frontend bereit. Zusätzlich können Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
 
 ## Architektur
 
@@ -13,15 +13,22 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
                     +-----v-----+
                     |  Backend  |  FastAPI / Python 3.13 / Poetry
                     |  :8000    |  REST-API, Scheduler, Pipelines
-                    +--+-----+--+
-                       |     |
-              +--------+     +--------+
-              |                       |
-        +-----v-----+         +------v------+
-        |  MongoDB   |         | OpenSearch  |
-        |  :27017    |         |  :9200      |
-        +------------+         +-------------+
-         Persistenz             Volltext-Index
+                    +--+--+--+--+
+                       |  |  |
+                       |  |  +--------+
+                       |  |           |
+                       |  |     +-----v-----+
+                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV Scanner
+                       |  |     |  :8080    |  FastAPI Sidecar
+                       |  |     +-----------+
+                       |  |
+              +--------+  +--------+
+              |                    |
+        +-----v-----+      +------v------+
+        |  MongoDB   |      | OpenSearch  |
+        |  :27017    |      |  :9200      |
+        +------------+      +-------------+
+         Persistenz          Volltext-Index
 ```
 
 ## Projektstruktur
@@ -30,14 +37,14 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 .
 ├── backend/              # FastAPI-Service, Ingestion-Pipelines, Scheduler, CLI
 │   ├── app/
-│   │   ├── api/v1/       # REST-Endpunkte (11 Router-Module)
+│   │   ├── api/v1/       # REST-Endpunkte (13 Router-Module)
 │   │   ├── core/         # Konfiguration (Pydantic Settings), Logging
 │   │   ├── db/           # MongoDB (Motor) & OpenSearch Verbindungen
 │   │   ├── models/       # MongoDB-Dokument-Schemata
 │   │   ├── repositories/ # Datenzugriffsschicht (Repository-Pattern)
 │   │   ├── schemas/      # API Request/Response Schemata
 │   │   ├── services/     # Business-Logik, AI, Backup, Stats
-│   │   │   ├── ingestion/    # Datenpipelines & Clients (EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL)
+│   │   │   ├── ingestion/    # Datenpipelines & Clients (8 Quellen)
 │   │   │   ├── scheduling/   # APScheduler Job-Verwaltung
 │   │   │   └── http/         # HTTP Rate-Limiting
 │   │   └── utils/        # String- und Request-Hilfsfunktionen
@@ -47,10 +54,11 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 │   ├── src/
 │   │   ├── api/          # Axios-basierte Service-Module
 │   │   ├── components/   # Wiederverwendbare UI-Komponenten
-│   │   ├── views/        # Seitenkomponenten (9 Ansichten)
+│   │   ├── views/        # Seitenkomponenten (11 Ansichten)
 │   │   ├── hooks/        # Custom React Hooks
 │   │   ├── ui/           # Layout-Komponenten (Sidebar, Header)
 │   │   ├── utils/        # CVSS-Parsing, Datumsformatierung
+│   │   ├── constants/    # DQL-Feld-Definitionen
 │   │   ├── router.tsx    # React Router v7 Konfiguration
 │   │   ├── types.ts      # TypeScript-Interfaces
 │   │   └── styles.css    # Globales Dark-Theme CSS
@@ -60,8 +68,8 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 │   ├── app/
 │   │   ├── main.py           # FastAPI-App (POST /scan, GET /health)
 │   │   ├── models.py         # Request/Response-Schemata
-│   │   └── scanners.py       # Subprocess-Wrapper fuer Scanner-Tools
-│   ├── pyproject.toml    # Python-Abhaengigkeiten (Poetry)
+│   │   └── scanners.py       # Subprocess-Wrapper für Scanner-Tools
+│   ├── pyproject.toml    # Python-Abhängigkeiten (Poetry)
 │   └── Dockerfile        # Multi-Stage Build mit Scanner-Binaries
 ├── docs/                 # Architektur- und Konzeptdokumente
 ├── .gitea/workflows/     # CI/CD (Build, Grype-Scan, SonarQube, Trivy)
@@ -72,7 +80,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 ## Kernfunktionen
 
 ### Datenaggregation & Automatisierung
-- **7 Datenquellen:** EUVD, NVD, CISA KEV, CPE, CWE (MITRE API), CAPEC (MITRE XML), CIRCL
+- **8 Datenquellen:** EUVD, NVD, CISA KEV, CPE, CWE (MITRE API), CAPEC (MITRE XML), CIRCL, GHSA (GitHub Advisory)
 - **APScheduler** steuert periodische Syncs mit konfigurierbaren Intervallen und Bootstrap-on-Startup
 - **Normalisierung:** Alle Quellen werden in ein einheitliches `VulnerabilityDocument`-Schema überführt
 - **Asset-Katalog:** Vendoren, Produkte und Versionen werden aus ingestierten Daten extrahiert
@@ -80,10 +88,11 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 
 ### SCA-Scanning (Software Composition Analysis)
 - **Scanner-Sidecar:** Trivy, Grype, Syft und OSV Scanner als Docker-Container
-- **CI/CD-Integration:** Container-Images und Source-Repos ueber API scannen (`POST /api/v1/scans`)
+- **CI/CD-Integration:** Container-Images und Source-Repos über API scannen (`POST /api/v1/scans`)
 - **Manueller Scan:** Scans direkt aus dem Frontend starten
+- **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele
 - **SBOM-Generierung:** CycloneDX-Format via Syft
-- **Deduplizierung:** Automatische Zusammenfuehrung von Ergebnissen mehrerer Scanner
+- **Deduplizierung:** Automatische Zusammenführung von Ergebnissen mehrerer Scanner
 - **Audit-Trail:** Scan-Ereignisse im Ingestion-Log protokolliert
 
 ### Suche & Analyse
@@ -112,7 +121,7 @@ KI-basierte Cyberabwehrplattform zur automatisierten Analyse von Schwachstellen.
 - **Backup & Restore** für Schwachstellen (EUVD/NVD/Alle) und gespeicherte Suchen
 - **Gespeicherte Suchen** mit Sidebar-Integration und Audit-Trail
 - **Statistiken** mit OpenSearch-Aggregationen (Mongo-Fallback bei Ausfällen)
-- **Manuelle Sync-Trigger** für alle 7 Datenquellen über die API
+- **Manuelle Sync-Trigger** für alle 8 Datenquellen über die API
 
 ## Schnellstart (Docker Compose)
 
@@ -158,43 +167,45 @@ npm run dev   # Dev-Server auf Port 3000, proxied /api -> Backend
 
 Vite proxied `/api`-Anfragen im Dev-Modus automatisch an `http://backend:8000` (Docker) bzw. `http://localhost:8000` (lokal).
 
+Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umschaltbar, kein externes i18n-Framework).
+
 ## API-Überblick
 
 ### Status
-- `GET /api/v1/status/health` - Liveness Probe
+- `GET /api/v1/status/health` — Liveness Probe
 
 ### Schwachstellen
-- `POST /api/v1/vulnerabilities/search` - Volltextsuche mit DQL, Filtern, Pagination
-- `GET /api/v1/vulnerabilities/{id}` - Einzelne Schwachstelle abrufen
-- `POST /api/v1/vulnerabilities/lookup` - Lookup mit Auto-Sync
-- `POST /api/v1/vulnerabilities/refresh` - Manueller Refresh einzelner IDs
+- `POST /api/v1/vulnerabilities/search` — Volltextsuche mit DQL, Filtern, Pagination
+- `GET /api/v1/vulnerabilities/{id}` — Einzelne Schwachstelle abrufen
+- `POST /api/v1/vulnerabilities/lookup` — Lookup mit Auto-Sync
+- `POST /api/v1/vulnerabilities/refresh` — Manueller Refresh einzelner IDs
 
 ### KI-Analyse
-- `POST /api/v1/vulnerabilities/{id}/ai-investigation` - Einzelanalyse
-- `POST /api/v1/vulnerabilities/ai-investigation/batch` - Batch-Analyse
+- `POST /api/v1/vulnerabilities/{id}/ai-investigation` — Einzelanalyse
+- `POST /api/v1/vulnerabilities/ai-investigation/batch` — Batch-Analyse
 
 ### Kataloge
-- `GET /api/v1/cwe/{id}` & `POST /api/v1/cwe/bulk` - CWE-Daten
-- `GET /api/v1/capec/{id}` & `POST /api/v1/capec/from-cwes` - CAPEC-Daten
-- `GET /api/v1/cpe/entries|vendors|products` - CPE-Katalog
-- `GET /api/v1/assets/vendors|products|versions` - Asset-Katalog
+- `GET /api/v1/cwe/{id}` & `POST /api/v1/cwe/bulk` — CWE-Daten
+- `GET /api/v1/capec/{id}` & `POST /api/v1/capec/from-cwes` — CAPEC-Daten
+- `GET /api/v1/cpe/entries|vendors|products` — CPE-Katalog
+- `GET /api/v1/assets/vendors|products|versions` — Asset-Katalog
 
 ### SCA-Scans
-- `POST /api/v1/scans` - Scan einreichen (CI/CD, API-Key erforderlich)
-- `POST /api/v1/scans/manual` - Manueller Scan aus dem Frontend
-- `GET /api/v1/scans/targets` - Scan-Ziele auflisten
-- `GET /api/v1/scans` - Scans auflisten
-- `GET /api/v1/scans/{scanId}` - Scan-Details
-- `GET /api/v1/scans/{scanId}/findings` - Findings eines Scans
-- `GET /api/v1/scans/{scanId}/sbom` - SBOM-Komponenten eines Scans
+- `POST /api/v1/scans` — Scan einreichen (CI/CD, API-Key erforderlich)
+- `POST /api/v1/scans/manual` — Manueller Scan aus dem Frontend
+- `GET /api/v1/scans/targets` — Scan-Ziele auflisten
+- `GET /api/v1/scans` — Scans auflisten
+- `GET /api/v1/scans/{scanId}` — Scan-Details
+- `GET /api/v1/scans/{scanId}/findings` — Findings eines Scans
+- `GET /api/v1/scans/{scanId}/sbom` — SBOM-Komponenten eines Scans
 
 ### Verwaltung
-- `GET/POST/DELETE /api/v1/saved-searches` - Gespeicherte Suchen
-- `GET /api/v1/stats/overview` - Statistik-Aggregationen
-- `GET /api/v1/audit/ingestion` - Audit-Log
-- `GET /api/v1/changelog` - Letzte Änderungen
-- `POST /api/v1/sync/trigger/{job}` - Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl)
-- `GET/POST /api/v1/backup/...` - Export/Import
+- `GET/POST/DELETE /api/v1/saved-searches` — Gespeicherte Suchen
+- `GET /api/v1/stats/overview` — Statistik-Aggregationen
+- `GET /api/v1/audit/ingestion` — Audit-Log
+- `GET /api/v1/changelog` — Letzte Änderungen
+- `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa)
+- `GET/POST /api/v1/backup/...` — Export/Import
 
 ## Backend-CLI
 
@@ -204,6 +215,11 @@ poetry run python -m app.cli sync-euvd [--since ISO] [--initial]
 poetry run python -m app.cli sync-cpe [--limit N] [--initial]
 poetry run python -m app.cli sync-nvd [--since ISO | --initial]
 poetry run python -m app.cli sync-kev [--initial]
+poetry run python -m app.cli sync-cwe [--initial]
+poetry run python -m app.cli sync-capec [--initial]
+poetry run python -m app.cli sync-circl [--limit N]
+poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
+poetry run python -m app.cli reindex-opensearch
 ```
 
 ## Konfiguration
@@ -212,20 +228,20 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 
 | Kategorie | Wichtige Variablen |
 |-----------|-------------------|
-| **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL` |
+| **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ` |
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD` |
 | **KI-Provider** | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
-| **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL` |
+| **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
-| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_SOURCE_ARCHIVE_MAX_BYTES`, `VITE_SCA_FEATURES_ENABLED` |
+| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
 
 ## CI/CD
 
 Gitea-Workflows in `.gitea/workflows/`:
-- **build.yml:** Docker-Image Build & Push, Grype-Vulnerability-Scan (SARIF), Hecate SCA-Scan nach Image-Push
-- **scan.yml:** SonarQube Code-Analyse, Trivy Dependency-Scan
+- **build.yml:** Docker-Image Build & Push (Backend + Frontend), Grype-Vulnerability-Scan (SARIF), optionaler Hecate SCA-Scan nach Image-Push
+- **scan.yml:** SonarQube Code-Analyse, Trivy Dependency-Scan mit SonarQube-Upload
 
 ## Technologie-Stack
 
@@ -233,10 +249,17 @@ Gitea-Workflows in `.gitea/workflows/`:
 |-----------|------------|
 | Backend | Python 3.13, FastAPI 0.128, Uvicorn, Poetry |
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
-| Datenbank | MongoDB 8 (Motor async), OpenSearch 2/3 |
+| Datenbank | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |
 | HTTP-Client | httpx 0.28 (async) |
-| Logging | structlog 25.5 |
-| KI | OpenAI, Anthropic, Google Gemini |
+| Logging | structlog 25 |
+| KI | OpenAI, Anthropic, Google Gemini (jeweils optional) |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, FastAPI |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
+
+## Weiterführende Dokumentation
+
+- [Backend-Details](backend/README.md)
+- [Frontend-Details](frontend/README.md)
+- [Scanner-Sidecar](scanner/README.md)
+- [Architektur-Übersicht](docs/architecture.md)

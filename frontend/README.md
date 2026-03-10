@@ -19,7 +19,7 @@ src/
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
 │   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM)
 │   └── savedSearches.ts         # Gespeicherte Suchen (CRUD)
-├── views/                       # Seitenkomponenten
+├── views/                       # Seitenkomponenten (11 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
@@ -28,7 +28,7 @@ src/
 │   ├── StatsPage.tsx            # Statistik-Dashboard
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
-│   ├── ScansPage.tsx            # SCA-Scan-Uebersicht (Ziele, Scans, manueller Scan)
+│   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan)
 │   ├── ScanDetailPage.tsx       # Scan-Details (Findings, SBOM, Severity)
 │   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
 ├── components/                  # Wiederverwendbare Komponenten
@@ -62,6 +62,9 @@ src/
 │   └── published.ts             # Veröffentlichungsdatum-Helper
 ├── constants/
 │   └── dqlFields.ts             # DQL-Feld-Definitionen & Kategorien
+├── i18n/
+│   ├── context.tsx              # I18nProvider & useI18n Hook
+│   └── language.ts              # Spracherkennung, localStorage-Persistenz
 ├── config.ts                    # Umgebungs-Konfiguration (Vite Env)
 ├── router.tsx                   # React Router v7 Routen
 ├── types.ts                     # TypeScript-Interfaces
@@ -90,11 +93,11 @@ Die SCA-Scans-Seite wird nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
 
 ## State-Management
 
-Kein Redux/Zustand - basiert auf Reacts eingebauten Mechanismen:
+Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
 
 | Methode | Verwendung |
 |---------|-----------|
-| **Context API** | `SavedSearchesContext` - globale gespeicherte Suchen |
+| **Context API** | `SavedSearchesContext` — globale gespeicherte Suchen |
 | **useState** | Lokaler Komponentenstate (Loading, Error, Daten) |
 | **URL-Parameter** | Filter, Pagination, Query-Modus (bookmarkbar) |
 | **localStorage** | Sidebar-Zustand, Asset-Filter-Auswahl (`usePersistentState`) |
@@ -117,9 +120,11 @@ Skeleton-Platzhalter während des Ladens.
 
 ## Lokalisierung
 
-- **Sprache:** Deutsch (hardcoded, kein i18n-Framework)
-- **Datumsformat:** `DD.MM.YYYY HH:mm` (de-DE Locale)
-- **Zeitzone:** Konfigurierbar via `VITE_TIMEZONE` (Default: `Europe/Vienna`)
+- **Sprache:** Deutsch und Englisch (einfaches i18n via Context API mit `t(english, german)` Pattern)
+- **Spracherkennung:** Automatisch über Browser-Sprache, umschaltbar, gespeichert in localStorage
+- **Kein externes i18n-Framework** (kein i18next o. ä.)
+- **Datumsformat:** `DD.MM.YYYY HH:mm` (de-DE) bzw. `MM/DD/YYYY` (en-US)
+- **Zeitzone:** Konfigurierbar via `VITE_TIMEZONE` (Default: `UTC`)
 
 ## Konfiguration
 
@@ -132,6 +137,7 @@ Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
 | `VITE_AI_FEATURES_ENABLED` | `true` | KI-Analyse aktivieren/deaktivieren |
 | `VITE_DOMAIN` | `hecate.pw` | Domain für Share-URLs |
 | `VITE_SCA_FEATURES_ENABLED` | `true` | SCA-Scans aktivieren/deaktivieren |
+| `VITE_SCA_AUTO_SCAN_ENABLED` | `false` | Auto-Scan-Toggle in der UI anzeigen |
 
 ## Entwicklung
 
@@ -183,7 +189,7 @@ npm run lint
 
 ### Docker Build
 
-Multi-Stage Build (dev -> build -> runtime) basierend auf `node:24-alpine`. Nutzt `serve` für statische Auslieferung auf Port 4173.
+Multi-Stage Build (dev → build → runtime) basierend auf `node:24-alpine`. Nutzt `serve` für statische Auslieferung auf Port 4173.
 
 ```bash
 docker build -t hecate-frontend ./frontend
@@ -193,17 +199,17 @@ docker run -p 4173:4173 hecate-frontend
 ### Code-Splitting
 
 Manuelle Chunk-Aufteilung in `vite/chunk-split.ts`:
-- `react-select` -> eigener Chunk
-- `react-icons` -> eigener Chunk
-- `axios` -> eigener Chunk
-- Restliche `node_modules` -> `vendor` Chunk
+- `react-select` → eigener Chunk
+- `react-icons` → eigener Chunk
+- `axios` → eigener Chunk
+- Restliche `node_modules` → `vendor` Chunk
 
 ### Warum package-lock.json wichtig ist
 
 Die Datei `package-lock.json` stellt sicher:
-- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhängigkeitsversionen
-- **Sicherheitsprüfung** - Trivy scannt diese Datei auf Schwachstellen
-- **Supply-Chain-Sicherheit** - Fixiert exakte Versionen zur Verhinderung von Angriffen
+- **Reproduzierbare Builds** — Alle verwenden die gleichen Abhängigkeitsversionen
+- **Sicherheitsprüfung** — Trivy scannt diese Datei auf Schwachstellen
+- **Supply-Chain-Sicherheit** — Fixiert exakte Versionen zur Verhinderung von Angriffen
 
 Committe `package-lock.json` immer in die Versionsverwaltung.
 
@@ -211,11 +217,11 @@ Committe `package-lock.json` immer in die Versionsverwaltung.
 
 | Technologie | Version | Zweck |
 |------------|---------|-------|
-| React | 19.2 | UI-Bibliothek |
+| React | 19 | UI-Bibliothek |
 | TypeScript | 5.9 | Typsicherheit |
-| Vite | 7.3 | Build-Tool & Dev-Server |
-| React Router | 7.13 | Client-seitiges Routing |
+| Vite | 7 | Build-Tool & Dev-Server |
+| React Router | 7 | Client-seitiges Routing |
 | Axios | 1.13 | HTTP-Client |
-| react-markdown | 10.1 | Markdown-Rendering (AI-Zusammenfassungen) |
+| react-markdown | 10 | Markdown-Rendering (AI-Zusammenfassungen) |
 | react-icons | 5.5 | Icon-Bibliothek (Lucide) |
 | react-select | 5.10 | Async Multi-Select Dropdowns |

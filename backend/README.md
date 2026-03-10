@@ -7,7 +7,7 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 ```
 app/
 ├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung
+│   ├── routes.py            # Router-Registrierung (13 Module)
 │   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
@@ -33,7 +33,7 @@ app/
 │   ├── capec.py             # CAPECEntry
 │   ├── scan.py              # SCA-Scan-Modelle (Target, Scan, Finding, SBOM)
 │   └── kev.py               # CisaKevEntry, CisaKevCatalog
-├── repositories/            # Datenzugriffsschicht
+├── repositories/            # Datenzugriffsschicht (13 Repositories)
 │   ├── vulnerability_repository.py
 │   ├── cwe_repository.py
 │   ├── capec_repository.py
@@ -67,8 +67,8 @@ app/
 │   ├── saved_search_service.py    # Gespeicherte Suchen
 │   ├── cpe_service.py             # CPE-Katalog
 │   ├── asset_catalog_service.py   # Asset-Katalog
-│   ├── scan_service.py          # SCA-Scan-Orchestrierung
-│   ├── scan_parser.py           # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
+│   ├── scan_service.py            # SCA-Scan-Orchestrierung
+│   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
 │   ├── http/
 │   │   └── rate_limiter.py        # HTTP Rate-Limiting
 │   ├── ingestion/                 # Datenpipelines
@@ -77,6 +77,7 @@ app/
 │   │   ├── kev_pipeline.py        # CISA KEV
 │   │   ├── cpe_pipeline.py        # CPE (NVD)
 │   │   ├── circl_pipeline.py      # CIRCL
+│   │   ├── ghsa_pipeline.py       # GHSA (GitHub Advisory)
 │   │   ├── euvd_client.py         # EUVD API-Client
 │   │   ├── nvd_client.py          # NVD API-Client
 │   │   ├── cisa_client.py         # KEV API-Client
@@ -84,6 +85,7 @@ app/
 │   │   ├── cwe_client.py          # CWE MITRE API-Client
 │   │   ├── capec_client.py        # CAPEC XML-Parser
 │   │   ├── circl_client.py        # CIRCL API-Client
+│   │   ├── ghsa_client.py         # GHSA API-Client
 │   │   ├── normalizer.py          # Normalisierung aller Quellen
 │   │   ├── job_tracker.py         # Job-Lifecycle & Audit
 │   │   ├── manual_refresher.py    # On-Demand Refresh
@@ -94,7 +96,7 @@ app/
 │   ├── strings.py                 # Slugify etc.
 │   └── request.py                 # IP-Extraktion
 ├── main.py                        # FastAPI App-Initialisierung
-└── cli.py                         # CLI-Einstiegspunkt
+└── cli.py                         # CLI-Einstiegspunkt (10 Befehle)
 ```
 
 ## Datenmodell
@@ -107,15 +109,15 @@ app/
 | `cwe_catalog` | `CWEEntry` | CWE-Schwächen (7-Tage TTL-Cache) |
 | `capec_catalog` | `CAPECEntry` | CAPEC-Angriffsmuster (7-Tage TTL-Cache) |
 | `known_exploited_vulnerabilities` | `CisaKevEntry` | CISA KEV-Einträge |
-| `cpe_catalog` | - | CPE-Einträge (Vendor, Product, Version) |
-| `asset_vendors` | - | Vendoren mit Slug und Produkt-Anzahl |
-| `asset_products` | - | Produkte mit Vendor-Zuordnung |
-| `asset_versions` | - | Versionen mit Produkt-Zuordnung |
-| `ingestion_state` | - | Sync-Job-Status (Running/Completed/Failed) |
-| `ingestion_logs` | - | Detaillierte Job-Logs mit Metadaten |
-| `saved_searches` | - | Gespeicherte Suchanfragen |
+| `cpe_catalog` | — | CPE-Einträge (Vendor, Product, Version) |
+| `asset_vendors` | — | Vendoren mit Slug und Produkt-Anzahl |
+| `asset_products` | — | Produkte mit Vendor-Zuordnung |
+| `asset_versions` | — | Versionen mit Produkt-Zuordnung |
+| `ingestion_state` | — | Sync-Job-Status (Running/Completed/Failed) |
+| `ingestion_logs` | — | Detaillierte Job-Logs mit Metadaten |
+| `saved_searches` | — | Gespeicherte Suchanfragen |
 | `scan_targets` | `ScanTargetDocument` | Scan-Ziele (Container-Images, Source-Repos) |
-| `scans` | `ScanDocument` | Scan-Durchlaeufe mit Status und Zusammenfassung |
+| `scans` | `ScanDocument` | Scan-Durchläufe mit Status und Zusammenfassung |
 | `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans |
 
@@ -136,8 +138,11 @@ Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregati
 | CWE | MITRE REST-API | 7 Tage | Schwäche-Definitionen |
 | CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
 | CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
+| GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
 
-Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs (EUVD Sonntag 2 Uhr, NVD Mittwoch 2 Uhr UTC).
+Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs: EUVD Sonntag 2 Uhr UTC, NVD Mittwoch 2 Uhr UTC.
+
+**Hinweis:** Die Intervalle in `.env.example` können von den Code-Defaults abweichen. Die autoritativen Defaults stehen in `app/core/config.py`.
 
 ## Design-Patterns
 
@@ -164,6 +169,21 @@ Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
 field_name: str = Field(alias="fieldName", serialization_alias="fieldName")
 ```
 Snake-Case in Python, camelCase auf dem Wire.
+
+## CLI
+
+```sh
+poetry run python -m app.cli ingest [--since ISO] [--limit N] [--initial]
+poetry run python -m app.cli sync-euvd [--since ISO] [--initial]
+poetry run python -m app.cli sync-cpe [--limit N] [--initial]
+poetry run python -m app.cli sync-nvd [--since ISO | --initial]
+poetry run python -m app.cli sync-kev [--initial]
+poetry run python -m app.cli sync-cwe [--initial]
+poetry run python -m app.cli sync-capec [--initial]
+poetry run python -m app.cli sync-circl [--limit N]
+poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
+poetry run python -m app.cli reindex-opensearch
+```
 
 ## Entwicklung
 
@@ -224,8 +244,8 @@ docker run -p 8000:8000 --env-file .env hecate-backend
 ### Warum poetry.lock wichtig ist
 
 Die Datei `poetry.lock` stellt sicher:
-- **Reproduzierbare Builds** - Alle verwenden die gleichen Abhängigkeitsversionen
-- **Sicherheitsprüfung** - Trivy scannt diese Datei auf Schwachstellen
-- **Supply-Chain-Sicherheit** - Fixiert exakte Versionen zur Verhinderung von Angriffen
+- **Reproduzierbare Builds** — Alle verwenden die gleichen Abhängigkeitsversionen
+- **Sicherheitsprüfung** — Trivy scannt diese Datei auf Schwachstellen
+- **Supply-Chain-Sicherheit** — Fixiert exakte Versionen zur Verhinderung von Angriffen
 
 Committe `poetry.lock` immer in die Versionsverwaltung.
