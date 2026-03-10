@@ -77,7 +77,7 @@ class GhsaClient:
             "per_page": per_page,
         }
         if modified_since:
-            params["modified"] = f">{modified_since}"
+            params["modified"] = f">={modified_since}"
         if after:
             params["after"] = after
 

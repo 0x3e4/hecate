@@ -2166,11 +2166,10 @@ def _extract_ghsa_package_info(
         ver_strings: list[str] = []
         if isinstance(version_range, str) and version_range.strip():
             ver_strings.append(version_range.strip())
-
-        if isinstance(patched, str) and patched.strip():
+            # Use vulnerable_version_range for product_versions display
             bucket = product_version_map.setdefault(package_name, set())
-            bucket.add(patched.strip())
-            versions.add(patched.strip())
+            bucket.add(version_range.strip())
+            versions.add(version_range.strip())
 
         vendor_slug = slugify(ecosystem_name) or ecosystem_name.lower()
         product_slug = slugify(package_name) or package_name.lower()
