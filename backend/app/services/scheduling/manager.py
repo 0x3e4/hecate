@@ -510,7 +510,9 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
     """Execute GHSA sync."""
     pipeline = GhsaPipeline()
     try:
-        result = await pipeline.sync(initial_sync=initial_sync)
+        # limit=0 for initial sync means no limit (fetch all advisories)
+        limit = 0 if initial_sync else None
+        result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
         event = "scheduler.ghsa_sync_completed" if not initial_sync else "scheduler.ghsa_initial_sync_completed"
         log.info(event, **result)
     except Exception as exc:  # noqa: BLE001

@@ -82,6 +82,11 @@ class GhsaPipeline:
                 last_ts = await state_repo.get_timestamp(STATE_KEY)
                 if last_ts:
                     modified_since = last_ts.strftime("%Y-%m-%d")
+                else:
+                    log.warning(
+                        "ghsa_pipeline.no_last_timestamp",
+                        message="No previous sync timestamp found - fetching all advisories",
+                    )
 
             log.info(
                 "ghsa_pipeline.starting",
