@@ -469,6 +469,16 @@ def build_document(
     elif isinstance(aliases, list):
         aliases = [str(value).strip() for value in aliases if isinstance(value, (str, int, float))]
     aliases = [alias for alias in aliases if alias]
+    # Normalize GHSA/MAL/PYSEC aliases to uppercase for consistency
+    aliases = [a.upper() if a.upper().startswith(("GHSA-", "MAL-", "PYSEC-")) else a for a in aliases]
+    # Deduplicate after normalization
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for a in aliases:
+        if a not in seen:
+            seen.add(a)
+            deduped.append(a)
+    aliases = deduped
     # Add the EUVD source ID to aliases if present and not already included
     if source_id and source_id not in aliases and source_id != cve_id:
         aliases.append(source_id)
@@ -2045,5 +2055,242 @@ def build_document_from_nvd(
         modified=modified,
         ingested_at=ingested_at.astimezone(UTC),
         raw=raw_payload,
+    )
+    return document, product_version_map
+
+
+# ---------------------------------------------------------------------------
+# GHSA (GitHub Security Advisories)
+# ---------------------------------------------------------------------------
+
+_SEVERITY_MAP: dict[str, str] = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "critical": "critical",
+}
+
+
+def _extract_ghsa_cvss(advisory: dict[str, Any]) -> tuple[CvssScore, dict[str, list[dict[str, Any]]]]:
+    """Extract CVSS score and metrics from a GHSA advisory."""
+    severities = advisory.get("cvss_severities") or {}
+    severity_label = _SEVERITY_MAP.get((advisory.get("severity") or "").lower())
+
+    cvss = CvssScore()
+    cvss_metrics: dict[str, list[dict[str, Any]]] = {}
+
+    # CVSS v3
+    v3 = severities.get("cvss_v3") or {}
+    v3_vector = v3.get("vector_string")
+    v3_score = v3.get("score")
+    if isinstance(v3_score, (int, float)) and v3_score > 0:
+        cvss = CvssScore(
+            version="3.1",
+            base_score=float(v3_score),
+            vector=v3_vector if isinstance(v3_vector, str) else None,
+            severity=severity_label,
+        )
+        entry: dict[str, Any] = {"source": "GHSA", "type": "Primary"}
+        data: dict[str, Any] = {"baseScore": float(v3_score), "version": "3.1"}
+        if isinstance(v3_vector, str):
+            data["vectorString"] = v3_vector
+        if severity_label:
+            data["baseSeverity"] = severity_label
+        entry["data"] = data
+        cvss_metrics["v31"] = [entry]
+
+    # CVSS v4
+    v4 = severities.get("cvss_v4") or {}
+    v4_vector = v4.get("vector_string")
+    v4_score = v4.get("score")
+    if isinstance(v4_score, (int, float)) and v4_score > 0 and isinstance(v4_vector, str):
+        entry_v4: dict[str, Any] = {"source": "GHSA", "type": "Primary"}
+        data_v4: dict[str, Any] = {"baseScore": float(v4_score), "version": "4.0", "vectorString": v4_vector}
+        entry_v4["data"] = data_v4
+        cvss_metrics["v40"] = [entry_v4]
+        # Prefer v4 as primary if no v3
+        if cvss.base_score is None:
+            cvss = CvssScore(
+                version="4.0",
+                base_score=float(v4_score),
+                vector=v4_vector,
+                severity=severity_label,
+            )
+
+    # If we only have severity but no scores
+    if cvss.base_score is None and severity_label:
+        cvss = CvssScore(severity=severity_label)
+
+    return cvss, cvss_metrics
+
+
+def _extract_ghsa_package_info(
+    advisory: dict[str, Any],
+) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[dict[str, Any]]]:
+    """
+    Extract vendor/product/version info and impactedProducts from GHSA vulnerabilities array.
+    Uses ecosystem as vendor (e.g. npm, pip, maven).
+
+    Returns: (vendors, products, product_versions, product_version_map, impacted_products)
+    """
+    vendors: set[str] = set()
+    products: set[str] = set()
+    versions: set[str] = set()
+    product_version_map: dict[str, set[str]] = {}
+    impacted_products: list[dict[str, Any]] = []
+
+    vulns = advisory.get("vulnerabilities") or []
+    if not isinstance(vulns, list):
+        return [], [], [], {}, []
+
+    for vuln in vulns:
+        if not isinstance(vuln, dict):
+            continue
+
+        pkg = vuln.get("package") or {}
+        ecosystem = pkg.get("ecosystem")
+        package_name = pkg.get("name")
+
+        if not isinstance(package_name, str) or not package_name.strip():
+            continue
+
+        package_name = package_name.strip()
+        ecosystem_name = ecosystem.strip() if isinstance(ecosystem, str) and ecosystem.strip() else "Unknown"
+
+        vendors.add(ecosystem_name)
+        products.add(package_name)
+
+        version_range = vuln.get("vulnerable_version_range")
+        patched = vuln.get("first_patched_version")
+
+        ver_strings: list[str] = []
+        if isinstance(version_range, str) and version_range.strip():
+            ver_strings.append(version_range.strip())
+
+        if isinstance(patched, str) and patched.strip():
+            bucket = product_version_map.setdefault(package_name, set())
+            bucket.add(patched.strip())
+            versions.add(patched.strip())
+
+        vendor_slug = slugify(ecosystem_name) or ecosystem_name.lower()
+        product_slug = slugify(package_name) or package_name.lower()
+
+        impacted_products.append({
+            "vendor": {"name": ecosystem_name, "slug": vendor_slug},
+            "product": {"name": package_name, "slug": product_slug},
+            "versions": ver_strings,
+            "patchedVersions": [patched.strip()] if isinstance(patched, str) and patched.strip() else [],
+            "vulnerable": True,
+            "environments": [ecosystem_name],
+        })
+
+    return sorted(vendors), sorted(products), sorted(versions), product_version_map, impacted_products
+
+
+def build_document_from_ghsa(
+    advisory: dict[str, Any],
+    *,
+    ingested_at: datetime,
+) -> tuple[VulnerabilityDocument, dict[str, set[str]]] | None:
+    """
+    Build a VulnerabilityDocument from a GitHub Security Advisory.
+    Used for GHSA-only advisories (no CVE ID assigned).
+
+    Returns (document, product_version_map) or None if advisory is invalid.
+    """
+    ghsa_id = advisory.get("ghsa_id")
+    if not isinstance(ghsa_id, str) or not ghsa_id.strip():
+        return None
+    ghsa_id = ghsa_id.strip().upper()
+
+    cve_id = advisory.get("cve_id")
+    vuln_id = cve_id if isinstance(cve_id, str) and cve_id.strip() else ghsa_id
+
+    title = vuln_id
+    summary = advisory.get("summary") or advisory.get("description") or vuln_id
+    if isinstance(summary, str) and len(summary) > 10000:
+        summary = summary[:10000]
+
+    # References
+    references: list[str] = []
+    refs_raw = advisory.get("references") or []
+    if isinstance(refs_raw, list):
+        for ref in refs_raw:
+            if isinstance(ref, str):
+                references.append(ref)
+
+    # CWEs
+    cwes: list[str] = []
+    cwes_raw = advisory.get("cwes") or []
+    if isinstance(cwes_raw, list):
+        for cwe in cwes_raw:
+            if isinstance(cwe, dict):
+                cwe_id = cwe.get("cwe_id")
+                if isinstance(cwe_id, str) and cwe_id.strip():
+                    cwes.append(cwe_id.strip())
+
+    # Aliases
+    aliases: list[str] = []
+    identifiers = advisory.get("identifiers") or []
+    seen_upper: set[str] = set()
+    seen_upper.add(vuln_id.upper())
+    if isinstance(identifiers, list):
+        for ident in identifiers:
+            if isinstance(ident, dict):
+                val = ident.get("value")
+                if isinstance(val, str) and val.strip():
+                    normed = val.strip().upper() if val.strip().upper().startswith(("GHSA-", "MAL-", "PYSEC-")) else val.strip()
+                    if normed.upper() not in seen_upper:
+                        seen_upper.add(normed.upper())
+                        aliases.append(normed)
+    # Also extract GHSA IDs from references
+    ghsa_from_refs = extract_ghsa_ids(references)
+    for gid in ghsa_from_refs:
+        if gid.upper() not in seen_upper:
+            seen_upper.add(gid.upper())
+            aliases.append(gid)
+
+    # CVSS
+    cvss, cvss_metrics = _extract_ghsa_cvss(advisory)
+
+    # Package info
+    vendors, products, product_versions, product_version_map, impacted_products = _extract_ghsa_package_info(advisory)
+
+    # Timestamps
+    published = _parse_datetime(advisory.get("published_at"), allow_none=True)
+    modified = _parse_datetime(advisory.get("updated_at"), fallback=published, allow_none=True)
+
+    # Withdrawn check
+    rejected = advisory.get("withdrawn_at") is not None
+
+    document = VulnerabilityDocument.model_construct(
+        vuln_id=vuln_id,
+        source_id=ghsa_id,
+        source="GHSA",
+        title=title,
+        summary=summary,
+        references=references,
+        cwes=cwes,
+        cpes=[],
+        cpe_configurations=[],
+        cpe_version_tokens=[],
+        impacted_products=impacted_products,
+        aliases=aliases,
+        rejected=rejected,
+        assigner=None,
+        exploited=None,
+        epss_score=None,
+        vendors=vendors,
+        products=products,
+        product_versions=product_versions,
+        vendor_slugs=[slugify(v) or v.lower() for v in vendors],
+        product_slugs=[slugify(p) or p.lower() for p in products],
+        product_version_ids=[],
+        cvss=cvss,
+        cvss_metrics=cvss_metrics,
+        published=published,
+        modified=modified,
+        ingested_at=ingested_at.astimezone(UTC),
+        raw={"ghsa": advisory},
     )
     return document, product_version_map

@@ -84,3 +84,13 @@ async def trigger_circl_sync(
     """Trigger CIRCL enrichment sync (no initial_sync support)."""
     result = await service.trigger_circl_sync()
     return TriggerSyncResponse(**result)
+
+
+@router.post("/trigger/ghsa", response_model=TriggerSyncResponse)
+async def trigger_ghsa_sync(
+    request: TriggerSyncRequest = TriggerSyncRequest(),
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger GHSA sync (normal or initial)."""
+    result = await service.trigger_ghsa_sync(initial=request.initial)
+    return TriggerSyncResponse(**result)

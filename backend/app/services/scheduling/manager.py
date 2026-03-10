@@ -11,6 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.config import settings
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
+from app.services.ingestion.ghsa_pipeline import GhsaPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
@@ -102,6 +103,13 @@ class SchedulerManager:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            _scheduled_ghsa_sync,
+            trigger=IntervalTrigger(minutes=settings.scheduler_ghsa_interval_minutes),
+            id="ghsa_sync",
+            replace_existing=True,
+        )
+
         # EUVD weekly full sync
         if settings.scheduler_euvd_full_sync_enabled:
             self.scheduler.add_job(
@@ -161,6 +169,7 @@ class SchedulerManager:
             ("kev", "kev_initial_sync", _initial_kev_sync, "bootstrap-kev"),
             ("cwe", "cwe_initial_sync", _initial_cwe_sync, "bootstrap-cwe"),
             ("capec", "capec_initial_sync", _initial_capec_sync, "bootstrap-capec"),
+            ("ghsa", "ghsa_initial_sync", _initial_ghsa_sync, "bootstrap-ghsa"),
         )
 
         tasks: list[tuple[str, asyncio.Task[None]]] = []
@@ -478,6 +487,35 @@ async def _execute_circl_sync() -> None:
         log.info("scheduler.circl_sync_completed", **result)
     except Exception as exc:  # noqa: BLE001
         log.exception("scheduler.circl_sync_failed", error=str(exc))
+    finally:
+        await pipeline.close()
+
+
+async def _scheduled_ghsa_sync() -> None:
+    """Scheduled GHSA sync job."""
+    if settings.ingestion_bootstrap_on_startup:
+        completed = await _initial_sync_already_completed("ghsa_initial_sync")
+        if not completed:
+            log.info("scheduler.ghsa_sync_skipped_initial_sync_incomplete")
+            return
+    await _execute_ghsa_sync(initial_sync=False)
+
+
+async def _initial_ghsa_sync() -> None:
+    """Initial GHSA sync on startup."""
+    await _execute_ghsa_sync(initial_sync=True)
+
+
+async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
+    """Execute GHSA sync."""
+    pipeline = GhsaPipeline()
+    try:
+        result = await pipeline.sync(initial_sync=initial_sync)
+        event = "scheduler.ghsa_sync_completed" if not initial_sync else "scheduler.ghsa_initial_sync_completed"
+        log.info(event, **result)
+    except Exception as exc:  # noqa: BLE001
+        event = "scheduler.ghsa_sync_failed" if not initial_sync else "scheduler.ghsa_initial_sync_failed"
+        log.exception(event, error=str(exc))
     finally:
         await pipeline.close()
 

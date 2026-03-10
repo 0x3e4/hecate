@@ -16,6 +16,7 @@ import {
   triggerCweSync,
   triggerCapecSync,
   triggerCirclSync,
+  triggerGhsaSync,
 } from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -246,7 +247,7 @@ export const SystemPage = () => {
     event.target.value = "";
   };
 
-  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl", initial: boolean) => {
+  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "ghsa", initial: boolean) => {
     const syncId = `${syncType}_${initial ? "initial" : "normal"}`;
     setSyncTriggeringId(syncId);
     try {
@@ -272,6 +273,9 @@ export const SystemPage = () => {
           break;
         case "circl":
           response = await triggerCirclSync();
+          break;
+        case "ghsa":
+          response = await triggerGhsaSync(initial);
           break;
       }
       showToast(response.message, "success");
@@ -334,6 +338,8 @@ export const SystemPage = () => {
       "capec_sync",
       "capec_initial_sync",
       "circl_sync",
+      "ghsa_sync",
+      "ghsa_initial_sync",
     ];
     return syncStates.sort((a: SyncState, b: SyncState) => order.indexOf(a.jobName) - order.indexOf(b.jobName));
   }, [syncStates]);
@@ -404,6 +410,8 @@ export const SystemPage = () => {
                     ? "capec"
                     : sync.jobName.includes("circl")
                     ? "circl"
+                    : sync.jobName.includes("ghsa")
+                    ? "ghsa"
                     : "cwe";
                   const isInitial = sync.jobName.includes("initial");
                   const syncId = `${syncType}_${isInitial ? "initial" : "normal"}`;

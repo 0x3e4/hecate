@@ -40,3 +40,8 @@ export const triggerCirclSync = async (): Promise<TriggerSyncResponse> => {
   const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/circl", {});
   return response.data;
 };
+
+export const triggerGhsaSync = async (initial: boolean = false): Promise<TriggerSyncResponse> => {
+  const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/ghsa", { initial } as TriggerSyncRequest);
+  return response.data;
+};
