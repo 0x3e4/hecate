@@ -8,7 +8,7 @@ export const config = {
    * Default: UTC
    * Examples: Europe/Vienna, America/New_York, Asia/Tokyo
    */
-  timezone: import.meta.env.VITE_TIMEZONE || 'UTC',
+  timezone: import.meta.env.VITE_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
 
   /**
    * AI features configuration
