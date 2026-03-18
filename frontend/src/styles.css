@@ -2956,11 +2956,11 @@ table thead th {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(3, 5, 12, 0.72) 0%,
-    rgba(2, 4, 10, 0.84) 100%
+    rgba(3, 5, 12, 0.65) 0%,
+    rgba(2, 4, 10, 0.78) 100%
   );
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2969,7 +2969,7 @@ table thead th {
 }
 
 .dialog {
-  background: var(--card-bg);
+  background: rgba(14, 17, 28, 0.97);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 1.5rem;

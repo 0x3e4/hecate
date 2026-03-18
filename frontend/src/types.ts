@@ -521,6 +521,67 @@ export interface SubmitScanRequest {
   oneTime?: boolean;
 }
 
+// --- Notifications ---
+
+export interface NotificationStatusResponse {
+  enabled: boolean;
+  reachable: boolean;
+  url: string;
+  tags?: string | null;
+}
+
+export interface NotificationTestResponse {
+  success: boolean;
+  message: string;
+}
+
+export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql";
+
+export interface NotificationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  ruleType: NotificationRuleType;
+  appriseTag: string;
+  eventTypes: string[];
+  savedSearchId?: string | null;
+  vendorSlug?: string | null;
+  productSlug?: string | null;
+  dqlQuery?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastEvaluatedAt?: string | null;
+  lastTriggeredAt?: string | null;
+}
+
+export interface NotificationRuleListResponse {
+  total: number;
+  items: NotificationRule[];
+}
+
+export interface NotificationRuleCreate {
+  name: string;
+  enabled: boolean;
+  ruleType: NotificationRuleType;
+  appriseTag: string;
+  eventTypes?: string[];
+  savedSearchId?: string | null;
+  vendorSlug?: string | null;
+  productSlug?: string | null;
+  dqlQuery?: string | null;
+}
+
+export interface NotificationChannel {
+  id: string;
+  url: string;
+  tag: string;
+  createdAt: string;
+}
+
+export interface NotificationChannelListResponse {
+  items: NotificationChannel[];
+}
+
 export interface SubmitScanResponse {
   scanId: string;
   targetId: string;

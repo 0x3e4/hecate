@@ -24,6 +24,7 @@ from app.repositories.scan_repository import ScanRepository
 from app.repositories.scan_sbom_repository import ScanSbomRepository
 from app.repositories.scan_target_repository import ScanTargetRepository
 from app.services.audit_service import AuditService
+from app.services.notification_service import get_notification_service
 from app.services.scan_parser import (
     parse_cyclonedx_sbom,
     parse_grype_json,
@@ -277,6 +278,18 @@ class ScanService:
             },
             error=error_text,
         )
+
+        try:
+            notifier = get_notification_service()
+            await notifier.notify_scan_completed(
+                scan_id=scan_id,
+                target=target,
+                status=status,
+                findings_count=len(all_findings),
+                duration_seconds=round(duration, 2),
+            )
+        except Exception:
+            pass
 
     async def _get_deduped_summary(self, scan: dict[str, Any]) -> dict[str, Any]:
         """Return the deduped summary for a scan, lazily correcting if needed."""

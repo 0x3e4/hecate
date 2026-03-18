@@ -49,6 +49,18 @@ services:
         limits:
           memory: 4G
 
+  apprise:
+    image: caronc/apprise:latest
+    restart: unless-stopped
+    environment:
+      - APPRISE_STATEFUL_MODE=simple
+    volumes:
+      - apprise-config:/config
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
   opensearch:
     image: opensearchproject/opensearch:3
     restart: unless-stopped
@@ -73,3 +85,4 @@ services:
 volumes:
   mongo-data:
   opensearch-data:
+  apprise-config:

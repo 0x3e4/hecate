@@ -8,6 +8,18 @@ import {
   type VulnerabilitySource
 } from "../api/backup";
 import {
+  fetchNotificationStatus,
+  sendTestNotification,
+  fetchNotificationRules,
+  createNotificationRule,
+  updateNotificationRule,
+  deleteNotificationRule,
+  fetchNotificationChannels,
+  addNotificationChannel,
+  removeNotificationChannel,
+} from "../api/notifications";
+import { api } from "../api/client";
+import {
   fetchSyncStates,
   triggerEuvdSync,
   triggerNvdSync,
@@ -21,7 +33,15 @@ import {
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import type { AppLanguage } from "../i18n/language";
-import type { SavedSearch, SyncState } from "../types";
+import type {
+  NotificationChannel,
+  NotificationStatusResponse,
+  NotificationRule,
+  NotificationRuleCreate,
+  NotificationRuleType,
+  SavedSearch,
+  SyncState,
+} from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
 type BackupDataset =
@@ -49,6 +69,40 @@ const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
 
 export const SystemPage = () => {
   const { language, locale, setLanguage, t } = useI18n();
+
+  // --- System password gate ---
+  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [authOk, setAuthOk] = useState(false);
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authChecking, setAuthChecking] = useState(false);
+
+  useEffect(() => {
+    api.get<{ required: boolean }>("/v1/status/system-auth").then((r) => {
+      setAuthRequired(r.data.required);
+      if (!r.data.required) setAuthOk(true);
+    }).catch(() => {
+      setAuthRequired(false);
+      setAuthOk(true);
+    });
+  }, []);
+
+  const handleAuthSubmit = async () => {
+    setAuthChecking(true);
+    setAuthError("");
+    try {
+      const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
+      if (r.data.authenticated) {
+        setAuthOk(true);
+      }
+    } catch {
+      setAuthError(t("Invalid password.", "Falsches Passwort."));
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
+  // --- Regular state ---
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
@@ -62,6 +116,217 @@ export const SystemPage = () => {
   const [expandedSyncId, setExpandedSyncId] = useState<string | null>(null);
   const syncIntervalRef = useRef<number | null>(null);
   const backupDatasets = useMemo<BackupDataset[]>(() => createBackupDatasets(t), [t]);
+
+  const [notifStatus, setNotifStatus] = useState<NotificationStatusResponse | null>(null);
+  const [notifLoading, setNotifLoading] = useState(true);
+  const [notifTestBusy, setNotifTestBusy] = useState(false);
+
+  const [notifRules, setNotifRules] = useState<NotificationRule[]>([]);
+  const [notifRulesLoading, setNotifRulesLoading] = useState(true);
+  const [ruleDeletePendingId, setRuleDeletePendingId] = useState<string | null>(null);
+  const [showRuleForm, setShowRuleForm] = useState(false);
+  const [editingRule, setEditingRule] = useState<NotificationRule | null>(null);
+  const [ruleSaving, setRuleSaving] = useState(false);
+
+  // Rule form state
+  const [formName, setFormName] = useState("");
+  const [formType, setFormType] = useState<NotificationRuleType>("event");
+  const [formTag, setFormTag] = useState("all");
+  const [formEnabled, setFormEnabled] = useState(true);
+  const [formEventTypes, setFormEventTypes] = useState<string[]>([]);
+  const [formSavedSearchId, setFormSavedSearchId] = useState("");
+  const [formVendorSlug, setFormVendorSlug] = useState("");
+  const [formProductSlug, setFormProductSlug] = useState("");
+  const [formDqlQuery, setFormDqlQuery] = useState("");
+
+  // Channel management state
+  const [channels, setChannels] = useState<NotificationChannel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [showChannelForm, setShowChannelForm] = useState(false);
+  const [channelUrl, setChannelUrl] = useState("");
+  const [channelTag, setChannelTag] = useState("all");
+  const [channelSaving, setChannelSaving] = useState(false);
+  const [channelRemovingId, setChannelRemovingId] = useState<string | null>(null);
+
+  const loadChannels = async () => {
+    try {
+      const response = await fetchNotificationChannels();
+      setChannels(response.items);
+    } catch (error) {
+      console.error("Failed to load channels", error);
+    } finally {
+      setChannelsLoading(false);
+    }
+  };
+
+  const handleAddChannel = async () => {
+    if (!channelUrl.trim()) return;
+    setChannelSaving(true);
+    try {
+      await addNotificationChannel(channelUrl.trim(), channelTag.trim() || "all");
+      showToast(t("Channel added.", "Kanal hinzugefügt."), "success");
+      setChannelUrl("");
+      setChannelTag("all");
+      setShowChannelForm(false);
+      void loadChannels();
+    } catch (error) {
+      console.error("Add channel failed", error);
+      showToast(t("Could not add channel.", "Kanal konnte nicht hinzugefügt werden."), "error");
+    } finally {
+      setChannelSaving(false);
+    }
+  };
+
+  const handleRemoveChannel = async (channelId: string) => {
+    setChannelRemovingId(channelId);
+    try {
+      await removeNotificationChannel(channelId);
+      showToast(t("Channel removed.", "Kanal entfernt."), "success");
+      void loadChannels();
+    } catch (error) {
+      console.error("Remove channel failed", error);
+      showToast(t("Could not remove channel.", "Kanal konnte nicht entfernt werden."), "error");
+    } finally {
+      setChannelRemovingId(null);
+    }
+  };
+
+  const loadNotifRules = async () => {
+    try {
+      const response = await fetchNotificationRules();
+      setNotifRules(response.items);
+    } catch (error) {
+      console.error("Failed to load notification rules", error);
+    } finally {
+      setNotifRulesLoading(false);
+    }
+  };
+
+  const resetRuleForm = () => {
+    setFormName("");
+    setFormType("event");
+    setFormTag("all");
+    setFormEnabled(true);
+    setFormEventTypes([]);
+    setFormSavedSearchId("");
+    setFormVendorSlug("");
+    setFormProductSlug("");
+    setFormDqlQuery("");
+    setEditingRule(null);
+  };
+
+  const openRuleForm = (rule?: NotificationRule) => {
+    if (rule) {
+      setEditingRule(rule);
+      setFormName(rule.name);
+      setFormType(rule.ruleType);
+      setFormTag(rule.appriseTag);
+      setFormEnabled(rule.enabled);
+      setFormEventTypes(rule.eventTypes || []);
+      setFormSavedSearchId(rule.savedSearchId || "");
+      setFormVendorSlug(rule.vendorSlug || "");
+      setFormProductSlug(rule.productSlug || "");
+      setFormDqlQuery(rule.dqlQuery || "");
+    } else {
+      resetRuleForm();
+    }
+    setShowRuleForm(true);
+  };
+
+  const handleSaveRule = async () => {
+    if (!formName.trim()) return;
+    setRuleSaving(true);
+    try {
+      const payload: NotificationRuleCreate = {
+        name: formName.trim(),
+        enabled: formEnabled,
+        ruleType: formType,
+        appriseTag: formTag.trim() || "all",
+        eventTypes: formType === "event" ? formEventTypes : [],
+        savedSearchId: formType === "saved_search" ? formSavedSearchId || null : null,
+        vendorSlug: formType === "vendor" ? formVendorSlug || null : null,
+        productSlug: formType === "product" ? formProductSlug || null : null,
+        dqlQuery: formType === "dql" ? formDqlQuery || null : null,
+      };
+      if (editingRule) {
+        await updateNotificationRule(editingRule.id, payload);
+        showToast(t(`Rule "${formName}" updated.`, `Regel "${formName}" aktualisiert.`), "success");
+      } else {
+        await createNotificationRule(payload);
+        showToast(t(`Rule "${formName}" created.`, `Regel "${formName}" erstellt.`), "success");
+      }
+      setShowRuleForm(false);
+      resetRuleForm();
+      void loadNotifRules();
+    } catch (error) {
+      console.error("Save rule failed", error);
+      showToast(t("Could not save rule.", "Regel konnte nicht gespeichert werden."), "error");
+    } finally {
+      setRuleSaving(false);
+    }
+  };
+
+  const handleDeleteRule = async (rule: NotificationRule) => {
+    setRuleDeletePendingId(rule.id);
+    try {
+      await deleteNotificationRule(rule.id);
+      showToast(t(`Rule "${rule.name}" deleted.`, `Regel "${rule.name}" gelöscht.`), "success");
+      void loadNotifRules();
+    } catch (error) {
+      console.error("Delete rule failed", error);
+      showToast(t("Could not delete rule.", "Regel konnte nicht gelöscht werden."), "error");
+    } finally {
+      setRuleDeletePendingId(null);
+    }
+  };
+
+  const handleToggleRule = async (rule: NotificationRule) => {
+    try {
+      await updateNotificationRule(rule.id, {
+        name: rule.name,
+        enabled: !rule.enabled,
+        ruleType: rule.ruleType,
+        appriseTag: rule.appriseTag,
+        eventTypes: rule.eventTypes,
+        savedSearchId: rule.savedSearchId,
+        vendorSlug: rule.vendorSlug,
+        productSlug: rule.productSlug,
+        dqlQuery: rule.dqlQuery,
+      });
+      void loadNotifRules();
+    } catch (error) {
+      console.error("Toggle rule failed", error);
+    }
+  };
+
+  const toggleEventType = (eventType: string) => {
+    setFormEventTypes((prev) =>
+      prev.includes(eventType) ? prev.filter((e) => e !== eventType) : [...prev, eventType]
+    );
+  };
+
+  const getRuleTypeLabel = (type: NotificationRuleType): string => {
+    switch (type) {
+      case "event": return t("System Event", "System-Ereignis");
+      case "saved_search": return t("Saved Search", "Gespeicherte Suche");
+      case "vendor": return t("Vendor", "Hersteller");
+      case "product": return t("Product", "Produkt");
+      case "dql": return t("DQL Query", "DQL-Abfrage");
+    }
+  };
+
+  const getRuleDescription = (rule: NotificationRule): string => {
+    switch (rule.ruleType) {
+      case "event": return rule.eventTypes.join(", ") || "-";
+      case "saved_search": {
+        const search = sortedSavedSearches.find((s) => s.id === rule.savedSearchId);
+        return search ? search.name : rule.savedSearchId || "-";
+      }
+      case "vendor": return rule.vendorSlug || "-";
+      case "product": return rule.productSlug || "-";
+      case "dql": return rule.dqlQuery?.substring(0, 60) || "-";
+    }
+  };
 
   const handleExport = async (dataset: BackupDataset) => {
     setBusyId(dataset.id);
@@ -113,6 +378,30 @@ export const SystemPage = () => {
     [savedSearches]
   );
 
+  const loadNotificationStatus = async () => {
+    try {
+      const status = await fetchNotificationStatus();
+      setNotifStatus(status);
+    } catch (error) {
+      console.error("Failed to load notification status", error);
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    setNotifTestBusy(true);
+    try {
+      const result = await sendTestNotification();
+      showToast(result.message, result.success ? "success" : "error");
+    } catch (error) {
+      console.error("Test notification failed", error);
+      showToast(t("Could not send test notification.", "Testbenachrichtigung konnte nicht gesendet werden."), "error");
+    } finally {
+      setNotifTestBusy(false);
+    }
+  };
+
   const loadSyncStates = async () => {
     try {
       const response = await fetchSyncStates();
@@ -131,6 +420,12 @@ export const SystemPage = () => {
       document.title = "Hecate Cyber Defense";
     };
   }, [t]);
+
+  useEffect(() => {
+    void loadNotificationStatus();
+    void loadNotifRules();
+    void loadChannels();
+  }, []);
 
   useEffect(() => {
     void loadSyncStates();
@@ -345,7 +640,34 @@ export const SystemPage = () => {
   }, [syncStates]);
 
   return (
-    <div className="page">
+    <>
+    {authRequired && !authOk && (
+      <div className="dialog-overlay">
+        <div className="dialog">
+          <h3>{t("System Password", "System-Passwort")}</h3>
+          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); }}
+            placeholder={t("Password", "Passwort")}
+            autoFocus
+          />
+          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0 0 1rem" }}>{authError}</p>}
+          <div className="dialog-actions">
+            <button
+              type="button"
+              onClick={() => void handleAuthSubmit()}
+              disabled={authChecking || !authPassword}
+            >
+              {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    <div className="page" style={authRequired && !authOk ? { filter: "blur(6px)", pointerEvents: "none", userSelect: "none" } : undefined}>
       <section className="card">
         <h2>{t("Language", "Sprache")}</h2>
         <p className="muted">
@@ -368,6 +690,481 @@ export const SystemPage = () => {
             <option value="de">🇩🇪 Deutsch</option>
           </select>
         </div>
+      </section>
+
+      <section className="card">
+        <h2>{t("Notifications", "Benachrichtigungen")}</h2>
+        <p className="muted">
+          {t(
+            "Apprise-based notifications for scan results, sync failures, and new vulnerabilities.",
+            "Apprise-basierte Benachrichtigungen für Scan-Ergebnisse, Sync-Fehler und neue Schwachstellen."
+          )}
+        </p>
+        {notifLoading ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t("Loading notification status ...", "Lade Benachrichtigungsstatus …")}
+          </p>
+        ) : notifStatus ? (
+          <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "1rem",
+                padding: "0.75rem",
+                borderRadius: "0.5rem",
+                background: "rgba(255, 255, 255, 0.02)",
+                border: "1px solid rgba(255, 255, 255, 0.06)",
+              }}
+            >
+              <div style={{ flex: "1 1 auto" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <strong>{t("Status", "Status")}:</strong>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "0.25rem 0.5rem",
+                      borderRadius: "0.35rem",
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      background: notifStatus.enabled
+                        ? notifStatus.reachable
+                          ? "rgba(143, 255, 176, 0.13)"
+                          : "rgba(255, 163, 163, 0.13)"
+                        : "rgba(136, 136, 136, 0.13)",
+                      color: notifStatus.enabled
+                        ? notifStatus.reachable
+                          ? "#8fffb0"
+                          : "#ffa3a3"
+                        : "#888",
+                      border: `1px solid ${
+                        notifStatus.enabled
+                          ? notifStatus.reachable
+                            ? "rgba(143, 255, 176, 0.27)"
+                            : "rgba(255, 163, 163, 0.27)"
+                          : "rgba(136, 136, 136, 0.27)"
+                      }`,
+                    }}
+                  >
+                    {notifStatus.enabled
+                      ? notifStatus.reachable
+                        ? t("Connected", "Verbunden")
+                        : t("Unreachable", "Nicht erreichbar")
+                      : t("Disabled", "Deaktiviert")}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleTestNotification()}
+                disabled={notifTestBusy || !notifStatus.enabled}
+                style={{ minWidth: "160px", fontSize: "0.85rem" }}
+              >
+                {notifTestBusy
+                  ? t("Sending...", "Wird gesendet…")
+                  : t("Send test notification", "Testbenachrichtigung senden")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t("Could not load notification status.", "Benachrichtigungsstatus konnte nicht geladen werden.")}
+          </p>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>{t("Notification Channels", "Benachrichtigungskanäle")}</h2>
+        <p className="muted">
+          {t(
+            "Configure where notifications are sent (e.g. email, Slack, Signal, webhooks). Each channel can be tagged for rule-based routing.",
+            "Konfiguriere, wohin Benachrichtigungen gesendet werden (z.B. E-Mail, Slack, Signal, Webhooks). Jeder Kanal kann für regelbasiertes Routing getaggt werden."
+          )}
+        </p>
+
+        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button type="button" onClick={() => setShowChannelForm(true)} style={{ fontSize: "0.85rem" }}>
+            {t("+ Add Channel", "+ Kanal hinzufügen")}
+          </button>
+        </div>
+
+        {showChannelForm && (
+          <div style={{
+            marginTop: "1rem",
+            padding: "1rem",
+            borderRadius: "0.5rem",
+            background: "rgba(255, 255, 255, 0.03)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {t("Apprise URL", "Apprise-URL")}
+                </label>
+                <input
+                  type="text"
+                  value={channelUrl}
+                  onChange={(e) => setChannelUrl(e.target.value)}
+                  placeholder={t("e.g. slack://TokenA/TokenB/TokenC or mailto://user:pass@gmail.com", "z.B. slack://TokenA/TokenB/TokenC oder mailto://user:pass@gmail.com")}
+                  style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                />
+                <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+                  {t(
+                    "See apprise.wiki for all supported URL formats (90+ services).",
+                    "Siehe apprise.wiki für alle unterstützten URL-Formate (90+ Dienste)."
+                  )}
+                </p>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {t("Tag (optional)", "Tag (optional)")}
+                </label>
+                <input
+                  type="text"
+                  value={channelTag}
+                  onChange={(e) => setChannelTag(e.target.value)}
+                  placeholder={t("e.g. email, slack, signal", "z.B. email, slack, signal")}
+                  style={{ maxWidth: "300px", padding: "0.5rem", boxSizing: "border-box" }}
+                />
+                <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+                  {t(
+                    "Assign a tag to route this channel via notification rules.",
+                    "Weise einen Tag zu, um diesen Kanal über Benachrichtigungsregeln zu steuern."
+                  )}
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" onClick={() => void handleAddChannel()} disabled={channelSaving || !channelUrl.trim()} style={{ fontSize: "0.85rem" }}>
+                  {channelSaving ? t("Saving...", "Speichern…") : t("Add Channel", "Kanal hinzufügen")}
+                </button>
+                <button type="button" onClick={() => { setShowChannelForm(false); setChannelUrl(""); setChannelTag(""); }} style={{ fontSize: "0.85rem" }}>
+                  {t("Cancel", "Abbrechen")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {channelsLoading ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>{t("Loading channels...", "Lade Kanäle…")}</p>
+        ) : channels.length === 0 ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t("No notification channels configured yet. Add a channel to receive notifications.", "Noch keine Benachrichtigungskanäle konfiguriert. Füge einen Kanal hinzu, um Benachrichtigungen zu empfangen.")}
+          </p>
+        ) : (
+          <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {channels.map((ch) => (
+              <div key={ch.id} style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+                padding: "0.6rem 0.75rem",
+                borderRadius: "0.4rem",
+                background: "rgba(255, 255, 255, 0.02)",
+                border: "1px solid rgba(255, 255, 255, 0.06)",
+                flexWrap: "wrap",
+              }}>
+                <code style={{ flex: "1 1 auto", fontSize: "0.85rem", wordBreak: "break-all", minWidth: 0 }}>{ch.url}</code>
+                <span style={{
+                  display: "inline-block",
+                  padding: "0.15rem 0.35rem",
+                  borderRadius: "0.25rem",
+                  fontSize: "0.75rem",
+                  background: "rgba(92, 132, 255, 0.1)",
+                  color: "#a0b4ff",
+                  border: "1px solid rgba(92, 132, 255, 0.2)",
+                  flexShrink: 0,
+                }}>{ch.tag}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveChannel(ch.id)}
+                  disabled={channelRemovingId === ch.id}
+                  style={{ fontSize: "0.8rem", flexShrink: 0 }}
+                >
+                  {channelRemovingId === ch.id ? "..." : t("Remove", "Entfernen")}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>{t("Notification Rules", "Benachrichtigungsregeln")}</h2>
+        <p className="muted">
+          {t(
+            "Configure which events and vulnerability matches trigger notifications and to which channels (Apprise tags).",
+            "Konfiguriere, welche Ereignisse und Schwachstellen-Treffer Benachrichtigungen auslösen und an welche Kanäle (Apprise-Tags) sie gesendet werden."
+          )}
+        </p>
+
+        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button type="button" onClick={() => openRuleForm()} style={{ fontSize: "0.85rem" }}>
+            {t("+ Add Rule", "+ Regel hinzufügen")}
+          </button>
+        </div>
+
+        {showRuleForm && (
+          <div style={{
+            marginTop: "1rem",
+            padding: "1rem",
+            borderRadius: "0.5rem",
+            background: "rgba(255, 255, 255, 0.03)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {t("Name", "Name")}
+                </label>
+                <input
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder={t("Rule name", "Regelname")}
+                  style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Type", "Typ")}
+                  </label>
+                  <select
+                    value={formType}
+                    onChange={(e) => setFormType(e.target.value as NotificationRuleType)}
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  >
+                    <option value="event">{t("System Event", "System-Ereignis")}</option>
+                    <option value="saved_search">{t("Saved Search", "Gespeicherte Suche")}</option>
+                    <option value="vendor">{t("Vendor", "Hersteller")}</option>
+                    <option value="product">{t("Product", "Produkt")}</option>
+                    <option value="dql">{t("DQL Query", "DQL-Abfrage")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Apprise Tag", "Apprise-Tag")}
+                  </label>
+                  <input
+                    type="text"
+                    value={formTag}
+                    onChange={(e) => setFormTag(e.target.value)}
+                    placeholder="all"
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  />
+                  <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+                    {t("Must match a channel tag above.", "Muss einem Kanal-Tag oben entsprechen.")}
+                  </p>
+                </div>
+              </div>
+
+              {formType === "event" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    {t("Event Types", "Ereignistypen")}
+                  </label>
+                  <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                    {["scan_completed", "scan_failed", "sync_failed", "new_vulnerabilities"].map((evt) => (
+                      <label key={evt} style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={formEventTypes.includes(evt)}
+                          onChange={() => toggleEventType(evt)}
+                        />
+                        {evt}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {formType === "saved_search" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Saved Search", "Gespeicherte Suche")}
+                  </label>
+                  <select
+                    value={formSavedSearchId}
+                    onChange={(e) => setFormSavedSearchId(e.target.value)}
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  >
+                    <option value="">{t("Select...", "Auswählen...")}</option>
+                    {sortedSavedSearches.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formType === "vendor" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Vendor Slug", "Hersteller-Slug")}
+                  </label>
+                  <input
+                    type="text"
+                    value={formVendorSlug}
+                    onChange={(e) => setFormVendorSlug(e.target.value)}
+                    placeholder={t("e.g. microsoft", "z.B. microsoft")}
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  />
+                </div>
+              )}
+
+              {formType === "product" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Product Slug", "Produkt-Slug")}
+                  </label>
+                  <input
+                    type="text"
+                    value={formProductSlug}
+                    onChange={(e) => setFormProductSlug(e.target.value)}
+                    placeholder={t("e.g. windows_10", "z.B. windows_10")}
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  />
+                </div>
+              )}
+
+              {formType === "dql" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("DQL Query", "DQL-Abfrage")}
+                  </label>
+                  <input
+                    type="text"
+                    value={formDqlQuery}
+                    onChange={(e) => setFormDqlQuery(e.target.value)}
+                    placeholder={t("e.g. severity:critical AND vendors:microsoft", "z.B. severity:critical AND vendors:microsoft")}
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  />
+                </div>
+              )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={formEnabled}
+                    onChange={() => setFormEnabled(!formEnabled)}
+                  />
+                  {t("Enabled", "Aktiviert")}
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" onClick={() => void handleSaveRule()} disabled={ruleSaving || !formName.trim()} style={{ fontSize: "0.85rem" }}>
+                  {ruleSaving
+                    ? t("Saving...", "Speichern…")
+                    : editingRule
+                      ? t("Update Rule", "Regel aktualisieren")
+                      : t("Create Rule", "Regel erstellen")}
+                </button>
+                <button type="button" onClick={() => { setShowRuleForm(false); resetRuleForm(); }} style={{ fontSize: "0.85rem" }}>
+                  {t("Cancel", "Abbrechen")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {notifRulesLoading ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t("Loading rules...", "Lade Regeln…")}
+          </p>
+        ) : notifRules.length === 0 ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t("No notification rules configured yet.", "Noch keine Benachrichtigungsregeln konfiguriert.")}
+          </p>
+        ) : (
+          <div style={{ marginTop: "1rem", overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px" }}>
+              <thead>
+                <tr>
+                  <th style={syncTableHeaderStyle}>{t("Name", "Name")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Type", "Typ")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Details", "Details")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Tag", "Tag")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Status", "Status")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Last Triggered", "Zuletzt ausgelöst")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Actions", "Aktionen")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notifRules.map((rule) => (
+                  <tr key={rule.id}>
+                    <td style={syncTableCellStyle}><strong>{rule.name}</strong></td>
+                    <td style={syncTableCellStyle}>
+                      <span style={{
+                        display: "inline-block",
+                        padding: "0.2rem 0.4rem",
+                        borderRadius: "0.3rem",
+                        fontSize: "0.8rem",
+                        background: "rgba(92, 132, 255, 0.1)",
+                        color: "#a0b4ff",
+                        border: "1px solid rgba(92, 132, 255, 0.2)",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {getRuleTypeLabel(rule.ruleType)}
+                      </span>
+                    </td>
+                    <td style={{ ...syncTableCellStyle, maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>{getRuleDescription(rule)}</span>
+                    </td>
+                    <td style={syncTableCellStyle}>
+                      <code style={{ fontSize: "0.85rem", background: "rgba(255,255,255,0.06)", padding: "0.15rem 0.35rem", borderRadius: "0.25rem" }}>
+                        {rule.appriseTag}
+                      </code>
+                    </td>
+                    <td style={syncTableCellStyle}>
+                      <span
+                        onClick={() => void handleToggleRule(rule)}
+                        style={{
+                          cursor: "pointer",
+                          display: "inline-block",
+                          padding: "0.2rem 0.4rem",
+                          borderRadius: "0.3rem",
+                          fontSize: "0.8rem",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          background: rule.enabled ? "rgba(143, 255, 176, 0.13)" : "rgba(136, 136, 136, 0.13)",
+                          color: rule.enabled ? "#8fffb0" : "#888",
+                          border: `1px solid ${rule.enabled ? "rgba(143, 255, 176, 0.27)" : "rgba(136, 136, 136, 0.27)"}`,
+                        }}
+                      >
+                        {rule.enabled ? t("Active", "Aktiv") : t("Disabled", "Deaktiviert")}
+                      </span>
+                    </td>
+                    <td style={{ ...syncTableCellStyle, whiteSpace: "nowrap" }}>
+                      {rule.lastTriggeredAt ? formatDateTime(rule.lastTriggeredAt) : "-"}
+                    </td>
+                    <td style={syncTableCellStyle}>
+                      <div style={{ display: "flex", gap: "0.4rem" }}>
+                        <button
+                          type="button"
+                          onClick={() => openRuleForm(rule)}
+                          style={{ fontSize: "0.8rem", minWidth: "60px" }}
+                        >
+                          {t("Edit", "Bearbeiten")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteRule(rule)}
+                          disabled={ruleDeletePendingId === rule.id}
+                          style={{ fontSize: "0.8rem", minWidth: "60px" }}
+                        >
+                          {ruleDeletePendingId === rule.id ? "..." : t("Delete", "Löschen")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -649,6 +1446,7 @@ export const SystemPage = () => {
         </div>
       )}
     </div>
+  </>
   );
 };
 
