@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
 
@@ -740,9 +740,23 @@ class StatsService:
             month_cursor = month_cursor + relativedelta(months=1)
         return timeline
 
-    async def get_today_summary(self) -> dict[str, Any]:
-        """Return today's vulnerability stats: vendors with products, severity breakdown, CVE list."""
-        today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    async def get_today_summary(self, *, date: str | None = None) -> dict[str, Any]:
+        """Return vulnerability stats for a given date (default: today).
+
+        Args:
+            date: Optional date string in YYYY-MM-DD format. Defaults to today (UTC).
+        """
+        if date and len(date) == 10:
+            # Validate format
+            try:
+                datetime.strptime(date, "%Y-%m-%d")
+                target_date = date
+            except ValueError:
+                target_date = datetime.now(UTC).strftime("%Y-%m-%d")
+        else:
+            target_date = datetime.now(UTC).strftime("%Y-%m-%d")
+
+        next_day = (datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
         body: dict[str, Any] = {
             "size": 200,
@@ -750,7 +764,7 @@ class StatsService:
             "query": {
                 "bool": {
                     "filter": [
-                        {"range": {"published": {"gte": "now/d"}}},
+                        {"range": {"published": {"gte": target_date, "lt": next_day}}},
                     ]
                 }
             },
@@ -863,7 +877,7 @@ class StatsService:
 
         return {
             "total": total,
-            "todayDate": today_str,
+            "todayDate": target_date,
             "vendors": vendors,
             "products": products,
             "severities": severities,
