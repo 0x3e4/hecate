@@ -22,6 +22,13 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
                        |  |     |  :8080    |  FastAPI Sidecar
                        |  |     +-----------+
                        |  |
+                       |  +--+
+                       |     |
+                       |  +--v--------+
+                       |  |  Apprise  |  Notification Gateway
+                       |  |  :8000    |  Slack, Discord, E-Mail, etc.
+                       |  +-----------+
+                       |
               +--------+  +--------+
               |                    |
         +-----v-----+      +------v------+
@@ -37,7 +44,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 .
 ├── backend/              # FastAPI-Service, Ingestion-Pipelines, Scheduler, CLI
 │   ├── app/
-│   │   ├── api/v1/       # REST-Endpunkte (13 Router-Module)
+│   │   ├── api/v1/       # REST-Endpunkte (14 Router-Module)
 │   │   ├── core/         # Konfiguration (Pydantic Settings), Logging
 │   │   ├── db/           # MongoDB (Motor) & OpenSearch Verbindungen
 │   │   ├── models/       # MongoDB-Dokument-Schemata
@@ -115,7 +122,17 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Changelog | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
 | Scan-Detail | Findings-Tabelle, SBOM-Komponenten, Severity-Zusammenfassung |
-| System | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
+| System | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen |
+
+### Benachrichtigungen (Apprise)
+- **Apprise-Integration:** Benachrichtigungen über einen Apprise-API-Service (Slack, Discord, E-Mail, Telegram, etc.)
+- **Docker-Sidecar:** Lokaler Apprise-Container in `docker-compose.yml.example` enthalten
+- **Externer Service:** Alternativ kann ein externer Apprise-Service via `NOTIFICATIONS_APPRISE_URL` genutzt werden
+- **Ereignisse:** SCA-Scan abgeschlossen/fehlgeschlagen, Sync-Fehler, neue Schwachstellen nach Ingestion
+- **Regelbasiert:** Konfigurierbare Regeln pro Ereignistyp mit individuellem Channel-Routing (Apprise-Tags)
+- **Watch-Regeln:** Automatische Auswertung von Saved Searches, Vendor-/Produkt-Watches und DQL-Queries nach Ingestion
+- **Test-Endpoint:** `POST /api/v1/notifications/test` und Button in der System-Seite
+- **Fire-and-forget:** Benachrichtigungsfehler unterbrechen nie primäre Workflows
 
 ### Betrieb
 - **Backup & Restore** für Schwachstellen (EUVD/NVD/Alle) und gespeicherte Suchen
@@ -152,6 +169,7 @@ docker compose up --build
 | MongoDB | mongodb://localhost:27017 |
 | OpenSearch | https://localhost:9200 |
 | Scanner Sidecar | http://localhost:8080 |
+| Apprise (Notifications) | http://localhost:8000 (intern) |
 
 ## Lokale Entwicklung
 
@@ -199,6 +217,12 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/scans/{scanId}/findings` — Findings eines Scans
 - `GET /api/v1/scans/{scanId}/sbom` — SBOM-Komponenten eines Scans
 
+### Benachrichtigungen
+- `GET /api/v1/notifications/status` — Benachrichtigungs-Status (Apprise erreichbar?)
+- `POST /api/v1/notifications/test` — Testbenachrichtigung senden
+- `GET/POST /api/v1/notifications/rules` — Benachrichtigungsregeln auflisten/erstellen
+- `GET/PUT/DELETE /api/v1/notifications/rules/{id}` — Regel abrufen/aktualisieren/löschen
+
 ### Verwaltung
 - `GET/POST/DELETE /api/v1/saved-searches` — Gespeicherte Suchen
 - `GET /api/v1/stats/overview` — Statistik-Aggregationen
@@ -236,6 +260,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
 | **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
+| **Benachrichtigungen** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |
 
 ## CI/CD
 
@@ -255,6 +280,7 @@ Gitea-Workflows in `.gitea/workflows/`:
 | Logging | structlog 25 |
 | KI | OpenAI, Anthropic, Google Gemini (jeweils optional) |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, FastAPI |
+| Benachrichtigungen | Apprise (caronc/apprise) |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
 
 ## Weiterführende Dokumentation

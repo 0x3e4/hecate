@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     ai_response_language: str = "en"
     ai_web_search_enabled: bool = True
     ai_analysis_password: str | None = None
+    system_password: str | None = None
     mongo_url: str = "mongodb://mongo:27017"
     mongo_username: str | None = None
     mongo_password: str | None = None
@@ -49,6 +50,8 @@ class Settings(BaseSettings):
     mongo_scans_collection: str = "scans"
     mongo_scan_findings_collection: str = "scan_findings"
     mongo_scan_sbom_collection: str = "scan_sbom_components"
+    mongo_notification_rules_collection: str = "notification_rules"
+    mongo_notification_channels_collection: str = "notification_channels"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
@@ -128,6 +131,12 @@ class Settings(BaseSettings):
     sca_default_scanners: str = "trivy,grype,syft,osv-scanner"
     vite_sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_hours: int = 24
+
+    # Notifications (Apprise)
+    notifications_enabled: bool = False
+    notifications_apprise_url: str = "http://apprise:8000"
+    notifications_apprise_tags: str = "all"
+    notifications_apprise_timeout: int = 10
 
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"

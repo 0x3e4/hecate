@@ -8,6 +8,7 @@ from app.api.v1 import (
     changelog,
     cpe,
     cwe,
+    notifications,
     saved_searches,
     scans,
     stats,
@@ -30,3 +31,4 @@ api_router.include_router(changelog.router, prefix="/changelog", tags=["changelo
 api_router.include_router(backup.router, prefix="/backup", tags=["backup"])
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(scans.router, prefix="/scans", tags=["scans"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

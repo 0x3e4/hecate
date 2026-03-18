@@ -19,9 +19,32 @@ from app.services.ingestion.job_tracker import JobTracker
 from app.services.capec_service import get_capec_service
 from app.services.cwe_service import get_cwe_service
 from app.repositories.ingestion_state_repository import IngestionStateRepository
+from app.services.notification_service import get_notification_service
 from app.services.scan_service import get_scan_service
 
 log = structlog.get_logger()
+
+
+async def _notify_sync_failed(job_name: str, error: str) -> None:
+    """Fire-and-forget notification for sync failures."""
+    try:
+        notifier = get_notification_service()
+        await notifier.notify_sync_failed(job_name=job_name, error=error)
+    except Exception:
+        pass
+
+
+async def _notify_new_vulnerabilities(job_name: str, inserted: int) -> None:
+    """Fire-and-forget notification when new vulnerabilities are ingested."""
+    if inserted <= 0:
+        return
+    try:
+        notifier = get_notification_service()
+        await notifier.notify_new_vulnerabilities_event(source=job_name, inserted=inserted)
+        # Evaluate watch rules (saved_search, vendor, product, dql)
+        await notifier.evaluate_watch_rules()
+    except Exception:
+        pass
 
 
 class SchedulerManager:
@@ -230,6 +253,7 @@ async def _execute_cpe_sync(*, limit: int | None, initial_sync: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.cpe_sync_failed" if not initial_sync else "scheduler.cpe_initial_sync_failed"
         log.exception(event, error=str(exc))
+        await _notify_sync_failed("cpe_sync", str(exc))
     finally:
         await pipeline.close()
 
@@ -252,9 +276,11 @@ async def _execute_nvd_sync(*, initial_sync: bool) -> None:
         result = await pipeline.sync(initial_sync=initial_sync)
         event = "scheduler.nvd_sync_completed" if not initial_sync else "scheduler.nvd_initial_sync_completed"
         log.info(event, **result)
+        await _notify_new_vulnerabilities("NVD", result.get("inserted", 0))
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.nvd_sync_failed" if not initial_sync else "scheduler.nvd_initial_sync_failed"
         log.exception(event, error=str(exc))
+        await _notify_sync_failed("nvd_sync", str(exc))
 
 
 async def _scheduled_nvd_full_sync() -> None:
@@ -291,6 +317,7 @@ async def _execute_kev_sync(*, initial_sync: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.kev_sync_failed" if not initial_sync else "scheduler.kev_initial_sync_failed"
         log.exception(event, error=str(exc))
+        await _notify_sync_failed("kev_sync", str(exc))
 
 async def _scheduled_euvd_ingestion() -> None:
     if settings.ingestion_bootstrap_on_startup:
@@ -314,6 +341,7 @@ async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> N
             else "scheduler.euvd_initial_sync_completed"
         )
         log.info(event, **result)
+        await _notify_new_vulnerabilities("EUVD", result.get("inserted", 0))
     except Exception as exc:  # noqa: BLE001
         event = (
             "scheduler.euvd_ingestion_failed"
@@ -321,6 +349,7 @@ async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> N
             else "scheduler.euvd_initial_sync_failed"
         )
         log.exception(event, error=str(exc))
+        await _notify_sync_failed("euvd_ingestion", str(exc))
 
 
 async def _scheduled_euvd_full_sync() -> None:
@@ -413,6 +442,7 @@ async def _execute_cwe_sync(*, initial_sync: bool) -> None:
         error_msg = str(exc)
         await tracker.fail(ctx, error_msg)
         log.exception("scheduler.cwe_sync_failed", error=error_msg, initial_sync=initial_sync)
+        await _notify_sync_failed("cwe_sync", error_msg)
 
 
 async def _initial_capec_sync() -> None:
@@ -472,6 +502,7 @@ async def _execute_capec_sync(*, initial_sync: bool) -> None:
         error_msg = str(exc)
         await tracker.fail(ctx, error_msg)
         log.exception("scheduler.capec_sync_failed", error=error_msg, initial_sync=initial_sync)
+        await _notify_sync_failed("capec_sync", error_msg)
 
 
 async def _scheduled_circl_sync() -> None:
@@ -487,6 +518,7 @@ async def _execute_circl_sync() -> None:
         log.info("scheduler.circl_sync_completed", **result)
     except Exception as exc:  # noqa: BLE001
         log.exception("scheduler.circl_sync_failed", error=str(exc))
+        await _notify_sync_failed("circl_sync", str(exc))
     finally:
         await pipeline.close()
 
@@ -515,9 +547,11 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
         result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
         event = "scheduler.ghsa_sync_completed" if not initial_sync else "scheduler.ghsa_initial_sync_completed"
         log.info(event, **result)
+        await _notify_new_vulnerabilities("GHSA", result.get("inserted", 0))
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.ghsa_sync_failed" if not initial_sync else "scheduler.ghsa_initial_sync_failed"
         log.exception(event, error=str(exc))
+        await _notify_sync_failed("ghsa_sync", str(exc))
     finally:
         await pipeline.close()
 
