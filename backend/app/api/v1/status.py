@@ -44,3 +44,22 @@ async def system_auth_verify(payload: SystemAuthRequest) -> SystemAuthResponse:
     if payload.password == settings.system_password:
         return SystemAuthResponse(required=True, authenticated=True)
     raise HTTPException(status_code=401, detail="Invalid password.")
+
+
+@router.get("/ai-auth")
+async def ai_auth_status() -> SystemAuthResponse:
+    """Check whether an AI analysis password is required."""
+    return SystemAuthResponse(
+        required=bool(settings.ai_analysis_password),
+        authenticated=False,
+    )
+
+
+@router.post("/ai-auth")
+async def ai_auth_verify(payload: SystemAuthRequest) -> SystemAuthResponse:
+    """Verify the AI analysis password."""
+    if not settings.ai_analysis_password:
+        return SystemAuthResponse(required=False, authenticated=True)
+    if payload.password == settings.ai_analysis_password:
+        return SystemAuthResponse(required=True, authenticated=True)
+    raise HTTPException(status_code=401, detail="Invalid password.")

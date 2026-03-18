@@ -11,5 +11,8 @@ async def get_overview(service: StatsService = Depends(get_stats_service)) -> di
 
 
 @router.get("/today")
-async def get_today_summary(service: StatsService = Depends(get_stats_service)) -> dict:
-    return await service.get_today_summary()
+async def get_today_summary(
+    date: str | None = None,
+    service: StatsService = Depends(get_stats_service),
+) -> dict:
+    return await service.get_today_summary(date=date)

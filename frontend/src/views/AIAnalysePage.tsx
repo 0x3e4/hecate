@@ -9,6 +9,7 @@ import {
   triggerVulnerabilityRefresh,
   type SingleAnalysisItem,
 } from "../api/vulnerabilities";
+import { api } from "../api/client";
 import {
   AIBatchInvestigationResponse,
   AIProviderId,
@@ -23,6 +24,40 @@ import { usePersistentState } from "../hooks/usePersistentState";
 
 export const AIAnalysePage = () => {
   const { t, locale } = useI18n();
+
+  // --- Page-level auth gate ---
+  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [authOk, setAuthOk] = useState(false);
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authChecking, setAuthChecking] = useState(false);
+
+  useEffect(() => {
+    api.get<{ required: boolean }>("/v1/status/ai-auth").then((r) => {
+      setAuthRequired(r.data.required);
+      if (!r.data.required) setAuthOk(true);
+    }).catch(() => {
+      setAuthRequired(false);
+      setAuthOk(true);
+    });
+  }, []);
+
+  const handleAuthSubmit = async () => {
+    setAuthChecking(true);
+    setAuthError("");
+    try {
+      const r = await api.post<{ authenticated: boolean }>("/v1/status/ai-auth", { password: authPassword });
+      if (r.data.authenticated) {
+        setAuthOk(true);
+        setAiAnalysisPassword(authPassword);
+      }
+    } catch {
+      setAuthError(t("Invalid password.", "Falsches Passwort."));
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
   const [selectedVulnIds, setSelectedVulnIds] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<AIProviderId | null>(null);
   const [aiAnalysisPassword, setAiAnalysisPassword] = usePersistentState<string>("ai_analysis_password", "");
@@ -40,8 +75,6 @@ export const AIAnalysePage = () => {
   const [historyPage, setHistoryPage] = useState<number>(0);
   const [batchTotal, setBatchTotal] = useState<number>(0);
   const [singleTotal, setSingleTotal] = useState<number>(0);
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState<boolean>(false);
-  const [passwordDraft, setPasswordDraft] = useState<string>(aiAnalysisPassword);
 
   const HISTORY_PAGE_SIZE = 20;
 
@@ -199,26 +232,6 @@ export const AIAnalysePage = () => {
     }
   };
 
-  const handleOpenPasswordDialog = () => {
-    if (!selectedProvider) {
-      setError(t("Please select an AI provider.", "Bitte wählen Sie einen AI-Provider aus."));
-      return;
-    }
-    if (selectedVulnIds.length === 0) {
-      setError(t("Please select at least one vulnerability.", "Bitte wählen Sie mindestens eine Schwachstelle aus."));
-      return;
-    }
-    setError(null);
-    setPasswordDraft(aiAnalysisPassword);
-    setPasswordDialogOpen(true);
-  };
-
-  const handleConfirmPasswordDialog = async () => {
-    const normalizedPassword = passwordDraft.trim();
-    setAiAnalysisPassword(normalizedPassword);
-    setPasswordDialogOpen(false);
-    await handleRunAnalysis(normalizedPassword);
-  };
 
   // Get vulnerability preview objects for display
   // Note: We only have IDs, so we create minimal preview objects
@@ -240,6 +253,46 @@ export const AIAnalysePage = () => {
   const historyMaxTotal = Math.max(batchTotal, singleTotal);
   const hasPreviousHistoryPage = historyPage > 0;
   const hasNextHistoryPage = (historyPage + 1) * HISTORY_PAGE_SIZE < historyMaxTotal;
+
+  if (authRequired && !authOk) {
+    return (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <div className="card" style={{ maxWidth: "400px", width: "100%", textAlign: "center" }}>
+          <h3>{t("AI Analysis Password", "AI-Analyse-Passwort")}</h3>
+          <p className="muted">{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); }}
+            placeholder={t("Password", "Passwort")}
+            autoFocus
+            style={{ width: "100%", marginTop: "1rem", boxSizing: "border-box" }}
+          />
+          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
+          <div style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleAuthSubmit()}
+              disabled={authChecking || !authPassword}
+              style={{ width: "100%", boxSizing: "border-box" }}
+            >
+              {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (authRequired === null) {
+    return (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <p className="muted">{t("Loading...", "Laden…")}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="page ai-analyse-page">
@@ -315,7 +368,7 @@ export const AIAnalysePage = () => {
 
                 <button
                   className="btn btn-primary"
-                  onClick={handleOpenPasswordDialog}
+                  onClick={() => void handleRunAnalysis()}
                   disabled={loading || selectedVulnIds.length === 0}
                   style={{ width: "100%" }}
                 >
@@ -493,44 +546,6 @@ export const AIAnalysePage = () => {
         )}
       </section>
 
-      {passwordDialogOpen && (
-        <div className="dialog-overlay" onClick={() => setPasswordDialogOpen(false)}>
-          <div className="dialog" onClick={(event) => event.stopPropagation()}>
-            <h3>{t("AI password", "AI-Passwort")}</h3>
-            <p>{t("Enter the password to start analysis.", "Passwort eingeben, um die Analyse zu starten.")}</p>
-            <input
-              type="password"
-              value={passwordDraft}
-              onChange={(event) => setPasswordDraft(event.target.value)}
-              placeholder={t("Enter AI password", "AI-Passwort eingeben")}
-              autoFocus
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void handleConfirmPasswordDialog();
-                } else if (event.key === "Escape") {
-                  setPasswordDialogOpen(false);
-                }
-              }}
-            />
-            <div className="dialog-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setPasswordDialogOpen(false)}
-              >
-                {t("Cancel", "Abbrechen")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => void handleConfirmPasswordDialog()}
-              >
-                {t("Start analysis", "Analyse starten")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

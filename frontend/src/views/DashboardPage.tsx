@@ -380,12 +380,13 @@ const SEVERITY_COLORS: Record<string, string> = {
 const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string>("");
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const result = await fetchTodaySummary();
+        const result = await fetchTodaySummary(selectedDate || undefined);
         setData(result);
       } catch (err) {
         console.error("Failed to load today stats", err);
@@ -394,15 +395,62 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
       }
     };
     load();
-  }, []);
+  }, [selectedDate]);
 
   if (loading) return <TodayStatsSkeleton />;
+
+  const datePicker = (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      {selectedDate && (
+        <button
+          onClick={() => setSelectedDate("")}
+          title={t("Back to today", "Zurück zu heute")}
+          style={{
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "6px",
+            padding: "0.3rem 0.6rem",
+            cursor: "pointer",
+            color: "rgba(255,255,255,0.7)",
+            fontSize: "0.8rem",
+          }}
+        >
+          {t("Today", "Heute")}
+        </button>
+      )}
+      <input
+        type="date"
+        value={selectedDate}
+        max={new Date().toISOString().split("T")[0]}
+        onChange={(e) => setSelectedDate(e.target.value)}
+        style={{
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "6px",
+          padding: "0.3rem 0.5rem",
+          color: "rgba(255,255,255,0.7)",
+          fontSize: "0.8rem",
+          cursor: "pointer",
+          colorScheme: "dark",
+        }}
+      />
+    </div>
+  );
+
   if (!data || data.total === 0) {
     return (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
-        <p className="muted" style={{ margin: 0 }}>
-          {t("No vulnerabilities published yet today.", "Heute wurden noch keine Schwachstellen veröffentlicht.")}
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <p className="muted" style={{ margin: 0 }}>
+            {selectedDate
+              ? t(
+                  `No vulnerabilities published on ${new Date(selectedDate + "T00:00:00").toLocaleDateString(locale === "de" ? "de-DE" : "en-US")}.`,
+                  `Keine Schwachstellen am ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE")} veröffentlicht.`
+                )
+              : t("No vulnerabilities published yet today.", "Heute wurden noch keine Schwachstellen veröffentlicht.")}
+          </p>
+          {datePicker}
+        </div>
       </section>
     );
   }
@@ -423,13 +471,19 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
 
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
         <span className="muted" style={{ fontSize: "0.9rem" }}>
-          {t(
-            `${data.total.toLocaleString(locale)} vulnerabilities today`,
-            `${data.total.toLocaleString(locale)} Schwachstellen heute`
-          )}
+          {selectedDate
+            ? t(
+                `${data.total.toLocaleString(locale)} vulnerabilities on ${new Date(selectedDate + "T00:00:00").toLocaleDateString(locale === "de" ? "de-DE" : "en-US")}`,
+                `${data.total.toLocaleString(locale)} Schwachstellen am ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE")}`
+              )
+            : t(
+                `${data.total.toLocaleString(locale)} vulnerabilities today`,
+                `${data.total.toLocaleString(locale)} Schwachstellen heute`
+              )}
         </span>
+        {datePicker}
       </div>
 
       <div
@@ -743,8 +797,113 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
           : undefined;
 
         return (
-          <article
+          <DashboardVulnCard
             key={primaryId}
+            vuln={vuln}
+            primaryId={primaryId}
+            hasCve={hasCve}
+            hasSource={hasSource}
+            ghsaAliases={ghsaAliases}
+            malAliases={malAliases}
+            pysecAliases={pysecAliases}
+            remainingAliases={remainingAliases}
+            exploitedHighlight={exploitedHighlight}
+            vendors={vendors}
+            products={products}
+            versions={versions}
+            published={published}
+            isPublishedReserved={isPublishedReserved}
+            epss={epss}
+            cweList={cweList}
+            preferredCvss={preferredCvss}
+            t={t}
+          />
+        );
+      }),
+    [vulnerabilities, t]
+  );
+
+  return (
+    <section className="card">
+      <h2>{t("Latest Findings", "Neueste Treffer")}</h2>
+      {showSkeleton ? (
+        <DashboardSkeleton />
+      ) : hasResults ? (
+        rows
+      ) : (
+        <p>{t("No data loaded.", "Keine Daten geladen.")}</p>
+      )}
+      {loading && hasResults && (
+        <p className="muted" style={{ marginTop: "0.75rem" }}>
+          {t("Refreshing results...", "Aktualisiere Ergebnisse...")}
+        </p>
+      )}
+    </section>
+  );
+};
+
+const DashboardVulnCard = ({
+  vuln,
+  primaryId,
+  hasCve,
+  hasSource,
+  ghsaAliases,
+  malAliases,
+  pysecAliases,
+  remainingAliases,
+  exploitedHighlight,
+  vendors,
+  products,
+  versions,
+  published,
+  isPublishedReserved,
+  epss,
+  cweList,
+  preferredCvss,
+  t,
+}: {
+  vuln: VulnerabilityPreview;
+  primaryId: string;
+  hasCve: boolean;
+  hasSource: boolean;
+  ghsaAliases: string[];
+  malAliases: string[];
+  pysecAliases: string[];
+  remainingAliases: string[];
+  exploitedHighlight: React.CSSProperties | undefined;
+  vendors: string;
+  products: string;
+  versions: string;
+  published: string;
+  isPublishedReserved: boolean;
+  epss: string;
+  cweList: string[];
+  preferredCvss: ReturnType<typeof getPreferredCvssMetric>;
+  t: TranslateFn;
+}) => {
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  const handleCopyInfo = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ids = [vuln.vulnId, vuln.sourceId].filter(Boolean).join(", ");
+    const severity = (vuln.severity ?? "unknown").toUpperCase();
+
+    const lines: string[] = [ids];
+    if (severity !== "UNKNOWN") lines.push(`Severity: ${severity}`);
+    if (vendors && vendors !== "\u2014") lines.push(`Vendors: ${vendors}`);
+    if (products && products !== "\u2014") lines.push(`Products: ${products}`);
+    if (versions && versions !== "\u2014") lines.push(`Versions: ${versions}`);
+    if (vuln.summary) lines.push(`\n${vuln.summary}`);
+
+    void navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 1500);
+    });
+  };
+
+  return (
+          <article
             className={`vuln-card ${vuln.severity ?? "unknown"}`}
             style={exploitedHighlight}
           >
@@ -775,7 +934,31 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
                   ))}
                 </div>
               </div>
-              <span className={`tag ${vuln.severity ?? "unknown"}`}>{vuln.severity ?? "n/a"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <button
+                  type="button"
+                  onClick={handleCopyInfo}
+                  title={t("Copy vulnerability info", "Schwachstellen-Info kopieren")}
+                  style={{
+                    background: copyFeedback ? "rgba(105, 219, 124, 0.2)" : "rgba(255,255,255,0.06)",
+                    border: copyFeedback ? "1px solid rgba(105, 219, 124, 0.4)" : "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: "6px",
+                    padding: "0.2rem 0.4rem",
+                    cursor: "pointer",
+                    color: copyFeedback ? "#69db7c" : "rgba(255,255,255,0.55)",
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {copyFeedback ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  )}
+                </button>
+                <span className={`tag ${vuln.severity ?? "unknown"}`}>{vuln.severity ?? "n/a"}</span>
+              </div>
             </header>
 
             <h3 className="vuln-title">
@@ -924,27 +1107,6 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
               )}
             </div>
           </article>
-        );
-      }),
-    [vulnerabilities, t]
-  );
-
-  return (
-    <section className="card">
-      <h2>{t("Latest Findings", "Neueste Treffer")}</h2>
-      {showSkeleton ? (
-        <DashboardSkeleton />
-      ) : hasResults ? (
-        rows
-      ) : (
-        <p>{t("No data loaded.", "Keine Daten geladen.")}</p>
-      )}
-      {loading && hasResults && (
-        <p className="muted" style={{ marginTop: "0.75rem" }}>
-          {t("Refreshing results...", "Aktualisiere Ergebnisse…")}
-        </p>
-      )}
-    </section>
   );
 };
 

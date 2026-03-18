@@ -641,11 +641,11 @@ export const SystemPage = () => {
 
   return (
     <>
-    {authRequired && !authOk && (
-      <div className="dialog-overlay">
-        <div className="dialog">
+    {authRequired && !authOk ? (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <div className="card" style={{ maxWidth: "400px", width: "100%", textAlign: "center" }}>
           <h3>{t("System Password", "System-Passwort")}</h3>
-          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
+          <p className="muted">{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
           <input
             type="password"
             value={authPassword}
@@ -653,21 +653,28 @@ export const SystemPage = () => {
             onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); }}
             placeholder={t("Password", "Passwort")}
             autoFocus
+            style={{ width: "100%", marginTop: "1rem", boxSizing: "border-box" }}
           />
-          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0 0 1rem" }}>{authError}</p>}
-          <div className="dialog-actions">
+          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
+          <div style={{ marginTop: "1rem" }}>
             <button
               type="button"
+              className="btn btn-primary"
               onClick={() => void handleAuthSubmit()}
               disabled={authChecking || !authPassword}
+              style={{ width: "100%", boxSizing: "border-box" }}
             >
               {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
             </button>
           </div>
         </div>
       </div>
-    )}
-    <div className="page" style={authRequired && !authOk ? { filter: "blur(6px)", pointerEvents: "none", userSelect: "none" } : undefined}>
+    ) : authRequired === null ? (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <p className="muted">{t("Loading...", "Laden…")}</p>
+      </div>
+    ) : (
+    <div className="page">
       <section className="card">
         <h2>{t("Language", "Sprache")}</h2>
         <p className="muted">
@@ -1446,6 +1453,7 @@ export const SystemPage = () => {
         </div>
       )}
     </div>
+    )}
   </>
   );
 };
