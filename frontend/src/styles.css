@@ -1697,8 +1697,18 @@ table thead th {
   }
 }
 
+.show-mobile {
+  display: none;
+}
+
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
+  .hide-mobile {
+    display: none;
+  }
+  .show-mobile {
+    display: inline;
+  }
   .app-shell {
     flex-direction: row;
   }
