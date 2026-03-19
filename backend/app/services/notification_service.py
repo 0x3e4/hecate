@@ -268,8 +268,10 @@ class NotificationService:
                 tag = rule.get("apprise_tag", self._tags)
                 await self.send(title, body, notify_type=notify_type, tag=tag)
                 await repo.update(str(rule["_id"]), {"last_triggered_at": datetime.now(tz=UTC)})
-        else:
-            # No event rules configured — send to all channels
+        elif not rules:
+            # No event rules configured at all — send to all channels as fallback.
+            # If rules exist but none match this event_type, do nothing (user
+            # intentionally has no rule for this event).
             await self.send(title, body, notify_type=notify_type)
 
     async def notify_scan_completed(
