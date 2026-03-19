@@ -87,7 +87,9 @@ export const DQL_FIELD_HINTS: DQLFieldHint[] = [
 
   // Assets & Products
   { field: "vendors", description: "Liste der betroffenen Hersteller", type: "array", aggregatable: true },
+  { field: "vendorSlugs", description: "Hersteller-Slugs (normalisiert, z.B. fortinet)", type: "array", aggregatable: true },
   { field: "products", description: "Liste der Produkte", type: "array", aggregatable: true },
+  { field: "productSlugs", description: "Produkt-Slugs (normalisiert, z.B. fortiswitch)", type: "array", aggregatable: true },
   { field: "product_versions", description: "Produktversionen (Text)", type: "array", aggregatable: true },
   { field: "product_version_ids", description: "Produktversions-IDs aus dem Katalog", type: "array", aggregatable: true },
 
@@ -186,7 +188,7 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
   },
   {
     name: "Assets & Products",
-    fields: ["vendors", "products", "product_versions", "product_version_ids"]
+    fields: ["vendors", "vendorSlugs", "products", "productSlugs", "product_versions", "product_version_ids"]
   },
   {
     name: "Dates",

@@ -434,7 +434,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
         <button
           onClick={() => setDayOffset(0)}
           title={t("Back to today", "Zurück zu heute")}
-          style={{ ...navBtnStyle, fontSize: "0.75rem", padding: "0.3rem 0.6rem" }}
+          style={navBtnStyle}
         >
           {t("Today", "Heute")}
         </button>
@@ -498,15 +498,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
   if (!data || data.total === 0) {
     return (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <p className="muted" style={{ margin: 0 }}>
-            {selectedDate
-              ? t(
-                  `No vulnerabilities published on ${new Date(selectedDate + "T00:00:00").toLocaleDateString(locale === "de" ? "de-DE" : "en-US")}.`,
-                  `Keine Schwachstellen am ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE")} veröffentlicht.`
-                )
-              : t("No vulnerabilities published yet today.", "Heute wurden noch keine Schwachstellen veröffentlicht.")}
-          </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
           {dateNav}
         </div>
       </section>
@@ -517,13 +509,13 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
 
   const dqlQuote = (v: string) => `"${v.replace(/\//g, "\\/")}"`;
 
-  const vendorDql = (vendorName: string) => {
-    const q = `vendors:${dqlQuote(vendorName)} AND published:>=${todayDate}`;
+  const vendorDql = (vendorSlug: string) => {
+    const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND published:>=${todayDate}`;
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
-  const productDql = (vendorName: string, productName: string) => {
-    const q = `vendors:${dqlQuote(vendorName)} AND products:${dqlQuote(productName)} AND published:>=${todayDate}`;
+  const productDql = (vendorSlug: string, productSlug: string) => {
+    const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND productSlugs:${dqlQuote(productSlug)} AND published:>=${todayDate}`;
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
@@ -531,15 +523,9 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
     <section className="card" style={{ marginBottom: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
         <span className="muted" style={{ fontSize: "0.9rem" }}>
-          {selectedDate
-            ? t(
-                `${data.total.toLocaleString(locale)} vulnerabilities on ${new Date(selectedDate + "T00:00:00").toLocaleDateString(locale === "de" ? "de-DE" : "en-US")}`,
-                `${data.total.toLocaleString(locale)} Schwachstellen am ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE")}`
-              )
-            : t(
-                `${data.total.toLocaleString(locale)} vulnerabilities today`,
-                `${data.total.toLocaleString(locale)} Schwachstellen heute`
-              )}
+          {data.total.toLocaleString(locale)}{" "}
+          <span className="hide-mobile">{t("vulnerabilities", "Schwachstellen")}</span>
+          <span className="show-mobile">{t("vulns", "Schwachst.")}</span>
         </span>
         {dateNav}
       </div>
@@ -561,7 +547,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
               {data.vendors.map((v) => (
                 <TodayListItem
                   key={v.slug}
-                  to={vendorDql(v.name)}
+                  to={vendorDql(v.slug)}
                   label={v.name}
                   count={v.doc_count}
                 />
@@ -580,7 +566,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
               {data.products.map((p) => (
                 <TodayListItem
                   key={`${p.vendorSlug}:${p.slug}`}
-                  to={productDql(p.vendorName, p.name)}
+                  to={productDql(p.vendorSlug, p.slug)}
                   label={p.name}
                   sublabel={p.vendorName}
                   count={p.doc_count}
