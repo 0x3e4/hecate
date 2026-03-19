@@ -131,7 +131,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Ereignisse:** SCA-Scan abgeschlossen/fehlgeschlagen, Sync-Fehler, neue Schwachstellen nach Ingestion
 - **Regelbasiert:** Konfigurierbare Regeln pro Ereignistyp mit individuellem Channel-Routing (Apprise-Tags)
 - **Watch-Regeln:** Automatische Auswertung von Saved Searches, Vendor-/Produkt-Watches und DQL-Queries nach Ingestion
-- **Test-Endpoint:** `POST /api/v1/notifications/test` und Button in der System-Seite
+- **Nachrichtenvorlagen:** Anpassbare Titel- und Body-Templates pro Event-Typ mit Platzhaltern (`{variable}`) und Schleifen (`{#each}...{/each}`)
+- **Test-Endpoint:** `POST /api/v1/notifications/test` mit optionalem Tag-Filter und Button in der System-Seite
 - **Fire-and-forget:** Benachrichtigungsfehler unterbrechen nie primäre Workflows
 
 ### Betrieb
@@ -191,6 +192,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 
 ### Status
 - `GET /api/v1/status/health` — Liveness Probe
+- `GET /api/v1/status/scanner-health` — Scanner-Sidecar Erreichbarkeit
 
 ### Schwachstellen
 - `POST /api/v1/vulnerabilities/search` — Volltextsuche mit DQL, Filtern, Pagination
@@ -219,9 +221,13 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 
 ### Benachrichtigungen
 - `GET /api/v1/notifications/status` — Benachrichtigungs-Status (Apprise erreichbar?)
-- `POST /api/v1/notifications/test` — Testbenachrichtigung senden
+- `POST /api/v1/notifications/test` — Testbenachrichtigung senden (optionaler `tag`-Parameter)
+- `GET/POST /api/v1/notifications/channels` — Channels auflisten/hinzufügen
+- `DELETE /api/v1/notifications/channels/{id}` — Channel entfernen
 - `GET/POST /api/v1/notifications/rules` — Benachrichtigungsregeln auflisten/erstellen
 - `GET/PUT/DELETE /api/v1/notifications/rules/{id}` — Regel abrufen/aktualisieren/löschen
+- `GET/POST /api/v1/notifications/templates` — Nachrichtenvorlagen auflisten/erstellen
+- `PUT/DELETE /api/v1/notifications/templates/{id}` — Vorlage aktualisieren/löschen
 
 ### Verwaltung
 - `GET/POST/DELETE /api/v1/saved-searches` — Gespeicherte Suchen

@@ -276,7 +276,7 @@ async def _execute_nvd_sync(*, initial_sync: bool) -> None:
         result = await pipeline.sync(initial_sync=initial_sync)
         event = "scheduler.nvd_sync_completed" if not initial_sync else "scheduler.nvd_initial_sync_completed"
         log.info(event, **result)
-        await _notify_new_vulnerabilities("NVD", result.get("inserted", 0))
+        await _notify_new_vulnerabilities("NVD", result.get("ingested", 0))
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.nvd_sync_failed" if not initial_sync else "scheduler.nvd_initial_sync_failed"
         log.exception(event, error=str(exc))
@@ -341,7 +341,7 @@ async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> N
             else "scheduler.euvd_initial_sync_completed"
         )
         log.info(event, **result)
-        await _notify_new_vulnerabilities("EUVD", result.get("inserted", 0))
+        await _notify_new_vulnerabilities("EUVD", result.get("ingested", 0))
     except Exception as exc:  # noqa: BLE001
         event = (
             "scheduler.euvd_ingestion_failed"
@@ -547,7 +547,7 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
         result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
         event = "scheduler.ghsa_sync_completed" if not initial_sync else "scheduler.ghsa_initial_sync_completed"
         log.info(event, **result)
-        await _notify_new_vulnerabilities("GHSA", result.get("inserted", 0))
+        await _notify_new_vulnerabilities("GHSA", result.get("created", 0))
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.ghsa_sync_failed" if not initial_sync else "scheduler.ghsa_initial_sync_failed"
         log.exception(event, error=str(exc))

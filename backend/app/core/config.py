@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     mongo_scan_sbom_collection: str = "scan_sbom_components"
     mongo_notification_rules_collection: str = "notification_rules"
     mongo_notification_channels_collection: str = "notification_channels"
+    mongo_notification_templates_collection: str = "notification_templates"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None

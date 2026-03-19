@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine } from "react-icons/lu";
 import { useMemo } from "react";
 
+import { version } from "../../package.json";
 import { config } from "../config";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useI18n } from "../i18n/context";
@@ -149,6 +150,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
           </div>
         ))}
       </nav>
+      <div className="sidebar-version">{collapsed ? `v${version}` : `Hecate v${version}`}</div>
       <button
         type="button"
         className="sidebar-collapse-button"

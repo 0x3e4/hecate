@@ -582,6 +582,29 @@ export interface NotificationChannelListResponse {
   items: NotificationChannel[];
 }
 
+export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match";
+
+export interface NotificationTemplate {
+  id: string;
+  eventKey: NotificationEventKey;
+  tag: string;
+  titleTemplate: string;
+  bodyTemplate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationTemplateCreate {
+  eventKey: NotificationEventKey;
+  tag: string;
+  titleTemplate: string;
+  bodyTemplate: string;
+}
+
+export interface NotificationTemplateListResponse {
+  items: NotificationTemplate[];
+}
+
 export interface SubmitScanResponse {
   scanId: string;
   targetId: string;

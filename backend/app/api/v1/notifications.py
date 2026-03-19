@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.schemas.notification import (
     NotificationChannelAddRequest,
@@ -8,6 +8,9 @@ from app.schemas.notification import (
     NotificationRuleListResponse,
     NotificationRuleResponse,
     NotificationStatusResponse,
+    NotificationTemplateCreate,
+    NotificationTemplateListResponse,
+    NotificationTemplateResponse,
     NotificationTestResponse,
 )
 from app.services.notification_service import NotificationService, get_notification_service
@@ -33,6 +36,7 @@ async def notification_status(
 
 @router.post("/test", response_model=NotificationTestResponse)
 async def send_test_notification(
+    tag: str | None = Body(default=None, embed=True),
     service: NotificationService = Depends(get_notification_service),
 ) -> NotificationTestResponse:
     if not service.enabled:
@@ -40,7 +44,7 @@ async def send_test_notification(
             success=False,
             message="Notifications are disabled. Set NOTIFICATIONS_ENABLED=true to enable.",
         )
-    ok = await service.send_test()
+    ok = await service.send_test(tag=tag)
     if ok:
         return NotificationTestResponse(success=True, message="Test notification sent successfully.")
     return NotificationTestResponse(success=False, message="Failed to send test notification. Check channels and Apprise service.")
@@ -143,3 +147,57 @@ async def delete_rule(
     deleted = await service.delete_rule(rule_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Rule not found")
+
+
+# --- Message Templates CRUD ---
+
+
+VALID_EVENT_KEYS = {"new_vulnerabilities", "scan_completed", "scan_failed", "sync_failed", "watch_rule_match"}
+
+
+@router.get("/templates", response_model=NotificationTemplateListResponse)
+async def list_templates(
+    service: NotificationService = Depends(get_notification_service),
+) -> NotificationTemplateListResponse:
+    templates = await service.list_templates()
+    return NotificationTemplateListResponse(items=templates)
+
+
+@router.post("/templates", response_model=NotificationTemplateResponse, status_code=201)
+async def create_template(
+    payload: NotificationTemplateCreate,
+    service: NotificationService = Depends(get_notification_service),
+) -> NotificationTemplateResponse:
+    if payload.event_key not in VALID_EVENT_KEYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid event_key. Must be one of: {', '.join(sorted(VALID_EVENT_KEYS))}",
+        )
+    return await service.create_template(payload)
+
+
+@router.put("/templates/{template_id}", response_model=NotificationTemplateResponse)
+async def update_template(
+    template_id: str,
+    payload: NotificationTemplateCreate,
+    service: NotificationService = Depends(get_notification_service),
+) -> NotificationTemplateResponse:
+    if payload.event_key not in VALID_EVENT_KEYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid event_key. Must be one of: {', '.join(sorted(VALID_EVENT_KEYS))}",
+        )
+    result = await service.update_template(template_id, payload)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return result
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def delete_template(
+    template_id: str,
+    service: NotificationService = Depends(get_notification_service),
+) -> None:
+    deleted = await service.delete_template(template_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Template not found")

@@ -7,6 +7,9 @@ import type {
   NotificationRuleCreate,
   NotificationChannel,
   NotificationChannelListResponse,
+  NotificationTemplate,
+  NotificationTemplateCreate,
+  NotificationTemplateListResponse,
 } from "../types";
 
 export async function fetchNotificationStatus(): Promise<NotificationStatusResponse> {
@@ -14,8 +17,8 @@ export async function fetchNotificationStatus(): Promise<NotificationStatusRespo
   return response.data;
 }
 
-export async function sendTestNotification(): Promise<NotificationTestResponse> {
-  const response = await api.post<NotificationTestResponse>("/v1/notifications/test");
+export async function sendTestNotification(tag?: string): Promise<NotificationTestResponse> {
+  const response = await api.post<NotificationTestResponse>("/v1/notifications/test", tag ? { tag } : {});
   return response.data;
 }
 
@@ -52,4 +55,25 @@ export async function addNotificationChannel(url: string, tag: string): Promise<
 
 export async function removeNotificationChannel(channelId: string): Promise<void> {
   await api.delete(`/v1/notifications/channels/${channelId}`);
+}
+
+// --- Message Templates ---
+
+export async function fetchNotificationTemplates(): Promise<NotificationTemplateListResponse> {
+  const response = await api.get<NotificationTemplateListResponse>("/v1/notifications/templates");
+  return response.data;
+}
+
+export async function createNotificationTemplate(payload: NotificationTemplateCreate): Promise<NotificationTemplate> {
+  const response = await api.post<NotificationTemplate>("/v1/notifications/templates", payload);
+  return response.data;
+}
+
+export async function updateNotificationTemplate(templateId: string, payload: NotificationTemplateCreate): Promise<NotificationTemplate> {
+  const response = await api.put<NotificationTemplate>(`/v1/notifications/templates/${templateId}`, payload);
+  return response.data;
+}
+
+export async function deleteNotificationTemplate(templateId: string): Promise<void> {
+  await api.delete(`/v1/notifications/templates/${templateId}`);
 }
