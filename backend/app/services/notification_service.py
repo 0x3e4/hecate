@@ -253,7 +253,7 @@ class NotificationService:
     ) -> None:
         """Send notification for a system event, routing via matching event rules.
 
-        If no event rules exist, falls back to the global default tag.
+        Only sends if there is a matching enabled event rule for the given event type.
         """
         if not self.enabled:
             return
@@ -263,16 +263,10 @@ class NotificationService:
 
         matching = [r for r in rules if event_type in r.get("event_types", [])]
 
-        if matching:
-            for rule in matching:
-                tag = rule.get("apprise_tag", self._tags)
-                await self.send(title, body, notify_type=notify_type, tag=tag)
-                await repo.update(str(rule["_id"]), {"last_triggered_at": datetime.now(tz=UTC)})
-        elif not rules:
-            # No event rules configured at all — send to all channels as fallback.
-            # If rules exist but none match this event_type, do nothing (user
-            # intentionally has no rule for this event).
-            await self.send(title, body, notify_type=notify_type)
+        for rule in matching:
+            tag = rule.get("apprise_tag", self._tags)
+            await self.send(title, body, notify_type=notify_type, tag=tag)
+            await repo.update(str(rule["_id"]), {"last_triggered_at": datetime.now(tz=UTC)})
 
     async def notify_scan_completed(
         self,
