@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   exportSavedSearchesBackup,
@@ -17,6 +18,10 @@ import {
   fetchNotificationChannels,
   addNotificationChannel,
   removeNotificationChannel,
+  fetchNotificationTemplates,
+  createNotificationTemplate,
+  updateNotificationTemplate,
+  deleteNotificationTemplate,
 } from "../api/notifications";
 import { api } from "../api/client";
 import {
@@ -35,10 +40,13 @@ import { useI18n, type TranslateFn } from "../i18n/context";
 import type { AppLanguage } from "../i18n/language";
 import type {
   NotificationChannel,
+  NotificationEventKey,
   NotificationStatusResponse,
   NotificationRule,
   NotificationRuleCreate,
   NotificationRuleType,
+  NotificationTemplate,
+  NotificationTemplateCreate,
   SavedSearch,
   SyncState,
 } from "../types";
@@ -69,6 +77,7 @@ const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
 
 export const SystemPage = () => {
   const { language, locale, setLanguage, t } = useI18n();
+  const navigate = useNavigate();
 
   // --- System password gate ---
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
@@ -120,6 +129,10 @@ export const SystemPage = () => {
   const [notifStatus, setNotifStatus] = useState<NotificationStatusResponse | null>(null);
   const [notifLoading, setNotifLoading] = useState(true);
   const [notifTestBusy, setNotifTestBusy] = useState(false);
+  const [notifTestTag, setNotifTestTag] = useState("");
+
+  const [scannerStatus, setScannerStatus] = useState<{ enabled: boolean; reachable: boolean } | null>(null);
+  const [scannerLoading, setScannerLoading] = useState(true);
 
   const [notifRules, setNotifRules] = useState<NotificationRule[]>([]);
   const [notifRulesLoading, setNotifRulesLoading] = useState(true);
@@ -147,6 +160,18 @@ export const SystemPage = () => {
   const [channelTag, setChannelTag] = useState("all");
   const [channelSaving, setChannelSaving] = useState(false);
   const [channelRemovingId, setChannelRemovingId] = useState<string | null>(null);
+
+  // Message template state
+  const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateDeletePendingId, setTemplateDeletePendingId] = useState<string | null>(null);
+  const [tplEventKey, setTplEventKey] = useState<NotificationEventKey>("new_vulnerabilities");
+  const [tplTag, setTplTag] = useState("all");
+  const [tplTitle, setTplTitle] = useState("");
+  const [tplBody, setTplBody] = useState("");
 
   const loadChannels = async () => {
     try {
@@ -328,6 +353,130 @@ export const SystemPage = () => {
     }
   };
 
+  // --- Message Template Handlers ---
+
+  const EVENT_KEY_OPTIONS: { value: NotificationEventKey; label: string }[] = [
+    { value: "new_vulnerabilities", label: "New Vulnerabilities" },
+    { value: "scan_completed", label: "Scan Completed" },
+    { value: "scan_failed", label: "Scan Failed" },
+    { value: "sync_failed", label: "Sync Failed" },
+    { value: "watch_rule_match", label: "Watch Rule Match" },
+  ];
+
+  const TEMPLATE_PLACEHOLDERS: Record<NotificationEventKey, { scalars: string; loop?: string }> = {
+    new_vulnerabilities: { scalars: "{icon}, {source}, {count}, {noun}, {time}" },
+    scan_completed: { scalars: "{icon}, {target}, {status}, {findings}, {duration}, {scan_id}" },
+    scan_failed: { scalars: "{icon}, {target}, {status}, {findings}, {duration}, {scan_id}" },
+    sync_failed: { scalars: "{job_name}, {error}, {time}" },
+    watch_rule_match: {
+      scalars: "{icon}, {rule_name}, {count}, {noun}, {vulnerabilities_list}, {vendors}, {products}, {versions}, {time}",
+      loop: "{#each vulnerabilities}{id}, {severity}, {cvss}, {cwes}, {summary}, {title}, {vendors}, {products}, {versions}, {exploited}, {source}, {published}{/each}",
+    },
+  };
+
+  const DEFAULT_TEMPLATES: Record<NotificationEventKey, { title: string; body: string }> = {
+    new_vulnerabilities: {
+      title: "{icon} Hecate — {count} New {noun}",
+      body: "Source: {source}\nNew entries: {count}\nTime: {time}",
+    },
+    scan_completed: {
+      title: "{icon} Hecate — SCA Scan {status}",
+      body: "Target: {target}\nStatus: {status}\nFindings: {findings}\nDuration: {duration}s\nScan ID: {scan_id}",
+    },
+    scan_failed: {
+      title: "{icon} Hecate — SCA Scan {status}",
+      body: "Target: {target}\nStatus: {status}\nFindings: {findings}\nDuration: {duration}s\nScan ID: {scan_id}",
+    },
+    sync_failed: {
+      title: "Hecate — Sync Failed: {job_name}",
+      body: "Job: {job_name}\nError: {error}\nTime: {time}",
+    },
+    watch_rule_match: {
+      title: "{icon} Hecate — {count} New {noun}: {rule_name}",
+      body: "Rule: {rule_name}\nMatches: {count}\nVulnerabilities: {vulnerabilities_list}\nTime: {time}",
+    },
+  };
+
+  const loadTemplates = async () => {
+    try {
+      const response = await fetchNotificationTemplates();
+      setTemplates(response.items);
+    } catch (error) {
+      console.error("Failed to load templates", error);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const resetTemplateForm = () => {
+    const def = DEFAULT_TEMPLATES["new_vulnerabilities"];
+    setTplEventKey("new_vulnerabilities");
+    setTplTag("all");
+    setTplTitle(def.title);
+    setTplBody(def.body);
+    setEditingTemplate(null);
+  };
+
+  const openTemplateForm = (tpl?: NotificationTemplate) => {
+    if (tpl) {
+      setEditingTemplate(tpl);
+      setTplEventKey(tpl.eventKey);
+      setTplTag(tpl.tag);
+      setTplTitle(tpl.titleTemplate);
+      setTplBody(tpl.bodyTemplate);
+    } else {
+      resetTemplateForm();
+    }
+    setShowTemplateForm(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!tplTitle.trim() || !tplBody.trim()) return;
+    setTemplateSaving(true);
+    try {
+      const payload: NotificationTemplateCreate = {
+        eventKey: tplEventKey,
+        tag: tplTag.trim() || "all",
+        titleTemplate: tplTitle.trim(),
+        bodyTemplate: tplBody.trim(),
+      };
+      if (editingTemplate) {
+        await updateNotificationTemplate(editingTemplate.id, payload);
+        showToast(t("Template updated.", "Vorlage aktualisiert."), "success");
+      } else {
+        await createNotificationTemplate(payload);
+        showToast(t("Template created.", "Vorlage erstellt."), "success");
+      }
+      setShowTemplateForm(false);
+      resetTemplateForm();
+      void loadTemplates();
+    } catch (error) {
+      console.error("Save template failed", error);
+      showToast(t("Could not save template.", "Vorlage konnte nicht gespeichert werden."), "error");
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (tpl: NotificationTemplate) => {
+    setTemplateDeletePendingId(tpl.id);
+    try {
+      await deleteNotificationTemplate(tpl.id);
+      showToast(t("Template deleted.", "Vorlage gelöscht."), "success");
+      void loadTemplates();
+    } catch (error) {
+      console.error("Delete template failed", error);
+      showToast(t("Could not delete template.", "Vorlage konnte nicht gelöscht werden."), "error");
+    } finally {
+      setTemplateDeletePendingId(null);
+    }
+  };
+
+  const getEventKeyLabel = (key: NotificationEventKey): string => {
+    const opt = EVENT_KEY_OPTIONS.find((o) => o.value === key);
+    return opt ? opt.label : key;
+  };
+
   const handleExport = async (dataset: BackupDataset) => {
     setBusyId(dataset.id);
     try {
@@ -378,6 +527,17 @@ export const SystemPage = () => {
     [savedSearches]
   );
 
+  const loadScannerStatus = async () => {
+    try {
+      const response = await api.get<{ enabled: boolean; reachable: boolean }>("/v1/status/scanner-health");
+      setScannerStatus(response.data);
+    } catch (error) {
+      console.error("Failed to load scanner status", error);
+    } finally {
+      setScannerLoading(false);
+    }
+  };
+
   const loadNotificationStatus = async () => {
     try {
       const status = await fetchNotificationStatus();
@@ -392,7 +552,7 @@ export const SystemPage = () => {
   const handleTestNotification = async () => {
     setNotifTestBusy(true);
     try {
-      const result = await sendTestNotification();
+      const result = await sendTestNotification(notifTestTag.trim() || undefined);
       showToast(result.message, result.success ? "success" : "error");
     } catch (error) {
       console.error("Test notification failed", error);
@@ -425,6 +585,8 @@ export const SystemPage = () => {
     void loadNotificationStatus();
     void loadNotifRules();
     void loadChannels();
+    void loadTemplates();
+    void loadScannerStatus();
   }, []);
 
   useEffect(() => {
@@ -642,27 +804,32 @@ export const SystemPage = () => {
   return (
     <>
     {authRequired && !authOk ? (
-      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <div className="card" style={{ maxWidth: "400px", width: "100%", textAlign: "center" }}>
+      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }} onClick={() => navigate(-1)}>
+        <div className="dialog" onClick={(e) => e.stopPropagation()}>
           <h3>{t("System Password", "System-Passwort")}</h3>
-          <p className="muted">{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
+          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
           <input
             type="password"
             value={authPassword}
             onChange={(e) => setAuthPassword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
             placeholder={t("Password", "Passwort")}
             autoFocus
-            style={{ width: "100%", marginTop: "1rem", boxSizing: "border-box" }}
           />
           {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
-          <div style={{ marginTop: "1rem" }}>
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate(-1)}
+            >
+              {t("Cancel", "Abbrechen")}
+            </button>
             <button
               type="button"
               className="btn btn-primary"
               onClick={() => void handleAuthSubmit()}
               disabled={authChecking || !authPassword}
-              style={{ width: "100%", boxSizing: "border-box" }}
             >
               {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
             </button>
@@ -670,8 +837,10 @@ export const SystemPage = () => {
         </div>
       </div>
     ) : authRequired === null ? (
-      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <p className="muted">{t("Loading...", "Laden…")}</p>
+      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }}>
+        <div className="dialog">
+          <p className="muted">{t("Loading...", "Laden…")}</p>
+        </div>
       </div>
     ) : (
     <div className="page">
@@ -700,85 +869,134 @@ export const SystemPage = () => {
       </section>
 
       <section className="card">
-        <h2>{t("Notifications", "Benachrichtigungen")}</h2>
+        <h2>{t("Services", "Dienste")}</h2>
         <p className="muted">
           {t(
-            "Apprise-based notifications for scan results, sync failures, and new vulnerabilities.",
-            "Apprise-basierte Benachrichtigungen für Scan-Ergebnisse, Sync-Fehler und neue Schwachstellen."
+            "Connection status of external services used by Hecate.",
+            "Verbindungsstatus der von Hecate verwendeten externen Dienste."
           )}
         </p>
-        {notifLoading ? (
-          <p className="muted" style={{ marginTop: "1rem" }}>
-            {t("Loading notification status ...", "Lade Benachrichtigungsstatus …")}
-          </p>
-        ) : notifStatus ? (
-          <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {/* Apprise (Notifications) */}
+          {notifLoading ? (
+            <p className="muted">{t("Loading...", "Laden…")}</p>
+          ) : notifStatus ? (
             <div
               style={{
                 display: "flex",
                 flexWrap: "wrap",
                 alignItems: "center",
-                gap: "1rem",
-                padding: "0.75rem",
-                borderRadius: "0.5rem",
+                gap: "0.75rem",
+                padding: "0.6rem 0.75rem",
+                borderRadius: "0.4rem",
                 background: "rgba(255, 255, 255, 0.02)",
                 border: "1px solid rgba(255, 255, 255, 0.06)",
               }}
             >
-              <div style={{ flex: "1 1 auto" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <strong>{t("Status", "Status")}:</strong>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "0.35rem",
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      background: notifStatus.enabled
-                        ? notifStatus.reachable
-                          ? "rgba(143, 255, 176, 0.13)"
-                          : "rgba(255, 163, 163, 0.13)"
-                        : "rgba(136, 136, 136, 0.13)",
-                      color: notifStatus.enabled
-                        ? notifStatus.reachable
-                          ? "#8fffb0"
-                          : "#ffa3a3"
-                        : "#888",
-                      border: `1px solid ${
-                        notifStatus.enabled
-                          ? notifStatus.reachable
-                            ? "rgba(143, 255, 176, 0.27)"
-                            : "rgba(255, 163, 163, 0.27)"
-                          : "rgba(136, 136, 136, 0.27)"
-                      }`,
-                    }}
-                  >
-                    {notifStatus.enabled
+              <strong style={{ fontSize: "0.85rem", minWidth: "80px" }}>Apprise</strong>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "0.2rem 0.4rem",
+                  borderRadius: "0.3rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  background: notifStatus.enabled
+                    ? notifStatus.reachable
+                      ? "rgba(143, 255, 176, 0.13)"
+                      : "rgba(255, 163, 163, 0.13)"
+                    : "rgba(136, 136, 136, 0.13)",
+                  color: notifStatus.enabled
+                    ? notifStatus.reachable
+                      ? "#8fffb0"
+                      : "#ffa3a3"
+                    : "#888",
+                  border: `1px solid ${
+                    notifStatus.enabled
                       ? notifStatus.reachable
-                        ? t("Connected", "Verbunden")
-                        : t("Unreachable", "Nicht erreichbar")
-                      : t("Disabled", "Deaktiviert")}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleTestNotification()}
-                disabled={notifTestBusy || !notifStatus.enabled}
-                style={{ minWidth: "160px", fontSize: "0.85rem" }}
+                        ? "rgba(143, 255, 176, 0.27)"
+                        : "rgba(255, 163, 163, 0.27)"
+                      : "rgba(136, 136, 136, 0.27)"
+                  }`,
+                }}
               >
-                {notifTestBusy
-                  ? t("Sending...", "Wird gesendet…")
-                  : t("Send test notification", "Testbenachrichtigung senden")}
-              </button>
+                {notifStatus.enabled
+                  ? notifStatus.reachable
+                    ? t("Connected", "Verbunden")
+                    : t("Unreachable", "Nicht erreichbar")
+                  : t("Disabled", "Deaktiviert")}
+              </span>
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <input
+                  type="text"
+                  value={notifTestTag}
+                  onChange={(e) => setNotifTestTag(e.target.value)}
+                  placeholder="Tag"
+                  style={{ width: "70px", padding: "0.3rem 0.4rem", fontSize: "0.8rem", boxSizing: "border-box" }}
+                  disabled={!notifStatus.enabled}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleTestNotification()}
+                  disabled={notifTestBusy || !notifStatus.enabled}
+                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.6rem", whiteSpace: "nowrap" }}
+                >
+                  {notifTestBusy ? "..." : t("Test", "Test")}
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <p className="muted" style={{ marginTop: "1rem" }}>
-            {t("Could not load notification status.", "Benachrichtigungsstatus konnte nicht geladen werden.")}
-          </p>
-        )}
+          ) : null}
+
+          {/* Scanner */}
+          {scannerLoading ? null : scannerStatus ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "0.75rem",
+                padding: "0.6rem 0.75rem",
+                borderRadius: "0.4rem",
+                background: "rgba(255, 255, 255, 0.02)",
+                border: "1px solid rgba(255, 255, 255, 0.06)",
+              }}
+            >
+              <strong style={{ fontSize: "0.85rem", minWidth: "80px" }}>Scanner</strong>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "0.2rem 0.4rem",
+                  borderRadius: "0.3rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  background: scannerStatus.enabled
+                    ? scannerStatus.reachable
+                      ? "rgba(143, 255, 176, 0.13)"
+                      : "rgba(255, 163, 163, 0.13)"
+                    : "rgba(136, 136, 136, 0.13)",
+                  color: scannerStatus.enabled
+                    ? scannerStatus.reachable
+                      ? "#8fffb0"
+                      : "#ffa3a3"
+                    : "#888",
+                  border: `1px solid ${
+                    scannerStatus.enabled
+                      ? scannerStatus.reachable
+                        ? "rgba(143, 255, 176, 0.27)"
+                        : "rgba(255, 163, 163, 0.27)"
+                      : "rgba(136, 136, 136, 0.27)"
+                  }`,
+                }}
+              >
+                {scannerStatus.enabled
+                  ? scannerStatus.reachable
+                    ? t("Connected", "Verbunden")
+                    : t("Unreachable", "Nicht erreichbar")
+                  : t("Disabled", "Deaktiviert")}
+              </span>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="card">
@@ -817,10 +1035,7 @@ export const SystemPage = () => {
                   style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
                 />
                 <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
-                  {t(
-                    "See apprise.wiki for all supported URL formats (90+ services).",
-                    "Siehe apprise.wiki für alle unterstützten URL-Formate (90+ Dienste)."
-                  )}
+                  {t("See ", "Siehe ")}<a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noopener noreferrer">Apprise Wiki</a>{t(" for all supported URL formats (90+ services).", " für alle unterstützten URL-Formate (90+ Dienste).")}
                 </p>
               </div>
               <div>
@@ -1163,6 +1378,216 @@ export const SystemPage = () => {
                           style={{ fontSize: "0.8rem", minWidth: "60px" }}
                         >
                           {ruleDeletePendingId === rule.id ? "..." : t("Delete", "Löschen")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>{t("Message Templates", "Nachrichtenvorlagen")}</h2>
+        <p className="muted">
+          {t(
+            "Customize notification messages per event type. Use a specific tag to override messages for certain channels, or 'all' for a global default. Templates use {placeholder} variables.",
+            "Passe Benachrichtigungstexte pro Ereignistyp an. Verwende einen bestimmten Tag für kanalspezifische Nachrichten oder 'all' als globalen Standard. Vorlagen verwenden {Platzhalter}-Variablen."
+          )}
+        </p>
+
+        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button type="button" onClick={() => openTemplateForm()} style={{ fontSize: "0.85rem" }}>
+            {t("+ Add Template", "+ Vorlage hinzufügen")}
+          </button>
+        </div>
+
+        {showTemplateForm && (
+          <div style={{
+            marginTop: "1rem",
+            padding: "1rem",
+            borderRadius: "0.5rem",
+            background: "rgba(255, 255, 255, 0.03)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Event Type", "Ereignistyp")}
+                  </label>
+                  <select
+                    value={tplEventKey}
+                    onChange={(e) => {
+                      const key = e.target.value as NotificationEventKey;
+                      setTplEventKey(key);
+                      if (!editingTemplate) {
+                        const def = DEFAULT_TEMPLATES[key];
+                        setTplTitle(def.title);
+                        setTplBody(def.body);
+                      }
+                    }}
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  >
+                    {EVENT_KEY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Tag", "Tag")}
+                  </label>
+                  <input
+                    type="text"
+                    value={tplTag}
+                    onChange={(e) => setTplTag(e.target.value)}
+                    placeholder="all"
+                    style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                  />
+                  <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+                    {t("'all' = global default. Use a channel tag (e.g. email, signal) for channel-specific messages.", "'all' = globaler Standard. Verwende einen Kanal-Tag (z.B. email, signal) für kanalspezifische Nachrichten.")}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {t("Title Template", "Titel-Vorlage")}
+                </label>
+                <input
+                  type="text"
+                  value={tplTitle}
+                  onChange={(e) => setTplTitle(e.target.value)}
+                  placeholder={DEFAULT_TEMPLATES[tplEventKey].title}
+                  style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {t("Body Template", "Text-Vorlage")}
+                </label>
+                <textarea
+                  value={tplBody}
+                  onChange={(e) => setTplBody(e.target.value)}
+                  placeholder={DEFAULT_TEMPLATES[tplEventKey].body}
+                  rows={tplEventKey === "watch_rule_match" ? 8 : 5}
+                  style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                <p className="muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+                  {t("Placeholders", "Platzhalter")}: <code style={{ fontSize: "0.8rem", background: "rgba(255,255,255,0.06)", padding: "0.1rem 0.3rem", borderRadius: "0.2rem" }}>{TEMPLATE_PLACEHOLDERS[tplEventKey].scalars}</code>
+                </p>
+                {TEMPLATE_PLACEHOLDERS[tplEventKey].loop && (
+                  <div style={{ margin: 0, fontSize: "0.8rem", opacity: 0.6 }}>
+                    <p style={{ margin: "0.2rem 0 0.15rem" }}>
+                      {t("Loop block", "Schleifen-Block")} ({t("iterate over each vulnerability", "über jede Schwachstelle iterieren")}):
+                    </p>
+                    <pre style={{
+                      margin: 0,
+                      padding: "0.4rem 0.6rem",
+                      background: "rgba(255,255,255,0.04)",
+                      borderRadius: "0.3rem",
+                      fontSize: "0.75rem",
+                      lineHeight: 1.5,
+                      overflowX: "auto",
+                      whiteSpace: "pre-wrap",
+                    }}>
+{`{#each vulnerabilities}
+{id} — {severity} ({cvss}) — {summary}
+{/each}`}
+                    </pre>
+                    <p style={{ margin: "0.15rem 0 0" }}>
+                      {t("Per-vulnerability fields", "Felder pro Schwachstelle")}: <code style={{ fontSize: "0.75rem", background: "rgba(255,255,255,0.06)", padding: "0.1rem 0.3rem", borderRadius: "0.2rem" }}>{"{id}, {severity}, {cvss}, {cwes}, {title}, {summary}, {vendors}, {products}, {versions}, {exploited}, {source}, {published}"}</code>
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" onClick={() => void handleSaveTemplate()} disabled={templateSaving || !tplTitle.trim() || !tplBody.trim()} style={{ fontSize: "0.85rem" }}>
+                  {templateSaving
+                    ? t("Saving...", "Speichern…")
+                    : editingTemplate
+                      ? t("Update Template", "Vorlage aktualisieren")
+                      : t("Create Template", "Vorlage erstellen")}
+                </button>
+                <button type="button" onClick={() => { setShowTemplateForm(false); resetTemplateForm(); }} style={{ fontSize: "0.85rem" }}>
+                  {t("Cancel", "Abbrechen")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {templatesLoading ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t("Loading templates...", "Lade Vorlagen…")}
+          </p>
+        ) : templates.length === 0 ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            {t(
+              "No custom message templates configured. Default messages will be used.",
+              "Keine benutzerdefinierten Nachrichtenvorlagen konfiguriert. Standardnachrichten werden verwendet."
+            )}
+          </p>
+        ) : (
+          <div style={{ marginTop: "1rem", overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "600px" }}>
+              <thead>
+                <tr>
+                  <th style={syncTableHeaderStyle}>{t("Event", "Ereignis")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Tag", "Tag")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Title", "Titel")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Body", "Text")}</th>
+                  <th style={syncTableHeaderStyle}>{t("Actions", "Aktionen")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {templates.map((tpl) => (
+                  <tr key={tpl.id}>
+                    <td style={syncTableCellStyle}>
+                      <span style={{
+                        display: "inline-block",
+                        padding: "0.2rem 0.4rem",
+                        borderRadius: "0.3rem",
+                        fontSize: "0.8rem",
+                        background: "rgba(92, 132, 255, 0.1)",
+                        color: "#a0b4ff",
+                        border: "1px solid rgba(92, 132, 255, 0.2)",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {getEventKeyLabel(tpl.eventKey)}
+                      </span>
+                    </td>
+                    <td style={syncTableCellStyle}>
+                      <code style={{ fontSize: "0.85rem", background: "rgba(255,255,255,0.06)", padding: "0.15rem 0.35rem", borderRadius: "0.25rem" }}>
+                        {tpl.tag}
+                      </code>
+                    </td>
+                    <td style={{ ...syncTableCellStyle, maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>{tpl.titleTemplate}</span>
+                    </td>
+                    <td style={{ ...syncTableCellStyle, maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>{tpl.bodyTemplate.substring(0, 80)}{tpl.bodyTemplate.length > 80 ? "…" : ""}</span>
+                    </td>
+                    <td style={syncTableCellStyle}>
+                      <div style={{ display: "flex", gap: "0.4rem" }}>
+                        <button
+                          type="button"
+                          onClick={() => openTemplateForm(tpl)}
+                          style={{ fontSize: "0.8rem", minWidth: "60px" }}
+                        >
+                          {t("Edit", "Bearbeiten")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteTemplate(tpl)}
+                          disabled={templateDeletePendingId === tpl.id}
+                          style={{ fontSize: "0.8rem", minWidth: "60px" }}
+                        >
+                          {templateDeletePendingId === tpl.id ? "..." : t("Delete", "Löschen")}
                         </button>
                       </div>
                     </td>

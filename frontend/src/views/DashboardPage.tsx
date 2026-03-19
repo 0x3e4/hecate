@@ -380,7 +380,16 @@ const SEVERITY_COLORS: Record<string, string> = {
 const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [dayOffset, setDayOffset] = useState(0);
+
+  const getDateForOffset = (offset: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    return d.toISOString().split("T")[0];
+  };
+
+  const selectedDate = dayOffset > 0 ? getDateForOffset(dayOffset) : "";
+  const isToday = dayOffset === 0;
 
   useEffect(() => {
     const load = async () => {
@@ -395,47 +404,96 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
       }
     };
     load();
-  }, [selectedDate]);
+  }, [dayOffset]);
 
-  if (loading) return <TodayStatsSkeleton />;
+  const formatDisplayDate = (offset: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    return d.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", {
+      weekday: "short", day: "2-digit", month: "2-digit", year: "numeric",
+    });
+  };
 
-  const datePicker = (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-      {selectedDate && (
+  const navBtnStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "6px",
+    padding: "0.3rem 0.5rem",
+    cursor: "pointer",
+    color: "rgba(255,255,255,0.7)",
+    fontSize: "0.9rem",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "32px",
+  };
+
+  const dateNav = (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      {!isToday && (
         <button
-          onClick={() => setSelectedDate("")}
+          onClick={() => setDayOffset(0)}
           title={t("Back to today", "Zurück zu heute")}
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "6px",
-            padding: "0.3rem 0.6rem",
-            cursor: "pointer",
-            color: "rgba(255,255,255,0.7)",
-            fontSize: "0.8rem",
-          }}
+          style={{ ...navBtnStyle, fontSize: "0.75rem", padding: "0.3rem 0.6rem" }}
         >
           {t("Today", "Heute")}
         </button>
       )}
-      <input
-        type="date"
-        value={selectedDate}
-        max={new Date().toISOString().split("T")[0]}
-        onChange={(e) => setSelectedDate(e.target.value)}
+      <button
+        onClick={() => setDayOffset((o) => o + 1)}
+        title={t("Previous day", "Vorheriger Tag")}
+        style={navBtnStyle}
+      >
+        ‹
+      </button>
+      <span
         style={{
-          background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: "6px",
-          padding: "0.3rem 0.5rem",
-          color: "rgba(255,255,255,0.7)",
           fontSize: "0.8rem",
-          cursor: "pointer",
-          colorScheme: "dark",
+          color: "rgba(255,255,255,0.7)",
+          minWidth: "120px",
+          textAlign: "center",
+          userSelect: "none",
         }}
-      />
+      >
+        {isToday ? t("Today", "Heute") : formatDisplayDate(dayOffset)}
+      </span>
+      <button
+        onClick={() => setDayOffset((o) => Math.max(0, o - 1))}
+        disabled={isToday}
+        title={t("Next day", "Nächster Tag")}
+        style={{
+          ...navBtnStyle,
+          opacity: isToday ? 0.3 : 1,
+          cursor: isToday ? "default" : "pointer",
+        }}
+      >
+        ›
+      </button>
     </div>
   );
+
+  if (loading) {
+    return (
+      <section className="card" style={{ marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+          <SkeletonBlock height="1.2rem" width="200px" />
+          {dateNav}
+        </div>
+        <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))" }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.03)", borderRadius: "12px", padding: "1rem 1.25rem", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <SkeletonBlock height="0.9rem" width="120px" style={{ marginBottom: "0.75rem" }} />
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                {Array.from({ length: 5 }).map((_, j) => (
+                  <SkeletonBlock key={j} height="1.4rem" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (!data || data.total === 0) {
     return (
@@ -449,7 +507,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
                 )
               : t("No vulnerabilities published yet today.", "Heute wurden noch keine Schwachstellen veröffentlicht.")}
           </p>
-          {datePicker}
+          {dateNav}
         </div>
       </section>
     );
@@ -483,7 +541,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
                 `${data.total.toLocaleString(locale)} Schwachstellen heute`
               )}
         </span>
-        {datePicker}
+        {dateNav}
       </div>
 
       <div

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+import httpx
+
 from app.core.config import settings
 
 router = APIRouter()
@@ -14,6 +16,28 @@ async def get_health() -> dict[str, str]:
         "environment": settings.environment,
         "service": "hecate-backend",
     }
+
+
+class ScannerHealthResponse(BaseModel):
+    enabled: bool = Field(alias="enabled", serialization_alias="enabled")
+    reachable: bool = Field(alias="reachable", serialization_alias="reachable")
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/scanner-health")
+async def scanner_health() -> ScannerHealthResponse:
+    """Check whether the scanner sidecar is reachable."""
+    enabled = settings.sca_enabled
+    if not enabled:
+        return ScannerHealthResponse(enabled=False, reachable=False)
+    url = f"{settings.sca_scanner_url}/health"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(url)
+            reachable = response.status_code < 400
+    except Exception:
+        reachable = False
+    return ScannerHealthResponse(enabled=True, reachable=reachable)
 
 
 class SystemAuthRequest(BaseModel):

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 import structlog
@@ -10,7 +11,12 @@ import structlog
 from app.core.config import settings
 from app.db.mongo import get_database
 from app.repositories.notification_rule_repository import NotificationRuleRepository
-from app.schemas.notification import NotificationRuleCreate, NotificationRuleResponse
+from app.schemas.notification import (
+    NotificationRuleCreate,
+    NotificationRuleResponse,
+    NotificationTemplateCreate,
+    NotificationTemplateResponse,
+)
 
 log = structlog.get_logger()
 
@@ -34,6 +40,12 @@ class NotificationService:
     @property
     def enabled(self) -> bool:
         return settings.notifications_enabled
+
+    def _format_now(self) -> str:
+        """Return the current timestamp formatted in the configured timezone."""
+        import os
+        tz = ZoneInfo(os.environ.get("TZ", "UTC"))
+        return datetime.now(tz=tz).strftime("%Y-%m-%d %H:%M:%S %Z")
 
     # ------------------------------------------------------------------
     # Low-level send
@@ -77,6 +89,15 @@ class NotificationService:
                 if response.status_code < 300:
                     log.info("notification.sent", title=title, tag=tag_value)
                     return True
+                # 424 = partial delivery (some targets succeeded, some failed)
+                if response.status_code == 424:
+                    log.warning(
+                        "notification.partial_delivery",
+                        status=response.status_code,
+                        detail=response.text[:200],
+                        title=title,
+                    )
+                    return True
                 log.warning(
                     "notification.send_failed",
                     status=response.status_code,
@@ -117,13 +138,13 @@ class NotificationService:
 
         return {"enabled": True, "reachable": reachable}
 
-    async def send_test(self) -> bool:
+    async def send_test(self, *, tag: str | None = None) -> bool:
         """Send a test notification."""
-        now = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
         return await self.send(
             title="Hecate \u2014 Test Notification",
-            body=f"This is a test notification from Hecate.\nTimestamp: {now}",
+            body=f"This is a test notification from Hecate.\nTimestamp: {self._format_now()}",
             notify_type="info",
+            tag=tag,
         )
 
     # ------------------------------------------------------------------
@@ -263,42 +284,46 @@ class NotificationService:
         icon = "\u2705" if status == "completed" else "\u274c"
         event_type = "scan_completed" if status == "completed" else "scan_failed"
         notify_type = "success" if status == "completed" else "failure"
-        body_lines = [
-            f"Target: {target}",
-            f"Status: {status}",
-            f"Findings: {findings_count}",
-            f"Duration: {duration_seconds:.1f}s",
-            f"Scan ID: {scan_id}",
-        ]
-        await self.notify_event(
-            event_type,
-            f"{icon} Hecate \u2014 SCA Scan {status.title()}",
-            "\n".join(body_lines),
-            notify_type=notify_type,
-        )
+        variables = {
+            "icon": icon,
+            "target": target,
+            "status": status,
+            "findings": str(findings_count),
+            "duration": f"{duration_seconds:.1f}",
+            "scan_id": scan_id,
+        }
+        default_title = f"{icon} Hecate \u2014 SCA Scan {status.title()}"
+        default_body = f"Target: {target}\nStatus: {status}\nFindings: {findings_count}\nDuration: {duration_seconds:.1f}s\nScan ID: {scan_id}"
+        title, body = await self._apply_template(event_type, None, variables, default_title, default_body)
+        await self.notify_event(event_type, title, body, notify_type=notify_type)
 
     async def notify_sync_failed(self, *, job_name: str, error: str) -> None:
-        body_lines = [
-            f"Job: {job_name}",
-            f"Error: {error[:500]}",
-            f"Time: {datetime.now(tz=UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        ]
-        await self.notify_event(
-            "sync_failed",
-            f"\u274c Hecate \u2014 Sync Failed: {job_name}",
-            "\n".join(body_lines),
-            notify_type="failure",
-        )
+        now_str = self._format_now()
+        variables = {
+            "job_name": job_name,
+            "error": error[:500],
+            "time": now_str,
+        }
+        default_title = f"\u274c Hecate \u2014 Sync Failed: {job_name}"
+        default_body = f"Job: {job_name}\nError: {error[:500]}\nTime: {now_str}"
+        title, body = await self._apply_template("sync_failed", None, variables, default_title, default_body)
+        await self.notify_event("sync_failed", title, body, notify_type="failure")
 
     async def notify_new_vulnerabilities_event(self, *, source: str, inserted: int) -> None:
         if inserted <= 0:
             return
-        await self.notify_event(
-            "new_vulnerabilities",
-            f"\U0001f195 Hecate \u2014 {inserted} New Vulnerabilit{'y' if inserted == 1 else 'ies'}",
-            f"Source: {source}\nNew entries: {inserted}",
-            notify_type="info",
-        )
+        now_str = self._format_now()
+        variables = {
+            "icon": "\U0001f195",
+            "source": source,
+            "count": str(inserted),
+            "noun": "Vulnerability" if inserted == 1 else "Vulnerabilities",
+            "time": now_str,
+        }
+        default_title = f"\U0001f195 Hecate \u2014 {inserted} New {variables['noun']}"
+        default_body = f"Source: {source}\nNew entries: {inserted}\nTime: {now_str}"
+        title, body = await self._apply_template("new_vulnerabilities", None, variables, default_title, default_body)
+        await self.notify_event("new_vulnerabilities", title, body, notify_type="info")
 
     # ------------------------------------------------------------------
     # Watch-rule evaluation (saved_search, vendor, product, dql)
@@ -406,16 +431,57 @@ class NotificationService:
 
         if results:
             count = len(results)
-            sample_ids = [r.vuln_id for r in results[:5]]
-            body_lines = [
+            now_str = self._format_now()
+
+            # Collect aggregate vendor/product/version info
+            all_vendors: set[str] = set()
+            all_products: set[str] = set()
+            all_versions: set[str] = set()
+            vuln_details: list[dict[str, str]] = []
+            for r in results:
+                all_vendors.update(r.vendors)
+                all_products.update(r.products)
+                all_versions.update(r.product_versions)
+                vuln_details.append({
+                    "id": r.vuln_id,
+                    "severity": r.severity or "N/A",
+                    "cvss": str(r.cvss_score) if r.cvss_score is not None else "N/A",
+                    "cwes": ", ".join(r.cwes) if r.cwes else "N/A",
+                    "summary": (r.summary[:200] + "…") if len(r.summary) > 200 else r.summary,
+                    "title": (r.title[:120] + "…") if len(r.title) > 120 else r.title,
+                    "vendors": ", ".join(r.vendors) if r.vendors else "N/A",
+                    "products": ", ".join(r.products) if r.products else "N/A",
+                    "versions": ", ".join(r.product_versions[:5]) if r.product_versions else "N/A",
+                    "exploited": "Yes" if r.exploited else "No",
+                    "source": r.source or "N/A",
+                    "published": r.published.strftime("%Y-%m-%d") if r.published else "N/A",
+                })
+
+            vuln_ids_str = ", ".join(r.vuln_id for r in results[:10])
+            variables = {
+                "icon": "\U0001f6a8",
+                "rule_name": rule_name,
+                "count": str(count),
+                "noun": "Vulnerability" if count == 1 else "Vulnerabilities",
+                "vulnerabilities_list": vuln_ids_str,
+                "vendors": ", ".join(sorted(all_vendors)[:10]) if all_vendors else "N/A",
+                "products": ", ".join(sorted(all_products)[:10]) if all_products else "N/A",
+                "versions": ", ".join(sorted(all_versions)[:10]) if all_versions else "N/A",
+                "time": now_str,
+                "vulnerabilities": vuln_details,
+            }
+            default_title = f"\U0001f6a8 Hecate \u2014 {count} New {variables['noun']}: {rule_name}"
+            default_body_lines = [
                 f"Rule: {rule_name}",
                 f"Matches: {count}",
-                f"Examples: {', '.join(sample_ids)}",
-                f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                f"Vulnerabilities: {vuln_ids_str}",
+                f"Time: {now_str}",
             ]
+            default_body = "\n".join(default_body_lines)
+            title, body = await self._apply_template("watch_rule_match", tag, variables, default_title, default_body)
             await self.send(
-                title=f"\U0001f6a8 Hecate \u2014 {count} New Match{'es' if count != 1 else ''}: {rule_name}",
-                body="\n".join(body_lines),
+                title=title,
+                body=body,
                 notify_type="warning",
                 tag=tag,
             )
@@ -478,6 +544,164 @@ class NotificationService:
             severity=_split("severity"),
             exploited_only=params.get("exploitedOnly") == "true",
             limit=10,
+        )
+
+    # ------------------------------------------------------------------
+    # Message Template CRUD
+    # ------------------------------------------------------------------
+
+    async def _get_templates_collection(self):
+        db = await get_database()
+        return db[settings.mongo_notification_templates_collection]
+
+    async def list_templates(self) -> list[NotificationTemplateResponse]:
+        collection = await self._get_templates_collection()
+        cursor = collection.find({}).sort("event_key", 1)
+        docs: list[dict[str, Any]] = []
+        async for doc in cursor:
+            docs.append(doc)
+        return [self._map_template(d) for d in docs]
+
+    async def get_template(self, template_id: str) -> NotificationTemplateResponse | None:
+        collection = await self._get_templates_collection()
+        doc = await collection.find_one({"_id": template_id})
+        if doc is None:
+            return None
+        return self._map_template(doc)
+
+    async def create_template(self, payload: NotificationTemplateCreate) -> NotificationTemplateResponse:
+        collection = await self._get_templates_collection()
+        now = datetime.now(tz=UTC)
+        template_id = str(uuid4())
+        doc = {
+            "_id": template_id,
+            "event_key": payload.event_key,
+            "tag": payload.tag,
+            "title_template": payload.title_template,
+            "body_template": payload.body_template,
+            "created_at": now,
+            "updated_at": now,
+        }
+        await collection.insert_one(doc)
+        return self._map_template(doc)
+
+    async def update_template(
+        self, template_id: str, payload: NotificationTemplateCreate
+    ) -> NotificationTemplateResponse | None:
+        collection = await self._get_templates_collection()
+        existing = await collection.find_one({"_id": template_id})
+        if existing is None:
+            return None
+        now = datetime.now(tz=UTC)
+        updates = {
+            "event_key": payload.event_key,
+            "tag": payload.tag,
+            "title_template": payload.title_template,
+            "body_template": payload.body_template,
+            "updated_at": now,
+        }
+        await collection.update_one({"_id": template_id}, {"$set": updates})
+        doc = await collection.find_one({"_id": template_id})
+        return self._map_template(doc) if doc else None
+
+    async def delete_template(self, template_id: str) -> bool:
+        collection = await self._get_templates_collection()
+        result = await collection.delete_one({"_id": template_id})
+        return result.deleted_count > 0
+
+    async def _apply_template(
+        self,
+        event_key: str,
+        tag: str | None,
+        variables: dict[str, Any],
+        default_title: str,
+        default_body: str,
+    ) -> tuple[str, str]:
+        """Apply a message template if one exists, otherwise return defaults."""
+        tpl = await self._resolve_template(event_key, tag)
+        if tpl is None:
+            return default_title, default_body
+        title_tpl, body_tpl = tpl
+        return self._render_template(title_tpl, variables), self._render_template(body_tpl, variables)
+
+    async def _resolve_template(
+        self, event_key: str, tag: str | None
+    ) -> tuple[str, str] | None:
+        """Find the best matching template for an event + tag combo.
+
+        Priority: exact tag match -> "all" fallback -> None (use hardcoded default).
+        """
+        collection = await self._get_templates_collection()
+        # Try exact tag match first
+        if tag and tag != "all":
+            doc = await collection.find_one({"event_key": event_key, "tag": tag})
+            if doc:
+                return doc["title_template"], doc["body_template"]
+        # Fallback to global "all" template
+        doc = await collection.find_one({"event_key": event_key, "tag": "all"})
+        if doc:
+            return doc["title_template"], doc["body_template"]
+        return None
+
+    def _render_template(
+        self, template: str, variables: dict[str, Any]
+    ) -> str:
+        """Render a template string with {placeholder} variables and {#each list}...{/each} loops.
+
+        Loop syntax:
+            {#each vulnerabilities}
+            {id} — {severity} ({cvss}) — {summary}
+            {/each}
+
+        Inside a loop block, placeholders resolve against each item dict.
+        Top-level placeholders are resolved outside loop blocks.
+        Unknown placeholders are left as-is.
+        """
+        import re
+
+        result = template
+
+        # Process {#each <key>}...{/each} blocks
+        each_pattern = re.compile(r"\{#each\s+(\w+)\}(.*?)\{/each\}", re.DOTALL)
+        def _expand_each(match: re.Match[str]) -> str:
+            list_key = match.group(1)
+            block_tpl = match.group(2)
+            # Strip one leading newline if present (so template formatting looks clean)
+            if block_tpl.startswith("\n"):
+                block_tpl = block_tpl[1:]
+            if block_tpl.endswith("\n"):
+                block_tpl = block_tpl[:-1]
+            items = variables.get(list_key)
+            if not isinstance(items, list) or not items:
+                return ""
+            rendered_items: list[str] = []
+            for item in items:
+                line = block_tpl
+                if isinstance(item, dict):
+                    for k, v in item.items():
+                        line = line.replace(f"{{{k}}}", str(v))
+                else:
+                    line = line.replace("{item}", str(item))
+                rendered_items.append(line)
+            return "\n".join(rendered_items)
+
+        result = each_pattern.sub(_expand_each, result)
+
+        # Process top-level scalar placeholders
+        for key, value in variables.items():
+            if not isinstance(value, list):
+                result = result.replace(f"{{{key}}}", str(value))
+        return result
+
+    def _map_template(self, doc: dict[str, Any]) -> NotificationTemplateResponse:
+        return NotificationTemplateResponse(
+            id=str(doc.get("_id", "")),
+            event_key=doc.get("event_key", ""),
+            tag=doc.get("tag", "all"),
+            title_template=doc.get("title_template", ""),
+            body_template=doc.get("body_template", ""),
+            created_at=doc.get("created_at", datetime.now(tz=UTC)),
+            updated_at=doc.get("updated_at", datetime.now(tz=UTC)),
         )
 
     # ------------------------------------------------------------------

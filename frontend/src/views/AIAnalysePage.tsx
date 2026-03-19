@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import {
   getAiProviders,
@@ -24,6 +24,7 @@ import { usePersistentState } from "../hooks/usePersistentState";
 
 export const AIAnalysePage = () => {
   const { t, locale } = useI18n();
+  const navigate = useNavigate();
 
   // --- Page-level auth gate ---
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
@@ -256,27 +257,32 @@ export const AIAnalysePage = () => {
 
   if (authRequired && !authOk) {
     return (
-      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <div className="card" style={{ maxWidth: "400px", width: "100%", textAlign: "center" }}>
+      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }} onClick={() => navigate(-1)}>
+        <div className="dialog" onClick={(e) => e.stopPropagation()}>
           <h3>{t("AI Analysis Password", "AI-Analyse-Passwort")}</h3>
-          <p className="muted">{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
+          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
           <input
             type="password"
             value={authPassword}
             onChange={(e) => setAuthPassword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
             placeholder={t("Password", "Passwort")}
             autoFocus
-            style={{ width: "100%", marginTop: "1rem", boxSizing: "border-box" }}
           />
           {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
-          <div style={{ marginTop: "1rem" }}>
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate(-1)}
+            >
+              {t("Cancel", "Abbrechen")}
+            </button>
             <button
               type="button"
               className="btn btn-primary"
               onClick={() => void handleAuthSubmit()}
               disabled={authChecking || !authPassword}
-              style={{ width: "100%", boxSizing: "border-box" }}
             >
               {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
             </button>
@@ -288,8 +294,10 @@ export const AIAnalysePage = () => {
 
   if (authRequired === null) {
     return (
-      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <p className="muted">{t("Loading...", "Laden…")}</p>
+      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }}>
+        <div className="dialog">
+          <p className="muted">{t("Loading...", "Laden…")}</p>
+        </div>
       </div>
     );
   }

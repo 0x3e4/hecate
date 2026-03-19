@@ -159,3 +159,62 @@ class NotificationChannelAddRequest(BaseModel):
     tag: str = Field(default="all", alias="tag", serialization_alias="tag")
 
     model_config = {"populate_by_name": True}
+
+
+# --- Notification Message Templates ---
+
+
+class NotificationTemplateCreate(BaseModel):
+    """Payload for creating / updating a notification message template."""
+
+    event_key: str = Field(
+        min_length=1,
+        max_length=100,
+        alias="eventKey",
+        serialization_alias="eventKey",
+        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match",
+    )
+    tag: str = Field(
+        default="all",
+        alias="tag",
+        serialization_alias="tag",
+        description="Apprise tag this template applies to, or 'all' for global default",
+    )
+    title_template: str = Field(
+        min_length=1,
+        max_length=500,
+        alias="titleTemplate",
+        serialization_alias="titleTemplate",
+        description="Title template with {placeholders}",
+    )
+    body_template: str = Field(
+        min_length=1,
+        max_length=5000,
+        alias="bodyTemplate",
+        serialization_alias="bodyTemplate",
+        description="Body template with {placeholders}",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class NotificationTemplateResponse(BaseModel):
+    id: str = Field(alias="id", serialization_alias="id")
+    event_key: str = Field(alias="eventKey", serialization_alias="eventKey")
+    tag: str = Field(default="all", alias="tag", serialization_alias="tag")
+    title_template: str = Field(alias="titleTemplate", serialization_alias="titleTemplate")
+    body_template: str = Field(alias="bodyTemplate", serialization_alias="bodyTemplate")
+    created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt", serialization_alias="updatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class NotificationTemplateListResponse(BaseModel):
+    items: list[NotificationTemplateResponse] = Field(
+        default_factory=list,
+        alias="items",
+        serialization_alias="items",
+    )
+
+    model_config = {"populate_by_name": True}

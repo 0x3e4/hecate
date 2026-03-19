@@ -32,6 +32,13 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
                        |  |     |  :8080    |  FastAPI Sidecar
                        |  |     +-----------+
                        |  |
+                       |  +--+
+                       |     |
+                       |  +--v--------+
+                       |  |  Apprise  |  Notification Gateway
+                       |  |  :8000    |  Slack, Discord, E-Mail, etc.
+                       |  +-----------+
+                       |
               +--------+  +--------+
               |                    |
         +-----v-----+      +------v------+
@@ -41,7 +48,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
          Persistenz          Volltext-Index
 ```
 
-- Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch
+- Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch, apprise
 - Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend}:latest`
 - CI/CD: Gitea Actions (`build.yml` Docker Build + Grype-Scan, `scan.yml` SonarQube + Trivy)
 
@@ -49,8 +56,8 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 
 ### API-Schicht
 
-13 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
-- `status.py` — Health Check / Liveness Probe
+14 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+- `status.py` — Health Check / Liveness Probe, Scanner-Health
 - `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse
 - `cwe.py` — CWE-Abfragen (einzeln & bulk)
 - `capec.py` — CAPEC-Abfragen, CWE→CAPEC Mapping
@@ -63,6 +70,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 - `audit.py` — Ingestion-Logs
 - `changelog.py` — Letzte Änderungen
 - `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM)
+- `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
 
 Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
 
@@ -82,6 +90,7 @@ Service-Klasse je Anwendungsfall:
 - `SavedSearchService` — Gespeicherte Suchen
 - `AssetCatalogService` — Asset-Katalog aus ingestierten Daten
 - `ScanService` — SCA-Scan-Orchestrierung (Scanner-Sidecar, Ergebnisverarbeitung)
+- `NotificationService` — Apprise-Anbindung, Regeln, Channels, Nachrichtenvorlagen mit Template-Engine
 
 Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + Mongo Operationen. Der Asset-Katalog wird aus ingestierten Daten abgeleitet (Vendor-/Produkt-/Versions-Slugs) und füttert die Filter-UI.
 
@@ -125,7 +134,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 
 ### Persistenz
 
-#### MongoDB (15 Collections)
+#### MongoDB (18 Collections)
 
 | Collection | Beschreibung |
 |-----------|-------------|
@@ -144,6 +153,9 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | `scans` | Scan-Durchläufe mit Status und Zusammenfassung |
 | `scan_findings` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | SBOM-Komponenten aus SCA-Scans |
+| `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL) |
+| `notification_channels` | Apprise-Channels (URL + Tag) |
+| `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 
 - Repositories auf Basis von Motor (async) kapseln Abfragen und Updates.
 - Repository-Pattern: `create()` Classmethod erstellt Indexes, `_id` = Entity-ID, `upsert()` gibt `"inserted"` / `"updated"` / `"unchanged"` zurück.
@@ -172,6 +184,14 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - Einzel- und Batch-Analyse über API-Endpunkte.
 - Ergebnisse werden in OpenSearch gespeichert und als Audit-Event protokolliert.
 - Fehlerbehandlung liefert 4xx bei Konfigurationsfehlern, 5xx bei Provider-Ausfällen.
+
+### Benachrichtigungen (Apprise)
+- `NotificationService` kommuniziert via HTTP mit der Apprise REST-API (fire-and-forget).
+- **Channels:** Apprise-URLs mit Tags, gespeichert in MongoDB, konfigurierbar über System-Seite.
+- **Regeln:** Event-basiert (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`) und Watch-basiert (`saved_search`, `vendor`, `product`, `dql`).
+- **Nachrichtenvorlagen:** Anpassbare Titel/Body-Templates pro Event-Typ mit `{placeholder}`-Variablen und `{#each}...{/each}`-Schleifen. Auflösung: exakter Tag-Match → `all`-Fallback → hardcodierter Default.
+- **Watch-Auswertung:** Nach jeder Ingestion werden Watch-Regeln automatisch gegen neue Einträge in OpenSearch evaluiert.
+- Partial Delivery (HTTP 424 von Apprise) wird als Erfolg gewertet.
 
 ### Backup & Restore
 - Backup-Service exportiert JSON-Snapshots für Schwachstellen (quellenweise: EUVD/NVD/Alle), CPE-Katalog und gespeicherte Suchen.
@@ -215,7 +235,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
-| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
+| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Dienste-Status |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM und Severity-Zusammenfassung |
 
@@ -319,4 +339,5 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA)
 | Logging | structlog 25 |
 | KI | OpenAI, Anthropic, Google Gemini |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, FastAPI |
+| Benachrichtigungen | Apprise (caronc/apprise) |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
