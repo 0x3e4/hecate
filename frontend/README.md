@@ -13,12 +13,13 @@ src/
 │   ├── capec.ts                 # CAPEC einzeln, bulk, CWE->CAPEC
 │   ├── stats.ts                 # Statistik-Aggregationen
 │   ├── audit.ts                 # Ingestion-Logs
-│   ├── changelog.ts             # Letzte Änderungen
+│   ├── changelog.ts             # Letzte Änderungen (Pagination, Datum-/Source-Filter)
 │   ├── sync.ts                  # Sync-Trigger & Status
 │   ├── backup.ts                # Export/Import (10 min Timeout)
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
 │   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM)
-│   └── savedSearches.ts         # Gespeicherte Suchen (CRUD)
+│   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
+│   └── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
 ├── views/                       # Seitenkomponenten (11 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
@@ -50,6 +51,7 @@ src/
 │   └── ScrollToTop.tsx          # Scroll-to-Top Button
 ├── hooks/
 │   ├── usePersistentState.ts    # localStorage-gestützter State
+│   ├── useSSE.ts                # Server-Sent Events (Singleton EventSource, Auto-Reconnect)
 │   └── useSavedSearches.tsx     # Context-Provider für gespeicherte Suchen
 ├── ui/                          # Layout-Komponenten
 │   ├── AppLayout.tsx            # Root-Layout (Sidebar + Header + Content)
@@ -76,14 +78,14 @@ src/
 
 | Route | Komponente | Beschreibung |
 |-------|-----------|-------------|
-| `/` | `DashboardPage` | Startseite mit Schwachstellensuche und aktuellen Einträgen |
+| `/` | `DashboardPage` | Startseite mit Schwachstellensuche, aktuellen Einträgen und Echtzeit-Refresh via SSE |
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via Feature-Flag) |
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
-| `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen |
+| `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM und Severity |
@@ -98,6 +100,7 @@ Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
 | Methode | Verwendung |
 |---------|-----------|
 | **Context API** | `SavedSearchesContext` — globale gespeicherte Suchen |
+| **SSE (useSSE)** | Echtzeit-Job-Events via Singleton EventSource (Dashboard, VulnerabilityList, System) |
 | **useState** | Lokaler Komponentenstate (Loading, Error, Daten) |
 | **URL-Parameter** | Filter, Pagination, Query-Modus (bookmarkbar) |
 | **localStorage** | Sidebar-Zustand, Asset-Filter-Auswahl (`usePersistentState`) |

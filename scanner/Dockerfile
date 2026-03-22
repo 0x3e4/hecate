@@ -18,6 +18,9 @@ COPY --from=syft /syft /usr/local/bin/syft
 RUN curl -fsSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
 
+# Enable all Syft catalogers including binary detection
+ENV SYFT_DEFAULT_CATALOGERS=all
+
 WORKDIR /scanner
 
 # Install Python dependencies via Poetry

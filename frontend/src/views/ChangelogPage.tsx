@@ -5,11 +5,17 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 
+const PAGE_SIZE = 50;
+
 export const ChangelogPage = () => {
   const { t } = useI18n();
   const [data, setData] = useState<ChangelogResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const showSkeleton = loading && !data;
 
   useEffect(() => {
@@ -25,7 +31,16 @@ export const ChangelogPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchChangelog(100, 0);
+        // Convert date (YYYY-MM-DD) to ISO datetime for API
+        const fromISO = fromDate ? `${fromDate}T00:00:00` : undefined;
+        const toISO = toDate ? `${toDate}T23:59:59` : undefined;
+        const response = await fetchChangelog(
+          PAGE_SIZE,
+          page * PAGE_SIZE,
+          fromISO,
+          toISO,
+          sourceFilter || undefined,
+        );
         setData(response);
       } catch (err) {
         console.error("Failed to load changelog", err);
@@ -36,7 +51,16 @@ export const ChangelogPage = () => {
     };
 
     load();
-  }, [t]);
+  }, [t, page, fromDate, toDate, sourceFilter]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+
+  const handleFilterReset = () => {
+    setFromDate("");
+    setToDate("");
+    setSourceFilter("");
+    setPage(0);
+  };
 
   return (
     <div className="page">
@@ -49,18 +73,138 @@ export const ChangelogPage = () => {
           )}
         </p>
 
+        {/* Date filter */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center", marginBottom: "1rem" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem" }}>
+            <span className="muted">{t("From", "Von")}</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => { setFromDate(e.target.value); setPage(0); }}
+              style={{
+                padding: "0.35rem 0.5rem",
+                borderRadius: "6px",
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#fff",
+                fontSize: "0.8125rem",
+              }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem" }}>
+            <span className="muted">{t("To", "Bis")}</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => { setToDate(e.target.value); setPage(0); }}
+              style={{
+                padding: "0.35rem 0.5rem",
+                borderRadius: "6px",
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#fff",
+                fontSize: "0.8125rem",
+              }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem" }}>
+            <span className="muted">{t("Job", "Job")}</span>
+            <select
+              value={sourceFilter}
+              onChange={e => { setSourceFilter(e.target.value); setPage(0); }}
+              style={{
+                padding: "0.35rem 0.5rem",
+                borderRadius: "6px",
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#fff",
+                fontSize: "0.8125rem",
+              }}
+            >
+              <option value="">{t("All", "Alle")}</option>
+              <option value="NVD">NVD</option>
+              <option value="EUVD">EUVD</option>
+              <option value="GHSA">GHSA</option>
+              <option value="KEV">KEV</option>
+              <option value="CIRCL">CIRCL</option>
+            </select>
+          </label>
+          {(fromDate || toDate || sourceFilter) && (
+            <button
+              onClick={handleFilterReset}
+              style={{
+                padding: "0.35rem 0.75rem",
+                borderRadius: "6px",
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "rgba(255,255,255,0.05)",
+                color: "rgba(255,255,255,0.7)",
+                fontSize: "0.8125rem",
+                cursor: "pointer",
+              }}
+            >
+              {t("Reset", "Zurücksetzen")}
+            </button>
+          )}
+          {data && (
+            <span className="muted" style={{ fontSize: "0.75rem", marginLeft: "auto" }}>
+              {data.total} {t("entries", "Einträge")}
+            </span>
+          )}
+        </div>
+
         {showSkeleton && <ChangelogSkeleton />}
         {error && <p className="muted">{error}</p>}
 
         {!showSkeleton && data && (
-          <div style={{ display: "grid", gap: "0.75rem" }}>
-            {data.entries.length === 0 && (
-              <p className="muted">{t("No changes available.", "Keine Änderungen verfügbar.")}</p>
+          <>
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              {data.entries.length === 0 && (
+                <p className="muted">{t("No changes available.", "Keine Änderungen verfügbar.")}</p>
+              )}
+              {data.entries.map((entry) => (
+                <ChangelogEntryCard key={entry.vulnId} entry={entry} t={t} />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "1rem", marginTop: "1.25rem" }}>
+                <button
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  style={{
+                    padding: "0.4rem 0.85rem",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    background: page === 0 ? "transparent" : "rgba(255,255,255,0.05)",
+                    color: page === 0 ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.8)",
+                    cursor: page === 0 ? "default" : "pointer",
+                    fontSize: "0.8125rem",
+                  }}
+                >
+                  {t("Previous", "Zurück")}
+                </button>
+                <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.6)" }}>
+                  {page + 1} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  style={{
+                    padding: "0.4rem 0.85rem",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    background: page >= totalPages - 1 ? "transparent" : "rgba(255,255,255,0.05)",
+                    color: page >= totalPages - 1 ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.8)",
+                    cursor: page >= totalPages - 1 ? "default" : "pointer",
+                    fontSize: "0.8125rem",
+                  }}
+                >
+                  {t("Next", "Weiter")}
+                </button>
+              </div>
             )}
-            {data.entries.map((entry) => (
-              <ChangelogEntryCard key={entry.vulnId} entry={entry} t={t} />
-            ))}
-          </div>
+          </>
         )}
       </section>
     </div>

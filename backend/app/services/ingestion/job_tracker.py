@@ -8,6 +8,7 @@ import structlog
 
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.ingestion_log_repository import IngestionLogRepository
+from app.services.event_bus import publish_job_started, publish_job_completed, publish_job_failed
 
 from bson import ObjectId
 
@@ -55,6 +56,7 @@ class JobTracker:
                 "metadata": metadata,
             },
         )
+        publish_job_started(name, ctx.started_at, **metadata)
         return ctx
 
     async def finish(self, ctx: JobContext, **result: Any) -> None:
@@ -69,6 +71,7 @@ class JobTracker:
                 "progress": None,
             },
         )
+        publish_job_completed(ctx.name, ctx.started_at, finished_at, **result)
         if ctx.log_id is not None:
             log_repo = await IngestionLogRepository.create()
             await log_repo.complete_log(
@@ -90,6 +93,7 @@ class JobTracker:
                 "progress": None,
             },
         )
+        publish_job_failed(ctx.name, ctx.started_at, finished_at, error)
         if ctx.log_id is not None:
             log_repo = await IngestionLogRepository.create()
             await log_repo.fail_log(

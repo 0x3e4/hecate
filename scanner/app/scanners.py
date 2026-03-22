@@ -165,13 +165,13 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
     clone_dir: str | None = None
     try:
         if target_type == "container_image":
-            cmd = ["trivy", "image", "--format", "json", "--quiet", target]
+            cmd = ["trivy", "image", "--format", "json", "--quiet", "--list-all-pkgs", target]
         else:
             scan_dir = source_dir
             if not scan_dir:
                 clone_dir = await _clone_repo(target)
                 scan_dir = clone_dir
-            cmd = ["trivy", "fs", "--format", "json", "--quiet", scan_dir]
+            cmd = ["trivy", "fs", "--format", "json", "--quiet", "--list-all-pkgs", scan_dir]
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():

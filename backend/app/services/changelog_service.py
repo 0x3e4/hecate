@@ -21,18 +21,36 @@ log = structlog.get_logger()
 class ChangelogService:
     """Service for retrieving recent vulnerability changes."""
 
-    async def get_recent_changes(self, limit: int = 50, offset: int = 0) -> ChangelogResponse:
+    async def get_recent_changes(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+        source: str | None = None,
+    ) -> ChangelogResponse:
         """
         Retrieve recent vulnerability changes (creations and updates).
 
         Returns vulnerabilities sorted by their most recent timestamp (ingested_at or modified).
+        Optionally filtered by a datetime range on ``ingested_at`` and/or source name.
         """
         try:
             db = await get_database()
             collection = db[settings.mongo_vulnerabilities_collection]
 
-            # Query vulnerabilities and sort by most recent change
-            # Sort by ingested_at first (most recent ingestions)
+            # Build optional filters
+            query_filter: dict = {}
+            if from_date or to_date:
+                date_constraint: dict = {}
+                if from_date:
+                    date_constraint["$gte"] = from_date
+                if to_date:
+                    date_constraint["$lte"] = to_date
+                query_filter["ingested_at"] = date_constraint
+            if source:
+                query_filter["source"] = source
+
             # Only fetch the fields we need to improve performance
             projection = {
                 "_id": 1,
@@ -44,12 +62,15 @@ class ChangelogService:
                 "cvss.severity": 1,
                 "change_history": 1,
             }
-            cursor = collection.find({}, projection).sort("ingested_at", -1).skip(offset).limit(limit)
+            cursor = collection.find(query_filter, projection).sort("ingested_at", -1).skip(offset).limit(limit)
             documents = await cursor.to_list(length=limit)
 
-            # Use estimated_document_count for better performance on large collections
-            # This is much faster than count_documents({}) as it uses collection metadata
-            total = await collection.estimated_document_count()
+            # Use count_documents when a filter is active for accuracy,
+            # otherwise use estimated_document_count for speed.
+            if query_filter:
+                total = await collection.count_documents(query_filter)
+            else:
+                total = await collection.estimated_document_count()
 
             log.info(f"Found {len(documents)} documents, total: {total}")
 

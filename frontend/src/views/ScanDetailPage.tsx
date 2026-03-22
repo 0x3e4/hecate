@@ -638,7 +638,7 @@ export const ScanDetailPage = () => {
 
         {tab === "sbom" && (
           <>
-            <div style={{ marginBottom: "1rem" }}>
+            <div style={{ marginBottom: "1rem", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
               <input
                 type="text"
                 value={sbomSearch}
@@ -651,12 +651,14 @@ export const ScanDetailPage = () => {
                   background: "rgba(255,255,255,0.05)",
                   color: "#fff",
                   fontSize: "0.8125rem",
-                  width: "100%",
+                  flex: "1 1 200px",
                   maxWidth: "500px",
+                  minWidth: 0,
+                  boxSizing: "border-box",
                   outline: "none",
                 }}
               />
-              <span style={{ marginLeft: "0.75rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+              <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
                 {dedupedSbom.length} {t("components", "Komponenten")}
               </span>
             </div>

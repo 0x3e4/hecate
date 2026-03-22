@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { VulnerabilityPreview } from "../types";
@@ -7,6 +7,7 @@ import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { useI18n, type TranslateFn } from "../i18n/context";
+import { useSSE } from "../hooks/useSSE";
 import { getPublishedDisplay } from "../utils/published";
 import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
 import { ExploitationSummary } from "../components/ExploitationSummary";
@@ -24,6 +25,22 @@ export const DashboardPage = () => {
   const [queryNotFound, setQueryNotFound] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState<boolean>(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // SSE: refresh dashboard when new vulnerabilities are ingested
+  const { jobs: sseJobs } = useSSE();
+  const sseNewVulnCount = useRef(0);
+  const [sseRefreshKey, setSseRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let count = 0;
+    for (const [, ev] of sseJobs) {
+      if (ev.eventType === "new_vulnerabilities") count++;
+    }
+    if (count > sseNewVulnCount.current) {
+      sseNewVulnCount.current = count;
+      setSseRefreshKey((k) => k + 1);
+    }
+  }, [sseJobs]);
 
   useEffect(() => {
     document.title = "Hecate Cyber Defense - Dashboard";
@@ -49,7 +66,7 @@ export const DashboardPage = () => {
     };
 
     load();
-  }, []);
+  }, [sseRefreshKey]);
 
   // Auto-dismiss toast after 5 seconds
   useEffect(() => {
