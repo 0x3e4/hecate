@@ -195,6 +195,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
                         "source": {"type": "keyword"},
                     }
                 },
+                "sourceNames": {"type": "keyword"},
                 "vendorSlugs": {"type": "keyword"},
                 "productSlugs": {"type": "keyword"},
                 "productVersions": {"type": "keyword"},

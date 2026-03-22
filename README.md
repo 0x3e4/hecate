@@ -44,7 +44,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 .
 ├── backend/              # FastAPI-Service, Ingestion-Pipelines, Scheduler, CLI
 │   ├── app/
-│   │   ├── api/v1/       # REST-Endpunkte (14 Router-Module)
+│   │   ├── api/v1/       # REST-Endpunkte (15 Router-Module)
 │   │   ├── core/         # Konfiguration (Pydantic Settings), Logging
 │   │   ├── db/           # MongoDB (Motor) & OpenSearch Verbindungen
 │   │   ├── models/       # MongoDB-Dokument-Schemata
@@ -92,6 +92,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Normalisierung:** Alle Quellen werden in ein einheitliches `VulnerabilityDocument`-Schema überführt
 - **Asset-Katalog:** Vendoren, Produkte und Versionen werden aus ingestierten Daten extrahiert
 - **Change-Tracking:** Änderungshistorien für Schwachstellen, vollständiger Audit-Trail
+- **Server-Sent Events (SSE):** Echtzeit-Streaming von Job-Status und neuen Schwachstellen an das Frontend
 
 ### SCA-Scanning (Software Composition Analysis)
 - **Scanner-Sidecar:** Trivy, Grype, Syft und OSV Scanner als Docker-Container
@@ -103,7 +104,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Audit-Trail:** Scan-Ereignisse im Ingestion-Log protokolliert
 
 ### Suche & Analyse
-- **OpenSearch-Volltext** mit DQL-Unterstützung (Domain-Specific Query Language) und Relevanzsortierung
+- **OpenSearch-Volltext** mit DQL-Unterstützung (Domain-Specific Query Language) und Relevanzsortierung; `source:`-Abfragen suchen automatisch über alle Datenquellen (inkl. `sourceNames`-Alias)
 - **KI-Assessments** über OpenAI, Anthropic oder Google Gemini (einzeln oder Batch)
 - **CVSS-Metriken** normalisiert über v2.0, v3.0, v3.1 und v4.0
 - **CWE/CAPEC-Anreicherung** mit 3-Tier-Cache (Memory -> MongoDB -> externe Quelle, 7 Tage TTL)
@@ -112,17 +113,17 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 ### Frontend-Ansichten
 | Ansicht | Beschreibung |
 |---------|-------------|
-| Dashboard | Schwachstellensuche mit CVSS, EPSS, Exploitation-Status |
+| Dashboard | Schwachstellensuche mit CVSS, EPSS, Exploitation-Status, Echtzeit-Refresh via SSE |
 | Schwachstellen-Liste | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
 | Detail-Seite | Vollständige Schwachstellendetails mit AI-Assessments, Referenzen, Change-History |
 | Query Builder | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | KI-Analyse | Einzel- und Batch-Analyse über verschiedene AI-Provider |
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
-| Changelog | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
+| Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
 | Scan-Detail | Findings-Tabelle, SBOM-Komponenten, Severity-Zusammenfassung |
-| System | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen |
+| System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
 
 ### Benachrichtigungen (Apprise)
 - **Apprise-Integration:** Benachrichtigungen über einen Apprise-API-Service (Slack, Discord, E-Mail, Telegram, etc.)
@@ -229,11 +230,14 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET/POST /api/v1/notifications/templates` — Nachrichtenvorlagen auflisten/erstellen
 - `PUT/DELETE /api/v1/notifications/templates/{id}` — Vorlage aktualisieren/löschen
 
+### Echtzeit-Events (SSE)
+- `GET /api/v1/events` — Server-Sent Events Stream (Job-Status, neue Schwachstellen)
+
 ### Verwaltung
 - `GET/POST/DELETE /api/v1/saved-searches` — Gespeicherte Suchen
 - `GET /api/v1/stats/overview` — Statistik-Aggregationen
 - `GET /api/v1/audit/ingestion` — Audit-Log
-- `GET /api/v1/changelog` — Letzte Änderungen
+- `GET /api/v1/changelog` — Letzte Änderungen (mit Pagination, Datum- und Source-Filter)
 - `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa)
 - `GET/POST /api/v1/backup/...` — Export/Import
 

@@ -30,9 +30,17 @@ export interface ChangelogResponse {
   total: number;
 }
 
-export const fetchChangelog = async (limit: number = 50, offset: number = 0): Promise<ChangelogResponse> => {
-  const response = await api.get<ChangelogResponse>("/v1/changelog", {
-    params: { limit, offset },
-  });
+export const fetchChangelog = async (
+  limit: number = 50,
+  offset: number = 0,
+  fromDate?: string,
+  toDate?: string,
+  source?: string,
+): Promise<ChangelogResponse> => {
+  const params: Record<string, string | number> = { limit, offset };
+  if (fromDate) params.fromDate = fromDate;
+  if (toDate) params.toDate = toDate;
+  if (source) params.source = source;
+  const response = await api.get<ChangelogResponse>("/v1/changelog", { params });
   return response.data;
 };

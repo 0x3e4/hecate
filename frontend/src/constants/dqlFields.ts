@@ -10,7 +10,7 @@ export interface DQLFieldHint {
 export const DQL_FIELD_HINTS: DQLFieldHint[] = [
   // Identification
   { field: "vuln_id", description: "ID (z.B. CVE oder EUVD ID)", type: "string", aggregatable: true },
-  { field: "source", description: "Name der Quelle (z.B. NVD oder EUVD)", type: "string", aggregatable: true },
+  { field: "source", description: "Name der Quelle inkl. aller Datenquellen (z.B. NVD, EUVD, CIRCL, GHSA)", type: "string", aggregatable: true },
   { field: "aliases", description: "Weitere Identifier / Aliasse", type: "array", aggregatable: true },
   { field: "assigner", description: "Schwachstellen Auftraggeber", type: "string", aggregatable: true },
 

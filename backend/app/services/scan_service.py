@@ -392,9 +392,19 @@ class ScanService:
 
     async def delete_scan(self, scan_id: str) -> bool:
         """Delete a single scan and its associated findings and SBOM components."""
+        # Look up the scan to find its target_id before deletion
+        scan = await self.scan_repo.get(scan_id)
+        target_id = scan.get("target_id") if scan else None
+
         await self.finding_repo.delete_by_scan(scan_id)
         await self.sbom_repo.delete_by_scan(scan_id)
-        return await self.scan_repo.delete(scan_id)
+        deleted = await self.scan_repo.delete(scan_id)
+
+        # Decrement the target's scan count
+        if deleted and target_id:
+            await self.target_repo.decrement_scan_count(target_id)
+
+        return deleted
 
     async def list_scans(
         self,

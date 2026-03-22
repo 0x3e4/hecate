@@ -1824,6 +1824,10 @@ table thead th {
     gap: 1rem;
   }
 
+  .header-branding {
+    gap: 0.875rem;
+  }
+
   .header-branding h1 {
     font-size: 1.2rem;
   }
@@ -2176,7 +2180,11 @@ table thead th {
   }
 
   .app-header {
-    padding: 0.875rem;
+    padding: 0.875rem 0.625rem;
+  }
+
+  .header-branding {
+    gap: 0.75rem;
   }
 
   .header-branding h1 {
@@ -3060,9 +3068,9 @@ table thead th {
 
   .dialog-actions button {
     width: 100%;
-    padding: 0.75rem 1rem;
-    font-size: 1rem;
-    min-height: 48px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    min-height: 40px;
   }
 }
 

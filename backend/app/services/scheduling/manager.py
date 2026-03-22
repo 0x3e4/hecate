@@ -19,6 +19,7 @@ from app.services.ingestion.job_tracker import JobTracker
 from app.services.capec_service import get_capec_service
 from app.services.cwe_service import get_cwe_service
 from app.repositories.ingestion_state_repository import IngestionStateRepository
+from app.services.event_bus import publish_new_vulnerabilities
 from app.services.notification_service import get_notification_service
 from app.services.scan_service import get_scan_service
 
@@ -38,6 +39,8 @@ async def _notify_new_vulnerabilities(job_name: str, inserted: int) -> None:
     """Fire-and-forget notification when new vulnerabilities are ingested."""
     if inserted <= 0:
         return
+    # Publish SSE event so dashboards / lists refresh in real-time
+    publish_new_vulnerabilities(source=job_name, count=inserted)
     try:
         notifier = get_notification_service()
         await notifier.notify_new_vulnerabilities_event(source=job_name, inserted=inserted)

@@ -114,6 +114,17 @@ class ScanTargetRepository:
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_last_scan_failed", target_id=target_id, error=str(exc))
 
+    async def decrement_scan_count(self, target_id: str) -> None:
+        """Decrement the scan count for a target (minimum 0)."""
+        try:
+            # Use aggregation-pipeline update to clamp at zero
+            await self.collection.update_one(
+                {"_id": target_id},
+                [{"$set": {"scan_count": {"$max": [0, {"$subtract": [{"$ifNull": ["$scan_count", 0]}, 1]}]}}}],
+            )
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.decrement_scan_count_failed", target_id=target_id, error=str(exc))
+
     async def update_auto_scan(self, target_id: str, auto_scan: bool) -> bool:
         try:
             result = await self.collection.update_one(

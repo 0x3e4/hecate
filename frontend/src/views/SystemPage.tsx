@@ -36,6 +36,7 @@ import {
   triggerGhsaSync,
 } from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
+import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import type { AppLanguage } from "../i18n/language";
 import type {
@@ -124,6 +125,9 @@ export const SystemPage = () => {
   const [syncTriggeringId, setSyncTriggeringId] = useState<string | null>(null);
   const [expandedSyncId, setExpandedSyncId] = useState<string | null>(null);
   const syncIntervalRef = useRef<number | null>(null);
+
+  // SSE for real-time job updates
+  const { jobs: sseJobs, connected: sseConnected } = useSSE();
   const backupDatasets = useMemo<BackupDataset[]>(() => createBackupDatasets(t), [t]);
 
   const [notifStatus, setNotifStatus] = useState<NotificationStatusResponse | null>(null);
@@ -591,9 +595,10 @@ export const SystemPage = () => {
 
   useEffect(() => {
     void loadSyncStates();
+    // Fall back to polling when SSE is not connected
     syncIntervalRef.current = window.setInterval(() => {
       void loadSyncStates();
-    }, 5000);
+    }, sseConnected ? 30000 : 5000);
 
     return () => {
       if (toastTimeoutRef.current !== null) {
@@ -605,7 +610,14 @@ export const SystemPage = () => {
         syncIntervalRef.current = null;
       }
     };
-  }, []);
+  }, [sseConnected]);
+
+  // Refresh sync states immediately when SSE events arrive
+  useEffect(() => {
+    if (sseJobs.size > 0) {
+      void loadSyncStates();
+    }
+  }, [sseJobs]);
 
   const handleRestore = async (dataset: BackupDataset, file: File) => {
     setBusyId(dataset.id);

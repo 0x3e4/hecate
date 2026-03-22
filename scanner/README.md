@@ -13,6 +13,10 @@ Scanner-Sidecar für die SCA-Funktionalität (Software Composition Analysis) von
 
 Alle Tools werden als Binaries im Docker-Image installiert (jeweils `latest`-Version).
 
+### Erweiterte Erkennung
+- **Trivy:** `--list-all-pkgs` für vollständige Paketlistung (inkl. nicht-vulnerabler Pakete)
+- **Syft:** `SYFT_DEFAULT_CATALOGERS=all` aktiviert alle Katalogisierer inkl. Binary-Erkennung (erkennt Binaries wie Trivy, Grype etc. die via Dockerfile `COPY --from=` installiert wurden)
+
 ## Einbindung in das Gesamtsystem
 
 ```
@@ -123,6 +127,7 @@ deploy:
 | Variable | Default | Beschreibung |
 |----------|---------|-------------|
 | `SCANNER_AUTH` | — | Authentifizierung für Registries und Git-Repos (`host:token`, kommagetrennt) |
+| `SYFT_DEFAULT_CATALOGERS` | `all` | Syft-Katalogisierer (im Dockerfile gesetzt, aktiviert Binary-Erkennung) |
 
 Die Backend-seitige Konfiguration des Sidecar erfolgt über:
 

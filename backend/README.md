@@ -7,7 +7,7 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 ```
 app/
 ├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung (13 Module)
+│   ├── routes.py            # Router-Registrierung (15 Module)
 │   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
@@ -18,8 +18,10 @@ app/
 │   ├── sync.py              # Manuelle Sync-Trigger
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
-│   ├── changelog.py         # Letzte Änderungen
+│   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
 │   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM)
+│   ├── events.py            # Server-Sent Events (SSE) Stream
+│   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   └── status.py            # Health Check
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
@@ -69,6 +71,8 @@ app/
 │   ├── asset_catalog_service.py   # Asset-Katalog
 │   ├── scan_service.py            # SCA-Scan-Orchestrierung
 │   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
+│   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
+│   ├── notification_service.py    # Apprise-Benachrichtigungen
 │   ├── http/
 │   │   └── rate_limiter.py        # HTTP Rate-Limiting
 │   ├── ingestion/                 # Datenpipelines
@@ -123,7 +127,7 @@ app/
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
-Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregationen. Nested `sources`-Pfad für Quell-Aggregationen.
+Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregationen. Nested `sources`-Pfad für Quell-Aggregationen. Flaches `sourceNames`-Keyword-Array für DQL-Source-Alias-Suche (`source:X` sucht automatisch in `source` und `sourceNames`).
 
 **Konfiguration:** `max_result_window` = 200.000, `total_fields.limit` = 2.000
 
@@ -163,6 +167,12 @@ Singleton via `@lru_cache`, Lazy Repository-Loading.
 start(job_name) → Running in MongoDB → finish(ctx, result) → Completed + Log
 ```
 Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
+
+### Server-Sent Events (SSE)
+```
+EventBus (Singleton) → publish(event) → asyncio.Queue per Subscriber → SSE Stream
+```
+Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker und SchedulerManager publizieren automatisch. Frontend verbindet sich über `GET /api/v1/events`.
 
 ### API-Schema-Konvention
 ```python
