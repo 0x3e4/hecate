@@ -50,7 +50,7 @@ export const ScansPage = () => {
   const [sourceArchiveFile, setSourceArchiveFile] = useState<File | null>(null);
   const [sourceArchiveTargetName, setSourceArchiveTargetName] = useState("");
   const [scanType, setScanType] = useState<"container_image" | "source_repo">("container_image");
-  const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "osv-scanner"]);
+  const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "osv-scanner", "hecate"]);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<SubmitScanResponse | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -121,7 +121,7 @@ export const ScansPage = () => {
     setScanError(null);
     try {
       const effectiveScanners = scanType === "container_image"
-        ? scanners.filter((s: string) => s !== "osv-scanner")
+        ? scanners.filter((s: string) => s !== "osv-scanner" && s !== "hecate")
         : scanners;
       if (scanType === "source_repo" && sourceRepoInputMode === "zip" && sourceArchiveFile && !sourceArchiveFile.name.toLowerCase().endsWith(".zip")) {
         setScanError(t("Please upload a .zip archive.", "Bitte eine .zip-Datei hochladen."));
@@ -154,7 +154,7 @@ export const ScansPage = () => {
     try {
       const rescanScanners = target.type === "container_image"
         ? ["trivy", "grype", "syft"]
-        : ["trivy", "grype", "syft", "osv-scanner"];
+        : ["trivy", "grype", "syft", "osv-scanner", "hecate"];
       await submitManualScan({
         target: target.id,
         type: target.type,
@@ -495,8 +495,8 @@ export const ScansPage = () => {
               <div>
                 <label style={labelStyle}>{t("Scanners", "Scanner")}</label>
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  {["trivy", "grype", "syft", "osv-scanner"].map(name => {
-                    const disabled = name === "osv-scanner" && scanType === "container_image";
+                  {["trivy", "grype", "syft", "osv-scanner", "hecate"].map(name => {
+                    const disabled = (name === "osv-scanner" || name === "hecate") && scanType === "container_image";
                     return (
                       <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: disabled ? "not-allowed" : "pointer", color: disabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.8)" }}>
                         <input

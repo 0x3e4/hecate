@@ -49,7 +49,25 @@ class ChangelogService:
                     date_constraint["$lte"] = to_date
                 query_filter["ingested_at"] = date_constraint
             if source:
-                query_filter["source"] = source
+                # Filter by the *most recent* change_history entry's job_name
+                # (not the vulnerability's primary source) so enrichment-only
+                # jobs like KEV and CIRCL show their changes correctly, and
+                # e.g. NVD filter doesn't include entries last touched by CIRCL.
+                source_lower = source.lower()
+                query_filter["$expr"] = {
+                    "$let": {
+                        "vars": {
+                            "last": {"$arrayElemAt": [{"$ifNull": ["$change_history", []]}, -1]},
+                        },
+                        "in": {
+                            "$regexMatch": {
+                                "input": {"$ifNull": [{"$getField": {"field": "job_name", "input": "$$last"}}, ""]},
+                                "regex": f"^{source_lower}_",
+                                "options": "i",
+                            }
+                        },
+                    }
+                }
 
             # Only fetch the fields we need to improve performance
             projection = {

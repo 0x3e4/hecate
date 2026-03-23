@@ -10,7 +10,7 @@ from app.scanners import extract_source_archive, run_scanner, setup_auth
 
 app = FastAPI(title="Hecate Scanner Sidecar", version="0.1.0")
 
-VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner"}
+VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate"}
 
 
 @app.on_event("startup")
