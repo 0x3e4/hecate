@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from app.hecate_analyzer import run_analysis
 from app.models import ScannerResult
 
 
@@ -119,6 +120,8 @@ async def run_scanner(
         return await _run_syft(target, target_type, source_dir)
     elif scanner_name == "osv-scanner":
         return await _run_osv_scanner(target, target_type, source_dir)
+    elif scanner_name == "hecate":
+        return await _run_hecate_analyzer(target, target_type, source_dir)
     else:
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
@@ -263,6 +266,34 @@ async def _run_osv_scanner(
         return _parse_json_output(stdout, "osv-scanner", "osv-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=str(exc))
+    finally:
+        if clone_dir:
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+async def _run_hecate_analyzer(
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
+    """Run Hecate's own infrastructure analyzer (Dockerfiles, docker-compose, package.json)."""
+    if target_type == "container_image":
+        return ScannerResult(
+            scanner="hecate", format="cyclonedx-json", report={},
+            error="Hecate Analyzer only supports source repository scanning",
+        )
+
+    clone_dir: str | None = None
+    try:
+        scan_dir = source_dir
+        if not scan_dir:
+            clone_dir = await _clone_repo(target)
+            scan_dir = clone_dir
+
+        report = run_analysis(scan_dir)
+        return ScannerResult(scanner="hecate", format="cyclonedx-json", report=report)
+    except Exception as exc:
+        return ScannerResult(scanner="hecate", format="cyclonedx-json", report={}, error=str(exc))
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)

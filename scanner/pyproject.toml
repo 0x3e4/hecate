@@ -11,6 +11,7 @@ python = "^3.13"
 fastapi = "*"
 uvicorn = "*"
 pydantic = "*"
+pyyaml = "*"
 
 [build-system]
 requires = ["poetry-core"]
