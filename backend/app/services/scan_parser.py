@@ -470,3 +470,55 @@ def _cvss_score_to_severity(score: float | None) -> str:
     if score > 0:
         return "low"
     return "negligible"
+
+
+def parse_hecate_json(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> tuple[list[ScanFindingDocument], list[ScanSbomComponentDocument], ScanSummary]:
+    """Parse hecate-json format containing both SBOM components and malware findings."""
+    # 1. Extract SBOM components via existing CycloneDX parser
+    components, _ = parse_cyclonedx_sbom(data, scan_id, target_id)
+
+    # 2. Extract malware detection findings
+    findings: list[ScanFindingDocument] = []
+    raw_findings = data.get("findings", [])
+    if isinstance(raw_findings, list):
+        for f in raw_findings:
+            if not isinstance(f, dict):
+                continue
+
+            rule_id = f.get("ruleId", "")
+            rule_name = f.get("ruleName", "")
+            severity = _normalize_severity(f.get("severity"))
+            category = f.get("category", "")
+            evidence = f.get("evidence", "")
+            confidence = f.get("confidence", "medium")
+            description = f.get("description", "")
+
+            # Build descriptive text with evidence
+            full_description = description
+            if evidence:
+                full_description += f"\n\nEvidence: {evidence}"
+            if confidence:
+                full_description += f"\nConfidence: {confidence}"
+
+            findings.append(ScanFindingDocument(
+                scan_id=scan_id,
+                target_id=target_id,
+                vulnerability_id=None,
+                scanner="hecate",
+                package_name=f.get("packageName", ""),
+                package_version=f.get("packageVersion", ""),
+                package_type="malicious-indicator",
+                package_path=f.get("filePath"),
+                severity=severity,
+                title=f"[{rule_id}] {rule_name}",
+                description=full_description,
+                fix_version=None,
+                fix_state="not_fixed",
+                data_source=f"hecate-malware-detector:{category}",
+            ))
+
+    return findings, components, _build_summary(findings)

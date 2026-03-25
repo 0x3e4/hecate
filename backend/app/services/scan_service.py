@@ -28,6 +28,7 @@ from app.services.notification_service import get_notification_service
 from app.services.scan_parser import (
     parse_cyclonedx_sbom,
     parse_grype_json,
+    parse_hecate_json,
     parse_osv_json,
     parse_trivy_json,
 )
@@ -152,16 +153,20 @@ class ScanService:
         all_findings: list[ScanFindingDocument] = []
         all_components: list[ScanSbomComponentDocument] = []
         errors: list[str] = []
+        scan_metadata: dict[str, Any] = {}
 
         async def _run_single_scanner(scanner_name: str) -> None:
             """Run one scanner via the sidecar, parse & store results immediately."""
+            nonlocal scan_metadata
             try:
-                results = await self._call_scanner_sidecar(
+                results, metadata = await self._call_scanner_sidecar(
                     target=target,
                     target_type=target_type,
                     scanners=[scanner_name],
                     source_archive_base64=source_archive_base64,
                 )
+                if metadata and not scan_metadata:
+                    scan_metadata = metadata
             except Exception as exc:
                 errors.append(f"{scanner_name}: {exc}")
                 log.warning("scan_service.scanner_call_failed", scanner=scanner_name, error=str(exc))
@@ -190,6 +195,8 @@ class ScanService:
                         components, _ = parse_cyclonedx_sbom(report, scan_id, target_id)
                     elif fmt == "osv-json":
                         findings, _ = parse_osv_json(report, scan_id, target_id)
+                    elif fmt == "hecate-json":
+                        findings, components, _ = parse_hecate_json(report, scan_id, target_id)
                     else:
                         log.warning("scan_service.unknown_format", scanner=scanner_name, format=fmt)
                         continue
@@ -243,13 +250,21 @@ class ScanService:
             sbom_component_count=len(all_components),
             error=error_text,
         )
-        # Mark summary as deduped (v2) and severity as overridden so lazy corrections are skipped
+        # Persist scanner-reported metadata (commit SHA, image digest)
+        meta_update: dict[str, Any] = {"summary_version": 2, "severity_overridden": True}
+        if scan_metadata.get("commit_sha"):
+            meta_update["commit_sha"] = scan_metadata["commit_sha"]
+        if scan_metadata.get("image_digest"):
+            # Store full image ref with digest: image@sha256:...
+            digest = scan_metadata["image_digest"]
+            base_ref = target.split("@")[0].rsplit(":", 1)[0] if target_type == "container_image" else target
+            meta_update["image_ref"] = f"{base_ref}@{digest}"
         try:
             from app.db.mongo import get_database
             db = await get_database()
             await db[settings.mongo_scans_collection].update_one(
                 {"_id": ObjectId(scan_id)},
-                {"$set": {"summary_version": 2, "severity_overridden": True}},
+                {"$set": meta_update},
             )
         except Exception:
             pass
@@ -566,9 +581,41 @@ class ScanService:
         keys_a = set(set_a.keys())
         keys_b = set(set_b.keys())
 
-        added = [_finding_summary(set_b[k]) for k in (keys_b - keys_a)]
-        removed = [_finding_summary(set_a[k]) for k in (keys_a - keys_b)]
+        raw_added = {k: set_b[k] for k in (keys_b - keys_a)}
+        raw_removed = {k: set_a[k] for k in (keys_a - keys_b)}
         unchanged_count = len(keys_a & keys_b)
+
+        # Detect "changed" findings: same package+version in both added and removed
+        # but with a different vulnerability_id (e.g., CVE assigned after previous scan)
+        def _pkg_key(f: dict[str, Any]) -> str:
+            return f"{f.get('package_name', '')}:{f.get('package_version', '')}"
+
+        added_by_pkg: dict[str, list[str]] = {}
+        for k, f in raw_added.items():
+            added_by_pkg.setdefault(_pkg_key(f), []).append(k)
+
+        removed_by_pkg: dict[str, list[str]] = {}
+        for k, f in raw_removed.items():
+            removed_by_pkg.setdefault(_pkg_key(f), []).append(k)
+
+        changed: list[dict[str, Any]] = []
+        changed_added_keys: set[str] = set()
+        changed_removed_keys: set[str] = set()
+
+        for pkg in set(added_by_pkg) & set(removed_by_pkg):
+            a_keys = removed_by_pkg[pkg]
+            b_keys = added_by_pkg[pkg]
+            pairs = min(len(a_keys), len(b_keys))
+            for i in range(pairs):
+                changed.append({
+                    "before": _finding_summary(raw_removed[a_keys[i]]),
+                    "after": _finding_summary(raw_added[b_keys[i]]),
+                })
+                changed_removed_keys.add(a_keys[i])
+                changed_added_keys.add(b_keys[i])
+
+        added = [_finding_summary(raw_added[k]) for k in raw_added if k not in changed_added_keys]
+        removed = [_finding_summary(raw_removed[k]) for k in raw_removed if k not in changed_removed_keys]
 
         summary_a = scan_a.get("summary", {})
         summary_b = scan_b.get("summary", {})
@@ -580,6 +627,7 @@ class ScanService:
             "summary_b": summary_b,
             "added": added,
             "removed": removed,
+            "changed": changed,
             "unchanged_count": unchanged_count,
         }
 
@@ -963,8 +1011,8 @@ class ScanService:
         target_type: str,
         scanners: list[str],
         source_archive_base64: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Call the scanner sidecar HTTP API."""
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Call the scanner sidecar HTTP API. Returns (results, metadata)."""
         url = f"{settings.sca_scanner_url}/scan"
         payload = {
             "target": target,
@@ -977,7 +1025,7 @@ class ScanService:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
-            return data.get("results", [])
+            return data.get("results", []), data.get("metadata") or {}
 
     @staticmethod
     def _derive_target_id(target: str, target_type: str) -> str:
@@ -1042,11 +1090,13 @@ class ScanService:
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
         nv = ScanService._normalize_ver
+        # Exclude malicious-indicator findings from vulnerability summary
+        vuln_findings = [f for f in findings if f.package_type != "malicious-indicator"]
         # First pass: collect all findings keyed by (vuln_id, pkg, ver)
         # Track no-CVE findings separately so we can merge them with CVE entries
         keyed: dict[str, str] = {}  # dedup_key -> severity
         no_cve: list[ScanFindingDocument] = []
-        for f in findings:
+        for f in vuln_findings:
             ver = nv(f.package_version)
             if not f.vulnerability_id:
                 no_cve.append(f)

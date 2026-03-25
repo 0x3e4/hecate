@@ -1,4 +1,4 @@
-FROM aquasec/trivy:0.69.3 AS trivy
+FROM aquasec/trivy:0.69.1 AS trivy
 FROM anchore/grype:latest AS grype
 FROM anchore/syft:latest AS syft
 
