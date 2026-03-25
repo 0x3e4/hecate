@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScans, fetchTargetHistory, compareScans } from "../api/scans";
+import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans } from "../api/scans";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
@@ -11,10 +11,20 @@ import type {
   ScanSummary,
   ScanHistoryEntry,
   ScanComparisonResponse,
+  ScanLayerAnalysis,
   SbomComponent,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "compare" | "alerts";
+type Tab = "findings" | "sbom" | "history" | "compare" | "alerts" | "bestpractices" | "layers";
+
+/** Format bytes to human-readable string */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, i);
+  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
 
 /** Map purl/type to deps.dev ecosystem name */
 const DEPS_DEV_ECOSYSTEM: Record<string, string> = {
@@ -311,15 +321,25 @@ export const ScanDetailPage = () => {
 
   const merged = useMemo(() => mergeFindings(findings), [findings]);
 
-  /** Separate malicious-indicator findings from regular vulnerability findings */
+  // Layer analysis state (Dive)
+  const [layerAnalysis, setLayerAnalysis] = useState<ScanLayerAnalysis | null>(null);
+  const [layerLoading, setLayerLoading] = useState(false);
+
+  /** Separate malicious-indicator and compliance-check findings from regular vulnerability findings */
   const alertFindings = useMemo(
     () => merged.filter(f => f.packageType === "malicious-indicator"),
     [merged],
   );
-  const vulnFindings = useMemo(
-    () => merged.filter(f => f.packageType !== "malicious-indicator"),
+  const complianceFindings = useMemo(
+    () => merged.filter(f => f.packageType === "compliance-check"),
     [merged],
   );
+  const vulnFindings = useMemo(
+    () => merged.filter(f => f.packageType !== "malicious-indicator" && f.packageType !== "compliance-check"),
+    [merged],
+  );
+
+  const isContainerImage = !!scan?.imageRef;
 
   /** Client-side severity filter on vulnerability findings (excludes alerts) */
   const filteredMerged = useMemo(
@@ -590,6 +610,40 @@ export const ScanDetailPage = () => {
           >
             {t("Security Alerts", "Sicherheitswarnungen")} ({alertFindings.length})
           </button>
+          {isContainerImage && (
+            <>
+              <button
+                type="button"
+                onClick={() => setTab("bestpractices")}
+                style={{
+                  ...tabStyle(tab === "bestpractices"),
+                  ...(complianceFindings.length > 0 ? {
+                    borderColor: tab === "bestpractices" ? "rgba(252,196,25,0.5)" : "rgba(252,196,25,0.3)",
+                    background: tab === "bestpractices" ? "rgba(252,196,25,0.15)" : "rgba(252,196,25,0.05)",
+                    color: tab === "bestpractices" ? "#fcc419" : "#ffd43b",
+                  } : {}),
+                }}
+              >
+                {t("Best Practices", "Best Practices")} ({complianceFindings.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("layers");
+                  if (!layerAnalysis && !layerLoading && scan?.layerAnalysisAvailable) {
+                    setLayerLoading(true);
+                    fetchScanLayers(scan.id)
+                      .then(setLayerAnalysis)
+                      .catch(err => console.error("Failed to load layer analysis", err))
+                      .finally(() => setLayerLoading(false));
+                  }
+                }}
+                style={tabStyle(tab === "layers")}
+              >
+                {t("Layer Analysis", "Schichtanalyse")}
+              </button>
+            </>
+          )}
         </div>
 
         {tab === "findings" && (
@@ -911,6 +965,295 @@ export const ScanDetailPage = () => {
             {!comparison && !compareScanId && !compareLoading && (
               <p className="muted">{t("Select another scan of this target to compare.", "Wählen Sie einen anderen Scan dieses Ziels zum Vergleich.")}</p>
             )}
+          </>
+        )}
+
+        {tab === "bestpractices" && (
+          <>
+            {complianceFindings.length === 0 ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
+                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
+                  {t("All CIS Docker Benchmark checks passed.", "Alle CIS-Docker-Benchmark-Checks bestanden.")}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary banner */}
+                <div style={{
+                  padding: "0.75rem 1rem",
+                  marginBottom: "1rem",
+                  background: "rgba(252,196,25,0.08)",
+                  border: "1px solid rgba(252,196,25,0.2)",
+                  borderRadius: "8px",
+                  display: "flex",
+                  gap: "1rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}>
+                  <span style={{ color: "#fcc419", fontWeight: 600, fontSize: "0.875rem" }}>
+                    {t(
+                      `${complianceFindings.length} compliance issue${complianceFindings.length !== 1 ? "s" : ""} found`,
+                      `${complianceFindings.length} Compliance-Problem${complianceFindings.length !== 1 ? "e" : ""} gefunden`,
+                    )}
+                  </span>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {(() => {
+                      const sevs: Record<string, number> = {};
+                      for (const f of complianceFindings) {
+                        const s = f.severity.toLowerCase();
+                        sevs[s] = (sevs[s] || 0) + 1;
+                      }
+                      return Object.entries(sevs).map(([s, count]) => (
+                        <span key={s} style={{
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.7rem",
+                          background: s === "critical" ? "rgba(255,107,107,0.1)" : s === "medium" ? "rgba(252,196,25,0.1)" : "rgba(255,255,255,0.06)",
+                          color: s === "critical" ? "#ff6b6b" : s === "medium" ? "#fcc419" : "rgba(255,255,255,0.5)",
+                        }}>
+                          {count} {s}
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                {/* Compliance cards */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {complianceFindings.map((check, idx) => {
+                    const sev = check.severity.toLowerCase();
+                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : sev === "low" ? "#69db7c" : "#868e96";
+                    const category = check.dataSource?.includes("cis") ? "CIS" : "DKL";
+                    const alerts = (check.description || "").split("\n").filter(Boolean);
+
+                    return (
+                      <div key={idx} style={{
+                        background: "rgba(255,255,255,0.02)",
+                        border: `1px solid ${sevColor}33`,
+                        borderLeft: `4px solid ${sevColor}`,
+                        borderRadius: "8px",
+                        padding: "1rem",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
+                              <span style={{
+                                padding: "0.125rem 0.5rem",
+                                borderRadius: "4px",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${sevColor}20`,
+                                color: sevColor,
+                              }}>
+                                {sev}
+                              </span>
+                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
+                                {check.title}
+                              </span>
+                            </div>
+
+                            {/* Alert messages as bullet list */}
+                            {alerts.length > 0 && (
+                              <ul style={{ margin: "0.375rem 0 0 0", paddingLeft: "1.25rem", listStyle: "disc" }}>
+                                {alerts.map((msg, i) => (
+                                  <li key={i} style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                                    {msg}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+
+                          {/* Category badge */}
+                          <span style={{
+                            padding: "0.125rem 0.5rem",
+                            borderRadius: "4px",
+                            fontSize: "0.7rem",
+                            background: "rgba(92,132,255,0.1)",
+                            color: "#5c84ff",
+                            border: "1px solid rgba(92,132,255,0.2)",
+                            flexShrink: 0,
+                          }}>
+                            {category}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "layers" && (
+          <>
+            {layerLoading ? (
+              <SkeletonBlock lines={6} />
+            ) : !scan?.layerAnalysisAvailable ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px" }}>
+                <p style={{ color: "rgba(255,255,255,0.4)", margin: 0, fontSize: "0.875rem" }}>
+                  {t(
+                    "No layer analysis available. Run a scan with Dive enabled to see layer data.",
+                    "Keine Schichtanalyse verfügbar. Führen Sie einen Scan mit aktiviertem Dive durch.",
+                  )}
+                </p>
+              </div>
+            ) : layerAnalysis ? (
+              <>
+                {/* Efficiency & Waste summary */}
+                <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+                  {/* Efficiency gauge */}
+                  <div style={{
+                    flex: "1 1 200px",
+                    padding: "1rem",
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: "8px",
+                  }}>
+                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.5rem" }}>
+                      {t("Image Efficiency", "Image-Effizienz")}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <span style={{
+                        fontSize: "1.5rem",
+                        fontWeight: 700,
+                        color: layerAnalysis.efficiency >= 0.9 ? "#63e6be" : layerAnalysis.efficiency >= 0.7 ? "#fcc419" : "#ff6b6b",
+                      }}>
+                        {(layerAnalysis.efficiency * 100).toFixed(1)}%
+                      </span>
+                      <div style={{ flex: 1, height: "8px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${Math.min(layerAnalysis.efficiency * 100, 100)}%`,
+                          background: layerAnalysis.efficiency >= 0.9 ? "#63e6be" : layerAnalysis.efficiency >= 0.7 ? "#fcc419" : "#ff6b6b",
+                          borderRadius: "4px",
+                          transition: "width 0.3s",
+                        }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wasted space */}
+                  <div style={{
+                    flex: "1 1 200px",
+                    padding: "1rem",
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: "8px",
+                  }}>
+                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.5rem" }}>
+                      {t("Wasted Space", "Verschwendeter Speicher")}
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: layerAnalysis.wastedBytes > 0 ? "#ff922b" : "#63e6be" }}>
+                      {formatBytes(layerAnalysis.wastedBytes)}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.25rem" }}>
+                      {(layerAnalysis.userWastedPercent * 100).toFixed(1)}% {t("of total", "vom Gesamten")}
+                    </div>
+                  </div>
+
+                  {/* Total image size */}
+                  <div style={{
+                    flex: "1 1 200px",
+                    padding: "1rem",
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: "8px",
+                  }}>
+                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.5rem" }}>
+                      {t("Total Image Size", "Gesamte Image-Größe")}
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff" }}>
+                      {formatBytes(layerAnalysis.totalImageSize)}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.25rem" }}>
+                      {layerAnalysis.layers.length} {t("layers", "Schichten")}
+                    </div>
+                  </div>
+
+                  {/* Pass/Fail badge */}
+                  <div style={{
+                    flex: "0 0 auto",
+                    padding: "1rem",
+                    background: layerAnalysis.passThreshold ? "rgba(99,230,190,0.05)" : "rgba(255,107,107,0.05)",
+                    border: `1px solid ${layerAnalysis.passThreshold ? "rgba(99,230,190,0.15)" : "rgba(255,107,107,0.15)"}`,
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: "80px",
+                  }}>
+                    <span style={{
+                      fontSize: "1rem",
+                      fontWeight: 700,
+                      color: layerAnalysis.passThreshold ? "#63e6be" : "#ff6b6b",
+                    }}>
+                      {layerAnalysis.passThreshold ? t("PASS", "OK") : t("FAIL", "FEHLER")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Layer table */}
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                        <th style={{ ...thStyle, width: "50px" }}>#</th>
+                        <th style={thStyle}>{t("Command", "Befehl")}</th>
+                        <th style={{ ...thStyle, width: "120px", textAlign: "right" }}>{t("Size", "Größe")}</th>
+                        <th style={{ ...thStyle, width: "100px", textAlign: "right" }}>%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {layerAnalysis.layers.map((layer) => {
+                        const pct = layerAnalysis.totalImageSize > 0
+                          ? (layer.sizeBytes / layerAnalysis.totalImageSize) * 100
+                          : 0;
+                        return (
+                          <tr key={layer.index} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td style={{ ...tdStyle, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", fontSize: "0.75rem" }}>
+                              {layer.index + 1}
+                            </td>
+                            <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "0.75rem", maxWidth: "600px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                              title={layer.command}
+                            >
+                              {layer.command || layer.digest.substring(0, 12)}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", fontSize: "0.8125rem" }}>
+                              {formatBytes(layer.sizeBytes)}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: "right" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.5rem" }}>
+                                <div style={{
+                                  width: "60px",
+                                  height: "6px",
+                                  background: "rgba(255,255,255,0.06)",
+                                  borderRadius: "3px",
+                                  overflow: "hidden",
+                                }}>
+                                  <div style={{
+                                    height: "100%",
+                                    width: `${Math.min(pct, 100)}%`,
+                                    background: pct > 50 ? "#ff922b" : pct > 20 ? "#fcc419" : "#63e6be",
+                                    borderRadius: "3px",
+                                  }} />
+                                </div>
+                                <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", minWidth: "40px", textAlign: "right" }}>
+                                  {pct.toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
           </>
         )}
 

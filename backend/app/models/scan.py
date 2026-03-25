@@ -26,6 +26,7 @@ class ScanTargetDocument(BaseModel):
     repository_url: str | None = Field(default=None, description="URL for source repos")
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
+    scanners: list[str] = Field(default_factory=list, description="Scanners used for this target")
     auto_scan: bool = Field(default=True, description="Include in auto-scan scheduling")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -52,6 +53,8 @@ class ScanDocument(BaseModel):
     sbom_component_count: int | None = None
     error: str | None = None
     scanner_version: str | None = None
+    compliance_summary: dict[str, int] | None = None
+    layer_analysis_available: bool = False
 
 
 class ScanFindingDocument(BaseModel):
@@ -75,6 +78,29 @@ class ScanFindingDocument(BaseModel):
     urls: list[str] = Field(default_factory=list)
     cvss_score: float | None = None
     cvss_vector: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ScanLayerDetail(BaseModel):
+    """Individual layer in a Dive analysis."""
+
+    index: int
+    digest: str = ""
+    size_bytes: int = 0
+    command: str = ""
+
+
+class ScanLayerAnalysisDocument(BaseModel):
+    """Dive layer analysis results for a container image scan."""
+
+    scan_id: str
+    target_id: str
+    efficiency: float = 0.0
+    wasted_bytes: int = 0
+    user_wasted_percent: float = 0.0
+    total_image_size: int = 0
+    layers: list[ScanLayerDetail] = Field(default_factory=list)
+    pass_threshold: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

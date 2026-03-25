@@ -20,6 +20,7 @@ from app.models.scan import (
 )
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
+from app.repositories.scan_layer_repository import ScanLayerRepository
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.scan_sbom_repository import ScanSbomRepository
 from app.repositories.scan_target_repository import ScanTargetRepository
@@ -27,6 +28,8 @@ from app.services.audit_service import AuditService
 from app.services.notification_service import get_notification_service
 from app.services.scan_parser import (
     parse_cyclonedx_sbom,
+    parse_dockle_json,
+    parse_dive_json,
     parse_grype_json,
     parse_hecate_json,
     parse_osv_json,
@@ -43,12 +46,14 @@ class ScanService:
         scan_repo: ScanRepository,
         finding_repo: ScanFindingRepository,
         sbom_repo: ScanSbomRepository,
+        layer_repo: ScanLayerRepository,
         audit_service: AuditService,
     ) -> None:
         self.target_repo = target_repo
         self.scan_repo = scan_repo
         self.finding_repo = finding_repo
         self.sbom_repo = sbom_repo
+        self.layer_repo = layer_repo
         self.audit_service = audit_service
 
     async def submit_scan(
@@ -69,7 +74,7 @@ class ScanService:
         """
 
         if scanners is None:
-            scanners = [s.strip() for s in settings.sca_default_scanners.split(",") if s.strip()]
+            scanners = ["trivy", "grype", "syft"]
 
         if source_archive_base64 and target_type != "source_repo":
             raise ValueError("source archive is only supported for source_repo scans")
@@ -91,6 +96,7 @@ class ScanService:
                 name=target_name,
                 registry=registry,
                 repository_url=repo_url,
+                scanners=scanners,
             )
             await self.target_repo.upsert(target_doc)
 
@@ -197,6 +203,17 @@ class ScanService:
                         findings, _ = parse_osv_json(report, scan_id, target_id)
                     elif fmt == "hecate-json":
                         findings, components, _ = parse_hecate_json(report, scan_id, target_id)
+                    elif fmt == "dockle-json":
+                        findings, compliance_summary = parse_dockle_json(report, scan_id, target_id)
+                        await self.scan_repo.update_fields(scan_id, {
+                            "compliance_summary": compliance_summary,
+                        })
+                    elif fmt == "dive-json":
+                        layer_doc = parse_dive_json(report, scan_id, target_id)
+                        await self.layer_repo.insert(layer_doc)
+                        await self.scan_repo.update_fields(scan_id, {
+                            "layer_analysis_available": True,
+                        })
                     else:
                         log.warning("scan_service.unknown_format", scanner=scanner_name, format=fmt)
                         continue
@@ -450,6 +467,10 @@ class ScanService:
                 scan["target_name"] = target.get("name") if target else scan.get("target_name") or tid
             scan["summary"] = await self._get_deduped_summary(scan)
         return scan
+
+    async def get_layer_analysis(self, scan_id: str) -> dict[str, Any] | None:
+        """Get Dive layer analysis for a scan."""
+        return await self.layer_repo.get_by_scan(scan_id)
 
     async def get_scan_findings(
         self,
@@ -1090,8 +1111,8 @@ class ScanService:
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
         nv = ScanService._normalize_ver
-        # Exclude malicious-indicator findings from vulnerability summary
-        vuln_findings = [f for f in findings if f.package_type != "malicious-indicator"]
+        # Exclude malicious-indicator and compliance-check findings from vulnerability summary
+        vuln_findings = [f for f in findings if f.package_type not in ("malicious-indicator", "compliance-check")]
         # First pass: collect all findings keyed by (vuln_id, pkg, ver)
         # Track no-CVE findings separately so we can merge them with CVE entries
         keyed: dict[str, str] = {}  # dedup_key -> severity
@@ -1144,6 +1165,7 @@ async def get_scan_service() -> ScanService:
     scan_repo = await ScanRepository.create()
     finding_repo = await ScanFindingRepository.create()
     sbom_repo = await ScanSbomRepository.create()
+    layer_repo = await ScanLayerRepository.create()
     log_repo = await IngestionLogRepository.create()
     audit_service = AuditService(log_repo)
-    return ScanService(target_repo, scan_repo, finding_repo, sbom_repo, audit_service)
+    return ScanService(target_repo, scan_repo, finding_repo, sbom_repo, layer_repo, audit_service)

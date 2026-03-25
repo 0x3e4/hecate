@@ -6,6 +6,7 @@ import type {
   Scan,
   ScanFindingListResponse,
   SbomComponentListResponse,
+  ScanLayerAnalysis,
   ScanHistoryResponse,
   ScanComparisonResponse,
   SubmitScanRequest,
@@ -118,6 +119,11 @@ export const updateScanTarget = async (
     `/v1/scans/targets/${encodeURIComponent(targetId)}`,
     data
   );
+  return response.data;
+};
+
+export const fetchScanLayers = async (scanId: string): Promise<ScanLayerAnalysis> => {
+  const response = await api.get<ScanLayerAnalysis>(`/v1/scans/${scanId}/layers`);
   return response.data;
 };
 

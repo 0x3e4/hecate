@@ -401,6 +401,7 @@ export interface ScanTarget {
   latestScanId?: string | null;
   hasRunningScan?: boolean;
   autoScan?: boolean;
+  scanners?: string[];
 }
 
 export interface ScanTargetListResponse {
@@ -425,6 +426,8 @@ export interface Scan {
   summary: ScanSummary;
   sbomComponentCount?: number | null;
   error?: string | null;
+  complianceSummary?: Record<string, number> | null;
+  layerAnalysisAvailable?: boolean;
 }
 
 export interface ScanListResponse {
@@ -476,6 +479,23 @@ export interface SbomComponent {
 export interface SbomComponentListResponse {
   total: number;
   items: SbomComponent[];
+}
+
+export interface ScanLayerDetail {
+  index: number;
+  digest: string;
+  sizeBytes: number;
+  command: string;
+}
+
+export interface ScanLayerAnalysis {
+  scanId: string;
+  efficiency: number;
+  wastedBytes: number;
+  userWastedPercent: number;
+  totalImageSize: number;
+  layers: ScanLayerDetail[];
+  passThreshold: boolean;
 }
 
 export interface ScanHistoryEntry {

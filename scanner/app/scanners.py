@@ -128,17 +128,24 @@ async def run_scanner(
         return await _run_osv_scanner(target, target_type, source_dir)
     elif scanner_name == "hecate":
         return await _run_hecate_analyzer(target, target_type, source_dir)
+    elif scanner_name == "dockle":
+        return await _run_dockle(target, target_type)
+    elif scanner_name == "dive":
+        return await _run_dive(target, target_type)
     else:
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
 
 async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, int]:
     """Run a subprocess command and return stdout, stderr, returncode."""
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return "", f"Command not found: {cmd[0]}", -1
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
@@ -453,3 +460,86 @@ async def _run_hecate_analyzer(
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+async def _run_dockle(target: str, target_type: str) -> ScannerResult:
+    """Run Dockle container image linter (CIS Docker Benchmarks)."""
+    if target_type != "container_image":
+        return ScannerResult(
+            scanner="dockle", format="dockle-json", report={},
+            error="Dockle only supports container image scanning",
+        )
+
+    try:
+        cmd = ["dockle", "--format", "json", "--exit-code", "0", target]
+        stdout, stderr, rc = await _run_command(cmd)
+        if rc != 0 and not stdout.strip():
+            return ScannerResult(
+                scanner="dockle", format="dockle-json", report={},
+                error=f"Dockle failed (exit {rc}): {_sanitize_error(stderr)}",
+            )
+        return _parse_json_output(stdout, "dockle", "dockle-json")
+    except RuntimeError as exc:
+        return ScannerResult(scanner="dockle", format="dockle-json", report={}, error=str(exc))
+
+
+async def _run_dive(target: str, target_type: str) -> ScannerResult:
+    """Run Dive image layer analysis.
+
+    Dive cannot pull from registries directly (needs Docker daemon).
+    We use skopeo to fetch the image as a docker-archive tar first,
+    then pass it to Dive with --source docker-archive.
+    """
+    if target_type != "container_image":
+        return ScannerResult(
+            scanner="dive", format="dive-json", report={},
+            error="Dive only supports container image scanning",
+        )
+
+    output_file = "/tmp/dive-output.json"
+    archive_file = "/tmp/dive-image.tar"
+    try:
+        # Clean up stale files from previous runs
+        for f in (output_file, archive_file):
+            if os.path.exists(f):
+                os.remove(f)
+
+        # Step 1: Pull image via skopeo as docker-archive tar
+        skopeo_cmd = [
+            "skopeo", "--tmpdir", "/tmp", "copy", "--insecure-policy",
+            f"docker://{target}", f"docker-archive:{archive_file}",
+        ]
+        _, stderr, rc = await _run_command(skopeo_cmd, timeout=300)
+        if rc != 0:
+            return ScannerResult(
+                scanner="dive", format="dive-json", report={},
+                error=f"Failed to fetch image via skopeo (exit {rc}): {_sanitize_error(stderr)}",
+            )
+
+        # Step 2: Run Dive on the local archive
+        cmd = ["dive", f"docker-archive://{archive_file}", "--json", output_file, "--ci"]
+        _, stderr, rc = await _run_command(cmd)
+
+        # Dive exit code 1 means CI checks failed (expected), only treat as error
+        # if no output file was produced
+        if not os.path.exists(output_file):
+            if rc != 0:
+                return ScannerResult(
+                    scanner="dive", format="dive-json", report={},
+                    error=f"Dive failed (exit {rc}): {_sanitize_error(stderr)}",
+                )
+            return ScannerResult(scanner="dive", format="dive-json", report={}, error="No output from Dive")
+
+        try:
+            with open(output_file) as f:
+                report = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            return ScannerResult(scanner="dive", format="dive-json", report={}, error=f"Invalid Dive output: {exc}")
+
+        return ScannerResult(scanner="dive", format="dive-json", report=report)
+    except RuntimeError as exc:
+        return ScannerResult(scanner="dive", format="dive-json", report={}, error=str(exc))
+    finally:
+        for f in (output_file, archive_file):
+            if os.path.exists(f):
+                os.remove(f)

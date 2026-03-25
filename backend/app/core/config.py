@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     mongo_scans_collection: str = "scans"
     mongo_scan_findings_collection: str = "scan_findings"
     mongo_scan_sbom_collection: str = "scan_sbom_components"
+    mongo_scan_layers_collection: str = "scan_layer_analysis"
     mongo_notification_rules_collection: str = "notification_rules"
     mongo_notification_channels_collection: str = "notification_channels"
     mongo_notification_templates_collection: str = "notification_templates"
@@ -129,7 +130,6 @@ class Settings(BaseSettings):
     sca_scanner_url: str = "http://scanner:8080"
     sca_scanner_timeout_seconds: int = 600
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
-    sca_default_scanners: str = "trivy,grype,syft,osv-scanner,hecate"
     vite_sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_hours: int = 24
 

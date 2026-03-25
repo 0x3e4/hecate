@@ -568,21 +568,16 @@ async def _scheduled_auto_scans() -> None:
             log.info("scheduler.auto_scan_no_targets")
             return
 
-        scanners = [s.strip() for s in settings.sca_default_scanners.split(",") if s.strip()]
         submitted = 0
         for target in targets:
             target_id = target.get("target_id", "")
             target_type = target.get("type", "container_image")
-            effective_scanners = (
-                [s for s in scanners if s != "osv-scanner"]
-                if target_type == "container_image"
-                else scanners
-            )
+            target_scanners = target.get("scanners") or ["trivy", "grype", "syft"]
             try:
                 await scan_service.submit_scan(
                     target=target_id,
                     target_type=target_type,
-                    scanners=effective_scanners,
+                    scanners=target_scanners,
                     source="scheduled",
                 )
                 submitted += 1

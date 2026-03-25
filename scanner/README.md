@@ -11,8 +11,12 @@ Scanner-Sidecar für die SCA-Funktionalität (Software Composition Analysis) von
 | [Syft](https://github.com/anchore/syft) | SBOM-Generierung | `cyclonedx-json` |
 | [OSV Scanner](https://github.com/google/osv-scanner) | Schwachstellen-Scan (OSV DB) | `osv-json` |
 | Hecate Analyzer | SBOM-Extraktion (18 Parser, 12 Ökosysteme) + Malware-Erkennung | `hecate-json` |
+| [Dockle](https://github.com/goodwithtech/dockle) | CIS Docker Benchmark Linter (nur Container-Images) | `dockle-json` |
+| [Dive](https://github.com/wagoodman/dive) | Docker-Image-Schichtanalyse (nur Container-Images) | `dive-json` |
 
-Trivy, Grype, Syft und OSV Scanner werden als Binaries im Docker-Image installiert. Der Hecate Analyzer ist ein nativer Python-Scanner ohne externe Abhängigkeiten.
+Trivy, Grype, Syft, Dockle und OSV Scanner werden als Binaries im Docker-Image installiert. Dive wird als GitHub-Release heruntergeladen. Der Hecate Analyzer ist ein nativer Python-Scanner ohne externe Abhängigkeiten.
+
+**Hinweis:** Dockle und Dive sind nur für Container-Image-Scans verfügbar und standardmäßig nicht aktiviert (opt-in über die Scanner-Auswahl).
 
 ### Erweiterte Erkennung
 - **Trivy:** `--list-all-pkgs` für vollständige Paketlistung (inkl. nicht-vulnerabler Pakete)
@@ -33,6 +37,8 @@ CI/CD oder Frontend
   |           |  Results |  Syft     |
   +-----------+          |  OSV      |
         │                |  Hecate   |
+        │                |  Dockle   |
+        │                |  Dive     |
         │                +-----------+
         v
   +-----------+
@@ -72,7 +78,7 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
 |------|-----|-------------|
 | `target` | string | Container-Image-Referenz oder Source-Repo-URL |
 | `type` | string | `container_image` oder `source_repo` |
-| `scanners` | string[] | Liste der Scanner (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`) |
+| `scanners` | string[] | Liste der Scanner (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`) |
 
 **Response:**
 ```json
@@ -321,7 +327,6 @@ Die Backend-seitige Konfiguration des Sidecar erfolgt über:
 |----------|---------|-------------|
 | `SCA_SCANNER_URL` | `http://scanner:8080` | URL des Scanner-Sidecar |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `600` | Timeout für Scan-Anfragen |
-| `SCA_DEFAULT_SCANNERS` | `trivy,grype,syft,osv-scanner,hecate` | Standard-Scanner für automatische Scans |
 
 ## Entwicklung
 
@@ -361,3 +366,5 @@ docker run -p 8080:8080 hecate-scanner
 | Syft | SBOM-Generator (CycloneDX) |
 | OSV Scanner | Schwachstellen-Scanner (OSV DB) |
 | Hecate Analyzer | SBOM-Extraktor + Malware-Detektor |
+| Dockle | CIS Docker Benchmark Linter |
+| Dive | Docker-Image-Schichtanalyse |

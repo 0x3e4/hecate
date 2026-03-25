@@ -10,7 +10,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 - FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
 - OpenSearch dient als performanter Query-Index, MongoDB hält Normalformdaten und Jobzustand.
 - Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
-- Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
+- Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
 
 ## Deployment-Topologie
 
@@ -28,8 +28,8 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
                        |  |  +--------+
                        |  |           |
                        |  |     +-----v-----+
-                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV, Hecate
-                       |  |     |  :8080    |  FastAPI Sidecar
+                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV, Hecate,
+                       |  |     |  :8080    |  Dockle, Dive (FastAPI Sidecar)
                        |  |     +-----------+
                        |  |
                        |  +--+
@@ -69,7 +69,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 - `saved_searches.py` — Gespeicherte Suchen (CRUD)
 - `audit.py` — Ingestion-Logs
 - `changelog.py` — Letzte Änderungen
-- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM)
+- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, Layer-Analyse)
 - `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
 
 Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
@@ -134,7 +134,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 
 ### Persistenz
 
-#### MongoDB (18 Collections)
+#### MongoDB (19 Collections)
 
 | Collection | Beschreibung |
 |-----------|-------------|
@@ -153,6 +153,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | `scans` | Scan-Durchläufe mit Status und Zusammenfassung |
 | `scan_findings` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | SBOM-Komponenten aus SCA-Scans |
+| `scan_layer_analysis` | Image-Schichtanalyse aus Dive-Scans |
 | `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL) |
 | `notification_channels` | Apprise-Channels (URL + Tag) |
 | `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
@@ -168,15 +169,18 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - Konfiguration: `max_result_window` = 200.000, `total_fields.limit` = 2.000.
 
 ### SCA-Scanning (Software Composition Analysis)
-- **Scanner-Sidecar:** Separater Docker-Container mit Trivy, Grype, Syft, OSV Scanner und Hecate Analyzer.
+- **Scanner-Sidecar:** Separater Docker-Container mit 7 Scannern: Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle und Dive.
 - **Scan-Ablauf:** CI/CD oder manuelle Anfrage → Backend → Scanner-Sidecar → Ergebnisse parsen → MongoDB speichern → Antwort.
-- **Image-Pull:** Scanner-Tools ziehen Container-Images direkt über Registry-APIs (kein Docker-Socket).
+- **Image-Pull:** Scanner-Tools ziehen Container-Images direkt über Registry-APIs (kein Docker-Socket). Dive nutzt Skopeo zum Image-Pull als docker-archive.
 - **Registry-Auth:** Konfigurierbar über `SCANNER_AUTH` Umgebungsvariable.
-- **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON, Hecate-JSON werden in einheitliche Modelle überführt.
+- **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON, Hecate-JSON, Dockle-JSON, Dive-JSON werden in einheitliche Modelle überführt.
 - **Hecate Analyzer:** Eigener SBOM-Extraktor (18 Parser, 12 Ökosysteme: Docker, npm, Python, Go, Rust, Ruby, PHP, Java, .NET, Swift, Elixir, Dart, CocoaPods) + Malware-Detektor (33 Regeln, HEC-001 bis HEC-090).
+- **Dockle:** CIS Docker Benchmark Linter — prüft Container-Images auf Best Practices (~21 Checkpoints). Ergebnisse als `ScanFindingDocument` mit `package_type="compliance-check"`, werden nicht in Vulnerability-Summary gezählt. Nur für Container-Images, opt-in.
+- **Dive:** Docker-Image-Schichtanalyse — Effizienz, verschwendeter Speicher, Layer-Aufschlüsselung. Ergebnisse in separater `scan_layer_analysis` Collection. Nur für Container-Images, opt-in.
+- **Scanner-Auswahl pro Target:** Beim Erst-Scan gewählte Scanner werden auf dem `ScanTargetDocument` gespeichert und für Auto-Scans wiederverwendet.
 - **Scan-Vergleich:** Findings können zwischen zwei Scans verglichen werden (Added, Removed, Changed). "Changed" gruppiert Findings mit gleichem Paket aber unterschiedlicher Schwachstelle.
 - **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird zusammengeführt.
-- **Auto-Scan:** Optionales periodisches Scannen registrierter Ziele (konfigurierbar über `SCA_AUTO_SCAN_INTERVAL_HOURS`).
+- **Auto-Scan:** Optionales periodisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbar über `SCA_AUTO_SCAN_INTERVAL_HOURS`).
 - **Audit-Integration:** Scan-Ereignisse werden im Ingestion-Log protokolliert.
 
 ### KI & Analyse
@@ -239,7 +243,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Dienste-Status |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM, Security Alerts und Severity-Zusammenfassung |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM, Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 
 ### State-Management
 - Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
@@ -340,6 +344,6 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA)
 | HTTP-Client | httpx 0.28 (async), Axios 1.13 (Frontend) |
 | Logging | structlog 25 |
 | KI | OpenAI, Anthropic, Google Gemini |
-| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, FastAPI |
+| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |

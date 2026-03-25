@@ -7,7 +7,13 @@ from typing import Any
 
 import structlog
 
-from app.models.scan import ScanFindingDocument, ScanSbomComponentDocument, ScanSummary
+from app.models.scan import (
+    ScanFindingDocument,
+    ScanLayerAnalysisDocument,
+    ScanLayerDetail,
+    ScanSbomComponentDocument,
+    ScanSummary,
+)
 
 log = structlog.get_logger()
 
@@ -522,3 +528,117 @@ def parse_hecate_json(
             ))
 
     return findings, components, _build_summary(findings)
+
+
+# ---------------------------------------------------------------------------
+# Dockle (CIS Docker Benchmark)
+# ---------------------------------------------------------------------------
+
+_DOCKLE_SEVERITY_MAP = {
+    "FATAL": "critical",
+    "WARN": "medium",
+    "INFO": "low",
+    "SKIP": "negligible",
+    "PASS": "negligible",
+}
+
+
+def parse_dockle_json(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> tuple[list[ScanFindingDocument], dict[str, int]]:
+    """Parse Dockle JSON output into compliance findings.
+
+    Returns (findings, compliance_summary).
+    """
+    findings: list[ScanFindingDocument] = []
+    summary: dict[str, int] = data.get("summary", {})
+
+    details = data.get("details", [])
+    if not isinstance(details, list):
+        return findings, summary
+
+    for detail in details:
+        if not isinstance(detail, dict):
+            continue
+
+        level = detail.get("level", "INFO")
+        if level in ("PASS", "SKIP"):
+            continue
+
+        code = detail.get("code", "")
+        title = detail.get("title", "")
+        alerts = detail.get("alerts", [])
+        if not isinstance(alerts, list):
+            alerts = [str(alerts)] if alerts else []
+
+        # Determine category prefix for grouping
+        category = "CIS" if code.startswith("CIS-") else "DKL"
+
+        findings.append(ScanFindingDocument(
+            scan_id=scan_id,
+            target_id=target_id,
+            vulnerability_id=None,
+            scanner="dockle",
+            package_name=code,
+            package_version="",
+            package_type="compliance-check",
+            severity=_DOCKLE_SEVERITY_MAP.get(level, "unknown"),
+            title=f"[{code}] {title}",
+            description="\n".join(alerts) if alerts else None,
+            fix_version=None,
+            fix_state="not_fixed",
+            data_source=f"dockle:{category.lower()}-benchmark",
+        ))
+
+    return findings, summary
+
+
+# ---------------------------------------------------------------------------
+# Dive (Docker image layer analysis)
+# ---------------------------------------------------------------------------
+
+
+def parse_dive_json(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> ScanLayerAnalysisDocument:
+    """Parse Dive JSON output into layer analysis document.
+
+    Dive JSON structure:
+      { "layer": [...], "image": { "sizeBytes", "inefficientBytes", "efficiencyScore", ... } }
+    """
+    image = data.get("image", {}) or {}
+    layers_data = data.get("layer", []) or []
+
+    layers: list[ScanLayerDetail] = []
+    total_size = 0
+    for i, layer in enumerate(layers_data):
+        if not isinstance(layer, dict):
+            continue
+        size = layer.get("sizeBytes", 0) or 0
+        total_size += size
+        layers.append(ScanLayerDetail(
+            index=i,
+            digest=layer.get("digestId", "") or layer.get("id", ""),
+            size_bytes=size,
+            command=layer.get("command", ""),
+        ))
+
+    image_size = image.get("sizeBytes", 0) or total_size
+    wasted = image.get("inefficientBytes", 0) or 0
+    efficiency = image.get("efficiencyScore", 0.0) or 0.0
+    wasted_pct = (wasted / image_size * 100) if image_size > 0 else 0.0
+
+    return ScanLayerAnalysisDocument(
+        scan_id=scan_id,
+        target_id=target_id,
+        efficiency=efficiency,
+        wasted_bytes=wasted,
+        user_wasted_percent=wasted_pct,
+        total_image_size=image_size,
+        layers=layers,
+        pass_threshold=data.get("pass", True),
+    )

@@ -71,6 +71,18 @@ class ScanRepository:
         except PyMongoError as exc:
             log.warning("scan_repository.update_status_failed", scan_id=scan_id, error=str(exc))
 
+    async def update_fields(self, scan_id: str, fields: dict[str, Any]) -> None:
+        """Update arbitrary fields on a scan document."""
+        if not fields:
+            return
+        try:
+            await self.collection.update_one(
+                {"_id": ObjectId(scan_id)},
+                {"$set": fields},
+            )
+        except PyMongoError as exc:
+            log.warning("scan_repository.update_fields_failed", scan_id=scan_id, error=str(exc))
+
     async def get(self, scan_id: str) -> dict[str, Any] | None:
         try:
             doc = await self.collection.find_one({"_id": ObjectId(scan_id)})
