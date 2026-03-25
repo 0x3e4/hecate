@@ -26,7 +26,13 @@ class ScannerResult(BaseModel):
     error: str | None = None
 
 
+class ScanMetadata(BaseModel):
+    commit_sha: str | None = None
+    image_digest: str | None = None
+
+
 class ScanResponse(BaseModel):
     target: str
     type: str
     results: list[ScannerResult]
+    metadata: ScanMetadata | None = None

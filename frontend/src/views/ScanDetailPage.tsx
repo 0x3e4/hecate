@@ -14,7 +14,7 @@ import type {
   SbomComponent,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "compare";
+type Tab = "findings" | "sbom" | "history" | "compare" | "alerts";
 
 /** Map purl/type to deps.dev ecosystem name */
 const DEPS_DEV_ECOSYSTEM: Record<string, string> = {
@@ -63,6 +63,57 @@ function buildSnykUrl(name: string, version: string, type: string, purl?: string
   const mapped = SNYK_ECOSYSTEM[eco];
   if (!mapped || !name || !version) return null;
   return `https://security.snyk.io/package/${mapped}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
+}
+
+/** Build a direct link to the package on its native registry */
+function buildRegistryUrl(name: string, version: string, type: string, purl?: string | null): { url: string; label: string } | null {
+  const eco = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  if (!name) return null;
+  const v = version ? encodeURIComponent(version) : "";
+  const n = encodeURIComponent(name);
+  switch (eco) {
+    case "npm":
+      return { url: `https://www.npmjs.com/package/${name}${v ? `/v/${v}` : ""}`, label: "npm" };
+    case "pypi":
+      return { url: `https://pypi.org/project/${n}/${v || ""}`, label: "PyPI" };
+    case "maven": {
+      // Maven purl: pkg:maven/group/artifact — name may contain the group
+      const parts = name.split("/");
+      if (parts.length === 2) {
+        return { url: `https://central.sonatype.com/artifact/${parts[0]}/${parts[1]}${v ? `/${v}` : ""}`, label: "Maven" };
+      }
+      return { url: `https://central.sonatype.com/search?q=${n}`, label: "Maven" };
+    }
+    case "golang":
+      return { url: `https://pkg.go.dev/${name}${v ? `@${v}` : ""}`, label: "Go" };
+    case "nuget":
+      return { url: `https://www.nuget.org/packages/${n}${v ? `/${v}` : ""}`, label: "NuGet" };
+    case "cargo":
+      return { url: `https://crates.io/crates/${n}${v ? `/${v}` : ""}`, label: "crates.io" };
+    case "gem":
+      return { url: `https://rubygems.org/gems/${n}${v ? `/versions/${v}` : ""}`, label: "RubyGems" };
+    case "composer":
+    case "packagist":
+      return { url: `https://packagist.org/packages/${name}`, label: "Packagist" };
+    case "cocoapods":
+      return { url: `https://cocoapods.org/pods/${n}`, label: "CocoaPods" };
+    case "hex":
+      return { url: `https://hex.pm/packages/${n}${v ? `/${v}` : ""}`, label: "Hex" };
+    case "pub":
+      return { url: `https://pub.dev/packages/${n}${v ? `/versions/${v}` : ""}`, label: "pub.dev" };
+    case "swift":
+      return { url: `https://swiftpackageindex.com/search?query=${n}`, label: "Swift" };
+    case "docker":
+    case "oci":
+      // Docker Hub or generic registry
+      if (!name.includes(".") && !name.includes(":")) {
+        const dockerName = name.includes("/") ? name : `library/${name}`;
+        return { url: `https://hub.docker.com/r/${dockerName}`, label: "Docker Hub" };
+      }
+      return null;
+    default:
+      return null;
+  }
 }
 
 /** Build a clickable source URL from image ref or target id */
@@ -121,9 +172,13 @@ interface MergedFinding {
   packageName: string;
   packageVersion: string;
   packageType: string;
+  packagePath: string | null;
   severity: string;
+  title: string | null;
+  description: string | null;
   fixVersion: string | null;
   fixState: string;
+  dataSource: string | null;
   scanners: string[];
   cvssScore: number | null;
 }
@@ -158,11 +213,15 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
   for (const f of findings) {
     const ver = normalizeVersion(f.packageVersion);
     const fix = f.fixVersion ? normalizeVersion(f.fixVersion) : "";
-    const key = `${f.vulnerabilityId ?? ""}:${f.packageName}:${ver}`;
+    // Malicious indicators have no CVE — use file path to keep them distinct
+    const keyId = f.packageType === "malicious-indicator"
+      ? `${f.title ?? ""}:${f.packagePath ?? ""}`
+      : (f.vulnerabilityId ?? "");
+    const key = `${keyId}:${f.packageName}:${ver}`;
 
     // If this finding has no CVE, try to merge into an existing entry with a CVE
-    // that shares the same package + version + fix
-    if (!f.vulnerabilityId && fix) {
+    // that shares the same package + version + fix (skip malicious indicators)
+    if (!f.vulnerabilityId && fix && f.packageType !== "malicious-indicator") {
       let merged = false;
       for (const entry of map.values()) {
         if (entry.packageName === f.packageName && entry.packageVersion === ver
@@ -203,9 +262,13 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
           packageName: f.packageName,
           packageVersion: ver,
           packageType: f.packageType ?? "",
+          packagePath: f.packagePath ?? null,
           severity: f.severity,
+          title: f.title ?? null,
+          description: f.description ?? null,
           fixVersion: f.fixVersion ?? null,
           fixState: f.fixState,
+          dataSource: f.dataSource ?? null,
           scanners: [f.scanner],
           cvssScore: f.cvssScore ?? null,
           _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
@@ -248,23 +311,33 @@ export const ScanDetailPage = () => {
 
   const merged = useMemo(() => mergeFindings(findings), [findings]);
 
-  /** Client-side severity filter on already-merged findings */
-  const filteredMerged = useMemo(
-    () => severityFilter ? merged.filter(f => f.severity === severityFilter) : merged,
-    [merged, severityFilter],
+  /** Separate malicious-indicator findings from regular vulnerability findings */
+  const alertFindings = useMemo(
+    () => merged.filter(f => f.packageType === "malicious-indicator"),
+    [merged],
+  );
+  const vulnFindings = useMemo(
+    () => merged.filter(f => f.packageType !== "malicious-indicator"),
+    [merged],
   );
 
-  /** Summary computed from deduplicated findings (accurate counts) */
+  /** Client-side severity filter on vulnerability findings (excludes alerts) */
+  const filteredMerged = useMemo(
+    () => severityFilter ? vulnFindings.filter(f => f.severity === severityFilter) : vulnFindings,
+    [vulnFindings, severityFilter],
+  );
+
+  /** Summary computed from deduplicated vulnerability findings (excludes alerts) */
   const mergedSummary = useMemo(() => {
     const counts = { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0, total: 0 };
-    for (const f of merged) {
+    for (const f of vulnFindings) {
       const sev = f.severity.toLowerCase() as keyof typeof counts;
       if (sev in counts && sev !== "total") (counts[sev] as number)++;
       else counts.unknown++;
       counts.total++;
     }
     return counts;
-  }, [merged]);
+  }, [vulnFindings]);
 
   /** Deduplicate SBOM components: merge rows with same name+version */
   const dedupedSbom = useMemo(() => {
@@ -450,10 +523,10 @@ export const ScanDetailPage = () => {
         )}
 
         {/* Severity summary bar */}
-        <SeveritySummaryBar summary={merged.length > 0 ? mergedSummary : scan.summary} />
+        <SeveritySummaryBar summary={vulnFindings.length > 0 ? mergedSummary : scan.summary} />
 
         {/* Library vulnerability bubble chart */}
-        {merged.length > 0 && <BubbleChart findings={merged} />}
+        {vulnFindings.length > 0 && <BubbleChart findings={vulnFindings} />}
       </section>
 
       {/* Findings / SBOM / History / Compare tabs */}
@@ -464,7 +537,7 @@ export const ScanDetailPage = () => {
             onClick={() => setTab("findings")}
             style={tabStyle(tab === "findings")}
           >
-            {t("Findings", "Ergebnisse")} ({merged.length > 0 ? merged.length : (scan.findingsCount || findingsTotal)})
+            {t("Findings", "Ergebnisse")} ({findings.length > 0 ? vulnFindings.length : (scan.findingsCount || findingsTotal)})
           </button>
           <button
             type="button"
@@ -502,6 +575,20 @@ export const ScanDetailPage = () => {
             style={tabStyle(tab === "compare")}
           >
             {t("Compare", "Vergleichen")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("alerts")}
+            style={{
+              ...tabStyle(tab === "alerts"),
+              ...(alertFindings.length > 0 ? {
+                borderColor: tab === "alerts" ? "rgba(255,107,107,0.5)" : "rgba(255,107,107,0.3)",
+                background: tab === "alerts" ? "rgba(255,107,107,0.15)" : "rgba(255,107,107,0.05)",
+                color: tab === "alerts" ? "#ff6b6b" : "#ff8787",
+              } : {}),
+            }}
+          >
+            {t("Security Alerts", "Sicherheitswarnungen")} ({alertFindings.length})
           </button>
         </div>
 
@@ -682,6 +769,7 @@ export const ScanDetailPage = () => {
                     {dedupedSbom.map(c => {
                       const depsUrl = buildDepsDevUrl(c.name, c.version, c.type, c.purl);
                       const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
+                      const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
                       return (
                         <tr key={c.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                           <td style={tdStyle}>
@@ -739,7 +827,13 @@ export const ScanDetailPage = () => {
                                   Snyk
                                 </a>
                               )}
-                              {!depsUrl && !snykUrl && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
+                              {registryLink && (
+                                <a href={registryLink.url} target="_blank" rel="noopener noreferrer" title={registryLink.label}
+                                  style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
+                                  {registryLink.label}
+                                </a>
+                              )}
+                              {!depsUrl && !snykUrl && !registryLink && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
                             </div>
                           </td>
                         </tr>
@@ -816,6 +910,170 @@ export const ScanDetailPage = () => {
             {comparison && <ComparisonView comparison={comparison} />}
             {!comparison && !compareScanId && !compareLoading && (
               <p className="muted">{t("Select another scan of this target to compare.", "Wählen Sie einen anderen Scan dieses Ziels zum Vergleich.")}</p>
+            )}
+          </>
+        )}
+
+        {tab === "alerts" && (
+          <>
+            {alertFindings.length === 0 ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
+                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
+                  {t("No malicious package indicators detected.", "Keine Hinweise auf bösartige Pakete erkannt.")}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary banner */}
+                <div style={{
+                  padding: "0.75rem 1rem",
+                  marginBottom: "1rem",
+                  background: "rgba(255,107,107,0.08)",
+                  border: "1px solid rgba(255,107,107,0.2)",
+                  borderRadius: "8px",
+                  display: "flex",
+                  gap: "1rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}>
+                  <span style={{ color: "#ff6b6b", fontWeight: 600, fontSize: "0.875rem" }}>
+                    {t(
+                      `${alertFindings.length} security alert${alertFindings.length !== 1 ? "s" : ""} detected`,
+                      `${alertFindings.length} Sicherheitswarnung${alertFindings.length !== 1 ? "en" : ""} erkannt`,
+                    )}
+                  </span>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {(() => {
+                      const cats: Record<string, number> = {};
+                      for (const f of alertFindings) {
+                        const cat = f.dataSource?.replace("hecate-malware-detector:", "") || "unknown";
+                        cats[cat] = (cats[cat] || 0) + 1;
+                      }
+                      return Object.entries(cats).map(([cat, count]) => (
+                        <span key={cat} style={{
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.7rem",
+                          background: "rgba(255,255,255,0.06)",
+                          color: "rgba(255,255,255,0.5)",
+                        }}>
+                          {count} {cat.replace(/_/g, " ")}
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                {/* Alert cards */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {alertFindings.map((alert, idx) => {
+                    const sev = alert.severity.toLowerCase();
+                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : "#69db7c";
+                    const category = alert.dataSource?.replace("hecate-malware-detector:", "") || "";
+                    // Split description into main text and evidence
+                    const descParts = (alert.description || "").split("\n\nEvidence: ");
+                    const mainDesc = descParts[0] || "";
+                    const evidenceAndConf = descParts[1] || "";
+                    const evidenceParts = evidenceAndConf.split("\nConfidence: ");
+                    const evidence = evidenceParts[0] || "";
+                    const confidence = evidenceParts[1] || "medium";
+
+                    return (
+                      <div key={idx} style={{
+                        background: "rgba(255,255,255,0.02)",
+                        border: `1px solid ${sevColor}33`,
+                        borderLeft: `4px solid ${sevColor}`,
+                        borderRadius: "8px",
+                        padding: "1rem",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* Title with severity */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
+                              <span style={{
+                                padding: "0.125rem 0.5rem",
+                                borderRadius: "4px",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${sevColor}20`,
+                                color: sevColor,
+                              }}>
+                                {sev}
+                              </span>
+                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
+                                {alert.title}
+                              </span>
+                            </div>
+
+                            {/* Package info */}
+                            <div style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.6)", marginBottom: "0.375rem" }}>
+                              <span style={{ color: "rgba(255,255,255,0.8)" }}>{alert.packageName}</span>
+                              {alert.packageVersion && <span> @ {alert.packageVersion}</span>}
+                              {alert.packagePath && (
+                                <span style={{ marginLeft: "0.75rem", color: "rgba(255,255,255,0.4)", fontFamily: "monospace", fontSize: "0.75rem" }}>
+                                  {alert.packagePath}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Description */}
+                            <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0.375rem 0", lineHeight: 1.5 }}>
+                              {mainDesc}
+                            </p>
+
+                            {/* Evidence block */}
+                            {evidence && (
+                              <div style={{
+                                marginTop: "0.5rem",
+                                padding: "0.5rem 0.75rem",
+                                background: "rgba(0,0,0,0.3)",
+                                borderRadius: "4px",
+                                fontFamily: "monospace",
+                                fontSize: "0.75rem",
+                                color: "rgba(255,255,255,0.6)",
+                                overflowX: "auto",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-all",
+                                maxHeight: "120px",
+                              }}>
+                                {evidence}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right side badges */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
+                            {category && (
+                              <span style={{
+                                padding: "0.125rem 0.5rem",
+                                borderRadius: "4px",
+                                fontSize: "0.7rem",
+                                background: "rgba(92,132,255,0.1)",
+                                color: "#5c84ff",
+                                border: "1px solid rgba(92,132,255,0.2)",
+                              }}>
+                                {category.replace(/_/g, " ")}
+                              </span>
+                            )}
+                            <span style={{
+                              padding: "0.125rem 0.5rem",
+                              borderRadius: "4px",
+                              fontSize: "0.7rem",
+                              background: confidence === "high" ? "rgba(255,107,107,0.1)" : confidence === "medium" ? "rgba(252,196,25,0.1)" : "rgba(255,255,255,0.05)",
+                              color: confidence === "high" ? "#ff8787" : confidence === "medium" ? "#fcc419" : "rgba(255,255,255,0.4)",
+                              border: `1px solid ${confidence === "high" ? "rgba(255,107,107,0.2)" : confidence === "medium" ? "rgba(252,196,25,0.2)" : "rgba(255,255,255,0.1)"}`,
+                            }}>
+                              {confidence} {t("confidence", "Konfidenz")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </>
         )}
@@ -1268,6 +1526,54 @@ const ComparisonView = ({ comparison }: { comparison: ScanComparisonResponse }) 
         </div>
       )}
 
+      {/* Changed findings (same package, different vuln ID) */}
+      {(comparison.changed?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: "1rem" }}>
+          <h4 style={{ margin: "0 0 0.5rem", color: "#ffd43b", fontSize: "0.875rem" }}>
+            ↔ {t("Changed", "Geändert")} ({comparison.changed!.length})
+          </h4>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,212,59,0.2)" }}>
+                  <th style={thStyle}>{t("Package", "Paket")}</th>
+                  <th style={thStyle}>{t("Version", "Version")}</th>
+                  <th style={thStyle}>{t("Before", "Vorher")}</th>
+                  <th style={thStyle}>{t("After", "Nachher")}</th>
+                  <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.changed!.map((c, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid rgba(255,212,59,0.06)", background: "rgba(255,212,59,0.03)" }}>
+                    <td style={tdStyle}>{c.after.packageName}</td>
+                    <td style={tdStyle}>{c.after.packageVersion || "—"}</td>
+                    <td style={tdStyle}>
+                      {c.before.vulnerabilityId ? (
+                        <Link to={`/vulnerability/${c.before.vulnerabilityId}`} style={{ color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>{c.before.vulnerabilityId}</Link>
+                      ) : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                    </td>
+                    <td style={tdStyle}>
+                      {c.after.vulnerabilityId ? (
+                        <Link to={`/vulnerability/${c.after.vulnerabilityId}`} style={{ color: "#ffd43b", textDecoration: "none" }}>{c.after.vulnerabilityId}</Link>
+                      ) : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                    </td>
+                    <td style={tdStyle}>
+                      <SeverityChip severity={c.after.severity} />
+                      {c.before.severity !== c.after.severity && (
+                        <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginLeft: "0.375rem" }}>
+                          ({t("was", "war")} {c.before.severity})
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Removed findings */}
       {comparison.removed.length > 0 && (
         <div>
@@ -1305,7 +1611,7 @@ const ComparisonView = ({ comparison }: { comparison: ScanComparisonResponse }) 
         </div>
       )}
 
-      {comparison.added.length === 0 && comparison.removed.length === 0 && (
+      {comparison.added.length === 0 && comparison.removed.length === 0 && (comparison.changed?.length ?? 0) === 0 && (
         <p className="muted">{t("No differences found between the two scans.", "Keine Unterschiede zwischen den beiden Scans gefunden.")}</p>
       )}
     </div>

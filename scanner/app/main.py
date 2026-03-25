@@ -5,8 +5,14 @@ import shutil
 
 from fastapi import FastAPI, HTTPException
 
-from app.models import ScanRequest, ScanResponse, ScannerResult
-from app.scanners import extract_source_archive, run_scanner, setup_auth
+from app.models import ScanMetadata, ScanRequest, ScanResponse, ScannerResult
+from app.scanners import (
+    extract_source_archive,
+    get_git_commit_sha,
+    get_image_digest,
+    run_scanner,
+    setup_auth,
+)
 
 app = FastAPI(title="Hecate Scanner Sidecar", version="0.1.0")
 
@@ -47,12 +53,19 @@ async def scan(request: ScanRequest) -> ScanResponse:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     results: list[ScannerResult] = []
+    metadata = ScanMetadata()
     try:
         for scanner_name in request.scanners:
             result = await run_scanner(scanner_name, request.target, request.type, source_dir=source_dir)
             results.append(result)
+
+        # Collect metadata
+        if request.type == "source_repo" and source_dir:
+            metadata.commit_sha = await get_git_commit_sha(source_dir)
+        elif request.type == "container_image":
+            metadata.image_digest = await get_image_digest(request.target)
     finally:
         if source_dir:
             shutil.rmtree(source_dir, ignore_errors=True)
 
-    return ScanResponse(target=request.target, type=request.type, results=results)
+    return ScanResponse(target=request.target, type=request.type, results=results, metadata=metadata)

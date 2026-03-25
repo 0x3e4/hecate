@@ -5,6 +5,9 @@ services:
     env_file: ".env"
     ports:
       - "8000:8000"
+    networks:
+      - default
+      - db
     depends_on:
       mongo:
         condition: service_healthy
@@ -39,15 +42,28 @@ services:
       start_period: 15s
     volumes:
       - mongo-data:/data/db
+    networks:
+      - db
 
   scanner:
     build: ./scanner
     restart: unless-stopped
     env_file: ".env"
+    environment:
+      - TRIVY_CACHE_DIR=/tmp/.trivy-cache
+      - GRYPE_DB_CACHE_DIR=/tmp/.grype-cache
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=5G
+      - /root:size=1M
+    cap_drop:
+      - ALL
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 8G
 
   apprise:
     image: caronc/apprise:latest
@@ -81,6 +97,13 @@ services:
       start_period: 30s
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - db
+
+networks:
+  default:
+  db:
+    internal: true
 
 volumes:
   mongo-data:

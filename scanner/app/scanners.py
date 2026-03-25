@@ -5,14 +5,20 @@ import base64
 import binascii
 import io
 import json
+import logging
 import os
+import re
 import shutil
 import tempfile
+import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from app.hecate_analyzer import run_analysis
+from app.malware_detector import run_detection
 from app.models import ScannerResult
 
 
@@ -152,6 +158,53 @@ async def _clone_repo(url: str) -> str:
     return tmp_dir
 
 
+async def get_git_commit_sha(repo_dir: str) -> str | None:
+    """Get HEAD commit SHA from a cloned repo."""
+    stdout, _, rc = await _run_command(["git", "-C", repo_dir, "rev-parse", "HEAD"], timeout=10)
+    if rc == 0 and stdout.strip():
+        return stdout.strip()
+    return None
+
+
+async def get_image_digest(image_ref: str) -> str | None:
+    """Get image digest via skopeo or docker inspect. Falls back to trivy/grype metadata."""
+    # Try docker inspect first (works if image is pulled)
+    stdout, _, rc = await _run_command(
+        ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", image_ref], timeout=30,
+    )
+    if rc == 0 and stdout.strip() and "@" in stdout.strip():
+        # Extract just the digest part: registry/name@sha256:abc... -> sha256:abc...
+        return stdout.strip().split("@", 1)[1]
+    # Try skopeo (doesn't require pulling)
+    stdout, _, rc = await _run_command(
+        ["skopeo", "inspect", "--format", "{{.Digest}}", f"docker://{image_ref}"], timeout=30,
+    )
+    if rc == 0 and stdout.strip():
+        return stdout.strip()
+    return None
+
+
+def _sanitize_error(stderr: str, max_len: int = 300) -> str:
+    """Extract a human-readable error from scanner stderr, truncating stack traces."""
+    if not stderr:
+        return stderr
+    # Go panics: keep only the first line (before goroutine dump)
+    if "panic:" in stderr:
+        for line in stderr.splitlines():
+            line = line.strip()
+            if line.startswith("panic:"):
+                return line
+        # Fallback: first line containing "panic"
+        return next((l.strip() for l in stderr.splitlines() if "panic" in l.lower()), stderr[:max_len])
+    # Java / Python tracebacks: keep the last meaningful line
+    if "Traceback" in stderr or "Exception" in stderr:
+        lines = [l.strip() for l in stderr.strip().splitlines() if l.strip()]
+        return lines[-1] if lines else stderr[:max_len]
+    # Generic: first non-empty line, truncated
+    first = next((l.strip() for l in stderr.splitlines() if l.strip()), stderr)
+    return first[:max_len]
+
+
 def _parse_json_output(stdout: str, scanner: str, fmt: str) -> ScannerResult:
     """Parse JSON output from a scanner, handling errors gracefully."""
     if not stdout.strip():
@@ -178,7 +231,7 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
-            return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=f"Trivy failed (exit {rc}): {stderr}")
+            return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=f"Trivy failed (exit {rc}): {_sanitize_error(stderr)}")
         return _parse_json_output(stdout, "trivy", "trivy-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=str(exc))
@@ -202,7 +255,7 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
-            return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {stderr}")
+            return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {_sanitize_error(stderr)}")
         return _parse_json_output(stdout, "grype", "grype-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="grype", format="grype-json", report={}, error=str(exc))
@@ -226,13 +279,97 @@ async def _run_syft(target: str, target_type: str, source_dir: str | None = None
 
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
-            return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=f"Syft failed (exit {rc}): {stderr}")
+            return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=f"Syft failed (exit {rc}): {_sanitize_error(stderr)}")
         return _parse_json_output(stdout, "syft", "cyclonedx-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=str(exc))
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# requirements.txt pre-processing for OSV Scanner
+# ---------------------------------------------------------------------------
+
+# Matches bare package names without version specifiers: "flask", "passlib[argon2]"
+# Does NOT match lines with ==, >=, <=, ~=, !=, <, > operators
+_BARE_PKG_RE = re.compile(
+    r"^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?(\[[^\]]+\])?)\s*(#.*)?$"
+)
+
+_SKIP_DIRS_REQ = frozenset({
+    "node_modules", ".git", "vendor", "dist", "build",
+    "__pycache__", ".venv", "venv", ".tox", ".next",
+})
+
+
+async def _get_latest_pypi_version(package_name: str) -> str | None:
+    """Fetch latest version from PyPI JSON API. Returns None on failure."""
+    loop = asyncio.get_event_loop()
+
+    def _fetch() -> str | None:
+        url = f"https://pypi.org/pypi/{package_name}/json"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return data.get("info", {}).get("version")
+
+    try:
+        return await loop.run_in_executor(None, _fetch)
+    except Exception:
+        return None
+
+
+async def _pin_requirements_files(scan_dir: str) -> list[str]:
+    """Resolve unpinned requirements.txt packages to latest PyPI version.
+
+    OSV Scanner's osv-scalibr resolves unpinned packages to minimum/oldest
+    satisfying versions, producing false positive CVEs. This pre-processor
+    pins bare package names to their actual latest version before scanning.
+
+    Returns list of modified file paths.
+    """
+    root = Path(scan_dir)
+    modified: list[str] = []
+
+    for req_path in root.rglob("requirements*.txt"):
+        if any(part in _SKIP_DIRS_REQ for part in req_path.parts):
+            continue
+
+        try:
+            content = req_path.read_text(errors="replace")
+        except OSError:
+            continue
+
+        lines = content.splitlines()
+        new_lines: list[str] = []
+        changed = False
+
+        for line in lines:
+            stripped = line.strip()
+            # Skip empty, comments, flags, URLs, editable installs
+            if not stripped or stripped.startswith(("#", "-", "git+", "http")):
+                new_lines.append(line)
+                continue
+
+            m = _BARE_PKG_RE.match(stripped)
+            if m:
+                pkg_name = m.group(1).split("[")[0]  # strip extras like [argon2]
+                latest = await _get_latest_pypi_version(pkg_name)
+                if latest:
+                    new_lines.append(f"{stripped}=={latest}")
+                    changed = True
+                    logger.info("Pinned %s to latest version %s", pkg_name, latest)
+                    continue
+
+            new_lines.append(line)
+
+        if changed:
+            req_path.write_text("\n".join(new_lines) + "\n")
+            modified.append(str(req_path.relative_to(root)))
+
+    return modified
 
 
 async def _run_osv_scanner(
@@ -253,7 +390,15 @@ async def _run_osv_scanner(
         if not scan_dir:
             clone_dir = await _clone_repo(target)
             scan_dir = clone_dir
-        cmd = ["osv-scanner", "scan", "--format", "json", "-r", scan_dir]
+        # Resolve unpinned requirements.txt packages to latest PyPI versions
+        # so OSV checks real versions instead of minimum/oldest
+        pinned = await _pin_requirements_files(scan_dir)
+        if pinned:
+            logger.info("Pre-pinned %d requirements file(s): %s", len(pinned), pinned)
+
+        # --no-resolve: prevent OSV's transitive dep resolver from guessing
+        # minimum versions for manifest files (produces false positives)
+        cmd = ["osv-scanner", "scan", "--format", "json", "--no-resolve", "-r", scan_dir]
 
         stdout, stderr, rc = await _run_command(cmd)
         # osv-scanner returns exit code 1 when vulnerabilities are found (expected)
@@ -262,7 +407,7 @@ async def _run_osv_scanner(
             if "No package sources found" in stderr:
                 return ScannerResult(scanner="osv-scanner", format="osv-json", report={})
             if not stdout.strip():
-                return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=f"OSV Scanner failed (exit {rc}): {stderr}")
+                return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=f"OSV Scanner failed (exit {rc}): {_sanitize_error(stderr)}")
         return _parse_json_output(stdout, "osv-scanner", "osv-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=str(exc))
@@ -276,10 +421,10 @@ async def _run_hecate_analyzer(
     target_type: str,
     source_dir: str | None = None,
 ) -> ScannerResult:
-    """Run Hecate's own infrastructure analyzer (Dockerfiles, docker-compose, package.json)."""
+    """Run Hecate's own infrastructure analyzer + malware detection."""
     if target_type == "container_image":
         return ScannerResult(
-            scanner="hecate", format="cyclonedx-json", report={},
+            scanner="hecate", format="hecate-json", report={},
             error="Hecate Analyzer only supports source repository scanning",
         )
 
@@ -290,10 +435,21 @@ async def _run_hecate_analyzer(
             clone_dir = await _clone_repo(target)
             scan_dir = clone_dir
 
-        report = run_analysis(scan_dir)
-        return ScannerResult(scanner="hecate", format="cyclonedx-json", report=report)
+        # SBOM component extraction (existing)
+        sbom = run_analysis(scan_dir)
+
+        # Malware detection (new)
+        findings = run_detection(scan_dir)
+
+        report = {
+            "components": sbom.get("components", []),
+            "findings": findings,
+            "bomFormat": sbom.get("bomFormat", "CycloneDX"),
+            "specVersion": sbom.get("specVersion", "1.5"),
+        }
+        return ScannerResult(scanner="hecate", format="hecate-json", report=report)
     except Exception as exc:
-        return ScannerResult(scanner="hecate", format="cyclonedx-json", report={}, error=str(exc))
+        return ScannerResult(scanner="hecate", format="hecate-json", report={}, error=str(exc))
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)

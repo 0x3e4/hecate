@@ -499,6 +499,11 @@ export interface ScanComparisonFinding {
   fixVersion?: string | null;
 }
 
+export interface ScanComparisonChanged {
+  before: ScanComparisonFinding;
+  after: ScanComparisonFinding;
+}
+
 export interface ScanComparisonResponse {
   scanIdA: string;
   scanIdB: string;
@@ -506,6 +511,7 @@ export interface ScanComparisonResponse {
   summaryB: ScanSummary;
   added: ScanComparisonFinding[];
   removed: ScanComparisonFinding[];
+  changed?: ScanComparisonChanged[];
   unchangedCount: number;
 }
 

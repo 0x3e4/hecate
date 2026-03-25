@@ -544,7 +544,7 @@ export const ScansPage = () => {
                 <h3 style={{ marginBottom: "0.75rem" }}>{t("Scan Result", "Scan-Ergebnis")}</h3>
                 <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
                   <StatBox label="Status" value={scanResult.status} />
-                  <StatBox label={t("Findings", "Ergebnisse")} value={scanResult.findingsCount.toString()} />
+                  <StatBox label={t("Findings", "Ergebnisse")} value={(scanResult.summary.total || scanResult.findingsCount).toString()} />
                   <StatBox label={t("SBOM Components", "SBOM-Komponenten")} value={scanResult.sbomComponentCount.toString()} />
                 </div>
                 <SeverityBadges summary={scanResult.summary} style={{ marginTop: "0.75rem" }} />
