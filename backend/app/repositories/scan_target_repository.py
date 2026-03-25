@@ -48,6 +48,9 @@ class ScanTargetRepository:
             # Preserve user-set auto_scan flag — don't override with model default
             if "auto_scan" in existing:
                 payload["auto_scan"] = existing["auto_scan"]
+            # Preserve scanners from first scan — don't override on subsequent scans
+            if existing.get("scanners"):
+                payload["scanners"] = existing["scanners"]
 
         try:
             result = await self.collection.replace_one(

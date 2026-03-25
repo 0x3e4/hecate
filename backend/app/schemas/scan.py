@@ -92,6 +92,7 @@ class ScanTargetResponse(BaseModel):
     auto_scan: bool = Field(
         default=True, alias="autoScan", serialization_alias="autoScan"
     )
+    scanners: list[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -134,6 +135,12 @@ class ScanResponse(BaseModel):
         default=None, alias="sbomComponentCount", serialization_alias="sbomComponentCount"
     )
     error: str | None = None
+    compliance_summary: dict[str, int] | None = Field(
+        default=None, alias="complianceSummary", serialization_alias="complianceSummary"
+    )
+    layer_analysis_available: bool = Field(
+        default=False, alias="layerAnalysisAvailable", serialization_alias="layerAnalysisAvailable"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -284,6 +291,36 @@ class ScanComparisonResponse(BaseModel):
     removed: list[ScanComparisonFindingSchema]
     unchanged_count: int = Field(
         default=0, alias="unchangedCount", serialization_alias="unchangedCount"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+# --- Layer analysis (Dive) ---
+
+
+class ScanLayerDetailSchema(BaseModel):
+    index: int
+    digest: str = ""
+    size_bytes: int = Field(default=0, alias="sizeBytes", serialization_alias="sizeBytes")
+    command: str = ""
+
+    model_config = {"populate_by_name": True}
+
+
+class ScanLayerAnalysisResponse(BaseModel):
+    scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+    efficiency: float = 0.0
+    wasted_bytes: int = Field(default=0, alias="wastedBytes", serialization_alias="wastedBytes")
+    user_wasted_percent: float = Field(
+        default=0.0, alias="userWastedPercent", serialization_alias="userWastedPercent"
+    )
+    total_image_size: int = Field(
+        default=0, alias="totalImageSize", serialization_alias="totalImageSize"
+    )
+    layers: list[ScanLayerDetailSchema] = Field(default_factory=list)
+    pass_threshold: bool = Field(
+        default=True, alias="passThreshold", serialization_alias="passThreshold"
     )
 
     model_config = {"populate_by_name": True}

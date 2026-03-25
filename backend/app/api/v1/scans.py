@@ -16,6 +16,8 @@ from app.schemas.scan import (
     ScanFindingResponse,
     ScanHistoryEntrySchema,
     ScanHistoryResponse,
+    ScanLayerAnalysisResponse,
+    ScanLayerDetailSchema,
     ScanListResponse,
     ScanResponse,
     ScanSummarySchema,
@@ -356,6 +358,34 @@ async def get_scan_sbom(
     )
 
 
+@router.get("/{scan_id}/layers", response_model=ScanLayerAnalysisResponse)
+async def get_scan_layers(
+    scan_id: str,
+    service: ScanService = Depends(get_scan_service),
+) -> ScanLayerAnalysisResponse:
+    """Get Dive layer analysis for a scan."""
+    data = await service.get_layer_analysis(scan_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="No layer analysis available for this scan")
+    return ScanLayerAnalysisResponse(
+        scan_id=data.get("scan_id", scan_id),
+        efficiency=data.get("efficiency", 0.0),
+        wasted_bytes=data.get("wasted_bytes", 0),
+        user_wasted_percent=data.get("user_wasted_percent", 0.0),
+        total_image_size=data.get("total_image_size", 0),
+        layers=[
+            ScanLayerDetailSchema(
+                index=layer.get("index", i),
+                digest=layer.get("digest", ""),
+                size_bytes=layer.get("size_bytes", 0),
+                command=layer.get("command", ""),
+            )
+            for i, layer in enumerate(data.get("layers", []))
+        ],
+        pass_threshold=data.get("pass_threshold", True),
+    )
+
+
 # --- Mapping helpers ---
 
 
@@ -377,6 +407,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         latest_scan_id=doc.get("latest_scan_id"),
         has_running_scan=doc.get("has_running_scan", False),
         auto_scan=doc.get("auto_scan", True),
+        scanners=doc.get("scanners", []),
     )
 
 
@@ -399,6 +430,8 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         summary=ScanSummarySchema(**summary) if isinstance(summary, dict) else ScanSummarySchema(),
         sbom_component_count=doc.get("sbom_component_count"),
         error=doc.get("error"),
+        compliance_summary=doc.get("compliance_summary"),
+        layer_analysis_available=doc.get("layer_analysis_available", False),
     )
 
 

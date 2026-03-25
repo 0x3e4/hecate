@@ -18,8 +18,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
                        |  |  +--------+
                        |  |           |
                        |  |     +-----v-----+
-                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV Scanner
-                       |  |     |  :8080    |  FastAPI Sidecar
+                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV, Hecate,
+                       |  |     |  :8080    |  Dockle, Dive (FastAPI Sidecar)
                        |  |     +-----------+
                        |  |
                        |  +--+
@@ -71,7 +71,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   │   └── styles.css    # Globales Dark-Theme CSS
 │   ├── package.json      # Node-Abhängigkeiten (npm)
 │   └── Dockerfile        # Multi-Stage Build (node:24-alpine)
-├── scanner/              # Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner)
+├── scanner/              # Scanner-Sidecar (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive)
 │   ├── app/
 │   │   ├── main.py           # FastAPI-App (POST /scan, GET /health)
 │   │   ├── models.py         # Request/Response-Schemata
@@ -95,11 +95,14 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Server-Sent Events (SSE):** Echtzeit-Streaming von Job-Status und neuen Schwachstellen an das Frontend
 
 ### SCA-Scanning (Software Composition Analysis)
-- **Scanner-Sidecar:** Trivy, Grype, Syft und OSV Scanner als Docker-Container
+- **Scanner-Sidecar:** 7 Scanner als Docker-Container — Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle (CIS Docker Benchmarks), Dive (Image-Schichtanalyse)
 - **CI/CD-Integration:** Container-Images und Source-Repos über API scannen (`POST /api/v1/scans`)
-- **Manueller Scan:** Scans direkt aus dem Frontend starten
-- **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele
+- **Manueller Scan:** Scans direkt aus dem Frontend starten (Scanner-Auswahl je Scan-Typ)
+- **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern
 - **SBOM-Generierung:** CycloneDX-Format via Syft
+- **Malware-Erkennung:** Hecate Analyzer mit 32 Heuristik-Regeln für Supply-Chain-Angriffe
+- **Best Practices:** Dockle prüft CIS Docker Benchmarks (nur Container-Images, opt-in)
+- **Layer-Analyse:** Dive analysiert Image-Schichten auf Effizienz und Verschwendung (nur Container-Images, opt-in)
 - **Deduplizierung:** Automatische Zusammenführung von Ergebnissen mehrerer Scanner
 - **Audit-Trail:** Scan-Ereignisse im Ingestion-Log protokolliert
 
@@ -122,7 +125,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
-| Scan-Detail | Findings-Tabelle, SBOM-Komponenten, Severity-Zusammenfassung |
+| Scan-Detail | Findings, SBOM, Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 | System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
 
 ### Benachrichtigungen (Apprise)
@@ -219,6 +222,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/scans/{scanId}` — Scan-Details
 - `GET /api/v1/scans/{scanId}/findings` — Findings eines Scans
 - `GET /api/v1/scans/{scanId}/sbom` — SBOM-Komponenten eines Scans
+- `GET /api/v1/scans/{scanId}/layers` — Layer-Analyse eines Scans (Dive)
 
 ### Benachrichtigungen
 - `GET /api/v1/notifications/status` — Benachrichtigungs-Status (Apprise erreichbar?)
@@ -269,7 +273,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
-| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
+| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCANNER_AUTH`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
 | **Benachrichtigungen** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |
 
 ## CI/CD
@@ -289,7 +293,7 @@ Gitea-Workflows in `.gitea/workflows/`:
 | HTTP-Client | httpx 0.28 (async) |
 | Logging | structlog 25 |
 | KI | OpenAI, Anthropic, Google Gemini (jeweils optional) |
-| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, FastAPI |
+| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
 

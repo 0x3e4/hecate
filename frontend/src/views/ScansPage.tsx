@@ -50,7 +50,7 @@ export const ScansPage = () => {
   const [sourceArchiveFile, setSourceArchiveFile] = useState<File | null>(null);
   const [sourceArchiveTargetName, setSourceArchiveTargetName] = useState("");
   const [scanType, setScanType] = useState<"container_image" | "source_repo">("container_image");
-  const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "osv-scanner", "hecate"]);
+  const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "dockle", "dive"]);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<SubmitScanResponse | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -122,7 +122,7 @@ export const ScansPage = () => {
     try {
       const effectiveScanners = scanType === "container_image"
         ? scanners.filter((s: string) => s !== "osv-scanner" && s !== "hecate")
-        : scanners;
+        : scanners.filter((s: string) => s !== "dockle" && s !== "dive");
       if (scanType === "source_repo" && sourceRepoInputMode === "zip" && sourceArchiveFile && !sourceArchiveFile.name.toLowerCase().endsWith(".zip")) {
         setScanError(t("Please upload a .zip archive.", "Bitte eine .zip-Datei hochladen."));
         setScanning(false);
@@ -152,13 +152,13 @@ export const ScansPage = () => {
 
   const handleRescan = async (target: ScanTarget) => {
     try {
-      const rescanScanners = target.type === "container_image"
-        ? ["trivy", "grype", "syft"]
+      const fallbackScanners = target.type === "container_image"
+        ? ["trivy", "grype", "syft", "dockle", "dive"]
         : ["trivy", "grype", "syft", "osv-scanner", "hecate"];
       await submitManualScan({
         target: target.id,
         type: target.type,
-        scanners: rescanScanners,
+        scanners: target.scanners?.length ? target.scanners : fallbackScanners,
       });
       setTab("scans");
     } catch (err) {
@@ -392,6 +392,7 @@ export const ScansPage = () => {
                       checked={scanType === "container_image"}
                       onChange={() => {
                         setScanType("container_image");
+                        setScanners(["trivy", "grype", "syft", "dockle", "dive"]);
                         setSourceRepoInputMode("url");
                         setSourceArchiveFile(null);
                         setSourceArchiveTargetName("");
@@ -405,7 +406,10 @@ export const ScansPage = () => {
                       name="scanType"
                       value="source_repo"
                       checked={scanType === "source_repo"}
-                      onChange={() => setScanType("source_repo")}
+                      onChange={() => {
+                        setScanType("source_repo");
+                        setScanners(["trivy", "grype", "syft", "osv-scanner", "hecate"]);
+                      }}
                     />
                     Source Repository
                   </label>
@@ -495,21 +499,19 @@ export const ScansPage = () => {
               <div>
                 <label style={labelStyle}>{t("Scanners", "Scanner")}</label>
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  {["trivy", "grype", "syft", "osv-scanner", "hecate"].map(name => {
-                    const disabled = (name === "osv-scanner" || name === "hecate") && scanType === "container_image";
-                    return (
-                      <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: disabled ? "not-allowed" : "pointer", color: disabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.8)" }}>
-                        <input
-                          type="checkbox"
-                          checked={!disabled && scanners.includes(name)}
-                          onChange={() => !disabled && handleScannerToggle(name)}
-                          disabled={disabled}
-                        />
-                        {name}
-                        {disabled && <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>({t("source only", "nur Source")})</span>}
-                      </label>
-                    );
-                  })}
+                  {(scanType === "container_image"
+                    ? ["trivy", "grype", "syft", "dockle", "dive"]
+                    : ["trivy", "grype", "syft", "osv-scanner", "hecate"]
+                  ).map(name => (
+                    <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                      <input
+                        type="checkbox"
+                        checked={scanners.includes(name)}
+                        onChange={() => handleScannerToggle(name)}
+                      />
+                      {name}
+                    </label>
+                  ))}
                 </div>
               </div>
 

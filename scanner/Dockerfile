@@ -1,11 +1,10 @@
-FROM aquasec/trivy:0.69.1 AS trivy
-FROM anchore/grype:latest AS grype
-FROM anchore/syft:latest AS syft
-
+FROM aquasec/trivy:0.69.3 AS trivy
+FROM anchore/grype:v0.110.0 AS grype
+FROM anchore/syft:v1.42.3 AS syft
 FROM python:3.13-slim
 
-# Install git for source repo cloning and Poetry for dependency management
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl \
+# Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl skopeo \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir poetry
 
@@ -14,9 +13,17 @@ COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 COPY --from=grype /grype /usr/local/bin/grype
 COPY --from=syft /syft /usr/local/bin/syft
 
+# Install Dockle
+RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/dockle_0.4.15_Linux-64bit.tar.gz \
+    | tar xz -C /usr/local/bin dockle
+
 # Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 \
+RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.5/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
+
+# Install Dive (Docker image layer analysis)
+RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_0.13.1_linux_amd64.tar.gz \
+    | tar xz -C /usr/local/bin dive
 
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all

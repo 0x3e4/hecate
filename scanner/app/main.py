@@ -16,7 +16,7 @@ from app.scanners import (
 
 app = FastAPI(title="Hecate Scanner Sidecar", version="0.1.0")
 
-VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate"}
+VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive"}
 
 
 @app.on_event("startup")
