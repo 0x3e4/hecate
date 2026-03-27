@@ -35,6 +35,32 @@ class SavedSearchCreate(SavedSearchBase):
     )
 
 
+class SavedSearchUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    query_params: str | None = Field(
+        default=None,
+        alias="queryParams",
+        serialization_alias="queryParams",
+    )
+    dql_query: str | None = Field(
+        default=None,
+        alias="dqlQuery",
+        serialization_alias="dqlQuery",
+    )
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("query_params")
+    @classmethod
+    def _strip_leading_question_mark(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned.startswith("?"):
+            cleaned = cleaned[1:]
+        return cleaned
+
+
 class SavedSearch(SavedSearchBase):
     id: str = Field(serialization_alias="id")
     created_at: datetime = Field(serialization_alias="createdAt")

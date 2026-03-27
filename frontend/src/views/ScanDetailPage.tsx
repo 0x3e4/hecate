@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans } from "../api/scans";
+import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom } from "../api/scans";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
@@ -306,7 +306,10 @@ export const ScanDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string | undefined>();
+  const [findingsSearch, setFindingsSearch] = useState("");
+  const [findingsSort, setFindingsSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "severity", dir: "asc" });
   const [sbomSearch, setSbomSearch] = useState("");
+  const [sbomExporting, setSbomExporting] = useState<string | null>(null);
 
   // History chart state
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
@@ -341,11 +344,35 @@ export const ScanDetailPage = () => {
 
   const isContainerImage = !!scan?.imageRef;
 
-  /** Client-side severity filter on vulnerability findings (excludes alerts) */
-  const filteredMerged = useMemo(
-    () => severityFilter ? vulnFindings.filter(f => f.severity === severityFilter) : vulnFindings,
-    [vulnFindings, severityFilter],
-  );
+  /** Client-side severity + search filter on vulnerability findings (excludes alerts) */
+  const filteredMerged = useMemo(() => {
+    let result = vulnFindings;
+    if (severityFilter) result = result.filter(f => f.severity === severityFilter);
+    if (findingsSearch.trim()) {
+      const q = findingsSearch.trim().toLowerCase();
+      result = result.filter(f =>
+        (f.vulnerabilityId && f.vulnerabilityId.toLowerCase().includes(q)) ||
+        f.packageName.toLowerCase().includes(q) ||
+        (f.packageVersion && f.packageVersion.toLowerCase().includes(q)) ||
+        f.severity.toLowerCase().includes(q) ||
+        (f.fixVersion && f.fixVersion.toLowerCase().includes(q)) ||
+        f.scanners.some(s => s.toLowerCase().includes(q))
+      );
+    }
+    // Sort
+    const { col, dir } = findingsSort;
+    const mult = dir === "asc" ? 1 : -1;
+    result = [...result].sort((a, b) => {
+      if (col === "severity") return mult * ((SEVERITY_ORDER[a.severity] ?? 4) - (SEVERITY_ORDER[b.severity] ?? 4));
+      if (col === "cve") return mult * (a.vulnerabilityId ?? "").localeCompare(b.vulnerabilityId ?? "");
+      if (col === "package") return mult * a.packageName.localeCompare(b.packageName);
+      if (col === "version") return mult * (a.packageVersion ?? "").localeCompare(b.packageVersion ?? "");
+      if (col === "fix") return mult * (a.fixVersion ?? "").localeCompare(b.fixVersion ?? "");
+      if (col === "scanner") return mult * a.scanners.join(",").localeCompare(b.scanners.join(","));
+      return 0;
+    });
+    return result;
+  }, [vulnFindings, severityFilter, findingsSearch, findingsSort]);
 
   /** Summary computed from deduplicated vulnerability findings (excludes alerts) */
   const mergedSummary = useMemo(() => {
@@ -382,6 +409,53 @@ export const ScanDetailPage = () => {
     return [...map.values()];
   }, [sbomComponents]);
 
+  const sbomStats = useMemo(() => {
+    const ecosystems: Record<string, number> = {};
+    const licenses: Record<string, number> = {};
+    const types: Record<string, number> = {};
+    for (const c of dedupedSbom) {
+      // Ecosystem from PURL
+      const ecoMatch = c.purl?.match(/^pkg:([^/]+)\//);
+      const eco = ecoMatch ? ecoMatch[1] : "unknown";
+      ecosystems[eco] = (ecosystems[eco] || 0) + 1;
+      // Licenses
+      for (const lic of c.licenses) {
+        licenses[lic] = (licenses[lic] || 0) + 1;
+      }
+      // Types
+      const t = c.type || "unknown";
+      types[t] = (types[t] || 0) + 1;
+    }
+    const sortDesc = (obj: Record<string, number>) =>
+      Object.entries(obj).sort((a, b) => b[1] - a[1]);
+    return {
+      ecosystems: sortDesc(ecosystems),
+      licenses: sortDesc(licenses),
+      types: sortDesc(types),
+    };
+  }, [dedupedSbom]);
+
+  const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json") => {
+    if (!scanId || sbomExporting) return;
+    setSbomExporting(format);
+    try {
+      const { data, filename } = await exportScanSbom(scanId, format);
+      const fallback = `sbom-${scanId}.${format === "spdx-json" ? "spdx" : "cdx"}.json`;
+      const url = URL.createObjectURL(data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename ?? fallback;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("SBOM export failed", err);
+    } finally {
+      setSbomExporting(null);
+    }
+  };
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevStatusRef = useRef<string | null>(null);
 
@@ -405,7 +479,7 @@ export const ScanDetailPage = () => {
       // Load findings+sbom on initial load, while running (incremental results), or when just finished
       if (isInitial || isRunning || justFinished) {
         const [findingsData, sbomData] = await Promise.all([
-          fetchScanFindings(scanId, { limit: 500 }),
+          fetchScanFindings(scanId, { limit: 5000 }),
           fetchScanSbom(scanId, { search: sbomSearch || undefined, limit: 500 }),
         ]);
         setFindings(findingsData.items);
@@ -648,7 +722,31 @@ export const ScanDetailPage = () => {
 
         {tab === "findings" && (
           <>
-            {/* Severity filter + actions */}
+            {/* Search + severity filter + actions */}
+            <div style={{ marginBottom: "0.5rem", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="text"
+                value={findingsSearch}
+                onChange={e => setFindingsSearch(e.target.value)}
+                placeholder={t("Search by CVE, package, scanner...", "Nach CVE, Paket, Scanner suchen...")}
+                style={{
+                  padding: "0.375rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "#fff",
+                  fontSize: "0.8125rem",
+                  flex: "1 1 200px",
+                  maxWidth: "500px",
+                  minWidth: 0,
+                  boxSizing: "border-box",
+                  outline: "none",
+                }}
+              />
+              <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
+                {filteredMerged.length} {t("findings", "Ergebnisse")}
+              </span>
+            </div>
             <div style={{ display: "flex", gap: "0.375rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
               {[undefined, "critical", "high", "medium", "low"].map(sev => (
                 <button
@@ -705,12 +803,22 @@ export const ScanDetailPage = () => {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                      <th style={thStyle}>CVE</th>
-                      <th style={thStyle}>{t("Package", "Paket")}</th>
-                      <th style={thStyle}>{t("Version", "Version")}</th>
-                      <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
-                      <th style={thStyle}>Fix</th>
-                      <th style={thStyle}>{t("Scanner", "Scanner")}</th>
+                      {([
+                        ["cve", "CVE"],
+                        ["package", t("Package", "Paket")],
+                        ["version", t("Version", "Version")],
+                        ["severity", t("Severity", "Schweregrad")],
+                        ["fix", "Fix"],
+                        ["scanner", t("Scanner", "Scanner")],
+                      ] as const).map(([col, label]) => (
+                        <th
+                          key={col}
+                          style={{ ...thStyle, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                          onClick={() => setFindingsSort(prev => prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })}
+                        >
+                          {label} {findingsSort.col === col ? (findingsSort.dir === "asc" ? "\u25B2" : "\u25BC") : ""}
+                        </th>
+                      ))}
                       <th style={thStyle}>{t("Links", "Links")}</th>
                     </tr>
                   </thead>
@@ -802,7 +910,59 @@ export const ScanDetailPage = () => {
               <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
                 {dedupedSbom.length} {t("components", "Komponenten")}
               </span>
+              <div style={{ display: "flex", gap: "0.375rem", marginLeft: "auto" }}>
+                <button
+                  onClick={() => void handleSbomExport("cyclonedx-json")}
+                  disabled={!!sbomExporting || dedupedSbom.length === 0}
+                  style={{
+                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: sbomExporting ? "wait" : "pointer",
+                    background: "rgba(105,219,124,0.12)", color: "#69db7c", border: "1px solid rgba(105,219,124,0.3)",
+                  }}
+                >
+                  {sbomExporting === "cyclonedx-json" ? "..." : "CycloneDX"}
+                </button>
+                <button
+                  onClick={() => void handleSbomExport("spdx-json")}
+                  disabled={!!sbomExporting || dedupedSbom.length === 0}
+                  style={{
+                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: sbomExporting ? "wait" : "pointer",
+                    background: "rgba(139,148,252,0.12)", color: "#8b94fc", border: "1px solid rgba(139,148,252,0.3)",
+                  }}
+                >
+                  {sbomExporting === "spdx-json" ? "..." : "SPDX"}
+                </button>
+              </div>
             </div>
+
+            {dedupedSbom.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
+                {[
+                  { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b" },
+                  { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, color: "#69db7c" },
+                  { title: t("Types", "Typen"), data: sbomStats.types, color: "#8b94fc" },
+                ].map(card => (
+                  <div key={card.title} style={{ padding: "0.75rem", borderRadius: "8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      {card.title}
+                    </div>
+                    {card.data.slice(0, 5).map(([name, count]) => (
+                      <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0", fontSize: "0.75rem" }}>
+                        <span style={{ color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{name}</span>
+                        <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{count}</span>
+                      </div>
+                    ))}
+                    {card.data.length > 5 && (
+                      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginTop: "0.25rem" }}>
+                        +{card.data.length - 5} {t("more", "weitere")}
+                      </div>
+                    )}
+                    {card.data.length === 0 && (
+                      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.2)" }}>—</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {dedupedSbom.length === 0 ? (
               <p className="muted">{t("No SBOM components.", "Keine SBOM-Komponenten.")}</p>

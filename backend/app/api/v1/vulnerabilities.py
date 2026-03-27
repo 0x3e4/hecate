@@ -1,13 +1,20 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from app.core.config import settings
 from app.schemas.ai import (
     AIBatchInvestigationRequest,
     AIBatchInvestigationResponse,
+    AIBatchInvestigationSubmitResponse,
     AIInvestigationRequest,
     AIInvestigationResponse,
+    AIInvestigationSubmitResponse,
     AIProviderInfo,
 )
 from app.schemas.vulnerability import (
@@ -22,9 +29,12 @@ from app.schemas.vulnerability import (
     VulnerabilityRefreshResponse,
 )
 from app.services.ai_service import AIClient, AIProviderError, get_ai_client
+from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
 from app.utils.request import get_client_ip
+
+logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -249,7 +259,11 @@ async def get_vulnerability(
     return result
 
 
-@router.post("/{identifier}/ai-investigation", response_model=AIInvestigationResponse)
+@router.post(
+    "/{identifier}/ai-investigation",
+    response_model=AIInvestigationSubmitResponse,
+    status_code=202,
+)
 async def create_ai_investigation(
     identifier: str,
     payload: AIInvestigationRequest,
@@ -258,52 +272,100 @@ async def create_ai_investigation(
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
-) -> AIInvestigationResponse:
+) -> AIInvestigationSubmitResponse:
     vulnerability = await service.get_by_id(identifier)
     if vulnerability is None:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
 
+    # Validate provider before launching background task
     try:
-        result = await ai_client.analyze_vulnerability(
-            payload.provider,
-            vulnerability,
-            language=payload.language,
-            additional_context=payload.additional_context,
-        )
+        if payload.provider == "openai" and not settings.openai_api_key:
+            raise ValueError("OpenAI provider is not configured.")
+        if payload.provider == "anthropic" and not settings.anthropic_api_key:
+            raise ValueError("Anthropic provider is not configured.")
+        if payload.provider == "gemini" and not settings.google_gemini_api_key:
+            raise ValueError("Google Gemini provider is not configured.")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except AIProviderError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    assessment_payload = result.model_dump(by_alias=True)
-    persisted = await service.save_ai_assessment(identifier, assessment_payload)
-    if not persisted:
-        raise HTTPException(status_code=502, detail="Failed to persist AI assessment.")
 
     client_ip = get_client_ip(request)
-    metadata = {
-        "label": "AI-Analyse abgeschlossen",
-        "clientIp": client_ip,
-        "provider": payload.provider,
-    }
-    metadata = {key: value for key, value in metadata.items() if value}
-    result_payload: dict[str, Any] = {
-        "vulnerabilityId": identifier,
-        "language": result.language,
-        "summary": result.summary,
-    }
-    if result.token_usage:
-        result_payload["tokenUsage"] = result.token_usage
-    await audit_service.record_event(
-        "ai_investigation",
-        metadata=metadata or None,
-        result=result_payload,
+
+    asyncio.create_task(
+        _run_ai_investigation_background(
+            identifier=identifier,
+            vulnerability=vulnerability,
+            provider=payload.provider,
+            language=payload.language,
+            additional_context=payload.additional_context,
+            client_ip=client_ip,
+            ai_client=ai_client,
+            service=service,
+            audit_service=audit_service,
+        )
     )
 
-    return result
+    return AIInvestigationSubmitResponse(status="running", vulnerabilityId=identifier)
 
 
-@router.post("/ai-investigation/batch", response_model=AIBatchInvestigationResponse)
+async def _run_ai_investigation_background(
+    *,
+    identifier: str,
+    vulnerability: VulnerabilityDetail,
+    provider: str,
+    language: str | None,
+    additional_context: str | None,
+    client_ip: str | None,
+    ai_client: AIClient,
+    service: VulnerabilityService,
+    audit_service: AuditService,
+) -> None:
+    job_name = f"ai_investigation_{identifier}"
+    started_at = datetime.now(tz=UTC)
+    publish_job_started(job_name, started_at, provider=provider, vulnerabilityId=identifier)
+
+    try:
+        result = await ai_client.analyze_vulnerability(
+            provider,
+            vulnerability,
+            language=language,
+            additional_context=additional_context,
+        )
+
+        assessment_payload = result.model_dump(by_alias=True)
+        await service.save_ai_assessment(identifier, assessment_payload)
+
+        metadata: dict[str, Any] = {
+            "label": "AI-Analyse abgeschlossen",
+            "clientIp": client_ip,
+            "provider": provider,
+        }
+        metadata = {k: v for k, v in metadata.items() if v}
+        result_payload: dict[str, Any] = {
+            "vulnerabilityId": identifier,
+            "language": result.language,
+            "summary": result.summary,
+        }
+        if result.token_usage:
+            result_payload["tokenUsage"] = result.token_usage
+        await audit_service.record_event(
+            "ai_investigation",
+            metadata=metadata or None,
+            result=result_payload,
+        )
+
+        finished_at = datetime.now(tz=UTC)
+        publish_job_completed(job_name, started_at, finished_at, provider=provider, vulnerabilityId=identifier)
+    except Exception as exc:
+        finished_at = datetime.now(tz=UTC)
+        logger.error("Background AI investigation failed", identifier=identifier, error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc))
+
+
+@router.post(
+    "/ai-investigation/batch",
+    response_model=AIBatchInvestigationSubmitResponse,
+    status_code=202,
+)
 async def create_batch_ai_investigation(
     payload: AIBatchInvestigationRequest,
     request: Request,
@@ -311,12 +373,12 @@ async def create_batch_ai_investigation(
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
-) -> AIBatchInvestigationResponse:
+) -> AIBatchInvestigationSubmitResponse:
     """
     Analyze multiple vulnerabilities together for combined insights.
     Maximum 10 vulnerabilities per request.
     """
-    # Fetch all vulnerabilities
+    # Fetch all vulnerabilities before launching background task
     vulnerabilities: list[VulnerabilityDetail] = []
     for vuln_id in payload.vulnerability_ids:
         vuln = await service.get_by_id(vuln_id)
@@ -327,55 +389,92 @@ async def create_batch_ai_investigation(
             )
         vulnerabilities.append(vuln)
 
-    # Call AI service for batch analysis
-    try:
-        result = await ai_client.analyze_vulnerabilities_batch(
-            payload.provider,
-            vulnerabilities,
+    client_ip = get_client_ip(request)
+
+    asyncio.create_task(
+        _run_batch_ai_investigation_background(
+            vulnerability_ids=payload.vulnerability_ids,
+            vulnerabilities=vulnerabilities,
+            provider=payload.provider,
             language=payload.language,
             additional_context=payload.additional_context,
+            client_ip=client_ip,
+            ai_client=ai_client,
+            service=service,
+            audit_service=audit_service,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except AIProviderError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    # Save batch analysis to database
-    batch_id = await service.save_batch_analysis(
-        vulnerability_ids=payload.vulnerability_ids,
-        provider=payload.provider,
-        language=result.language,
-        summary=result.summary,
-        individual_summaries=result.individual_summaries,
-        additional_context=payload.additional_context,
-        token_usage=result.token_usage,
     )
 
-    # Audit logging
-    client_ip = get_client_ip(request)
-    metadata = {
-        "label": "AI Batch-Analyse abgeschlossen",
-        "clientIp": client_ip,
-        "provider": payload.provider,
-        "vulnerabilityCount": len(vulnerabilities),
-        "batchId": batch_id,
-    }
-    metadata = {key: value for key, value in metadata.items() if value}
-    result_payload: dict[str, Any] = {
-        "batchId": batch_id,
-        "vulnerabilityIds": payload.vulnerability_ids,
-        "language": result.language,
-        "vulnerabilityCount": result.vulnerability_count,
-    }
-    if result.token_usage:
-        result_payload["tokenUsage"] = result.token_usage
-    await audit_service.record_event(
-        "ai_batch_investigation",
-        metadata=metadata or None,
-        result=result_payload,
+    return AIBatchInvestigationSubmitResponse(
+        status="running", vulnerabilityIds=payload.vulnerability_ids
     )
 
-    return result
+
+async def _run_batch_ai_investigation_background(
+    *,
+    vulnerability_ids: list[str],
+    vulnerabilities: list[VulnerabilityDetail],
+    provider: str,
+    language: str | None,
+    additional_context: str | None,
+    client_ip: str | None,
+    ai_client: AIClient,
+    service: VulnerabilityService,
+    audit_service: AuditService,
+) -> None:
+    job_name = "ai_batch_investigation"
+    started_at = datetime.now(tz=UTC)
+    publish_job_started(job_name, started_at, provider=provider, vulnerabilityIds=vulnerability_ids)
+
+    try:
+        result = await ai_client.analyze_vulnerabilities_batch(
+            provider,
+            vulnerabilities,
+            language=language,
+            additional_context=additional_context,
+        )
+
+        batch_id = await service.save_batch_analysis(
+            vulnerability_ids=vulnerability_ids,
+            provider=provider,
+            language=result.language,
+            summary=result.summary,
+            individual_summaries=result.individual_summaries,
+            additional_context=additional_context,
+            token_usage=result.token_usage,
+        )
+
+        metadata: dict[str, Any] = {
+            "label": "AI Batch-Analyse abgeschlossen",
+            "clientIp": client_ip,
+            "provider": provider,
+            "vulnerabilityCount": len(vulnerabilities),
+            "batchId": batch_id,
+        }
+        metadata = {k: v for k, v in metadata.items() if v}
+        result_payload: dict[str, Any] = {
+            "batchId": batch_id,
+            "vulnerabilityIds": vulnerability_ids,
+            "language": result.language,
+            "vulnerabilityCount": result.vulnerability_count,
+        }
+        if result.token_usage:
+            result_payload["tokenUsage"] = result.token_usage
+        await audit_service.record_event(
+            "ai_batch_investigation",
+            metadata=metadata or None,
+            result=result_payload,
+        )
+
+        finished_at = datetime.now(tz=UTC)
+        publish_job_completed(
+            job_name, started_at, finished_at,
+            provider=provider, batchId=batch_id, vulnerabilityIds=vulnerability_ids,
+        )
+    except Exception as exc:
+        finished_at = datetime.now(tz=UTC)
+        logger.error("Background batch AI investigation failed", error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc))
 
 
 @router.get("/ai-investigation/batch", response_model=dict[str, Any])

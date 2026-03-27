@@ -2,11 +2,13 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import { AIBatchInvestigationResponse, VulnerabilityPreview } from "../../types";
 import { useI18n } from "../../i18n/context";
+import { AILoadingIndicator } from "../AILoadingIndicator";
 
 interface BatchAnalysisDisplayProps {
   response: AIBatchInvestigationResponse | null;
   vulnerabilities: VulnerabilityPreview[];
   loading: boolean;
+  loadingStartedAt?: number;
   typing: boolean;
   displayText: string;
 }
@@ -17,6 +19,7 @@ export const BatchAnalysisDisplay = ({
   response,
   vulnerabilities,
   loading,
+  loadingStartedAt,
   typing,
   displayText,
 }: BatchAnalysisDisplayProps) => {
@@ -45,10 +48,7 @@ export const BatchAnalysisDisplay = ({
   if (loading) {
     return (
       <div className="batch-analysis-display">
-          <div className="loading-spinner">
-          <div className="spinner"></div>
-          <p>{t("Analysis running...", "Analyse läuft...")}</p>
-        </div>
+        <AILoadingIndicator startedAt={loadingStartedAt} />
       </div>
     );
   }

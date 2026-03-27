@@ -44,11 +44,22 @@ export interface AIInvestigationResponse {
   generatedAt: string;
 }
 
+export interface AIInvestigationSubmitResponse {
+  status: string;
+  vulnerabilityId: string;
+}
+
+export interface AIBatchInvestigationSubmitResponse {
+  status: string;
+  vulnerabilityIds: string[];
+}
+
 export interface AIAssessment {
   summary?: string;
   provider?: string;
   language?: string;
   generatedAt?: string;
+  tokenUsage?: { inputTokens: number; outputTokens: number } | null;
   [key: string]: unknown;
 }
 
@@ -70,16 +81,16 @@ export interface AIBatchInvestigationResponse {
 }
 
 export interface BatchAnalysisItem {
-  batch_id: string;
-  vulnerability_ids: string[];
+  batchId: string;
+  vulnerabilityIds: string[];
   provider: string;
   language: string;
   summary: string;
-  individual_summaries: Record<string, string>;
-  additional_context?: string | null;
-  vulnerability_count: number;
-  timestamp: string;
-  token_usage?: { inputTokens: number; outputTokens: number } | null;
+  individualSummaries: Record<string, string>;
+  additionalContext?: string | null;
+  vulnerabilityCount: number;
+  generatedAt: string;
+  tokenUsage?: { inputTokens: number; outputTokens: number } | null;
 }
 
 export interface BatchAnalysisListResponse {
@@ -90,10 +101,10 @@ export interface BatchAnalysisListResponse {
 }
 
 export interface BatchAnalysisReference {
-  batch_id: string;
+  batchId: string;
   timestamp: string;
   provider: string;
-  summary_excerpt: string;
+  summaryExcerpt: string;
   summary?: string;
   language?: string;
 }
@@ -193,6 +204,7 @@ export interface VulnerabilityPreview {
   aliases?: string[];
   cwes?: string[];
   aiAssessment?: AIAssessment | null;
+  aiAssessments?: AIAssessment[];
   cvssMetrics?: CvssMetrics | null;
   impactedProducts?: ImpactedProduct[];
   sourceIds?: string[];

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from app.schemas.saved_search import SavedSearch, SavedSearchCreate
+from app.schemas.saved_search import SavedSearch, SavedSearchCreate, SavedSearchUpdate
 from app.services.saved_search_service import (
     SavedSearchService,
     get_saved_search_service,
@@ -49,6 +49,42 @@ async def create_saved_search(
         result=result_payload,
     )
     return created
+
+
+@router.put("/{search_id}", response_model=SavedSearch)
+async def update_saved_search(
+    search_id: str,
+    payload: SavedSearchUpdate,
+    request: Request,
+    service: SavedSearchService = Depends(get_saved_search_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> SavedSearch:
+    try:
+        updated = await service.update_saved_search(search_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved search not found.")
+    client_ip = get_client_ip(request)
+    metadata = {
+        "label": "Gespeicherte Suche aktualisiert",
+        "clientIp": client_ip,
+        "searchName": updated.name,
+    }
+    metadata = {key: value for key, value in metadata.items() if value}
+    result_payload = {
+        "savedSearchId": updated.id,
+        "queryParams": updated.query_params,
+        "name": updated.name,
+    }
+    if updated.dql_query:
+        result_payload["dqlQuery"] = updated.dql_query
+    await audit_service.record_event(
+        "saved_search_updated",
+        metadata=metadata or None,
+        result=result_payload,
+    )
+    return updated
 
 
 @router.delete(

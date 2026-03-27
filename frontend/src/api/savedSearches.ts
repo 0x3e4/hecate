@@ -17,6 +17,11 @@ export const createSavedSearch = async (payload: SavedSearchInput): Promise<Save
   return response.data;
 };
 
+export const updateSavedSearch = async (id: string, payload: Partial<SavedSearchInput>): Promise<SavedSearch> => {
+  const response = await api.put<SavedSearch>(`/v1/saved-searches/${id}`, payload);
+  return response.data;
+};
+
 export const deleteSavedSearch = async (id: string): Promise<void> => {
   await api.delete(`/v1/saved-searches/${id}`);
 };

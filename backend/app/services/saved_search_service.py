@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode
 from bson import ObjectId
 
 from app.repositories.saved_search_repository import SavedSearchRepository
-from app.schemas.saved_search import SavedSearch, SavedSearchCreate
+from app.schemas.saved_search import SavedSearch, SavedSearchCreate, SavedSearchUpdate
 
 
 class SavedSearchService:
@@ -39,6 +39,31 @@ class SavedSearchService:
             raise ValueError("Name must not be empty.")
 
         document = await repository.insert(name=name, query_params=query_params, dql_query=dql_query)
+        return self._to_schema(document)
+
+    async def update_saved_search(self, search_id: str, payload: SavedSearchUpdate) -> SavedSearch | None:
+        repository = await SavedSearchRepository.create()
+        fields: dict[str, Any] = {}
+        if payload.name is not None:
+            name = payload.name.strip()
+            if not name:
+                raise ValueError("Name must not be empty.")
+            fields["name"] = name
+        if payload.query_params is not None:
+            query_params, dql_query = self._normalize_query_params(
+                payload.query_params,
+                fallback_dql=payload.dql_query.strip() if payload.dql_query else None,
+            )
+            fields["queryParams"] = query_params
+            fields["dqlQuery"] = dql_query
+        elif payload.dql_query is not None:
+            fields["dqlQuery"] = payload.dql_query.strip() or None
+        if not fields:
+            existing = await repository.get(search_id)
+            return self._to_schema(existing) if existing else None
+        document = await repository.update(search_id, fields)
+        if not document:
+            return None
         return self._to_schema(document)
 
     async def delete_saved_search(self, search_id: str) -> bool:

@@ -157,49 +157,74 @@ class AIClient:
             yield client
 
     async def _call_openai(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
-        payload = {
-            "model": (settings.openai_model or "gpt-4o-mini"),
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.3,
-            "max_tokens": 4000,
-        }
+        model = settings.openai_model or "gpt-4o-mini"
         headers = {
             "Authorization": f"Bearer {settings.openai_api_key}",
             "Content-Type": "application/json",
         }
 
+        # Use Responses API for reasoning + web search support
+        # Reasoning tokens + web search tokens count against max_output_tokens,
+        # so we need a generous limit to leave room for the actual response.
+        payload: dict[str, Any] = {
+            "model": model,
+            "instructions": system_prompt,
+            "input": user_prompt,
+            "max_output_tokens": settings.openai_max_output_tokens or 16000,
+        }
+
+        # Enable reasoning
+        reasoning_effort = settings.openai_reasoning_effort or "medium"
+        payload["reasoning"] = {"effort": reasoning_effort}
+
+        # Enable web search when configured
+        if settings.ai_web_search_enabled:
+            payload["tools"] = [{"type": "web_search_preview"}]
+
+        # Reasoning + web search can take longer
+        timeout = max(self._timeout, 180.0)
+
         try:
             async with self._get_client() as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    "https://api.openai.com/v1/responses",
                     headers=headers,
                     json=payload,
-                    timeout=self._timeout,
+                    timeout=timeout,
                 )
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPStatusError as exc:  # pragma: no cover - network failure
             detail = exc.response.text[:300]
+            logger.error("OpenAI API error", status=exc.response.status_code, detail=detail)
             raise AIProviderError(f"OpenAI request failed ({exc.response.status_code}): {detail}") from exc
         except httpx.HTTPError as exc:  # pragma: no cover - network failure
             raise AIProviderError(f"OpenAI request failed: {exc}") from exc
 
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:  # pragma: no cover - defensive
-            raise AIProviderError("OpenAI response format was not recognised.") from exc
+        # Extract text from Responses API output
+        content: str | None = None
+        output_items = data.get("output", [])
+        for item in output_items:
+            if item.get("type") == "message":
+                for part in item.get("content", []):
+                    if part.get("type") == "output_text":
+                        content = part.get("text", "").strip()
+                        break
+            if content:
+                break
+
+        if not content:
+            logger.error("OpenAI empty response", output=output_items)
+            raise AIProviderError("OpenAI response did not contain any text.")
 
         token_usage: dict[str, int] | None = None
         usage = data.get("usage")
         if isinstance(usage, dict):
             token_usage = {
-                "inputTokens": int(usage.get("prompt_tokens", 0)),
-                "outputTokens": int(usage.get("completion_tokens", 0)),
+                "inputTokens": int(usage.get("input_tokens", 0)),
+                "outputTokens": int(usage.get("output_tokens", 0)),
             }
-        return content.strip(), token_usage
+        return content, token_usage
 
     async def _call_anthropic(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
         payload = {
@@ -651,7 +676,11 @@ async def _build_prompts(
         "## Priority Assessment\n"
         "Provide a risk-based priority recommendation (CRITICAL/HIGH/MEDIUM/LOW) with justification. "
         "Consider: Exploitation status, EPSS score, CVSS severity, attack complexity, and exposure.\n\n"
-        "Be specific and technical. Avoid generic advice. If information is missing, state it explicitly."
+        "Be specific and technical. Avoid generic advice. If information is missing, state it explicitly.\n\n"
+        "**IMPORTANT OUTPUT RULES:**\n"
+        "- This is a one-shot analysis report, NOT a conversation. Do NOT ask follow-up questions.\n"
+        "- Do NOT include phrases like 'Would you like me to...', 'Let me know if...', or 'Do you want me to...'.\n"
+        "- End your analysis with the Priority Assessment section. Do not add anything after it."
     )
 
     context = await _format_vulnerability_context(vulnerability)

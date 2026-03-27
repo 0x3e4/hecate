@@ -563,6 +563,30 @@ class ScanService:
     ) -> tuple[int, list[dict[str, Any]]]:
         return await self.sbom_repo.list_by_scan(scan_id, search=search, limit=limit, offset=offset)
 
+    async def export_sbom(self, scan_id: str, fmt: str) -> tuple[dict[str, Any], str]:
+        """Build SBOM document in the requested format. Returns (document, filename)."""
+        from app.services.sbom_export import build_cyclonedx_json, build_spdx_json
+
+        scan = await self.scan_repo.get(scan_id)
+        if not scan:
+            raise ValueError(f"Scan {scan_id} not found")
+
+        target = await self.target_repo.get(scan.get("target_id", ""))
+        components = await self.sbom_repo.list_all_by_scan(scan_id)
+
+        target_name = (target.get("name", "") if target else scan.get("target_name", "unknown"))
+        safe_name = target_name.replace("/", "-").replace(":", "-").replace(" ", "-")
+        date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
+
+        if fmt == "spdx-json":
+            doc = build_spdx_json(scan, target, components)
+            filename = f"{safe_name}-sbom-{date_str}.spdx.json"
+        else:
+            doc = build_cyclonedx_json(scan, target, components)
+            filename = f"{safe_name}-sbom-{date_str}.cdx.json"
+
+        return doc, filename
+
     async def find_by_cve(
         self, cve_id: str, limit: int = 50, offset: int = 0
     ) -> tuple[int, list[dict[str, Any]]]:

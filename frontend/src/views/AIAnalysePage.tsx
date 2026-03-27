@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import {
   getAiProviders,
+  getBatchAnalysis,
   listBatchAnalyses,
   listSingleAiAnalyses,
   requestBatchAiInvestigation,
@@ -21,6 +22,7 @@ import { VulnerabilitySelector } from "../components/AIAnalyse/VulnerabilitySele
 import { BatchAnalysisDisplay } from "../components/AIAnalyse/BatchAnalysisDisplay";
 import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { useSSE } from "../hooks/useSSE";
 
 export const AIAnalysePage = () => {
   const { t, locale } = useI18n();
@@ -65,8 +67,10 @@ export const AIAnalysePage = () => {
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiProviders, setAiProviders] = useState<AIProviderInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingStartedAt, setLoadingStartedAt] = useState<number>(0);
   const [response, setResponse] = useState<AIBatchInvestigationResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { jobs: sseJobs } = useSSE();
   const [typing, setTyping] = useState<boolean>(false);
   const [displayText, setDisplayText] = useState<string>("");
   const [batchHistory, setBatchHistory] = useState<BatchAnalysisItem[]>([]);
@@ -138,6 +142,36 @@ export const AIAnalysePage = () => {
     loadHistory(historyPage);
   }, [loadHistory, historyPage]);
 
+  // Watch for batch AI investigation completion via SSE
+  useEffect(() => {
+    if (!loading) return;
+    const job = sseJobs.get("ai_batch_investigation");
+    if (!job) return;
+
+    if (job.status === "completed") {
+      const batchId = job.metadata?.batchId as string | undefined;
+      if (batchId) {
+        getBatchAnalysis(batchId, aiAnalysisPassword)
+          .then((result) => {
+            shouldAnimateSummaryRef.current = true;
+            setResponse(result);
+            setHistoryPage(0);
+            loadHistory(0);
+          })
+          .catch((err) => {
+            console.error("Failed to fetch batch result", err);
+            setError(t("Error loading analysis result.", "Fehler beim Laden des Analyseergebnisses."));
+          })
+          .finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    } else if (job.status === "failed") {
+      setError(job.error ?? t("AI analysis failed.", "AI-Analyse fehlgeschlagen."));
+      setLoading(false);
+    }
+  }, [sseJobs, loading, aiAnalysisPassword, loadHistory, t]);
+
   // Typing animation effect
   useEffect(() => {
     if (!response || !shouldAnimateSummaryRef.current) {
@@ -149,13 +183,13 @@ export const AIAnalysePage = () => {
 
     const fullText = response.summary;
     let currentIndex = 0;
+    const charsPerTick = Math.max(4, Math.ceil(fullText.length / 600));
 
-    const typeNextChar = () => {
+    const typeNextChunk = () => {
       if (currentIndex < fullText.length) {
-        currentIndex += 1;
+        currentIndex = Math.min(currentIndex + charsPerTick, fullText.length);
         setDisplayText(fullText.slice(0, currentIndex));
       } else {
-        // Animation complete
         setTyping(false);
         shouldAnimateSummaryRef.current = false;
         if (typingIntervalRef.current !== null) {
@@ -165,9 +199,8 @@ export const AIAnalysePage = () => {
       }
     };
 
-    // Call immediately to show first character without delay
-    typeNextChar();
-    typingIntervalRef.current = window.setInterval(typeNextChar, 3);
+    typeNextChunk();
+    typingIntervalRef.current = window.setInterval(typeNextChunk, 8);
 
     return () => {
       if (typingIntervalRef.current !== null) {
@@ -190,6 +223,7 @@ export const AIAnalysePage = () => {
 
     setError(null);
     setLoading(true);
+    setLoadingStartedAt(Date.now());
     setResponse(null);
     shouldAnimateSummaryRef.current = true;
 
@@ -197,16 +231,14 @@ export const AIAnalysePage = () => {
       // Sync vulnerability data first to ensure up-to-date information
       await triggerVulnerabilityRefresh({ vulnIds: selectedVulnIds });
 
-      const result = await requestBatchAiInvestigation({
+      // Submit batch analysis — returns immediately, SSE handles completion
+      await requestBatchAiInvestigation({
         vulnerabilityIds: selectedVulnIds,
         provider: selectedProvider,
         language: "de",
         additionalContext: additionalContext.trim() || null,
       }, passwordOverride ?? aiAnalysisPassword);
-
-      setResponse(result);
-      setHistoryPage(0);
-      await loadHistory(0);
+      // loading stays true — SSE effect will set it to false on completion/failure
     } catch (err: any) {
       console.error("AI analysis failed:", err);
 
@@ -228,7 +260,6 @@ export const AIAnalysePage = () => {
         setError(t("Error during AI analysis. Please try again.", "Fehler bei der AI-Analyse. Bitte versuchen Sie es erneut."));
       }
       shouldAnimateSummaryRef.current = false;
-    } finally {
       setLoading(false);
     }
   };
@@ -395,6 +426,7 @@ export const AIAnalysePage = () => {
                 response={response}
                 vulnerabilities={selectedVulnerabilities}
                 loading={loading}
+                loadingStartedAt={loadingStartedAt}
                 typing={typing}
                 displayText={displayText}
               />
@@ -452,8 +484,8 @@ export const AIAnalysePage = () => {
               ...singleHistory,
             ]
               .sort((a, b) => {
-                const timeA = new Date(a.timestamp || 0).getTime();
-                const timeB = new Date(b.timestamp || 0).getTime();
+                const timeA = new Date(("generatedAt" in a ? a.generatedAt : a.timestamp) || 0).getTime();
+                const timeB = new Date(("generatedAt" in b ? b.generatedAt : b.timestamp) || 0).getTime();
                 return timeB - timeA;
               })
               .map((item) => {
@@ -463,16 +495,16 @@ export const AIAnalysePage = () => {
                   const batch = item as BatchAnalysisItem & { type: "batch" };
                   const summary = (batch.summary || "").trim();
                   return (
-                    <div key={batch.batch_id} className="ai-analysis__batch-card">
+                    <div key={batch.batchId} className="ai-analysis__batch-card">
                       <div className="ai-analysis__batch-header">
-                        <span className="ai-analysis__batch-id">{batch.batch_id}</span>
+                        <span className="ai-analysis__batch-id">{batch.batchId}</span>
                         <span className="chip chip-batch">Batch</span>
                       </div>
-                      {batch.vulnerability_ids?.length > 0 && (
+                      {batch.vulnerabilityIds?.length > 0 && (
                         <div className="vuln-aliases" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
-                          {batch.vulnerability_ids.map((id) => (
+                          {batch.vulnerabilityIds.map((id) => (
                             <Link
-                              key={`${batch.batch_id}-${id}`}
+                              key={`${batch.batchId}-${id}`}
                               to={`/vulnerability/${encodeURIComponent(id)}`}
                               className="chip chip-link"
                             >
@@ -488,13 +520,13 @@ export const AIAnalysePage = () => {
                       ) : (
                         <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
                       )}
-                      {(providerLabel || batch.language || batch.timestamp || batch.token_usage) && (
+                      {(providerLabel || batch.language || batch.generatedAt || batch.tokenUsage) && (
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
                           {batch.language && <span> · {t("Language", "Sprache")}: {batch.language.toUpperCase()}</span>}
-                          {batch.timestamp && <span> · {new Date(batch.timestamp).toLocaleString(locale)}</span>}
-                          {batch.token_usage && (
-                            <span> · {t("Tokens", "Tokens")}: {batch.token_usage.inputTokens.toLocaleString(locale)} in / {batch.token_usage.outputTokens.toLocaleString(locale)} out</span>
+                          {batch.generatedAt && <span> · {new Date(batch.generatedAt).toLocaleString(locale)}</span>}
+                          {batch.tokenUsage && (
+                            <span> · {t("Tokens", "Tokens")}: {batch.tokenUsage.inputTokens.toLocaleString(locale)} in / {batch.tokenUsage.outputTokens.toLocaleString(locale)} out</span>
                           )}
                         </div>
                       )}
