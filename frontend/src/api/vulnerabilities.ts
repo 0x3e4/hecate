@@ -2,7 +2,9 @@ import { api } from "./client";
 import {
   AIBatchInvestigationRequest,
   AIBatchInvestigationResponse,
+  AIBatchInvestigationSubmitResponse,
   AIInvestigationResponse,
+  AIInvestigationSubmitResponse,
   AIProviderId,
   AIProviderInfo,
   BatchAnalysisListResponse,
@@ -88,7 +90,7 @@ export const requestAiInvestigation = async (
   language?: string | null,
   additionalContext?: string | null,
   aiAnalysisPassword?: string | null
-): Promise<AIInvestigationResponse> => {
+): Promise<AIInvestigationSubmitResponse> => {
   const payload: { provider: AIProviderId; language?: string | null; additionalContext?: string | null } = { provider };
   if (language) {
     payload.language = language;
@@ -96,7 +98,7 @@ export const requestAiInvestigation = async (
   if (additionalContext) {
     payload.additionalContext = additionalContext;
   }
-  const response = await api.post<AIInvestigationResponse>(
+  const response = await api.post<AIInvestigationSubmitResponse>(
     `/v1/vulnerabilities/${encodeURIComponent(identifier)}/ai-investigation`,
     payload,
     {
@@ -109,8 +111,8 @@ export const requestAiInvestigation = async (
 export const requestBatchAiInvestigation = async (
   request: AIBatchInvestigationRequest,
   aiAnalysisPassword?: string | null
-): Promise<AIBatchInvestigationResponse> => {
-  const response = await api.post<AIBatchInvestigationResponse>(
+): Promise<AIBatchInvestigationSubmitResponse> => {
+  const response = await api.post<AIBatchInvestigationSubmitResponse>(
     "/v1/vulnerabilities/ai-investigation/batch",
     request,
     {
@@ -151,6 +153,19 @@ export interface SingleAnalysisListResponse {
   limit: number;
   offset: number;
 }
+
+export const getBatchAnalysis = async (
+  batchId: string,
+  aiAnalysisPassword?: string | null
+): Promise<AIBatchInvestigationResponse> => {
+  const response = await api.get<AIBatchInvestigationResponse>(
+    `/v1/vulnerabilities/ai-investigation/batch/${encodeURIComponent(batchId)}`,
+    {
+      headers: getAiAnalysisHeaders(aiAnalysisPassword),
+    }
+  );
+  return response.data;
+};
 
 export const listSingleAiAnalyses = async (
   params?: { limit?: number; offset?: number },

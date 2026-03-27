@@ -19,7 +19,7 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM)
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export)
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   └── status.py            # Health Check
@@ -71,6 +71,7 @@ app/
 │   ├── asset_catalog_service.py   # Asset-Katalog
 │   ├── scan_service.py            # SCA-Scan-Orchestrierung
 │   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
+│   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
 │   ├── notification_service.py    # Apprise-Benachrichtigungen
 │   ├── http/
@@ -123,7 +124,7 @@ app/
 | `scan_targets` | `ScanTargetDocument` | Scan-Ziele (Container-Images, Source-Repos) |
 | `scans` | `ScanDocument` | Scan-Durchläufe mit Status und Zusammenfassung |
 | `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
-| `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans |
+| `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans (exportierbar als CycloneDX 1.5 / SPDX 2.3) |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
@@ -172,7 +173,7 @@ Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
 ```
 EventBus (Singleton) → publish(event) → asyncio.Queue per Subscriber → SSE Stream
 ```
-Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker und SchedulerManager publizieren automatisch. Frontend verbindet sich über `GET /api/v1/events`.
+Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker, SchedulerManager und AI-Analyse-Endpunkte publizieren automatisch. Frontend verbindet sich über `GET /api/v1/events`. AI-Analysen laufen asynchron via `asyncio.create_task()` und melden Ergebnisse über SSE (`ai_investigation_{vulnId}`, `ai_batch_investigation`).
 
 ### API-Schema-Konvention
 ```python

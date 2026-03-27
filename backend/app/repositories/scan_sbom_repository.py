@@ -66,6 +66,19 @@ class ScanSbomRepository:
             log.warning("scan_sbom_repository.list_by_scan_failed", scan_id=scan_id, error=str(exc))
             return 0, []
 
+    async def list_all_by_scan(self, scan_id: str) -> list[dict[str, Any]]:
+        """Fetch all SBOM components for a scan (no pagination, for export)."""
+        try:
+            cursor = self.collection.find({"scan_id": scan_id}).sort([("name", 1), ("version", 1)])
+            items = []
+            async for doc in cursor:
+                doc["_id"] = str(doc["_id"])
+                items.append(doc)
+            return items
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.list_all_failed", scan_id=scan_id, error=str(exc))
+            return []
+
     async def delete_by_scan(self, scan_id: str) -> int:
         try:
             result = await self.collection.delete_many({"scan_id": scan_id})

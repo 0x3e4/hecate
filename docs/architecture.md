@@ -69,7 +69,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 - `saved_searches.py` — Gespeicherte Suchen (CRUD)
 - `audit.py` — Ingestion-Logs
 - `changelog.py` — Letzte Änderungen
-- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, Layer-Analyse)
+- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export, Layer-Analyse)
 - `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
 
 Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
@@ -179,17 +179,20 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Dive:** Docker-Image-Schichtanalyse — Effizienz, verschwendeter Speicher, Layer-Aufschlüsselung. Ergebnisse in separater `scan_layer_analysis` Collection. Nur für Container-Images, opt-in.
 - **Scanner-Auswahl pro Target:** Beim Erst-Scan gewählte Scanner werden auf dem `ScanTargetDocument` gespeichert und für Auto-Scans wiederverwendet.
 - **Scan-Vergleich:** Findings können zwischen zwei Scans verglichen werden (Added, Removed, Changed). "Changed" gruppiert Findings mit gleichem Paket aber unterschiedlicher Schwachstelle.
+- **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export über `GET /api/v1/scans/{scan_id}/sbom/export?format=cyclonedx-json|spdx-json`. Pure-Function-Builder in `sbom_export.py` (keine externen Bibliotheken). Download mit `Content-Disposition: attachment` Header. EU Cyber Resilience Act (CRA) Compliance.
 - **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird zusammengeführt.
 - **Auto-Scan:** Optionales periodisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbar über `SCA_AUTO_SCAN_INTERVAL_HOURS`).
 - **Audit-Integration:** Scan-Ereignisse werden im Ingestion-Log protokolliert.
 
 ### KI & Analyse
 - `AIClient` verwaltet verfügbare Provider anhand gesetzter API-Schlüssel (OpenAI, Anthropic, Google Gemini).
-- OpenAI und Anthropic werden über httpx (direkte HTTP-Aufrufe) angesprochen, Google Gemini über das `google-genai` SDK.
+- **OpenAI:** Responses API (`POST /v1/responses`) mit Reasoning (`reasoning.effort`) und Web-Suche (`web_search_preview` Tool). Konfigurierbar über `OPENAI_REASONING_EFFORT` (Default: `medium`) und `OPENAI_MAX_OUTPUT_TOKENS` (Default: 16000).
+- **Anthropic:** Messages API via httpx.
+- **Google Gemini:** `google-genai` SDK mit optionaler Google-Suche.
 - Prompt-Builder erstellt Kontexte inkl. Asset- und Historieninformationen in frei wählbarer Sprache.
-- Einzel- und Batch-Analyse über API-Endpunkte.
-- Ergebnisse werden in OpenSearch gespeichert und als Audit-Event protokolliert.
-- Fehlerbehandlung liefert 4xx bei Konfigurationsfehlern, 5xx bei Provider-Ausfällen.
+- **Asynchrone Verarbeitung:** Einzel- und Batch-Analyse-Endpunkte geben sofort HTTP 202 zurück. Die eigentliche Analyse läuft als `asyncio.create_task()` im Hintergrund. Fortschritt und Ergebnis werden über SSE-Events (`job_started`, `job_completed`, `job_failed`) an das Frontend geliefert.
+- Ergebnisse werden in MongoDB gespeichert und als Audit-Event protokolliert.
+- Fehlerbehandlung liefert 4xx bei Konfigurationsfehlern, SSE `job_failed` bei Provider-Ausfällen.
 
 ### Benachrichtigungen (Apprise)
 - `NotificationService` kommuniziert via HTTP mit der Apprise REST-API (fire-and-forget).
@@ -243,7 +246,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Dienste-Status |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM, Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 
 ### State-Management
 - Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:

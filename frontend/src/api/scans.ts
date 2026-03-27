@@ -122,6 +122,26 @@ export const updateScanTarget = async (
   return response.data;
 };
 
+const extractFilename = (disposition?: string): string | undefined => {
+  if (!disposition) return undefined;
+  const match = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(disposition);
+  return match ? (decodeURIComponent(match[1] ?? match[2] ?? "").trim() || undefined) : undefined;
+};
+
+export const exportScanSbom = async (
+  scanId: string,
+  format: "cyclonedx-json" | "spdx-json"
+): Promise<{ data: Blob; filename?: string }> => {
+  const response = await api.get<Blob>(`/v1/scans/${scanId}/sbom/export`, {
+    params: { format },
+    responseType: "blob",
+  });
+  return {
+    data: response.data,
+    filename: extractFilename(response.headers["content-disposition"]),
+  };
+};
+
 export const fetchScanLayers = async (scanId: string): Promise<ScanLayerAnalysis> => {
   const response = await api.get<ScanLayerAnalysis>(`/v1/scans/${scanId}/layers`);
   return response.data;

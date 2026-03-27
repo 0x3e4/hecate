@@ -34,6 +34,20 @@ class AIInvestigationResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class AIInvestigationSubmitResponse(BaseModel):
+    status: str
+    vulnerability_id: str = Field(alias="vulnerabilityId", serialization_alias="vulnerabilityId")
+
+    model_config = {"populate_by_name": True}
+
+
+class AIBatchInvestigationSubmitResponse(BaseModel):
+    status: str
+    vulnerability_ids: list[str] = Field(alias="vulnerabilityIds", serialization_alias="vulnerabilityIds")
+
+    model_config = {"populate_by_name": True}
+
+
 class AIBatchInvestigationRequest(BaseModel):
     vulnerability_ids: list[str] = Field(
         min_length=1,

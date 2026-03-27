@@ -100,6 +100,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Manueller Scan:** Scans direkt aus dem Frontend starten (Scanner-Auswahl je Scan-Typ)
 - **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern
 - **SBOM-Generierung:** CycloneDX-Format via Syft
+- **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
 - **Malware-Erkennung:** Hecate Analyzer mit 32 Heuristik-Regeln für Supply-Chain-Angriffe
 - **Best Practices:** Dockle prüft CIS Docker Benchmarks (nur Container-Images, opt-in)
 - **Layer-Analyse:** Dive analysiert Image-Schichten auf Effizienz und Verschwendung (nur Container-Images, opt-in)
@@ -125,7 +126,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
-| Scan-Detail | Findings, SBOM, Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
+| Scan-Detail | Findings, SBOM (mit Export & Summary-Stats), Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 | System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
 
 ### Benachrichtigungen (Apprise)
@@ -204,9 +205,10 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `POST /api/v1/vulnerabilities/lookup` — Lookup mit Auto-Sync
 - `POST /api/v1/vulnerabilities/refresh` — Manueller Refresh einzelner IDs
 
-### KI-Analyse
-- `POST /api/v1/vulnerabilities/{id}/ai-investigation` — Einzelanalyse
-- `POST /api/v1/vulnerabilities/ai-investigation/batch` — Batch-Analyse
+### KI-Analyse (asynchron)
+- `POST /api/v1/vulnerabilities/{id}/ai-investigation` — Einzelanalyse (HTTP 202, Ergebnis via SSE)
+- `POST /api/v1/vulnerabilities/ai-investigation/batch` — Batch-Analyse (HTTP 202, Ergebnis via SSE)
+- `GET /api/v1/vulnerabilities/ai-investigation/batch/{id}` — Batch-Ergebnis abrufen
 
 ### Kataloge
 - `GET /api/v1/cwe/{id}` & `POST /api/v1/cwe/bulk` — CWE-Daten
@@ -222,6 +224,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/scans/{scanId}` — Scan-Details
 - `GET /api/v1/scans/{scanId}/findings` — Findings eines Scans
 - `GET /api/v1/scans/{scanId}/sbom` — SBOM-Komponenten eines Scans
+- `GET /api/v1/scans/{scanId}/sbom/export` — SBOM-Export (CycloneDX 1.5 oder SPDX 2.3 JSON)
 - `GET /api/v1/scans/{scanId}/layers` — Layer-Analyse eines Scans (Dive)
 
 ### Benachrichtigungen
@@ -235,7 +238,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `PUT/DELETE /api/v1/notifications/templates/{id}` — Vorlage aktualisieren/löschen
 
 ### Echtzeit-Events (SSE)
-- `GET /api/v1/events` — Server-Sent Events Stream (Job-Status, neue Schwachstellen)
+- `GET /api/v1/events` — Server-Sent Events Stream (Job-Status, neue Schwachstellen, AI-Analyse-Ergebnisse)
 
 ### Verwaltung
 - `GET/POST/DELETE /api/v1/saved-searches` — Gespeicherte Suchen
@@ -269,7 +272,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ` |
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD` |
-| **KI-Provider** | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
+| **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |

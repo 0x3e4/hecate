@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+    openai_reasoning_effort: str = "medium"
+    openai_max_output_tokens: OptionalInt = 16000
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-3-haiku-20240307"
     google_gemini_api_key: str | None = None

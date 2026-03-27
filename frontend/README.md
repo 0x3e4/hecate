@@ -17,7 +17,7 @@ src/
 │   ├── sync.ts                  # Sync-Trigger & Status
 │   ├── backup.ts                # Export/Import (10 min Timeout)
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
-│   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM)
+│   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export)
 │   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
 │   └── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
 ├── views/                       # Seitenkomponenten (11 Ansichten)
@@ -30,12 +30,13 @@ src/
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan)
-│   ├── ScanDetailPage.tsx       # Scan-Details (Findings, SBOM, Severity)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings, SBOM mit Export & Stats, Security Alerts, Best Practices, Layer Analysis)
 │   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
 │   │   ├── BatchAnalysisDisplay.tsx   # Batch-Ergebnisanzeige (Markdown)
 │   │   └── VulnerabilitySelector.tsx  # Multi-Select für Batch-Analyse
+│   ├── AILoadingIndicator.tsx         # AI-Analyse Ladeindikator (Reasoning-Steps, Timer)
 │   ├── QueryBuilder/
 │   │   ├── QueryEditor.tsx      # DQL-Texteditor mit Operator-Buttons
 │   │   ├── FieldBrowser.tsx     # DQL-Feld-Browser nach Kategorien
@@ -88,7 +89,7 @@ src/
 | `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM und Severity |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, Scan-Vergleich |
 
 Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
 Die SCA-Scans-Seite wird nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
@@ -100,7 +101,7 @@ Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
 | Methode | Verwendung |
 |---------|-----------|
 | **Context API** | `SavedSearchesContext` — globale gespeicherte Suchen |
-| **SSE (useSSE)** | Echtzeit-Job-Events via Singleton EventSource (Dashboard, VulnerabilityList, System) |
+| **SSE (useSSE)** | Echtzeit-Job-Events via Singleton EventSource (Dashboard, VulnerabilityList, System, AI-Analyse) |
 | **useState** | Lokaler Komponentenstate (Loading, Error, Daten) |
 | **URL-Parameter** | Filter, Pagination, Query-Modus (bookmarkbar) |
 | **localStorage** | Sidebar-Zustand, Asset-Filter-Auswahl (`usePersistentState`) |

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import Response
 
 from app.core.config import settings
 from app.schemas.scan import (
@@ -328,7 +330,7 @@ async def get_scan(
 async def get_scan_findings(
     scan_id: str,
     severity: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanFindingListResponse:
@@ -355,6 +357,29 @@ async def get_scan_sbom(
     return SbomComponentListResponse(
         total=total,
         items=[_map_sbom_component(item) for item in items],
+    )
+
+
+@router.get("/{scan_id}/sbom/export")
+async def export_scan_sbom(
+    scan_id: str,
+    format: str = Query(
+        default="cyclonedx-json",
+        alias="format",
+        pattern=r"^(cyclonedx-json|spdx-json)$",
+        description="Export format: cyclonedx-json or spdx-json",
+    ),
+    service: ScanService = Depends(get_scan_service),
+) -> Response:
+    """Export SBOM in CycloneDX 1.5 or SPDX 2.3 JSON format."""
+    try:
+        doc, filename = await service.export_sbom(scan_id, format)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return Response(
+        content=json.dumps(doc, indent=2, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

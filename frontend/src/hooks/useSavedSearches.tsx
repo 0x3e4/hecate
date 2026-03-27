@@ -12,6 +12,7 @@ import {
   createSavedSearch as apiCreateSavedSearch,
   deleteSavedSearch as apiDeleteSavedSearch,
   listSavedSearches as apiListSavedSearches,
+  updateSavedSearch as apiUpdateSavedSearch,
   type SavedSearchInput
 } from "../api/savedSearches";
 import type { SavedSearch } from "../types";
@@ -21,6 +22,7 @@ interface SavedSearchesContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   createSavedSearch: (input: SavedSearchInput) => Promise<SavedSearch>;
+  updateSavedSearch: (id: string, input: Partial<SavedSearchInput>) => Promise<SavedSearch>;
   removeSavedSearch: (id: string) => Promise<void>;
 }
 
@@ -65,6 +67,16 @@ export const SavedSearchesProvider = ({ children }: { children: ReactNode }) => 
     return created;
   }, []);
 
+  const updateSavedSearch = useCallback(async (id: string, input: Partial<SavedSearchInput>) => {
+    const updated = await apiUpdateSavedSearch(id, input);
+    setSavedSearches((current) => {
+      const next = current.map((item) => (item.id === id ? updated : item));
+      next.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+      return next;
+    });
+    return updated;
+  }, []);
+
   const removeSavedSearch = useCallback(async (id: string) => {
     await apiDeleteSavedSearch(id);
     setSavedSearches((current) => current.filter((item) => item.id !== id));
@@ -76,9 +88,10 @@ export const SavedSearchesProvider = ({ children }: { children: ReactNode }) => 
       loading,
       refresh,
       createSavedSearch,
+      updateSavedSearch,
       removeSavedSearch
     }),
-    [savedSearches, loading, refresh, createSavedSearch, removeSavedSearch]
+    [savedSearches, loading, refresh, createSavedSearch, updateSavedSearch, removeSavedSearch]
   );
 
   return <SavedSearchesContext.Provider value={value}>{children}</SavedSearchesContext.Provider>;

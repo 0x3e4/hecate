@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -118,7 +118,12 @@ export const SystemPage = () => {
   const toastTimeoutRef = useRef<number | null>(null);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
-  const { savedSearches, loading: savedSearchLoading, removeSavedSearch, refresh: refreshSavedSearches } = useSavedSearches();
+  const { savedSearches, loading: savedSearchLoading, updateSavedSearch, removeSavedSearch, refresh: refreshSavedSearches } = useSavedSearches();
+  const [editingSearchId, setEditingSearchId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDqlQuery, setEditDqlQuery] = useState("");
+  const [editQueryParams, setEditQueryParams] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const [syncStates, setSyncStates] = useState<SyncState[]>([]);
   const [syncLoading, setSyncLoading] = useState(true);
@@ -685,6 +690,39 @@ export const SystemPage = () => {
       setToast(null);
       toastTimeoutRef.current = null;
     }, 4000);
+  };
+
+  const startEditSearch = (search: SavedSearch) => {
+    setEditingSearchId(search.id);
+    setEditName(search.name);
+    setEditDqlQuery(search.dqlQuery || "");
+    setEditQueryParams(search.queryParams || "");
+  };
+
+  const cancelEditSearch = () => {
+    setEditingSearchId(null);
+  };
+
+  const handleSaveSearch = async () => {
+    if (!editingSearchId) return;
+    setEditSaving(true);
+    try {
+      const payload: Record<string, string | null> = { name: editName.trim() };
+      if (editDqlQuery.trim()) {
+        payload.dqlQuery = editDqlQuery.trim();
+      } else {
+        payload.queryParams = editQueryParams.trim();
+        payload.dqlQuery = null;
+      }
+      await updateSavedSearch(editingSearchId, payload);
+      setEditingSearchId(null);
+      showToast(t("Search updated.", "Suche aktualisiert."), "success");
+    } catch (error) {
+      console.error("Failed to update saved search", error);
+      showToast(t("Search could not be updated.", "Suche konnte nicht aktualisiert werden."), "error");
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const handleDeleteSavedSearch = async (search: SavedSearch) => {
@@ -1836,8 +1874,11 @@ export const SystemPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {sortedSavedSearches.map((search) => (
-                  <tr key={search.id}>
+                {sortedSavedSearches.map((search) => {
+                  const isEditing = editingSearchId === search.id;
+                  return (
+                  <Fragment key={search.id}>
+                  <tr>
                     <td style={savedSearchCellStyle}>
                       <strong>{search.name}</strong>
                     </td>
@@ -1859,17 +1900,99 @@ export const SystemPage = () => {
                       {formatDateTime(search.createdAt)}
                     </td>
                     <td style={savedSearchCellStyle}>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteSavedSearch(search)}
-                        disabled={deletePendingId === search.id}
-                        style={{ minWidth: "140px" }}
-                      >
-                        {deletePendingId === search.id ? t("Deleting...", "Löschen…") : t("Delete search", "Suche löschen")}
-                      </button>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button
+                          type="button"
+                          onClick={() => isEditing ? cancelEditSearch() : startEditSearch(search)}
+                          disabled={deletePendingId === search.id}
+                          style={{ minWidth: "80px" }}
+                        >
+                          {isEditing ? t("Cancel", "Abbrechen") : t("Edit", "Bearbeiten")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteSavedSearch(search)}
+                          disabled={deletePendingId === search.id || isEditing}
+                          style={{ minWidth: "80px" }}
+                        >
+                          {deletePendingId === search.id ? t("Deleting…", "Löschen…") : t("Delete", "Löschen")}
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  {isEditing && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: "0 1rem 1rem", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                        <div style={{
+                          padding: "1rem",
+                          borderRadius: "0.5rem",
+                          background: "rgba(255, 255, 255, 0.03)",
+                          border: "1px solid rgba(255, 255, 255, 0.08)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.75rem",
+                        }}>
+                          <div>
+                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                              {t("Name", "Name")}
+                            </label>
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                            />
+                          </div>
+                          {search.dqlQuery ? (
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                                DQL Query
+                              </label>
+                              <input
+                                type="text"
+                                value={editDqlQuery}
+                                onChange={(e) => setEditDqlQuery(e.target.value)}
+                                style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                              />
+                            </div>
+                          ) : (
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                                {t("Query Params", "Suchparameter")}
+                              </label>
+                              <input
+                                type="text"
+                                value={editQueryParams}
+                                onChange={(e) => setEditQueryParams(e.target.value)}
+                                style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                              />
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveSearch()}
+                              disabled={editSaving || !editName.trim()}
+                              style={{ fontSize: "0.85rem" }}
+                            >
+                              {editSaving ? t("Saving…", "Speichern…") : t("Save", "Speichern")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditSearch}
+                              disabled={editSaving}
+                              style={{ fontSize: "0.85rem" }}
+                            >
+                              {t("Cancel", "Abbrechen")}
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

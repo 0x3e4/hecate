@@ -1,11 +1,13 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX } from "react-icons/lu";
 import { useMemo } from "react";
 
 import { version } from "../../package.json";
 import { config } from "../config";
 import { useSavedSearches } from "../hooks/useSavedSearches";
+import { useRecentlyVisited } from "../hooks/useRecentlyVisited";
 import { useI18n } from "../i18n/context";
+import { useSSE } from "../hooks/useSSE";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -53,8 +55,19 @@ const navSections: NavSection[] = [
 export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileMenuClose }: SidebarProps) => {
   const { t } = useI18n();
   const { savedSearches } = useSavedSearches();
+  const { recentVulnerabilities, removeVisit } = useRecentlyVisited();
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
+  const { jobs } = useSSE();
+
+  const aiRunning = useMemo(() => {
+    for (const [name, job] of jobs) {
+      if (name.startsWith("ai_investigation_") || name === "ai_batch_investigation") {
+        if (job.status === "running") return true;
+      }
+    }
+    return false;
+  }, [jobs]);
   const germanLabels: Record<string, string> = {
     "/": "Dashboard",
     "/vulnerabilities": "Schwachstellen",
@@ -112,9 +125,39 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                   >
                     <span className="sidebar-link-short">
                       <Icon aria-hidden="true" focusable="false" />
+                      {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
                     </span>
                     <span className="sidebar-link-text">{item.label}</span>
+                    {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
                   </NavLink>
+                  {item.to === "/" && !collapsed && recentVulnerabilities.length > 0 && (
+                    <div className="sidebar-subnav" aria-label={t("Recently visited vulnerabilities", "Zuletzt besuchte Schwachstellen")}>
+                      {recentVulnerabilities.map((visit) => {
+                        const visitPath = `/vulnerability/${encodeURIComponent(visit.id)}`;
+                        const isActive = decodeURIComponent(location.pathname) === decodeURIComponent(visitPath);
+                        return (
+                          <span key={visit.id} className={`sidebar-subnav-link sidebar-recent-item${isActive ? " active" : ""}`}>
+                            <Link
+                              to={visitPath}
+                              className="sidebar-subnav-text"
+                              title={visit.title}
+                              onClick={handleLinkClick}
+                            >
+                              {visit.id}
+                            </Link>
+                            <button
+                              type="button"
+                              className="sidebar-recent-remove"
+                              title={t("Remove", "Entfernen")}
+                              onClick={(e) => { e.stopPropagation(); removeVisit(visit.id); }}
+                            >
+                              <LuX />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   {isVulnerabilitySection && savedSearches.length > 0 && (
                     <div className="sidebar-subnav" aria-label={t("Saved vulnerability searches", "Gespeicherte Schwachstellen-Suchen")}>
                       {savedSearches.map((saved) => {

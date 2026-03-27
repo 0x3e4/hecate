@@ -6,7 +6,7 @@ from typing import Any
 from bson import ObjectId
 from bson.errors import InvalidId
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pymongo import ASCENDING
+from pymongo import ASCENDING, ReturnDocument
 
 from app.core.config import settings
 from app.db.mongo import get_database
@@ -57,6 +57,19 @@ class SavedSearchRepository:
         if document is None:
             return None
         return document
+
+    async def update(self, search_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            object_id = ObjectId(search_id)
+        except (InvalidId, TypeError):
+            return None
+        fields["updatedAt"] = datetime.now(tz=UTC)
+        result = await self.collection.find_one_and_update(
+            {"_id": object_id},
+            {"$set": fields},
+            return_document=ReturnDocument.AFTER,
+        )
+        return result
 
     async def delete(self, search_id: str) -> bool:
         try:
