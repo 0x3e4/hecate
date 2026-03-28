@@ -128,9 +128,9 @@ Der Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extrahiert SBOM-Komponent
 
 Der Malware-Detektor (`scanner/app/malware_detector/`) erkennt potenziell bösartige Pakete über statische Heuristiken. Keine externen Abhängigkeiten — alles in reinem Python implementiert.
 
-#### Detection Rules (32 Rules)
+#### Detection Rules (34 Rules)
 
-The malware detector implements 32 detection rules across 12 categories, informed by real-world supply chain attacks from 2020-2026.
+The malware detector implements 34 detection rules across 14 categories, informed by real-world supply chain attacks from 2020-2026.
 
 | Regel-ID | Name | Severity | Kategorie | Quelle / Angriff |
 |----------|------|----------|-----------|-----------------|
@@ -157,7 +157,7 @@ The malware detector implements 32 detection rules across 12 categories, informe
 | HEC-053 | curl/wget piped to shell in CI workflow | high | `cicd` | — (CI-Security Best Practice) |
 | HEC-054 | Unpinned third-party GitHub Action | medium | `cicd` | [tj-actions/changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
 | HEC-055 | Direct process memory access | critical | `suspicious_api` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (/proc/pid/mem, bypasses log masking) |
-| HEC-060 | System persistence mechanism detected | high | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (blockchain canister C2), [LiteLLM](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (sysmon.service) |
+| HEC-060 | System persistence mechanism detected | high | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (blockchain canister C2), [LiteLLM](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (sysmon.service), [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (Windows Startup folder) |
 | HEC-061 | Persistence mechanism with suspicious payload | critical | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/), [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (systemd + network C2) |
 | HEC-070 | Kubernetes privilege escalation | critical | `kubernetes` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (privileged pods in kube-system) |
 | HEC-075 | Package self-propagation detected | critical | `worm` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (npm publish worm, 47+ packages in <60s) |
@@ -166,7 +166,9 @@ The malware detector implements 32 detection rules across 12 categories, informe
 | HEC-078 | AI tool bypass flags detected | critical | `ai_abuse` | [s1ngularity/Nx](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) (first AI CLI tool abuse: --yolo, --trust-all-tools) |
 | HEC-079 | Conditional execution based on environment detection | medium | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (41% of malicious packages use conditional execution) |
 | HEC-080 | Sandbox evasion with suspicious payload | high | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (CI env check + credential theft) |
-| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) |
+| HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (sys.platform + subprocess per OS) |
+| HEC-082 | Media file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
+| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
 
 #### Kategorien-Zusammenfassung
 
@@ -180,12 +182,12 @@ The malware detector implements 32 detection rules across 12 categories, informe
 | `typosquatting` | HEC-030–031 | Levenshtein-Distanz gegen Top-200 npm/PyPI + Scope-Squatting |
 | `pth_backdoor` | HEC-040–041 | Python .pth-Dateien mit ausführbarem Code |
 | `cicd` | HEC-050–054 | GitHub Actions, CI/CD-Pipeline-Sicherheit |
-| `persistence` | HEC-060–061 | systemd, cron, launchd, Windows Scheduled Tasks |
+| `persistence` | HEC-060–061 | systemd, cron, launchd, Windows Startup/Registry Run Keys, xdg-autostart |
 | `kubernetes` | HEC-070 | Privilegierte Pods, kube-system, RBAC-Eskalation |
 | `worm` | HEC-075–076 | Selbstverbreitung, destruktive Payloads |
 | `ai_abuse` | HEC-078 | KI-Tool-Missbrauch (Bypass-Flags) |
 | `sandbox_evasion` | HEC-079–080 | Bedingte Ausführung basierend auf Umgebungserkennung |
-| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen |
+| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen (LiteLLM, Nx, Telnyx) |
 
 #### Kombinations-Scoring
 
@@ -200,6 +202,8 @@ Einzelne Pattern-Matches erzeugen `low`/`medium`-Severity. Kombinationen im selb
 | Persistenz + Network/Encoding | `critical` |
 | Unsichtbares Unicode + eval/Function/exec | `critical` |
 | CI-Umgebungserkennung + Payload | `high` |
+| Platform-Detection + Subprocess/Network | `high` |
+| Media-Download + XOR-Decode + Network | `high` |
 
 #### Confidence-Level
 
@@ -214,6 +218,8 @@ Einzelne Pattern-Matches erzeugen `low`/`medium`-Severity. Kombinationen im selb
 - Paket-Allowlist via `HECATE_MALWARE_ALLOWLIST` Env-Var (kommagetrennt)
 - Typosquatting: 3-Tier-Validierung (Lockfile → Registry → Levenshtein)
 - Unicode: BOM am Dateianfang wird ignoriert, Schwellenwert ≥ 5 unsichtbare Zeichen
+- Unicode/Homoglyphen: Locale-Awareness — Dateien in locale/i18n/translations-Verzeichnissen und Dateien mit >1% Cyrillic-Dichte werden übersprungen
+- Credentials: Generische Env-Variablen (SECRET_KEY, DATABASE_URL, PRIVATE_KEY) werden nicht mehr als Credential-Zugriff gewertet
 
 #### Quellen und Referenzen
 
@@ -227,6 +233,7 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 | Shai-Hulud V2 | Nov 2025 | npm-Wurm, Bun-Tarnung, Dead Man's Switch | [GitLab](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) |
 | s1ngularity/Nx | Aug 2025 | AI-Tool-Missbrauch, Triple-Base64 | [Orca Security](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) |
 | tj-actions/changed-files (CVE-2025-30066) | März 2025 | Tag-Poisoning, Runner-Memory-Dump | [CISA](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
+| Telnyx SDK v4.87.1/4.87.2 (TeamPCP) | März 2026 | WAV-Steganografie, plattformspezifische Payloads, Windows Startup Persistence | [Telnyx](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
 | Backstabber's Knife Collection | 2020 (Studie) | Taxonomie von 174 bösartigen Paketen | [PMC/DIMVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) |
 
 #### Output-Format (`hecate-json`)
@@ -255,6 +262,28 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 }
 ```
 
+### Provenance-Verifikation
+
+Nach der SBOM-Extraktion prüft der Hecate Analyzer optional die Provenance (Herkunft/Attestierung) jeder Komponente über Registry-APIs. Unterstützte Ökosysteme:
+
+| Ökosystem | Registry | Prüfung |
+|-----------|----------|---------|
+| npm | `registry.npmjs.org` | Sigstore-Attestierungen, GitHub Actions Build-Provenance |
+| PyPI | `pypi.org/integrity/` | PEP 740 Attestations (Trusted Publishers, Sigstore) |
+| Go | `sum.golang.org` | Go Checksum Database (Transparency Log) |
+| Maven | `search.maven.org` | PGP-Signaturen, Sigstore |
+| RubyGems | `rubygems.org/api/v2/` | SHA-Checksums, Sigstore |
+| Cargo | `crates.io/api/v1/` | Checksum-Verifikation |
+| NuGet | `api.nuget.org/v3/` | Package-Signatur-Validierung |
+| Docker | Registry v2 API | Cosign-Signaturen, Content Trust |
+
+- Inspiriert von [who-touched-my-packages](https://github.com/Point-Wild/who-touched-my-packages)
+- Async httpx mit 5s Timeout pro Request, `asyncio.Semaphore(10)` für Concurrency
+- In-Memory Cache pro Scan (keine doppelten Lookups)
+- Best-effort: Fehler werden ignoriert, unterbrechen nie den Scan
+- Ergebnisse werden als `provenance`-Objekt auf SBOM-Komponenten gespeichert (verified, source_repo, build_system, attestation_type)
+- Frontend zeigt Provenance-Status in SBOM-Tabelle: ✓ (verified), ⚠ (unverified), — (unknown)
+
 ### Scan-Metadaten
 
 - **Source-Repos**: Git-Commit-SHA wird aus dem geklonten Repository extrahiert
@@ -270,14 +299,18 @@ scanner:
     - no-new-privileges:true
   read_only: true
   tmpfs:
-    - /tmp:size=512M
+    - /tmp:size=10G
   cap_drop:
     - ALL
+  deploy:
+    resources:
+      limits:
+        memory: 12G
 ```
 
 - Scans laufen in temporären Verzeichnissen unter `/tmp`
 - Kein Docker-Socket-Mounting — Image-Pulls erfolgen über die Registry-API
-- Ressourcen-Limit: 4 GB Memory
+- Ressourcen-Limit: 12 GB Memory, 10 GB tmpfs (notwendig für große Container-Images wenn Trivy DB + Grype DB + Dive tar + Schicht-Extraktion gleichzeitig laufen)
 
 ## Authentifizierung
 
@@ -310,7 +343,7 @@ Der Scanner-Sidecar benötigt ausreichend Speicher für das Scannen großer Imag
 deploy:
   resources:
     limits:
-      memory: 4G
+      memory: 12G
 ```
 
 ## Konfiguration

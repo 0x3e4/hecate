@@ -217,6 +217,18 @@ class SbomComponentResponse(BaseModel):
     file_path: str | None = Field(
         default=None, alias="filePath", serialization_alias="filePath"
     )
+    provenance_verified: bool | None = Field(
+        default=None, alias="provenanceVerified", serialization_alias="provenanceVerified"
+    )
+    provenance_source_repo: str | None = Field(
+        default=None, alias="provenanceSourceRepo", serialization_alias="provenanceSourceRepo"
+    )
+    provenance_build_system: str | None = Field(
+        default=None, alias="provenanceBuildSystem", serialization_alias="provenanceBuildSystem"
+    )
+    provenance_attestation_type: str | None = Field(
+        default=None, alias="provenanceAttestationType", serialization_alias="provenanceAttestationType"
+    )
 
     model_config = {"populate_by_name": True}
 

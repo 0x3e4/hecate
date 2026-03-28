@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 from app.hecate_analyzer import run_analysis
 from app.malware_detector import run_detection
+from app.provenance import check_provenance_batch
 from app.models import ScannerResult
 
 
@@ -445,11 +446,19 @@ async def _run_hecate_analyzer(
         # SBOM component extraction (existing)
         sbom = run_analysis(scan_dir)
 
+        # Provenance verification for SBOM components
+        components = sbom.get("components", [])
+        if components:
+            try:
+                await check_provenance_batch(components)
+            except Exception:
+                pass  # provenance is best-effort, don't fail the scan
+
         # Malware detection (new)
         findings = run_detection(scan_dir)
 
         report = {
-            "components": sbom.get("components", []),
+            "components": components,
             "findings": findings,
             "bomFormat": sbom.get("bomFormat", "CycloneDX"),
             "specVersion": sbom.get("specVersion", "1.5"),

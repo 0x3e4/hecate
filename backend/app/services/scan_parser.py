@@ -487,6 +487,22 @@ def parse_hecate_json(
     # 1. Extract SBOM components via existing CycloneDX parser
     components, _ = parse_cyclonedx_sbom(data, scan_id, target_id)
 
+    # 1b. Enrich components with provenance data from raw hecate-json
+    raw_components = data.get("components", [])
+    if isinstance(raw_components, list):
+        prov_map: dict[str, dict] = {}
+        for rc in raw_components:
+            if isinstance(rc, dict) and isinstance(rc.get("provenance"), dict):
+                key = f"{rc.get('name', '')}:{rc.get('version', '')}"
+                prov_map[key] = rc["provenance"]
+        for comp in components:
+            prov = prov_map.get(f"{comp.name}:{comp.version}")
+            if prov is not None:
+                comp.provenance_verified = prov.get("verified")
+                comp.provenance_source_repo = prov.get("source_repo")
+                comp.provenance_build_system = prov.get("build_system")
+                comp.provenance_attestation_type = prov.get("attestation_type")
+
     # 2. Extract malware detection findings
     findings: list[ScanFindingDocument] = []
     raw_findings = data.get("findings", [])

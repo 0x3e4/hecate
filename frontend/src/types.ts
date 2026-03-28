@@ -486,6 +486,10 @@ export interface SbomComponent {
   licenses: string[];
   supplier?: string | null;
   filePath?: string | null;
+  provenanceVerified?: boolean | null;
+  provenanceSourceRepo?: string | null;
+  provenanceBuildSystem?: string | null;
+  provenanceAttestationType?: string | null;
 }
 
 export interface SbomComponentListResponse {
