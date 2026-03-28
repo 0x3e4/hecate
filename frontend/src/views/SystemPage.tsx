@@ -34,6 +34,7 @@ import {
   triggerCapecSync,
   triggerCirclSync,
   triggerGhsaSync,
+  resyncVulnerability,
 } from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
@@ -130,6 +131,9 @@ export const SystemPage = () => {
   const [syncTriggeringId, setSyncTriggeringId] = useState<string | null>(null);
   const [expandedSyncId, setExpandedSyncId] = useState<string | null>(null);
   const syncIntervalRef = useRef<number | null>(null);
+
+  const [resyncInput, setResyncInput] = useState("");
+  const [resyncBusy, setResyncBusy] = useState(false);
 
   // SSE for real-time job updates
   const { jobs: sseJobs, connected: sseConnected } = useSSE();
@@ -690,6 +694,44 @@ export const SystemPage = () => {
       setToast(null);
       toastTimeoutRef.current = null;
     }, 4000);
+  };
+
+  const handleResync = async () => {
+    const vulnId = resyncInput.trim();
+    if (!vulnId) return;
+    setResyncBusy(true);
+    try {
+      const result = await resyncVulnerability(vulnId);
+      if (!result.deleted) {
+        showToast(result.message, "error");
+      } else {
+        const refreshResults = result.refresh?.results || [];
+        const inserted = refreshResults.some((r) => r.status === "inserted" || r.status === "updated");
+        if (inserted) {
+          showToast(
+            t(
+              `${vulnId}: Deleted and re-fetched successfully.`,
+              `${vulnId}: Gelöscht und neu abgerufen.`
+            ),
+            "success"
+          );
+        } else {
+          showToast(
+            t(
+              `${vulnId}: Deleted, but upstream sources had no data. A placeholder was created.`,
+              `${vulnId}: Gelöscht, aber keine Daten bei Upstream-Quellen. Ein Platzhalter wurde erstellt.`
+            ),
+            "success"
+          );
+        }
+        setResyncInput("");
+      }
+    } catch (error) {
+      console.error("Resync failed", error);
+      showToast(t("Re-sync failed.", "Re-Sync fehlgeschlagen."), "error");
+    } finally {
+      setResyncBusy(false);
+    }
   };
 
   const startEditSearch = (search: SavedSearch) => {
@@ -1844,6 +1886,39 @@ export const SystemPage = () => {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>{t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}</h2>
+        <p className="muted">
+          {t(
+            "Delete a vulnerability from the database and re-fetch it from upstream sources (NVD, EUVD, GHSA).",
+            "Lösche eine Schwachstelle aus der Datenbank und rufe sie erneut von Upstream-Quellen ab (NVD, EUVD, GHSA)."
+          )}
+        </p>
+        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center", maxWidth: "600px" }}>
+          <input
+            type="text"
+            value={resyncInput}
+            onChange={(e) => setResyncInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !resyncBusy && resyncInput.trim()) {
+                void handleResync();
+              }
+            }}
+            placeholder={t("e.g. CVE-2026-34043 or GHSA-qj8w-gfj5-8c6v", "z.B. CVE-2026-34043 oder GHSA-qj8w-gfj5-8c6v")}
+            disabled={resyncBusy}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleResync()}
+            disabled={resyncBusy || !resyncInput.trim()}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {resyncBusy ? t("Re-syncing…", "Re-Sync…") : t("Delete & Re-Sync", "Löschen & Re-Sync")}
+          </button>
         </div>
       </section>
 

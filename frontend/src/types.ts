@@ -284,6 +284,7 @@ export type VulnerabilityRefreshStatus = {
   status: "inserted" | "updated" | "skipped" | "error";
   message?: string | null;
   changedFields?: number | null;
+  resolvedId?: string | null;
 };
 
 export interface VulnerabilityRefreshResponse {
@@ -383,6 +384,12 @@ export interface TriggerSyncResponse {
   success: boolean;
   message: string;
   jobName: string;
+}
+
+export interface ResyncResponse {
+  deleted: boolean;
+  refresh: VulnerabilityRefreshResponse | null;
+  message: string;
 }
 
 // --- SCA Scanning ---

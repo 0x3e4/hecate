@@ -337,6 +337,26 @@ async def async_update_document_script(index: str, document_id: str, script: dic
         return False
 
 
+async def async_delete_document(index: str, document_id: str) -> bool:
+    """Delete a document from OpenSearch by ID. Returns True if deleted, False if not found."""
+    client = get_client()
+    loop = asyncio.get_running_loop()
+
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: client.delete(index=index, id=document_id, refresh="wait_for"),
+        )
+        _mark_opensearch_available()
+        return True
+    except NotFoundError:
+        log.warning("opensearch.delete_not_found", index=index, id=document_id)
+        return False
+    except (OSConnectionError, OpenSearchException) as exc:
+        _mark_opensearch_unavailable(error=exc, operation="delete", index=index, document_id=document_id)
+        return False
+
+
 async def async_get(index: str, document_id: str) -> dict[str, Any] | None:
     client = get_client()
     loop = asyncio.get_running_loop()

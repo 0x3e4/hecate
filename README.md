@@ -247,6 +247,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/audit/ingestion` — Audit-Log
 - `GET /api/v1/changelog` — Letzte Änderungen (mit Pagination, Datum- und Source-Filter)
 - `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa)
+- `POST /api/v1/sync/resync` — Vulnerability löschen und neu von Upstream abrufen
 - `GET/POST /api/v1/backup/...` — Export/Import
 
 ## Backend-CLI

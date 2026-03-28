@@ -115,8 +115,8 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **CWE Pipeline:** Synchronisiert MITRE CWE-Katalog über REST-API mit 7-Tage TTL-Cache.
 - **CAPEC Pipeline:** Parst MITRE CAPEC XML, erstellt Angriffsmuster-Einträge mit CWE-Zuordnung.
 - **CIRCL Pipeline:** Liest zusätzliche Schwachstelleninformationen von CIRCL und reichert bestehende Datensätze an.
-- **GHSA Pipeline:** Synchronisiert GitHub Security Advisories, verknüpft mit bestehenden CVEs und erstellt eigenständige GHSA-Einträge.
-- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI) und protokolliert Ergebnisse.
+- **GHSA Pipeline:** Synchronisiert GitHub Security Advisories. Hybrid: Advisories mit CVE-ID enrichen bestehende CVE-Dokumente oder erstellen neue CVE-Dokumente (Pre-Fill). Advisories ohne CVE-ID erstellen eigenständige GHSA-Einträge. Aliases stammen nur aus `identifiers`-Array, nicht aus Referenz-URLs.
+- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA, EUVD → EUVD, GHSA → GHSA-API). Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) löscht Dokument und ruft es neu ab.
 
 ### Datenbeziehungen
 - CVE → CWE: Aus NVD `weaknesses`-Array, gespeichert auf `VulnerabilityDocument`.
