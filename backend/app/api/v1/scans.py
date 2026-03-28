@@ -497,4 +497,8 @@ def _map_sbom_component(doc: dict[str, Any]) -> SbomComponentResponse:
         licenses=doc.get("licenses", []),
         supplier=doc.get("supplier"),
         file_path=doc.get("file_path"),
+        provenance_verified=doc.get("provenance_verified"),
+        provenance_source_repo=doc.get("provenance_source_repo"),
+        provenance_build_system=doc.get("provenance_build_system"),
+        provenance_attestation_type=doc.get("provenance_attestation_type"),
     )

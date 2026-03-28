@@ -117,3 +117,7 @@ class ScanSbomComponentDocument(BaseModel):
     licenses: list[str] = Field(default_factory=list)
     supplier: str | None = None
     file_path: str | None = None
+    provenance_verified: bool | None = None
+    provenance_source_repo: str | None = None
+    provenance_build_system: str | None = None
+    provenance_attestation_type: str | None = None

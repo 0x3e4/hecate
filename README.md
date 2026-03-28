@@ -101,7 +101,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern
 - **SBOM-Generierung:** CycloneDX-Format via Syft
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
-- **Malware-Erkennung:** Hecate Analyzer mit 32 Heuristik-Regeln für Supply-Chain-Angriffe
+- **Malware-Erkennung:** Hecate Analyzer mit 34 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads)
+- **Provenance-Verifikation:** Automatische Prüfung der Paketherkunft über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker)
 - **Best Practices:** Dockle prüft CIS Docker Benchmarks (nur Container-Images, opt-in)
 - **Layer-Analyse:** Dive analysiert Image-Schichten auf Effizienz und Verschwendung (nur Container-Images, opt-in)
 - **Deduplizierung:** Automatische Zusammenführung von Ergebnissen mehrerer Scanner
@@ -126,7 +127,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
-| Scan-Detail | Findings, SBOM (mit Export & Summary-Stats), Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
+| Scan-Detail | Findings (mit Suche & sortierbaren Spalten), SBOM (mit Export, Summary-Stats & Provenance), Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 | System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
 
 ### Benachrichtigungen (Apprise)

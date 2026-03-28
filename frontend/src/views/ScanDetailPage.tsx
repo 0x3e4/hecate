@@ -974,6 +974,7 @@ export const ScanDetailPage = () => {
                       <th style={thStyle}>{t("Component", "Komponente")}</th>
                       <th style={thStyle}>{t("Version", "Version")}</th>
                       <th style={thStyle}>{t("Type", "Typ")}</th>
+                      <th style={thStyle}>{t("Provenance", "Provenienz")}</th>
                       <th style={thStyle}>{t("Licenses", "Lizenzen")}</th>
                       <th style={thStyle}>{t("Supplier", "Lieferant")}</th>
                       <th style={thStyle}>{t("Links", "Links")}</th>
@@ -1005,6 +1006,26 @@ export const ScanDetailPage = () => {
                             }}>
                               {c.type || "—"}
                             </span>
+                          </td>
+                          <td style={tdStyle}>
+                            {c.provenanceVerified === true ? (
+                              <span
+                                title={[
+                                  c.provenanceAttestationType && `Attestation: ${c.provenanceAttestationType}`,
+                                  c.provenanceBuildSystem && `Build: ${c.provenanceBuildSystem}`,
+                                  c.provenanceSourceRepo && `Source: ${c.provenanceSourceRepo}`,
+                                ].filter(Boolean).join("\n") || t("Provenance verified", "Provenienz verifiziert")}
+                                style={{ color: "#69db7c", fontSize: "0.8125rem", cursor: "help" }}
+                              >
+                                &#10003; {c.provenanceAttestationType || t("Verified", "Verifiziert")}
+                              </span>
+                            ) : c.provenanceVerified === false ? (
+                              <span style={{ color: "#ffa94d", fontSize: "0.75rem" }} title={t("No provenance attestation found", "Keine Provenienz-Attestierung gefunden")}>
+                                &#9888; {t("Unverified", "Nicht verifiziert")}
+                              </span>
+                            ) : (
+                              <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>
+                            )}
                           </td>
                           <td style={tdStyle}>
                             {c.licenses.length > 0
