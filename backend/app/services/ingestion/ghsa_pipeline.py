@@ -16,7 +16,6 @@ from app.services.ingestion.normalizer import (
     build_document_from_ghsa,
     _extract_ghsa_package_info,
     _extract_ghsa_cvss,
-    extract_ghsa_ids,
 )
 from app.utils.strings import slugify
 
@@ -251,12 +250,14 @@ class GhsaPipeline:
             },
         }
 
-        # Build document for creation mode (GHSA-only, no CVE)
-        document = None
-        if not has_cve:
-            build_result = build_document_from_ghsa(advisory, ingested_at=datetime.now(tz=UTC))
-            if build_result is None:
+        # Build document as fallback for creation mode.
+        # For CVE-linked advisories, serves as fallback when CVE doesn't exist yet in MongoDB.
+        build_result = build_document_from_ghsa(advisory, ingested_at=datetime.now(tz=UTC))
+        if build_result is None:
+            if not has_cve:
                 return "skipped"
+            document = None
+        else:
             document = build_result[0]
 
         result = await repository.upsert_from_ghsa(

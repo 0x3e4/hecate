@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { SyncStatesResponse, TriggerSyncRequest, TriggerSyncResponse } from "../types";
+import type { SyncStatesResponse, TriggerSyncRequest, TriggerSyncResponse, ResyncResponse } from "../types";
 
 export const fetchSyncStates = async (): Promise<SyncStatesResponse> => {
   const response = await api.get<SyncStatesResponse>("/v1/sync/states");
@@ -43,5 +43,10 @@ export const triggerCirclSync = async (): Promise<TriggerSyncResponse> => {
 
 export const triggerGhsaSync = async (initial: boolean = false): Promise<TriggerSyncResponse> => {
   const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/ghsa", { initial } as TriggerSyncRequest);
+  return response.data;
+};
+
+export const resyncVulnerability = async (vulnId: string): Promise<ResyncResponse> => {
+  const response = await api.post<ResyncResponse>("/v1/sync/resync", { vulnId });
   return response.data;
 };

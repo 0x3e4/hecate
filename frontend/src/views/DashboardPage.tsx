@@ -119,24 +119,28 @@ export const DashboardPage = () => {
       const errors = response.results.filter((r) => r.status === "error");
 
       if (hasInsertedOrUpdated) {
+        const successResult = response.results.find(
+          (r) => r.status === "inserted" || r.status === "updated"
+        );
+        const targetId = successResult?.resolvedId || queryNotFound;
         setQueryNotFound(null);
         setQueryInput("");
-        navigate(`/vulnerability/${encodeURIComponent(queryNotFound)}`);
+        navigate(`/vulnerability/${encodeURIComponent(targetId)}`);
       } else if (errors.length > 0) {
         const errorMessages = errors.map((e) => e.message || t("Unknown error", "Unbekannter Fehler")).join("; ");
         setToast({
           type: "error",
           message: t(
-            `Vulnerability not found in NVD/EUVD: ${errorMessages}`,
-            `Schwachstelle nicht in NVD/EUVD gefunden: ${errorMessages}`
+            `Vulnerability not found in NVD/EUVD/GHSA: ${errorMessages}`,
+            `Schwachstelle nicht in NVD/EUVD/GHSA gefunden: ${errorMessages}`
           ),
         });
       } else {
         setToast({
           type: "error",
           message: t(
-            `Vulnerability "${queryNotFound}" could not be synchronized. Not available in NVD or EUVD.`,
-            `Schwachstelle "${queryNotFound}" konnte nicht synchronisiert werden. Nicht in NVD oder EUVD vorhanden.`
+            `Vulnerability "${queryNotFound}" could not be synchronized. Not available in NVD, EUVD or GHSA.`,
+            `Schwachstelle "${queryNotFound}" konnte nicht synchronisiert werden. Nicht in NVD, EUVD oder GHSA vorhanden.`
           ),
         });
       }
@@ -145,8 +149,8 @@ export const DashboardPage = () => {
       setToast({
         type: "error",
         message: t(
-          "Synchronization failed. NVD/EUVD may not contain this vulnerability.",
-          "Synchronisation fehlgeschlagen. NVD/EUVD haben diese Schwachstelle möglicherweise nicht."
+          "Synchronization failed. NVD/EUVD/GHSA may not contain this vulnerability.",
+          "Synchronisation fehlgeschlagen. NVD/EUVD/GHSA haben diese Schwachstelle möglicherweise nicht."
         ),
       });
     } finally {
@@ -354,7 +358,7 @@ const SingleVulnQuery = ({
                     fontWeight: 500,
                   }}
                 >
-                  {t("Load from NVD/EUVD", "Von NVD/EUVD laden")}
+                  {t("Load from NVD/EUVD/GHSA", "Von NVD/EUVD/GHSA laden")}
                 </button>
                 <button
                   onClick={onClear}

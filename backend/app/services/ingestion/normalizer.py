@@ -2203,10 +2203,10 @@ def build_document_from_ghsa(
     ghsa_id = ghsa_id.strip().upper()
 
     cve_id = advisory.get("cve_id")
-    vuln_id = cve_id if isinstance(cve_id, str) and cve_id.strip() else ghsa_id
+    vuln_id = cve_id.strip().upper() if isinstance(cve_id, str) and cve_id.strip() else ghsa_id
 
     title = vuln_id
-    summary = advisory.get("summary") or advisory.get("description") or vuln_id
+    summary = advisory.get("description") or advisory.get("summary") or vuln_id
     if isinstance(summary, str) and len(summary) > 10000:
         summary = summary[:10000]
 
@@ -2242,13 +2242,6 @@ def build_document_from_ghsa(
                     if normed.upper() not in seen_upper:
                         seen_upper.add(normed.upper())
                         aliases.append(normed)
-    # Also extract GHSA IDs from references
-    ghsa_from_refs = extract_ghsa_ids(references)
-    for gid in ghsa_from_refs:
-        if gid.upper() not in seen_upper:
-            seen_upper.add(gid.upper())
-            aliases.append(gid)
-
     # CVSS
     cvss, cvss_metrics = _extract_ghsa_cvss(advisory)
 

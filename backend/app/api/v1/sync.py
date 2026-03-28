@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import structlog
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
+from app.core.config import settings
+from app.db.opensearch import async_delete_document
+from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.sync import SyncStatesResponse, TriggerSyncRequest, TriggerSyncResponse
+from app.schemas.vulnerability import VulnerabilityRefreshResponse
+from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.sync_service import SyncService, get_sync_service
+
+log = structlog.get_logger()
 
 router = APIRouter()
 
@@ -94,3 +103,51 @@ async def trigger_ghsa_sync(
     """Trigger GHSA sync (normal or initial)."""
     result = await service.trigger_ghsa_sync(initial=request.initial)
     return TriggerSyncResponse(**result)
+
+
+class ResyncRequest(BaseModel):
+    vuln_id: str = Field(alias="vulnId", serialization_alias="vulnId")
+
+    model_config = {"populate_by_name": True}
+
+
+class ResyncResponse(BaseModel):
+    deleted: bool
+    refresh: VulnerabilityRefreshResponse | None = None
+    message: str
+
+
+@router.post("/resync", response_model=ResyncResponse)
+async def resync_vulnerability(
+    request: ResyncRequest,
+    vuln_service: VulnerabilityService = Depends(get_vulnerability_service),
+) -> ResyncResponse:
+    """Delete a vulnerability from MongoDB and OpenSearch, then re-fetch from upstream sources."""
+    from app.schemas.vulnerability import VulnerabilityRefreshRequest
+
+    vuln_id = request.vuln_id.strip()
+    if not vuln_id:
+        return ResyncResponse(deleted=False, message="Empty vulnerability ID.")
+
+    # Delete from MongoDB
+    repo = await VulnerabilityRepository.create()
+    mongo_result = await repo.collection.delete_one({"_id": vuln_id})
+    mongo_deleted = mongo_result.deleted_count > 0
+
+    # Delete from OpenSearch
+    os_deleted = await async_delete_document(settings.opensearch_index, vuln_id)
+
+    if not mongo_deleted and not os_deleted:
+        return ResyncResponse(deleted=False, message=f"Vulnerability {vuln_id} not found.")
+
+    log.info("sync.resync_deleted", vuln_id=vuln_id, mongo=mongo_deleted, opensearch=os_deleted)
+
+    # Re-fetch from upstream
+    payload = VulnerabilityRefreshRequest(vuln_ids=[vuln_id], source_ids=[vuln_id])
+    refresh_result = await vuln_service.trigger_refresh(payload)
+
+    return ResyncResponse(
+        deleted=True,
+        refresh=refresh_result,
+        message=f"Deleted {vuln_id} and re-fetched from upstream.",
+    )

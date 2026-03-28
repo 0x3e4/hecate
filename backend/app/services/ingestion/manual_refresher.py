@@ -27,6 +27,7 @@ from app.services.ingestion.normalizer import (
     _extract_ghsa_package_info,
     _extract_ghsa_cvss,
 )
+from app.utils.strings import slugify
 
 log = structlog.get_logger()
 
@@ -203,7 +204,18 @@ class ManualRefresher:
                     is_cve=is_cve,
                 )
 
-        # No specific source requested - use default behavior (fetch from all sources)
+        # No specific source requested - use default behavior
+        # GHSA IDs are handled directly via the GHSA API
+        is_ghsa = GHSA_PATTERN.fullmatch(upper_normalized) is not None
+        if is_ghsa:
+            return await self._refresh_from_ghsa(
+                original_identifier=original_identifier,
+                normalized_identifier=normalized_identifier,
+                repository=repository,
+                asset_catalog=asset_catalog,
+                is_cve=is_cve,
+            )
+
         euvd_record = await self._fetch_euvd_record(original_identifier, normalized_identifier)
         canonical_id, source_id = self._resolve_identifiers(
             original_identifier=original_identifier,
@@ -301,6 +313,18 @@ class ManualRefresher:
             message = None
             if document.published is None:
                 message = "EUVD record ingested without published date; marked as reserved."
+
+            # Enrich with GHSA data (package/version info)
+            ghsa_enriched = False
+            if canonical_id and CVE_PATTERN.fullmatch(canonical_id):
+                ghsa_enriched = await self._enrich_with_ghsa(
+                    cve_id=canonical_id,
+                    repository=repository,
+                    asset_catalog=asset_catalog,
+                )
+            if ghsa_enriched:
+                message = (message + " " if message else "") + "Enriched with GHSA data."
+
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="EUVD",
@@ -391,11 +415,22 @@ class ManualRefresher:
                             asset_catalog=asset_catalog,
                         )
 
+                # Enrich with GHSA data (package/version info)
+                ghsa_enriched = False
+                if document.vuln_id and CVE_PATTERN.fullmatch(document.vuln_id):
+                    ghsa_enriched = await self._enrich_with_ghsa(
+                        cve_id=document.vuln_id,
+                        repository=repository,
+                        asset_catalog=asset_catalog,
+                    )
+
                 message = None
                 if document.published is None:
                     message = "NVD record missing published date; stored as reserved."
                 if circl_enriched:
                     message = (message + " " if message else "") + "Enriched with CIRCL data."
+                if ghsa_enriched:
+                    message = (message + " " if message else "") + "Enriched with GHSA data."
                 return VulnerabilityRefreshStatus(
                     identifier=original_identifier,
                     provider="NVD",
@@ -610,8 +645,6 @@ class ManualRefresher:
         is_cve: bool,
     ) -> VulnerabilityRefreshStatus:
         """Refresh vulnerability data from GitHub Security Advisories."""
-        from app.utils.strings import slugify
-
         upper_normalized = normalized_identifier.upper()
         is_ghsa = GHSA_PATTERN.fullmatch(upper_normalized) is not None
 
@@ -701,12 +734,10 @@ class ManualRefresher:
             "metadata": {"trigger": "manual", "provider": "GHSA", "identifier": original_identifier},
         }
 
-        # Build document for creation mode (GHSA-only, no CVE)
-        document = None
-        if not has_cve:
-            build_result = build_document_from_ghsa(advisory, ingested_at=datetime.now(tz=UTC))
-            if build_result is not None:
-                document = build_result[0]
+        # Build document as fallback for creation mode.
+        # For CVE-linked advisories, serves as fallback when CVE doesn't exist yet in MongoDB.
+        build_result = build_document_from_ghsa(advisory, ingested_at=datetime.now(tz=UTC))
+        document = build_result[0] if build_result is not None else None
 
         result = await repository.upsert_from_ghsa(
             vuln_id=vuln_id,
@@ -731,12 +762,15 @@ class ManualRefresher:
             change_context=change_context,
         )
 
+        resolved = vuln_id if vuln_id != original_identifier.upper() else None
+
         if result == "inserted":
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="GHSA",
                 status="inserted",
                 message="Created from GHSA advisory.",
+                resolved_id=resolved,
             )
         elif result == "updated":
             return VulnerabilityRefreshStatus(
@@ -744,6 +778,7 @@ class ManualRefresher:
                 provider="GHSA",
                 status="updated",
                 message="Enriched with GHSA data.",
+                resolved_id=resolved,
             )
         return VulnerabilityRefreshStatus(
             identifier=original_identifier,
@@ -918,6 +953,118 @@ class ManualRefresher:
         except Exception as exc:  # noqa: BLE001
             log.warning(
                 "manual_refresher.circl_enrichment_failed",
+                cve_id=cve_id,
+                error=str(exc),
+            )
+            return False
+
+    async def _enrich_with_ghsa(
+        self,
+        *,
+        cve_id: str,
+        repository: VulnerabilityRepository,
+        asset_catalog: AssetCatalogService,
+    ) -> bool:
+        """
+        Enrich a vulnerability with GHSA data for package/version info.
+        Returns True if enrichment was successful, False otherwise.
+        """
+        try:
+            advisory = await self._ghsa_client.fetch_advisory_by_cve(cve_id)
+            if not advisory:
+                return False
+
+            ghsa_id = advisory.get("ghsa_id")
+            if not isinstance(ghsa_id, str) or not ghsa_id.strip():
+                return False
+            ghsa_id = ghsa_id.strip().upper()
+
+            cve_from_advisory = advisory.get("cve_id")
+            has_cve = isinstance(cve_from_advisory, str) and cve_from_advisory.strip()
+            vuln_id = cve_from_advisory if has_cve else ghsa_id
+
+            vendors, products, product_versions, product_version_map, impacted_products = _extract_ghsa_package_info(advisory)
+            cvss, cvss_metrics = _extract_ghsa_cvss(advisory)
+
+            references: list[str] = []
+            refs_raw = advisory.get("references") or []
+            if isinstance(refs_raw, list):
+                for ref in refs_raw:
+                    if isinstance(ref, str):
+                        references.append(ref)
+
+            cwes: list[str] = []
+            cwes_raw = advisory.get("cwes") or []
+            if isinstance(cwes_raw, list):
+                for cwe in cwes_raw:
+                    if isinstance(cwe, dict):
+                        cwe_id = cwe.get("cwe_id")
+                        if isinstance(cwe_id, str) and cwe_id.strip():
+                            cwes.append(cwe_id.strip())
+
+            aliases: list[str] = [ghsa_id]
+            seen_upper: set[str] = {ghsa_id.upper()}
+            if has_cve:
+                aliases.append(cve_from_advisory)
+                seen_upper.add(cve_from_advisory.upper())
+            identifiers = advisory.get("identifiers") or []
+            if isinstance(identifiers, list):
+                for ident in identifiers:
+                    if isinstance(ident, dict):
+                        val = ident.get("value")
+                        if isinstance(val, str) and val.strip() and val.strip().upper() not in seen_upper:
+                            seen_upper.add(val.strip().upper())
+                            aliases.append(val.strip())
+
+            catalog_result = None
+            try:
+                catalog_result = await asset_catalog.record_assets(
+                    vendors=vendors,
+                    product_versions=product_version_map,
+                    cpes=[],
+                    cpe_configurations=None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("manual_refresher.ghsa_enrichment_asset_catalog_failed", cve_id=cve_id, error=str(exc))
+
+            change_context = {
+                "job_name": "manual_refresh",
+                "job_label": "Manual Refresh",
+                "metadata": {"trigger": "manual", "provider": "GHSA"},
+            }
+
+            # Build document as fallback in case vuln doesn't exist yet
+            build_result = build_document_from_ghsa(advisory, ingested_at=datetime.now(tz=UTC))
+            document = build_result[0] if build_result is not None else None
+
+            result = await repository.upsert_from_ghsa(
+                vuln_id=vuln_id,
+                ghsa_id=ghsa_id,
+                document=document,
+                vendors=vendors,
+                products=products,
+                product_versions=product_versions,
+                vendor_slugs=catalog_result.vendor_slugs if catalog_result else [slugify(v) or v.lower() for v in vendors],
+                product_slugs=catalog_result.product_slugs if catalog_result else [slugify(p) or p.lower() for p in products],
+                product_version_ids=catalog_result.version_ids if catalog_result else [],
+                impacted_products=impacted_products,
+                references=references,
+                aliases=aliases,
+                cwes=cwes,
+                cvss=cvss,
+                cvss_metrics=cvss_metrics,
+                summary=advisory.get("summary"),
+                published=None,
+                modified=None,
+                ghsa_raw=advisory,
+                change_context=change_context,
+            )
+
+            return result == "updated"
+
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "manual_refresher.ghsa_enrichment_failed",
                 cve_id=cve_id,
                 error=str(exc),
             )
