@@ -591,7 +591,11 @@ async def _delayed_auto_scan_bootstrap() -> None:
 
 
 async def _scheduled_auto_scans() -> None:
-    """Submit scans for all targets with auto_scan enabled, skipping unchanged targets."""
+    """Submit scans for all targets with auto_scan enabled, skipping unchanged targets.
+
+    Scans are staggered with a delay between submissions to avoid overwhelming
+    the scanner sidecar with concurrent git clones and scanner processes.
+    """
     try:
         scan_service = await get_scan_service()
         targets = await scan_service.list_auto_scan_targets()
@@ -618,6 +622,8 @@ async def _scheduled_auto_scans() -> None:
                     source="scheduled",
                 )
                 submitted += 1
+                # Stagger submissions so the scanner sidecar doesn't get overwhelmed
+                await asyncio.sleep(10)
             except Exception as exc:  # noqa: BLE001
                 log.warning("scheduler.auto_scan_target_failed", target_id=target_id, error=str(exc))
 
