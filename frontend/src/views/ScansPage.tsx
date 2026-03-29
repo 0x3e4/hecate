@@ -40,9 +40,14 @@ export const ScansPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<ConfirmModal | null>(null);
 
-  // Scan filter (from target card click)
+  // Scan filter (from target card click or dropdown)
   const [scanFilterTargetId, setScanFilterTargetId] = useState<string | null>(null);
   const [scanFilterTargetName, setScanFilterTargetName] = useState<string | null>(null);
+
+  // Pagination for scans tab
+  const [scanTotal, setScanTotal] = useState(0);
+  const [scanOffset, setScanOffset] = useState(0);
+  const scanLimit = 25;
 
   // Manual scan form
   const [scanTarget, setScanTarget] = useState("");
@@ -64,7 +69,7 @@ export const ScansPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [tab, scanFilterTargetId]);
+  }, [tab, scanFilterTargetId, scanOffset]);
 
   const loadData = async () => {
     setLoading(true);
@@ -74,8 +79,14 @@ export const ScansPage = () => {
         const res = await fetchScanTargets({ limit: 100 });
         setTargets(res.items);
       } else if (tab === "scans") {
-        const res = await fetchScans({ limit: 100, targetId: scanFilterTargetId || undefined });
+        // Load targets for filter dropdown if not yet loaded
+        if (targets.length === 0) {
+          const tRes = await fetchScanTargets({ limit: 100 });
+          setTargets(tRes.items);
+        }
+        const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
         setScans(res.items);
+        setScanTotal(res.total);
       }
     } catch (err) {
       console.error("Failed to load scan data", err);
@@ -94,8 +105,9 @@ export const ScansPage = () => {
       pollRef.current = setInterval(async () => {
         try {
           if (tab === "scans") {
-            const res = await fetchScans({ limit: 100, targetId: scanFilterTargetId || undefined });
+            const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
             setScans(res.items);
+            setScanTotal(res.total);
           } else if (tab === "targets") {
             const res = await fetchScanTargets({ limit: 100 });
             setTargets(res.items);
@@ -235,26 +247,42 @@ export const ScansPage = () => {
         </p>
 
         {/* Tab navigation */}
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", marginTop: "1rem", flexWrap: "wrap" }}>
-          {(["targets", "scans", "manual"] as Tab[]).map(t_tab => (
+        <div style={{ display: "flex", gap: 0, marginBottom: "1.5rem", marginTop: "1rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          {([
+            { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
+            { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
+            { key: "manual" as Tab, label: t("New Scan", "Neuer Scan") },
+          ]).map(({ key, label, count }) => (
             <button
-              key={t_tab}
+              key={key}
               type="button"
-              onClick={() => setTab(t_tab)}
+              onClick={() => { setTab(key); if (key === "scans") { setScanOffset(0); } }}
               style={{
-                padding: "0.5rem 1rem",
-                borderRadius: "6px",
-                border: tab === t_tab ? "1px solid rgba(255,193,7,0.5)" : "1px solid rgba(255,255,255,0.1)",
-                background: tab === t_tab ? "rgba(255,193,7,0.15)" : "transparent",
-                color: tab === t_tab ? "#ffd43b" : "rgba(255,255,255,0.6)",
+                padding: "0.625rem 1.25rem",
+                border: "none",
+                borderBottom: tab === key ? "2px solid #ffd43b" : "2px solid transparent",
+                background: "transparent",
+                color: tab === key ? "#ffd43b" : "rgba(255,255,255,0.5)",
                 cursor: "pointer",
-                fontSize: "0.875rem",
-                fontWeight: 500,
-                flex: "1 1 auto",
-                minWidth: 0,
+                fontSize: "0.8125rem",
+                fontWeight: tab === key ? 600 : 400,
+                transition: "color 0.15s, border-color 0.15s",
               }}
             >
-              {t_tab === "targets" ? t("Targets", "Ziele") : t_tab === "scans" ? t("Recent Scans", "Letzte Scans") : t("Manual Scan", "Manueller Scan")}
+              {label}
+              {count !== undefined && count > 0 && (
+                <span style={{
+                  marginLeft: "0.375rem",
+                  padding: "0.0625rem 0.375rem",
+                  borderRadius: "8px",
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  background: tab === key ? "rgba(255,193,7,0.15)" : "rgba(255,255,255,0.06)",
+                  color: tab === key ? "#ffd43b" : "rgba(255,255,255,0.4)",
+                }}>
+                  {count}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -277,50 +305,78 @@ export const ScansPage = () => {
             {!loading && targets.length > 0 && (
               <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
                 {targets.map(target => (
-                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setTab("scans"); }} />
+                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setScanOffset(0); setTab("scans"); }} />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Recent scans tab */}
+        {/* Scans tab */}
         {tab === "scans" && (
           <div>
-            {scanFilterTargetName && (
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                marginBottom: "1rem",
-                padding: "0.5rem 0.75rem",
-                background: "rgba(255,193,7,0.08)",
-                border: "1px solid rgba(255,193,7,0.2)",
-                borderRadius: "6px",
-                fontSize: "0.8125rem",
-              }}>
-                <span style={{ color: "rgba(255,255,255,0.6)" }}>
-                  {t("Filtered by", "Gefiltert nach")}:
-                </span>
-                <span style={{ color: "#ffd43b", fontWeight: 500 }}>{scanFilterTargetName}</span>
+            {/* Filter bar */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              marginBottom: "1rem",
+              flexWrap: "wrap",
+            }}>
+              <select
+                value={scanFilterTargetId || ""}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val) {
+                    const tgt = targets.find(t => t.id === val);
+                    setScanFilterTargetId(val);
+                    setScanFilterTargetName(tgt?.name || val);
+                  } else {
+                    setScanFilterTargetId(null);
+                    setScanFilterTargetName(null);
+                  }
+                  setScanOffset(0);
+                }}
+                style={{
+                  padding: "0.375rem 0.625rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: scanFilterTargetId ? "#ffd43b" : "rgba(255,255,255,0.5)",
+                  fontSize: "0.8125rem",
+                  outline: "none",
+                  cursor: "pointer",
+                  minWidth: "180px",
+                  maxWidth: "320px",
+                }}
+              >
+                <option value="">{t("All targets", "Alle Ziele")}</option>
+                {targets.map(tgt => (
+                  <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
+                ))}
+              </select>
+              {scanFilterTargetId && (
                 <button
                   type="button"
-                  onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); }}
+                  onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); setScanOffset(0); }}
                   style={{
-                    marginLeft: "auto",
                     background: "none",
                     border: "none",
                     color: "rgba(255,255,255,0.4)",
                     cursor: "pointer",
-                    fontSize: "0.875rem",
-                    padding: "0 0.25rem",
+                    fontSize: "0.8125rem",
+                    padding: "0.25rem",
                   }}
                   title={t("Clear filter", "Filter entfernen")}
                 >
                   ×
                 </button>
-              </div>
-            )}
+              )}
+              <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "rgba(255,255,255,0.35)" }}>
+                {scanTotal} {t("total", "gesamt")}
+              </span>
+            </div>
+
             {loading && (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -332,47 +388,111 @@ export const ScansPage = () => {
               <p className="muted">{t("No scans yet.", "Noch keine Scans.")}</p>
             )}
             {!loading && scans.length > 0 && (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                      <th style={thStyle}>{t("Target", "Ziel")}</th>
-                      <th style={thStyle}>{t("Scanners", "Scanner")}</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>{t("Findings", "Ergebnisse")}</th>
-                      <th style={thStyle}>{t("Source", "Quelle")}</th>
-                      <th style={thStyle}>{t("Date", "Datum")}</th>
-                      <th style={{ ...thStyle, width: "2.5rem" }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scans.map(scan => (
-                      <tr key={scan.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                        <td style={tdStyle}>
-                          <Link to={`/scans/${scan.id}`} style={{ color: "#ffd43b", textDecoration: "none" }}>
-                            {scan.targetName || scan.targetId}
-                          </Link>
-                        </td>
-                        <td style={tdStyle}>{scan.scanners.join(", ")}</td>
-                        <td style={tdStyle}><StatusBadge status={scan.status} /></td>
-                        <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>
-                        <td style={tdStyle}>{scan.source === "ci_cd" ? "CI/CD" : t("Manual", "Manuell")}</td>
-                        <td style={tdStyle}>{scan.startedAt ? formatDateTime(scan.startedAt) : "—"}</td>
-                        <td style={tdStyle}>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}
-                            title={t("Delete scan", "Scan löschen")}
-                            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: "0.875rem", padding: "0.125rem 0.25rem" }}
-                          >
-                            ×
-                          </button>
-                        </td>
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                        <th style={thStyle}>{t("Target", "Ziel")}</th>
+                        <th style={thStyle}>{t("Ref", "Ref")}</th>
+                        <th style={thStyle}>Status</th>
+                        <th style={thStyle}>{t("Findings", "Ergebnisse")}</th>
+                        <th style={thStyle}>{t("Source", "Quelle")}</th>
+                        <th style={thStyle}>{t("Date", "Datum")}</th>
+                        <th style={{ ...thStyle, width: "2.5rem" }} />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {scans.map(scan => {
+                        const ref = scan.imageRef
+                          ? (() => {
+                              const digest = scan.imageRef!.includes("@") ? scan.imageRef!.split("@")[1] : null;
+                              return digest ? `${digest.substring(0, 16)}…` : null;
+                            })()
+                          : scan.commitSha
+                            ? scan.commitSha.substring(0, 8)
+                            : null;
+                        const refFull = scan.imageRef || scan.commitSha || null;
+                        const refLabel = scan.imageRef ? "Digest" : "Commit";
+                        return (
+                          <tr key={scan.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                            <td style={tdStyle}>
+                              <Link to={`/scans/${scan.id}`} style={{ color: "#ffd43b", textDecoration: "none" }}>
+                                {scan.targetName || scan.targetId}
+                              </Link>
+                            </td>
+                            <td style={{ ...tdStyle, fontFamily: ref ? "monospace" : undefined, fontSize: ref ? "0.75rem" : "0.875rem", color: ref ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.25)" }} title={refFull || undefined}>
+                              {ref ? <span>{refLabel}: {ref}</span> : "—"}
+                            </td>
+                            <td style={tdStyle}><StatusBadge status={scan.status} /></td>
+                            <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>
+                            <td style={tdStyle}><SourceBadge source={scan.source} /></td>
+                            <td style={tdStyle}>{scan.startedAt ? formatDateTime(scan.startedAt) : "—"}</td>
+                            <td style={tdStyle}>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}
+                                title={t("Delete scan", "Scan löschen")}
+                                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: "0.875rem", padding: "0.125rem 0.25rem" }}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                {scanTotal > scanLimit && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.75rem",
+                    marginTop: "1rem",
+                    fontSize: "0.8125rem",
+                  }}>
+                    <button
+                      type="button"
+                      disabled={scanOffset === 0}
+                      onClick={() => setScanOffset(Math.max(0, scanOffset - scanLimit))}
+                      style={{
+                        padding: "0.3rem 0.75rem",
+                        borderRadius: "4px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: scanOffset === 0 ? "transparent" : "rgba(255,255,255,0.05)",
+                        color: scanOffset === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
+                        cursor: scanOffset === 0 ? "default" : "pointer",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      ← {t("Previous", "Zurück")}
+                    </button>
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>
+                      {Math.floor(scanOffset / scanLimit) + 1} / {Math.ceil(scanTotal / scanLimit)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={scanOffset + scanLimit >= scanTotal}
+                      onClick={() => setScanOffset(scanOffset + scanLimit)}
+                      style={{
+                        padding: "0.3rem 0.75rem",
+                        borderRadius: "4px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: scanOffset + scanLimit >= scanTotal ? "transparent" : "rgba(255,255,255,0.05)",
+                        color: scanOffset + scanLimit >= scanTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
+                        cursor: scanOffset + scanLimit >= scanTotal ? "default" : "pointer",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      {t("Next", "Weiter")} →
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -798,6 +918,27 @@ const ScanningBadge = () => (
     `}</style>
   </span>
 );
+
+const SourceBadge = ({ source }: { source: string }) => {
+  const labels: Record<string, { text: string; color: string }> = {
+    manual: { text: "Manual", color: "rgba(255,255,255,0.5)" },
+    ci_cd: { text: "CI/CD", color: "#5c84ff" },
+    scheduled: { text: "Auto", color: "#69db7c" },
+  };
+  const { text, color } = labels[source] || { text: source, color: "rgba(255,255,255,0.4)" };
+  return (
+    <span style={{
+      padding: "0.125rem 0.5rem",
+      borderRadius: "4px",
+      fontSize: "0.75rem",
+      fontWeight: 500,
+      background: `${color}15`,
+      color,
+    }}>
+      {text}
+    </span>
+  );
+};
 
 const StatusBadge = ({ status }: { status: string }) => {
   const colors: Record<string, string> = {
