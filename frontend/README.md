@@ -141,7 +141,7 @@ Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
 | `VITE_AI_FEATURES_ENABLED` | `true` | KI-Analyse aktivieren/deaktivieren |
 | `VITE_DOMAIN` | `hecate.pw` | Domain für Share-URLs |
 | `VITE_SCA_FEATURES_ENABLED` | `true` | SCA-Scans aktivieren/deaktivieren |
-| `VITE_SCA_AUTO_SCAN_ENABLED` | `false` | Auto-Scan-Toggle in der UI anzeigen |
+| `VITE_SCA_AUTO_SCAN_ENABLED` | `false` | Auto-Scan-Toggle in der UI anzeigen (Backend: `SCA_AUTO_SCAN_INTERVAL_MINUTES` für Intervall) |
 
 ## Entwicklung
 

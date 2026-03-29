@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     sca_scanner_timeout_seconds: int = 600
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
     vite_sca_auto_scan_enabled: bool = False
-    sca_auto_scan_interval_hours: int = 24
+    sca_auto_scan_interval_minutes: int = 1440
 
     # Notifications (Apprise)
     notifications_enabled: bool = False

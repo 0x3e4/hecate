@@ -287,6 +287,12 @@ class ScanService:
             pass
         await self.target_repo.update_last_scan(target_id, finished_at)
 
+        # Persist fingerprint for change detection on future auto-scans
+        if scan_metadata.get("image_digest"):
+            await self.target_repo.update_last_fingerprint(target_id, image_digest=scan_metadata["image_digest"])
+        if scan_metadata.get("commit_sha"):
+            await self.target_repo.update_last_fingerprint(target_id, commit_sha=scan_metadata["commit_sha"])
+
         log.info(
             "scan_service.scan_completed",
             scan_id=scan_id,
@@ -683,6 +689,34 @@ class ScanService:
     async def list_auto_scan_targets(self) -> list[dict[str, Any]]:
         """List all targets with auto_scan enabled."""
         return await self.target_repo.list_auto_scan_targets()
+
+    async def check_target_changed(self, target: str, target_type: str, target_doc: dict[str, Any]) -> bool:
+        """Call scanner sidecar /check and compare with stored fingerprint.
+
+        Returns True if changed or if comparison is not possible (fail-open).
+        """
+        try:
+            url = f"{settings.sca_scanner_url}/check"
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(url, json={"target": target, "type": target_type})
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            log.warning("scan_service.change_check_failed", target=target, error=str(exc))
+            return True  # If check fails, scan anyway
+
+        if target_type == "container_image":
+            current = data.get("current_digest")
+            previous = target_doc.get("last_image_digest")
+            if current and previous and current == previous:
+                return False
+        elif target_type == "source_repo":
+            current = data.get("current_commit_sha")
+            previous = target_doc.get("last_commit_sha")
+            if current and previous and current == previous:
+                return False
+
+        return True
 
     # --- Private helpers ---
 

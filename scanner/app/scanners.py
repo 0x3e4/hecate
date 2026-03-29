@@ -174,6 +174,15 @@ async def get_git_commit_sha(repo_dir: str) -> str | None:
     return None
 
 
+async def get_remote_commit_sha(url: str) -> str | None:
+    """Get HEAD commit SHA from a remote repo via ls-remote (no clone needed)."""
+    stdout, _, rc = await _run_command(["git", "ls-remote", url, "HEAD"], timeout=30)
+    if rc == 0 and stdout.strip():
+        # Output format: "<sha>\tHEAD"
+        return stdout.strip().split()[0]
+    return None
+
+
 async def get_image_digest(image_ref: str) -> str | None:
     """Get image digest via skopeo or docker inspect. Falls back to trivy/grype metadata."""
     # Try docker inspect first (works if image is pulled)

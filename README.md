@@ -98,7 +98,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Scanner-Sidecar:** 7 Scanner als Docker-Container — Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle (CIS Docker Benchmarks), Dive (Image-Schichtanalyse)
 - **CI/CD-Integration:** Container-Images und Source-Repos über API scannen (`POST /api/v1/scans`)
 - **Manueller Scan:** Scans direkt aus dem Frontend starten (Scanner-Auswahl je Scan-Typ)
-- **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern
+- **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbares Intervall via `SCA_AUTO_SCAN_INTERVAL_MINUTES`, Change-Detection über Image-Digest/Commit-SHA)
 - **SBOM-Generierung:** CycloneDX-Format via Syft
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
 - **Malware-Erkennung:** Hecate Analyzer mit 34 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads)
@@ -278,7 +278,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
-| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCANNER_AUTH`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
+| **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCANNER_AUTH`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
 | **Benachrichtigungen** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |
 
 ## CI/CD

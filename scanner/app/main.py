@@ -5,11 +5,12 @@ import shutil
 
 from fastapi import FastAPI, HTTPException
 
-from app.models import ScanMetadata, ScanRequest, ScanResponse, ScannerResult
+from app.models import CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult
 from app.scanners import (
     extract_source_archive,
     get_git_commit_sha,
     get_image_digest,
+    get_remote_commit_sha,
     run_scanner,
     setup_auth,
 )
@@ -29,6 +30,19 @@ async def _startup() -> None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/check", response_model=CheckResponse)
+async def check(request: CheckRequest) -> CheckResponse:
+    """Lightweight fingerprint check — returns current digest/commit without scanning."""
+    if request.type == "container_image":
+        digest = await get_image_digest(request.target)
+        return CheckResponse(target=request.target, type=request.type, current_digest=digest)
+    elif request.type == "source_repo":
+        sha = await get_remote_commit_sha(request.target)
+        return CheckResponse(target=request.target, type=request.type, current_commit_sha=sha)
+    else:
+        raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
 
 @app.post("/scan", response_model=ScanResponse)
