@@ -36,3 +36,15 @@ class ScanResponse(BaseModel):
     type: str
     results: list[ScannerResult]
     metadata: ScanMetadata | None = None
+
+
+class CheckRequest(BaseModel):
+    target: str = Field(description="Container image reference or source repo URL")
+    type: str = Field(description="container_image or source_repo")
+
+
+class CheckResponse(BaseModel):
+    target: str
+    type: str
+    current_digest: str | None = None
+    current_commit_sha: str | None = None

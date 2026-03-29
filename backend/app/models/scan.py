@@ -32,6 +32,8 @@ class ScanTargetDocument(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_scan_at: datetime | None = None
     scan_count: int = 0
+    last_image_digest: str | None = Field(default=None, description="Image digest from most recent scan")
+    last_commit_sha: str | None = Field(default=None, description="Commit SHA from most recent scan")
 
 
 class ScanDocument(BaseModel):

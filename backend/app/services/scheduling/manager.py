@@ -91,6 +91,13 @@ class SchedulerManager:
                     name="scheduler-bootstrap",
                 )
 
+        # Bootstrap auto-scan after a short delay so services are ready
+        if settings.sca_enabled and settings.vite_sca_auto_scan_enabled:
+            asyncio.create_task(
+                _delayed_auto_scan_bootstrap(),
+                name="bootstrap-auto-scan",
+            )
+
     def _schedule_jobs(self) -> None:
         self.scheduler.add_job(
             _scheduled_euvd_ingestion,
@@ -166,7 +173,7 @@ class SchedulerManager:
         if settings.sca_enabled and settings.vite_sca_auto_scan_enabled:
             self.scheduler.add_job(
                 _scheduled_auto_scans,
-                trigger=IntervalTrigger(hours=settings.sca_auto_scan_interval_hours),
+                trigger=IntervalTrigger(minutes=settings.sca_auto_scan_interval_minutes),
                 id="sca_auto_scan",
                 replace_existing=True,
             )
@@ -576,8 +583,15 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
         await pipeline.close()
 
 
+async def _delayed_auto_scan_bootstrap() -> None:
+    """Run auto-scan once on startup after a short delay."""
+    await asyncio.sleep(30)
+    log.info("scheduler.auto_scan_bootstrap_start")
+    await _scheduled_auto_scans()
+
+
 async def _scheduled_auto_scans() -> None:
-    """Submit scans for all targets with auto_scan enabled."""
+    """Submit scans for all targets with auto_scan enabled, skipping unchanged targets."""
     try:
         scan_service = await get_scan_service()
         targets = await scan_service.list_auto_scan_targets()
@@ -586,11 +600,17 @@ async def _scheduled_auto_scans() -> None:
             return
 
         submitted = 0
+        skipped = 0
         for target in targets:
             target_id = target.get("target_id", "")
             target_type = target.get("type", "container_image")
             target_scanners = target.get("scanners") or ["trivy", "grype", "syft"]
             try:
+                changed = await scan_service.check_target_changed(target_id, target_type, target)
+                if not changed:
+                    log.info("scheduler.auto_scan_skipped_unchanged", target_id=target_id)
+                    skipped += 1
+                    continue
                 await scan_service.submit_scan(
                     target=target_id,
                     target_type=target_type,
@@ -601,6 +621,6 @@ async def _scheduled_auto_scans() -> None:
             except Exception as exc:  # noqa: BLE001
                 log.warning("scheduler.auto_scan_target_failed", target_id=target_id, error=str(exc))
 
-        log.info("scheduler.auto_scan_completed", targets=len(targets), submitted=submitted)
+        log.info("scheduler.auto_scan_completed", targets=len(targets), submitted=submitted, skipped=skipped)
     except Exception as exc:  # noqa: BLE001
         log.exception("scheduler.auto_scan_failed", error=str(exc))

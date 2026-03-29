@@ -51,6 +51,11 @@ class ScanTargetRepository:
             # Preserve scanners from first scan — don't override on subsequent scans
             if existing.get("scanners"):
                 payload["scanners"] = existing["scanners"]
+            # Preserve fingerprint data for change detection
+            if "last_image_digest" in existing:
+                payload["last_image_digest"] = existing["last_image_digest"]
+            if "last_commit_sha" in existing:
+                payload["last_commit_sha"] = existing["last_commit_sha"]
 
         try:
             result = await self.collection.replace_one(
@@ -138,6 +143,20 @@ class ScanTargetRepository:
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_auto_scan_failed", target_id=target_id, error=str(exc))
             return False
+
+    async def update_last_fingerprint(
+        self, target_id: str, image_digest: str | None = None, commit_sha: str | None = None,
+    ) -> None:
+        """Store the latest image digest or commit SHA for change detection."""
+        update: dict[str, Any] = {"updated_at": datetime.now(tz=UTC)}
+        if image_digest is not None:
+            update["last_image_digest"] = image_digest
+        if commit_sha is not None:
+            update["last_commit_sha"] = commit_sha
+        try:
+            await self.collection.update_one({"_id": target_id}, {"$set": update})
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_fingerprint_failed", target_id=target_id, error=str(exc))
 
     async def list_auto_scan_targets(self) -> list[dict[str, Any]]:
         """List all targets where auto_scan is enabled (or not set, defaulting to True)."""
