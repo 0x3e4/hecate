@@ -434,7 +434,7 @@ export interface Scan {
   targetName?: string | null;
   scanners: string[];
   status: "pending" | "running" | "completed" | "failed";
-  source: "ci_cd" | "manual";
+  source: "ci_cd" | "manual" | "scheduled";
   imageRef?: string | null;
   commitSha?: string | null;
   branch?: string | null;
