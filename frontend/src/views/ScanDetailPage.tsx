@@ -604,9 +604,22 @@ export const ScanDetailPage = () => {
                 </div>
               );
             })()}
-            {scan.commitSha && <div>Commit: <span style={{ fontFamily: "monospace" }}>{scan.commitSha.substring(0, 8)}</span></div>}
+            {!scan.imageRef && scan.commitSha && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                  <span style={{ wordBreak: "break-all" }}>{scan.targetName || scan.targetId}</span>
+                  {sourceUrl && (
+                    <a href={sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#ffd43b", fontSize: "0.75rem", flexShrink: 0 }}>↗</a>
+                  )}
+                </div>
+                <div title={scan.commitSha} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>
+                  {scan.commitSha.substring(0, 12)}
+                </div>
+              </div>
+            )}
             {scan.branch && <div>Branch: {scan.branch}</div>}
             {scan.source === "ci_cd" && <div style={{ color: "#5c84ff" }}>CI/CD</div>}
+            {scan.source === "scheduled" && <div style={{ color: "#69db7c" }}>Auto</div>}
           </div>
         </div>
 

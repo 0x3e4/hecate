@@ -9,6 +9,7 @@ import type {
   ScanLayerAnalysis,
   ScanHistoryResponse,
   ScanComparisonResponse,
+  ScannerStats,
   SubmitScanRequest,
   SubmitScanResponse,
 } from "../types";
@@ -151,6 +152,15 @@ export const fetchTargetHistory = async (targetId: string): Promise<ScanHistoryR
   const response = await api.get<ScanHistoryResponse>(
     `/v1/scans/targets/${encodeURIComponent(targetId)}/history`
   );
+  return response.data;
+};
+
+export const cancelScan = async (scanId: string): Promise<void> => {
+  await api.post(`/v1/scans/${encodeURIComponent(scanId)}/cancel`);
+};
+
+export const fetchScannerStats = async (): Promise<ScannerStats> => {
+  const response = await api.get<ScannerStats>("/v1/scans/scanner/stats");
   return response.data;
 };
 

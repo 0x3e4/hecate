@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX } from "react-icons/lu";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { version } from "../../package.json";
 import { config } from "../config";
@@ -68,6 +68,36 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     }
     return false;
   }, [jobs]);
+
+  const scaRunningSSE = useMemo(() => {
+    for (const [name, job] of jobs) {
+      if (name.startsWith("sca_scan_")) {
+        if (job.status === "running") return true;
+      }
+    }
+    return false;
+  }, [jobs]);
+
+  // Also poll for running scans to catch scans started before SSE connected
+  const [scaRunningPoll, setScaRunningPoll] = useState(false);
+  useEffect(() => {
+    if (!config.scaFeatures.enabled) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "/api"}/v1/scans?status=running&limit=1`);
+        if (!cancelled && resp.ok) {
+          const data = await resp.json();
+          setScaRunningPoll(data.total > 0);
+        }
+      } catch { /* ignore */ }
+    };
+    check();
+    const interval = setInterval(check, 10000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const scaRunning = scaRunningSSE || scaRunningPoll;
   const germanLabels: Record<string, string> = {
     "/": "Dashboard",
     "/vulnerabilities": "Schwachstellen",
@@ -126,9 +156,11 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                     <span className="sidebar-link-short">
                       <Icon aria-hidden="true" focusable="false" />
                       {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
+                      {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" />}
                     </span>
                     <span className="sidebar-link-text">{item.label}</span>
                     {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
+                    {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" />}
                   </NavLink>
                   {item.to === "/" && !collapsed && recentVulnerabilities.length > 0 && (
                     <div className="sidebar-subnav" aria-label={t("Recently visited vulnerabilities", "Zuletzt besuchte Schwachstellen")}>

@@ -38,6 +38,9 @@ from app.services.scan_parser import (
 
 log = structlog.get_logger()
 
+# Module-level dict to track running scan tasks across ScanService instances
+_running_scan_tasks: dict[str, asyncio.Task] = {}
+
 
 class ScanService:
     def __init__(
@@ -117,7 +120,10 @@ class ScanService:
         scan_id = await self.scan_repo.insert(scan_doc)
 
         # 3. Fire off background task and return immediately
-        asyncio.create_task(
+        from app.services.event_bus import publish_job_started
+        publish_job_started(f"sca_scan_{scan_id}", started_at, target=target, scan_id=scan_id)
+
+        task = asyncio.create_task(
             self._run_scan_background(
                 scan_id=scan_id,
                 target=target,
@@ -129,6 +135,8 @@ class ScanService:
                 source_archive_base64=source_archive_base64,
             )
         )
+        _running_scan_tasks[scan_id] = task
+        task.add_done_callback(lambda _t: _running_scan_tasks.pop(scan_id, None))
 
         return {
             "scan_id": scan_id,
@@ -154,6 +162,39 @@ class ScanService:
         """Execute scan in background. Each scanner runs independently and results are
         stored incrementally so the frontend can display partial results while other
         scanners are still running."""
+        from app.services.event_bus import publish_job_completed, publish_job_failed
+
+        try:
+            await self._run_scan_background_inner(
+                scan_id, target, target_id, target_type, scanners, source, started_at, source_archive_base64,
+            )
+            finished_at = datetime.now(tz=UTC)
+            publish_job_completed(f"sca_scan_{scan_id}", started_at, finished_at, scan_id=scan_id)
+        except asyncio.CancelledError:
+            log.info("scan_service.scan_cancelled", scan_id=scan_id, target=target)
+            finished_at = datetime.now(tz=UTC)
+            await self.scan_repo.update_status(scan_id, "cancelled", finished_at=finished_at,
+                                               duration_seconds=(finished_at - started_at).total_seconds())
+            await self.finding_repo.delete_by_scan(scan_id)
+            await self.sbom_repo.delete_by_scan(scan_id)
+            publish_job_failed(f"sca_scan_{scan_id}", started_at, finished_at, error="cancelled")
+        except Exception as exc:
+            log.exception("scan_service.scan_background_error", scan_id=scan_id, error=str(exc))
+            finished_at = datetime.now(tz=UTC)
+            publish_job_failed(f"sca_scan_{scan_id}", started_at, finished_at, error=str(exc))
+
+    async def _run_scan_background_inner(
+        self,
+        scan_id: str,
+        target: str,
+        target_id: str,
+        target_type: str,
+        scanners: list[str],
+        source: str,
+        started_at: datetime,
+        source_archive_base64: str | None = None,
+    ) -> None:
+        """Inner scan logic, separated to allow CancelledError handling in the wrapper."""
         from app.services.scan_parser import _filter_and_merge_sbom
 
         all_findings: list[ScanFindingDocument] = []
@@ -689,6 +730,41 @@ class ScanService:
     async def list_auto_scan_targets(self) -> list[dict[str, Any]]:
         """List all targets with auto_scan enabled."""
         return await self.target_repo.list_auto_scan_targets()
+
+    async def cancel_scan(self, scan_id: str) -> bool:
+        """Cancel a running scan. Returns True if cancelled."""
+        task = _running_scan_tasks.get(scan_id)
+        if task and not task.done():
+            task.cancel()
+            return True
+        # Task not tracked (e.g. server restarted) — just update status
+        scan = await self.scan_repo.get(scan_id)
+        if not scan or scan.get("status") not in ("running", "pending"):
+            return False
+        finished_at = datetime.now(tz=UTC)
+        started = scan.get("started_at") or finished_at
+        await self.scan_repo.update_status(scan_id, "cancelled", finished_at=finished_at,
+                                           duration_seconds=(finished_at - started).total_seconds())
+        await self.finding_repo.delete_by_scan(scan_id)
+        await self.sbom_repo.delete_by_scan(scan_id)
+        return True
+
+    async def get_scanner_stats(self) -> dict[str, Any]:
+        """Fetch resource stats from the scanner sidecar."""
+        try:
+            url = f"{settings.sca_scanner_url}/stats"
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+                # Convert snake_case to camelCase for frontend
+                def _camel(s: str) -> str:
+                    parts = s.split("_")
+                    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+                return {_camel(k): v for k, v in data.items()}
+        except Exception as exc:
+            log.warning("scan_service.scanner_stats_failed", error=str(exc))
+            return {"error": str(exc)}
 
     async def check_target_changed(self, target: str, target_type: str, target_doc: dict[str, Any]) -> bool:
         """Call scanner sidecar /check and compare with stored fingerprint.

@@ -38,6 +38,15 @@ class ScanResponse(BaseModel):
     metadata: ScanMetadata | None = None
 
 
+class StatsResponse(BaseModel):
+    memory_used_bytes: int = 0
+    memory_limit_bytes: int = 0
+    tmp_disk_total_bytes: int = 0
+    tmp_disk_used_bytes: int = 0
+    tmp_disk_free_bytes: int = 0
+    active_scans: int = 0
+
+
 class CheckRequest(BaseModel):
     target: str = Field(description="Container image reference or source repo URL")
     type: str = Field(description="container_image or source_repo")

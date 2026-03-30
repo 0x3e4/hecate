@@ -433,7 +433,7 @@ export interface Scan {
   targetId: string;
   targetName?: string | null;
   scanners: string[];
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   source: "ci_cd" | "manual" | "scheduled";
   imageRef?: string | null;
   commitSha?: string | null;
@@ -452,6 +452,16 @@ export interface Scan {
 export interface ScanListResponse {
   total: number;
   items: Scan[];
+}
+
+export interface ScannerStats {
+  memoryUsedBytes: number;
+  memoryLimitBytes: number;
+  tmpDiskTotalBytes: number;
+  tmpDiskUsedBytes: number;
+  tmpDiskFreeBytes: number;
+  activeScans: number;
+  error?: string;
 }
 
 export interface ScanFinding {
