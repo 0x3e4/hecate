@@ -264,6 +264,14 @@ async def list_scans(
 # Static paths MUST come before /{scan_id} to avoid being swallowed by the dynamic route
 
 
+@router.get("/scanner/stats")
+async def get_scanner_stats(
+    service: ScanService = Depends(get_scan_service),
+) -> dict:
+    """Proxy to scanner sidecar /stats for resource monitoring."""
+    return await service.get_scanner_stats()
+
+
 @router.get("/compare", response_model=ScanComparisonResponse)
 async def compare_scans(
     scan_a: str = Query(alias="scanA", description="First scan ID"),
@@ -303,6 +311,18 @@ async def get_findings_by_cve(
 
 
 # --- Dynamic scan routes ---
+
+
+@router.post("/{scan_id}/cancel")
+async def cancel_scan(
+    scan_id: str,
+    service: ScanService = Depends(get_scan_service),
+) -> dict:
+    """Cancel a running scan."""
+    cancelled = await service.cancel_scan(scan_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="No running scan found")
+    return {"status": "cancelled", "scanId": scan_id}
 
 
 @router.delete("/{scan_id}", status_code=204)

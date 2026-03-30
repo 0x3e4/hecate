@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { config } from "../config";
@@ -11,6 +11,8 @@ import {
   deleteScanTarget,
   deleteScan,
   updateScanTarget,
+  cancelScan,
+  fetchScannerStats,
 } from "../api/scans";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
@@ -19,10 +21,11 @@ import type {
   ScanTarget,
   Scan,
   ScanSummary,
+  ScannerStats,
   SubmitScanResponse,
 } from "../types";
 
-type Tab = "targets" | "scans" | "manual";
+type Tab = "targets" | "scans" | "manual" | "scanner";
 type SourceRepoInputMode = "url" | "zip";
 
 interface ConfirmModal {
@@ -48,6 +51,15 @@ export const ScansPage = () => {
   const [scanTotal, setScanTotal] = useState(0);
   const [scanOffset, setScanOffset] = useState(0);
   const scanLimit = 25;
+
+  // Scanner stats
+  const [scannerStats, setScannerStats] = useState<ScannerStats | null>(null);
+
+  // History for live charts
+  const [memHistory, setMemHistory] = useState<{ time: number; value: number }[]>([]);
+  const [diskHistory, setDiskHistory] = useState<{ time: number; value: number }[]>([]);
+  const [chartMinutes, setChartMinutes] = useState(5);
+  const maxHistory = Math.ceil((chartMinutes * 60) / 5); // 5s poll interval
 
   // Manual scan form
   const [scanTarget, setScanTarget] = useState("");
@@ -76,8 +88,12 @@ export const ScansPage = () => {
     setError(null);
     try {
       if (tab === "targets") {
-        const res = await fetchScanTargets({ limit: 100 });
-        setTargets(res.items);
+        const [targetsRes, scansRes] = await Promise.all([
+          fetchScanTargets({ limit: 100 }),
+          fetchScans({ limit: 1 }),
+        ]);
+        setTargets(targetsRes.items);
+        setScanTotal(scansRes.total);
       } else if (tab === "scans") {
         // Load targets for filter dropdown if not yet loaded
         if (targets.length === 0) {
@@ -87,6 +103,16 @@ export const ScansPage = () => {
         const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
         setScans(res.items);
         setScanTotal(res.total);
+      } else if (tab === "scanner") {
+        try {
+          const stats = await fetchScannerStats();
+          setScannerStats(stats);
+          if (!stats.error) {
+            const now = Date.now();
+            setMemHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.memoryUsedBytes }]);
+            setDiskHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.tmpDiskUsedBytes }]);
+          }
+        } catch { setScannerStats(null); }
       }
     } catch (err) {
       console.error("Failed to load scan data", err);
@@ -101,7 +127,8 @@ export const ScansPage = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     const hasRunningScans = tab === "scans" && scans.some((s: Scan) => s.status === "running" || s.status === "pending");
     const hasRunningTargets = tab === "targets" && targets.some((t: ScanTarget) => t.hasRunningScan);
-    if (hasRunningScans || hasRunningTargets) {
+    const isScanner = tab === "scanner";
+    if (hasRunningScans || hasRunningTargets || isScanner) {
       pollRef.current = setInterval(async () => {
         try {
           if (tab === "scans") {
@@ -111,9 +138,17 @@ export const ScansPage = () => {
           } else if (tab === "targets") {
             const res = await fetchScanTargets({ limit: 100 });
             setTargets(res.items);
+          } else if (tab === "scanner") {
+            const stats = await fetchScannerStats();
+            setScannerStats(stats);
+            if (!stats.error) {
+              const now = Date.now();
+              setMemHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.memoryUsedBytes }]);
+              setDiskHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.tmpDiskUsedBytes }]);
+            }
           }
         } catch { /* ignore poll errors */ }
-      }, 4000);
+      }, isScanner ? 5000 : 4000);
     }
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [tab, scans, targets]);
@@ -216,6 +251,15 @@ export const ScansPage = () => {
     });
   };
 
+  const handleCancelScan = async (scanId: string) => {
+    try {
+      await cancelScan(scanId);
+      loadData();
+    } catch (err) {
+      console.error("Cancel scan failed", err);
+    }
+  };
+
   const handleToggleAutoScan = async (target: ScanTarget) => {
     const newValue = target.autoScan === false; // toggle; default is true
     try {
@@ -252,6 +296,7 @@ export const ScansPage = () => {
             { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
             { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
             { key: "manual" as Tab, label: t("New Scan", "Neuer Scan") },
+            { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
           ]).map(({ key, label, count }) => (
             <button
               key={key}
@@ -305,7 +350,7 @@ export const ScansPage = () => {
             {!loading && targets.length > 0 && (
               <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
                 {targets.map(target => (
-                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setScanOffset(0); setTab("scans"); }} />
+                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onCancelScan={handleCancelScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setScanOffset(0); setTab("scans"); }} />
                 ))}
               </div>
             )}
@@ -427,16 +472,31 @@ export const ScansPage = () => {
                             <td style={tdStyle}><StatusBadge status={scan.status} /></td>
                             <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>
                             <td style={tdStyle}><SourceBadge source={scan.source} /></td>
-                            <td style={tdStyle}>{scan.startedAt ? formatDateTime(scan.startedAt) : "—"}</td>
+                            <td style={tdStyle}>{(() => {
+                              const done = scan.status === "completed" || scan.status === "failed" || scan.status === "cancelled";
+                              const ts = done ? (scan.finishedAt || scan.startedAt) : scan.startedAt;
+                              return ts ? formatDateTime(ts) : "—";
+                            })()}</td>
                             <td style={tdStyle}>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}
-                                title={t("Delete scan", "Scan löschen")}
-                                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: "0.875rem", padding: "0.125rem 0.25rem" }}
-                              >
-                                ×
-                              </button>
+                              {(scan.status === "running" || scan.status === "pending") ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelScan(scan.id)}
+                                  title={t("Stop scan", "Scan stoppen")}
+                                  style={{ background: "none", border: "none", color: "#ff6b6b", cursor: "pointer", fontSize: "0.75rem", padding: "0.125rem 0.25rem", fontWeight: 500 }}
+                                >
+                                  ■
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}
+                                  title={t("Delete scan", "Scan löschen")}
+                                  style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: "0.875rem", padding: "0.125rem 0.25rem" }}
+                                >
+                                  ×
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -683,6 +743,100 @@ export const ScansPage = () => {
             )}
           </div>
         )}
+        {/* Scanner tab */}
+        {tab === "scanner" && (
+          <div>
+            {loading && <SkeletonBlock height={200} radius={8} />}
+            {!loading && !scannerStats && (
+              <p className="muted">{t("Could not reach scanner.", "Scanner nicht erreichbar.")}</p>
+            )}
+            {!loading && scannerStats && !scannerStats.error && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                {/* Active scans indicator */}
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1rem",
+                  padding: "1rem 1.25rem",
+                  border: scannerStats.activeScans > 0 ? "1px solid rgba(92,132,255,0.25)" : "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "8px",
+                  background: scannerStats.activeScans > 0 ? "rgba(92,132,255,0.04)" : "rgba(255,255,255,0.02)",
+                }}>
+                  <div style={{
+                    width: "48px", height: "48px", borderRadius: "12px",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: scannerStats.activeScans > 0 ? "rgba(92,132,255,0.15)" : "rgba(255,255,255,0.05)",
+                    fontSize: "1.5rem", fontWeight: 700,
+                    color: scannerStats.activeScans > 0 ? "#5c84ff" : "rgba(255,255,255,0.4)",
+                  }}>
+                    {scannerStats.activeScans}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "0.9375rem", fontWeight: 600 }}>
+                      {scannerStats.activeScans > 0
+                        ? t(`${scannerStats.activeScans} scanner process${scannerStats.activeScans > 1 ? "es" : ""} running`, `${scannerStats.activeScans} Scanner-Prozess${scannerStats.activeScans > 1 ? "e" : ""} aktiv`)
+                        : t("Scanner idle", "Scanner inaktiv")}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.125rem" }}>
+                      {t("Each target scan runs multiple scanner processes (trivy, grype, syft, ...)", "Jeder Ziel-Scan startet mehrere Scanner-Prozesse (trivy, grype, syft, ...)")}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Time range selector */}
+                <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", marginRight: "0.25rem" }}>
+                    {t("Range", "Zeitraum")}:
+                  </span>
+                  {[5, 15, 30, 60].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setChartMinutes(m)}
+                      style={{
+                        padding: "0.2rem 0.5rem",
+                        borderRadius: "4px",
+                        fontSize: "0.6875rem",
+                        fontWeight: chartMinutes === m ? 600 : 400,
+                        border: chartMinutes === m ? "1px solid rgba(255,193,7,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                        background: chartMinutes === m ? "rgba(255,193,7,0.12)" : "transparent",
+                        color: chartMinutes === m ? "#ffd43b" : "rgba(255,255,255,0.45)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {m} min
+                    </button>
+                  ))}
+                </div>
+
+                {/* Live resource charts — full width, stacked */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <LiveChart
+                    label={t("Container Memory", "Container-Speicher")}
+                    data={memHistory}
+                    max={scannerStats.memoryLimitBytes}
+                    current={scannerStats.memoryUsedBytes}
+                    color="#5c84ff"
+                    minutes={chartMinutes}
+                  />
+                  <LiveChart
+                    label={t("Temp Disk (/tmp)", "Temp-Datenträger (/tmp)")}
+                    data={diskHistory}
+                    max={scannerStats.tmpDiskTotalBytes}
+                    current={scannerStats.tmpDiskUsedBytes}
+                    color="#fcc419"
+                    minutes={chartMinutes}
+                  />
+                </div>
+              </div>
+            )}
+            {!loading && scannerStats?.error && (
+              <div style={{ padding: "0.75rem 1rem", background: "rgba(255,107,107,0.1)", border: "1px solid rgba(255,107,107,0.3)", borderRadius: "6px", color: "#ff6b6b", fontSize: "0.875rem" }}>
+                {scannerStats.error}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Confirmation modal */}
@@ -738,7 +892,7 @@ export const ScansPage = () => {
 
 // --- Sub-components ---
 
-const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onFilterScans }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onFilterScans: (id: string, name: string) => void }) => {
+const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onFilterScans, onCancelScan }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
   const isRunning = !!target.hasRunningScan;
   const autoScan = target.autoScan !== false; // default true
@@ -793,24 +947,43 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onFilterScan
           {target.lastScanAt && <span>{t("Last", "Letzter")}: {formatDateTime(target.lastScanAt)}</span>}
         </div>
         <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", marginLeft: "auto" }}>
-          <button
-            type="button"
-            onClick={() => !isRunning && onRescan(target)}
-            disabled={isRunning}
-            title={isRunning ? t("Scan in progress", "Scan läuft") : t("Rescan", "Erneut scannen")}
-            style={{
-              background: isRunning ? "rgba(255,255,255,0.05)" : "rgba(255,193,7,0.15)",
-              border: isRunning ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(255,193,7,0.3)",
-              color: isRunning ? "rgba(255,255,255,0.3)" : "#ffd43b",
-              cursor: isRunning ? "not-allowed" : "pointer",
-              fontSize: "0.7rem",
-              padding: "0.2rem 0.5rem",
-              borderRadius: "4px",
-              fontWeight: 500,
-            }}
-          >
-            ↻ Scan
-          </button>
+          {isRunning && target.latestScanId && onCancelScan ? (
+            <button
+              type="button"
+              onClick={() => onCancelScan(target.latestScanId!)}
+              title={t("Stop scan", "Scan stoppen")}
+              style={{
+                background: "rgba(255,107,107,0.15)",
+                border: "1px solid rgba(255,107,107,0.3)",
+                color: "#ff6b6b",
+                cursor: "pointer",
+                fontSize: "0.7rem",
+                padding: "0.2rem 0.5rem",
+                borderRadius: "4px",
+                fontWeight: 500,
+              }}
+            >
+              ■ Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onRescan(target)}
+              title={t("Rescan", "Erneut scannen")}
+              style={{
+                background: "rgba(255,193,7,0.15)",
+                border: "1px solid rgba(255,193,7,0.3)",
+                color: "#ffd43b",
+                cursor: "pointer",
+                fontSize: "0.7rem",
+                padding: "0.2rem 0.5rem",
+                borderRadius: "4px",
+                fontWeight: 500,
+              }}
+            >
+              ↻ Scan
+            </button>
+          )}
           {config.scaFeatures.autoScanEnabled && (
             <button
               type="button"
@@ -940,12 +1113,245 @@ const SourceBadge = ({ source }: { source: string }) => {
   );
 };
 
+type DataPoint = { time: number; value: number };
+
+const LiveChart = ({ label, data, max, current, color, minutes }: { label: string; data: DataPoint[]; max: number; current: number; color: string; minutes: number }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; value: number; time: number } | null>(null);
+  const CHART_H = 120;
+
+  const fmt = useCallback((bytes: number) => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  }, []);
+
+  const pct = max > 0 ? Math.min(100, (current / max) * 100) : 0;
+  const windowMs = minutes * 60 * 1000;
+
+  // Filter data to the selected time window
+  const now = data.length > 0 ? data[data.length - 1].time : Date.now();
+  const windowStart = now - windowMs;
+  const visible = data.filter(d => d.time >= windowStart);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || visible.length === 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const pad = { top: 4, bottom: 2 };
+    const chartH = h - pad.top - pad.bottom;
+
+    // Y-axis: auto-scale to data with 20% headroom, minimum = max/5 so flat lines sit mid-chart
+    const dataMax = Math.max(...visible.map(d => d.value), 1);
+    const yMax = Math.max(dataMax * 1.2, max > 0 ? max * 0.05 : dataMax * 1.5);
+
+    // Grid lines + labels
+    const gridLines = 4;
+    ctx.textAlign = "right";
+    ctx.font = "10px monospace";
+    for (let i = 0; i <= gridLines; i++) {
+      const y = pad.top + (chartH / gridLines) * i;
+      if (i > 0 && i < gridLines) {
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      const val = yMax * (1 - i / gridLines);
+      ctx.fillText(fmt(val), w - 4, y + 12);
+    }
+
+    // Limit line (dashed) if limit is within visible range
+    if (max > 0 && max <= yMax) {
+      const limitY = pad.top + chartH - (max / yMax) * chartH;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = "rgba(255,107,107,0.3)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, limitY);
+      ctx.lineTo(w, limitY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,107,107,0.4)";
+      ctx.textAlign = "left";
+      ctx.fillText("limit", 4, limitY - 3);
+      ctx.textAlign = "right";
+    }
+
+    // Map data points to canvas coords
+    const toX = (t: number) => ((t - windowStart) / windowMs) * w;
+    const toY = (v: number) => pad.top + chartH - (v / yMax) * chartH;
+
+    // Build drawing points — extend flat line from first point leftward to fill chart
+    const pts: { x: number; y: number }[] = visible.map(d => ({ x: toX(d.time), y: toY(d.value) }));
+    // Always extend to right edge at current value
+    if (pts.length > 0) {
+      const lastPt = pts[pts.length - 1];
+      if (lastPt.x < w - 1) {
+        pts.push({ x: w, y: lastPt.y });
+      }
+    }
+
+    // Area fill
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, h);
+    for (const p of pts) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(pts[pts.length - 1].x, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, color + "30");
+    grad.addColorStop(1, color + "05");
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      i === 0 ? ctx.moveTo(pts[i].x, pts[i].y) : ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Current value dot
+    const last = pts[pts.length - 1];
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }, [visible, max, color, windowMs, windowStart]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || visible.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const w = rect.width;
+    const hoverTime = windowStart + (mouseX / w) * windowMs;
+    // Find closest data point
+    let closest = visible[0];
+    let closestDist = Infinity;
+    for (const d of visible) {
+      const dist = Math.abs(d.time - hoverTime);
+      if (dist < closestDist) { closestDist = dist; closest = d; }
+    }
+    const x = ((closest.time - windowStart) / windowMs) * w;
+    setTooltip({ x, value: closest.value, time: closest.time });
+  };
+
+  const fmtTime = (ts: number) => {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        padding: "1rem 1.25rem",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "8px",
+        background: "rgba(255,255,255,0.02)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
+        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {label}
+        </span>
+        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)" }}>
+          <span style={{ fontWeight: 700, color, fontSize: "1rem" }}>{fmt(current)}</span>
+          {" "}/ {fmt(max)} ({pct.toFixed(1)}%)
+        </span>
+      </div>
+      <div style={{ position: "relative" }}>
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: `${CHART_H}px`, display: "block", borderRadius: "4px", cursor: "crosshair" }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setTooltip(null)}
+        />
+        {tooltip && (
+          <>
+            <div style={{
+              position: "absolute", top: 0, left: tooltip.x, width: "1px", height: `${CHART_H}px`,
+              background: "rgba(255,255,255,0.2)", pointerEvents: "none",
+            }} />
+            <div style={{
+              position: "absolute", top: "4px",
+              left: Math.min(tooltip.x + 8, (containerRef.current?.clientWidth ?? 300) - 130),
+              background: "rgba(20,22,28,0.95)", border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "6px", padding: "0.375rem 0.625rem", pointerEvents: "none",
+              fontSize: "0.75rem", whiteSpace: "nowrap",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            }}>
+              <div style={{ color: "rgba(255,255,255,0.5)", marginBottom: "0.125rem" }}>{fmtTime(tooltip.time)}</div>
+              <div style={{ color, fontWeight: 600 }}>{fmt(tooltip.value)}</div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ResourceCard = ({ label, used, total, color }: { label: string; used: number; total: number; color: string }) => {
+  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+  const fmt = (bytes: number) => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  };
+  return (
+    <div style={{
+      padding: "1rem 1.25rem",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "8px",
+      background: "rgba(255,255,255,0.02)",
+    }}>
+      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.375rem", fontSize: "0.8125rem" }}>
+        <span style={{ fontWeight: 600 }}>{fmt(used)}</span>
+        <span style={{ color: "rgba(255,255,255,0.4)" }}>{fmt(total)}</span>
+      </div>
+      <div style={{ height: "6px", borderRadius: "3px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+        <div style={{
+          height: "100%",
+          width: `${pct}%`,
+          borderRadius: "3px",
+          background: pct > 85 ? "#ff6b6b" : color,
+          transition: "width 0.3s",
+        }} />
+      </div>
+      <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.35)", marginTop: "0.25rem", textAlign: "right" }}>
+        {pct.toFixed(1)}%
+      </div>
+    </div>
+  );
+};
+
 const StatusBadge = ({ status }: { status: string }) => {
   const colors: Record<string, string> = {
     completed: "#69db7c",
     running: "#5c84ff",
     pending: "#fcc419",
     failed: "#ff6b6b",
+    cancelled: "#ff922b",
   };
   const color = colors[status] || "rgba(255,255,255,0.4)";
   return (

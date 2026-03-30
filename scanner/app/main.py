@@ -5,7 +5,7 @@ import shutil
 
 from fastapi import FastAPI, HTTPException
 
-from app.models import CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult
+from app.models import CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
 from app.scanners import (
     extract_source_archive,
     get_git_commit_sha,
@@ -14,6 +14,9 @@ from app.scanners import (
     run_scanner,
     setup_auth,
 )
+
+# Track active scan count
+_active_scans = 0
 
 app = FastAPI(title="Hecate Scanner Sidecar", version="0.1.0")
 
@@ -32,6 +35,62 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _read_int(path: str) -> int | None:
+    try:
+        with open(path) as f:
+            val = f.read().strip()
+            return int(val) if val != "max" else None
+    except (OSError, ValueError):
+        return None
+
+
+@app.get("/stats", response_model=StatsResponse)
+async def stats() -> StatsResponse:
+    """Return scanner container resource usage (cgroup-aware)."""
+    mem_used = 0
+    mem_limit = 0
+
+    # cgroup v2 (preferred)
+    cg2_current = _read_int("/sys/fs/cgroup/memory.current")
+    cg2_max = _read_int("/sys/fs/cgroup/memory.max")
+    # cgroup v1 fallback
+    cg1_usage = _read_int("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+    cg1_limit = _read_int("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+
+    if cg2_current is not None:
+        mem_used = cg2_current
+        mem_limit = cg2_max or 0
+    elif cg1_usage is not None:
+        mem_used = cg1_usage
+        mem_limit = cg1_limit or 0
+
+    # If cgroup limit is unreasonably large (no limit set), fall back to host meminfo
+    if mem_limit == 0 or mem_limit > 1024 * 1024 * 1024 * 1024:
+        try:
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        mem_limit = int(line.split()[1]) * 1024
+                        break
+        except OSError:
+            pass
+
+    try:
+        disk = shutil.disk_usage("/tmp")
+        tmp_total, tmp_used, tmp_free = disk.total, disk.used, disk.free
+    except OSError:
+        tmp_total = tmp_used = tmp_free = 0
+
+    return StatsResponse(
+        memory_used_bytes=mem_used,
+        memory_limit_bytes=mem_limit,
+        tmp_disk_total_bytes=tmp_total,
+        tmp_disk_used_bytes=tmp_used,
+        tmp_disk_free_bytes=tmp_free,
+        active_scans=_active_scans,
+    )
+
+
 @app.post("/check", response_model=CheckResponse)
 async def check(request: CheckRequest) -> CheckResponse:
     """Lightweight fingerprint check — returns current digest/commit without scanning."""
@@ -47,6 +106,7 @@ async def check(request: CheckRequest) -> CheckResponse:
 
 @app.post("/scan", response_model=ScanResponse)
 async def scan(request: ScanRequest) -> ScanResponse:
+    global _active_scans
     invalid = set(request.scanners) - VALID_SCANNERS
     if invalid:
         raise HTTPException(
@@ -68,17 +128,22 @@ async def scan(request: ScanRequest) -> ScanResponse:
 
     results: list[ScannerResult] = []
     metadata = ScanMetadata()
+    _active_scans += 1
     try:
         for scanner_name in request.scanners:
             result = await run_scanner(scanner_name, request.target, request.type, source_dir=source_dir)
             results.append(result)
 
         # Collect metadata
-        if request.type == "source_repo" and source_dir:
-            metadata.commit_sha = await get_git_commit_sha(source_dir)
+        if request.type == "source_repo":
+            if source_dir:
+                metadata.commit_sha = await get_git_commit_sha(source_dir)
+            else:
+                metadata.commit_sha = await get_remote_commit_sha(request.target)
         elif request.type == "container_image":
             metadata.image_digest = await get_image_digest(request.target)
     finally:
+        _active_scans = max(0, _active_scans - 1)
         if source_dir:
             shutil.rmtree(source_dir, ignore_errors=True)
 
