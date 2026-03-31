@@ -601,6 +601,38 @@ class ScanService:
         except (ValueError, IndexError):
             return False
 
+    async def get_global_findings(
+        self,
+        search: str | None = None,
+        severity: str | None = None,
+        target_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Get consolidated findings from the latest completed scan of each target."""
+        scan_ids = await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
+        if not scan_ids:
+            return 0, []
+        return await self.finding_repo.list_across_scans_consolidated(
+            scan_ids, search=search, severity=severity, limit=limit, offset=offset
+        )
+
+    async def get_global_sbom(
+        self,
+        search: str | None = None,
+        type_filter: str | None = None,
+        target_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Get consolidated SBOM components from the latest completed scan of each target."""
+        scan_ids = await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
+        if not scan_ids:
+            return 0, []
+        return await self.sbom_repo.list_across_scans_consolidated(
+            scan_ids, search=search, type_filter=type_filter, limit=limit, offset=offset
+        )
+
     async def get_scan_sbom(
         self,
         scan_id: str,

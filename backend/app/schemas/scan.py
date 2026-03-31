@@ -238,6 +238,69 @@ class SbomComponentListResponse(BaseModel):
     items: list[SbomComponentResponse]
 
 
+class ConsolidatedTargetSchema(BaseModel):
+    """A target+scan reference inside a consolidated finding/component."""
+
+    target_id: str = Field(alias="targetId", serialization_alias="targetId")
+    scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+
+    model_config = {"populate_by_name": True}
+
+
+class ConsolidatedFindingResponse(BaseModel):
+    """Findings grouped by vulnerability + package + version."""
+
+    vulnerability_id: str | None = Field(
+        default=None, alias="vulnerabilityId", serialization_alias="vulnerabilityId"
+    )
+    package_name: str = Field(alias="packageName", serialization_alias="packageName")
+    package_version: str = Field(
+        alias="packageVersion", serialization_alias="packageVersion"
+    )
+    severity: str
+    fix_version: str | None = Field(
+        default=None, alias="fixVersion", serialization_alias="fixVersion"
+    )
+    fix_state: str = Field(
+        default="unknown", alias="fixState", serialization_alias="fixState"
+    )
+    title: str | None = None
+    scanners: list[str] = Field(default_factory=list)
+    targets: list[ConsolidatedTargetSchema] = Field(default_factory=list)
+    cvss_score: float | None = Field(
+        default=None, alias="cvssScore", serialization_alias="cvssScore"
+    )
+    urls: list[str] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class ConsolidatedFindingListResponse(BaseModel):
+    total: int
+    items: list[ConsolidatedFindingResponse]
+
+
+class ConsolidatedSbomResponse(BaseModel):
+    """SBOM components grouped by name + version."""
+
+    name: str
+    version: str = ""
+    type: str = ""
+    purl: str | None = None
+    licenses: list[str] = Field(default_factory=list)
+    provenance_verified: bool | None = Field(
+        default=None, alias="provenanceVerified", serialization_alias="provenanceVerified"
+    )
+    targets: list[ConsolidatedTargetSchema] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class ConsolidatedSbomListResponse(BaseModel):
+    total: int
+    items: list[ConsolidatedSbomResponse]
+
+
 class SubmitScanResponse(BaseModel):
     """Response after submitting a scan."""
 

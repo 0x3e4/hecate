@@ -79,6 +79,67 @@ class ScanSbomRepository:
             log.warning("scan_sbom_repository.list_all_failed", scan_id=scan_id, error=str(exc))
             return []
 
+    async def list_across_scans_consolidated(
+        self,
+        scan_ids: list[str],
+        search: str | None = None,
+        type_filter: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """List SBOM components across scans, consolidated by name+version."""
+        if not scan_ids:
+            return 0, []
+        match_stage: dict[str, Any] = {"scan_id": {"$in": scan_ids}}
+        if search:
+            regex = {"$regex": search, "$options": "i"}
+            match_stage["$or"] = [
+                {"name": regex},
+                {"type": regex},
+                {"purl": regex},
+                {"licenses": regex},
+            ]
+        if type_filter:
+            match_stage["type"] = type_filter
+
+        pipeline: list[dict[str, Any]] = [
+            {"$match": match_stage},
+            {"$group": {
+                "_id": {"name": "$name", "version": "$version"},
+                "type": {"$first": "$type"},
+                "purl": {"$first": "$purl"},
+                "licenses": {"$first": "$licenses"},
+                "provenance_verified": {"$first": "$provenance_verified"},
+                "targets": {"$addToSet": {"target_id": "$target_id", "scan_id": "$scan_id"}},
+            }},
+            {"$sort": {"_id.name": 1, "_id.version": 1}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "items": [{"$skip": offset}, {"$limit": limit}],
+            }},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            if not result:
+                return 0, []
+            doc = result[0]
+            total = doc["total"][0]["count"] if doc["total"] else 0
+            items: list[dict[str, Any]] = []
+            for item in doc["items"]:
+                items.append({
+                    "name": item["_id"]["name"],
+                    "version": item["_id"]["version"],
+                    "type": item.get("type", ""),
+                    "purl": item.get("purl"),
+                    "licenses": item.get("licenses", []),
+                    "provenance_verified": item.get("provenance_verified"),
+                    "targets": item.get("targets", []),
+                })
+            return total, items
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.list_across_scans_consolidated_failed", error=str(exc))
+            return 0, []
+
     async def delete_by_scan(self, scan_id: str) -> int:
         try:
             result = await self.collection.delete_many({"scan_id": scan_id})

@@ -514,6 +514,45 @@ export interface SbomComponentListResponse {
   items: SbomComponent[];
 }
 
+export interface ConsolidatedTarget {
+  targetId: string;
+  scanId: string;
+}
+
+export interface ConsolidatedFinding {
+  vulnerabilityId?: string | null;
+  packageName: string;
+  packageVersion: string;
+  severity: string;
+  fixVersion?: string | null;
+  fixState: string;
+  title?: string | null;
+  scanners: string[];
+  targets: ConsolidatedTarget[];
+  cvssScore?: number | null;
+  urls?: string[];
+}
+
+export interface ConsolidatedFindingListResponse {
+  total: number;
+  items: ConsolidatedFinding[];
+}
+
+export interface ConsolidatedSbom {
+  name: string;
+  version: string;
+  type: string;
+  purl?: string | null;
+  licenses: string[];
+  provenanceVerified?: boolean | null;
+  targets: ConsolidatedTarget[];
+}
+
+export interface ConsolidatedSbomListResponse {
+  total: number;
+  items: ConsolidatedSbom[];
+}
+
 export interface ScanLayerDetail {
   index: number;
   digest: string;
