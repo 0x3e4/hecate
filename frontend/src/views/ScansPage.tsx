@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import React, { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { config } from "../config";
@@ -6,6 +6,8 @@ import { config } from "../config";
 import {
   fetchScanTargets,
   fetchScans,
+  fetchGlobalFindings,
+  fetchGlobalSbom,
   submitManualScan,
   submitManualSourceArchiveScan,
   deleteScanTarget,
@@ -21,11 +23,13 @@ import type {
   ScanTarget,
   Scan,
   ScanSummary,
+  ConsolidatedFinding,
+  ConsolidatedSbom,
   ScannerStats,
   SubmitScanResponse,
 } from "../types";
 
-type Tab = "targets" | "scans" | "manual" | "scanner";
+type Tab = "targets" | "scans" | "findings" | "sbom" | "manual" | "scanner";
 type SourceRepoInputMode = "url" | "zip";
 
 interface ConfirmModal {
@@ -54,6 +58,30 @@ export const ScansPage = () => {
 
   // Scanner stats
   const [scannerStats, setScannerStats] = useState<ScannerStats | null>(null);
+
+  // Global findings tab
+  const [globalFindings, setGlobalFindings] = useState<ConsolidatedFinding[]>([]);
+  const [globalFindingsTotal, setGlobalFindingsTotal] = useState(0);
+  const [findingsSearch, setFindingsSearch] = useState("");
+  const [findingsSeverity, setFindingsSeverity] = useState<string | null>(null);
+  const [findingsTargetId, setFindingsTargetId] = useState<string | null>(null);
+  const [findingsOffset, setFindingsOffset] = useState(0);
+  const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
+  const findingsLimit = 50;
+  const findingsSearchRef = useRef(findingsSearch);
+  findingsSearchRef.current = findingsSearch;
+
+  // Global SBOM tab
+  const [sbomComponents, setSbomComponents] = useState<ConsolidatedSbom[]>([]);
+  const [sbomTotal, setSbomTotal] = useState(0);
+  const [sbomSearch, setSbomSearch] = useState("");
+  const [sbomType, setSbomType] = useState<string | null>(null);
+  const [sbomTargetId, setSbomTargetId] = useState<string | null>(null);
+  const [sbomOffset, setSbomOffset] = useState(0);
+  const [expandedSboms, setExpandedSboms] = useState<Set<string>>(new Set());
+  const sbomLimit = 50;
+  const sbomSearchRef = useRef(sbomSearch);
+  sbomSearchRef.current = sbomSearch;
 
   // History for live charts
   const [memHistory, setMemHistory] = useState<{ time: number; value: number }[]>([]);
@@ -88,12 +116,16 @@ export const ScansPage = () => {
     setError(null);
     try {
       if (tab === "targets") {
-        const [targetsRes, scansRes] = await Promise.all([
+        const [targetsRes, scansRes, findingsRes, sbomRes] = await Promise.all([
           fetchScanTargets({ limit: 100 }),
           fetchScans({ limit: 1 }),
+          fetchGlobalFindings({ limit: 1 }).catch(() => ({ total: 0, items: [] })),
+          fetchGlobalSbom({ limit: 1 }).catch(() => ({ total: 0, items: [] })),
         ]);
         setTargets(targetsRes.items);
         setScanTotal(scansRes.total);
+        setGlobalFindingsTotal(findingsRes.total);
+        setSbomTotal(sbomRes.total);
       } else if (tab === "scans") {
         // Load targets for filter dropdown if not yet loaded
         if (targets.length === 0) {
@@ -103,6 +135,12 @@ export const ScansPage = () => {
         const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
         setScans(res.items);
         setScanTotal(res.total);
+      } else if (tab === "findings" || tab === "sbom") {
+        // Ensure targets loaded for filter dropdown
+        if (targets.length === 0) {
+          const tRes = await fetchScanTargets({ limit: 100 });
+          setTargets(tRes.items);
+        }
       } else if (tab === "scanner") {
         try {
           const stats = await fetchScannerStats();
@@ -121,6 +159,48 @@ export const ScansPage = () => {
       setLoading(false);
     }
   };
+
+  // Debounced fetch for global findings tab
+  useEffect(() => {
+    if (tab !== "findings") return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchGlobalFindings({
+          search: findingsSearchRef.current || undefined,
+          severity: findingsSeverity || undefined,
+          targetId: findingsTargetId || undefined,
+          limit: findingsLimit,
+          offset: findingsOffset,
+        });
+        setGlobalFindings(res.items);
+        setGlobalFindingsTotal(res.total);
+      } catch (err) {
+        console.error("Failed to load global findings", err);
+      }
+    }, findingsSearch ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [tab, findingsSearch, findingsSeverity, findingsTargetId, findingsOffset]);
+
+  // Debounced fetch for global SBOM tab
+  useEffect(() => {
+    if (tab !== "sbom") return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchGlobalSbom({
+          search: sbomSearchRef.current || undefined,
+          type: sbomType || undefined,
+          targetId: sbomTargetId || undefined,
+          limit: sbomLimit,
+          offset: sbomOffset,
+        });
+        setSbomComponents(res.items);
+        setSbomTotal(res.total);
+      } catch (err) {
+        console.error("Failed to load global SBOM", err);
+      }
+    }, sbomSearch ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [tab, sbomSearch, sbomType, sbomTargetId, sbomOffset]);
 
   // Auto-poll every 4s while any scan is running/pending (both tabs)
   useEffect(() => {
@@ -291,10 +371,12 @@ export const ScansPage = () => {
         </p>
 
         {/* Tab navigation */}
-        <div style={{ display: "flex", gap: 0, marginBottom: "1.5rem", marginTop: "1rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="tabs-scroll" style={{ display: "flex", gap: 0, marginBottom: "1.5rem", marginTop: "1rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           {([
             { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
             { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
+            { key: "findings" as Tab, label: t("Findings", "Funde"), count: globalFindingsTotal || undefined },
+            { key: "sbom" as Tab, label: "SBOM", count: sbomTotal || undefined },
             { key: "manual" as Tab, label: t("New Scan", "Neuer Scan") },
             { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
           ]).map(({ key, label, count }) => (
@@ -312,6 +394,8 @@ export const ScansPage = () => {
                 fontSize: "0.8125rem",
                 fontWeight: tab === key ? 600 : 400,
                 transition: "color 0.15s, border-color 0.15s",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
               }}
             >
               {label}
@@ -545,6 +629,442 @@ export const ScansPage = () => {
                         background: scanOffset + scanLimit >= scanTotal ? "transparent" : "rgba(255,255,255,0.05)",
                         color: scanOffset + scanLimit >= scanTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
                         cursor: scanOffset + scanLimit >= scanTotal ? "default" : "pointer",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      {t("Next", "Weiter")} →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Findings tab */}
+        {tab === "findings" && (
+          <div>
+            {/* Filter bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+              <input
+                type="text"
+                value={findingsSearch}
+                onChange={e => { setFindingsSearch(e.target.value); setFindingsOffset(0); }}
+                placeholder={t("Search by CVE, package, title...", "Suche nach CVE, Paket, Titel...")}
+                style={{
+                  padding: "0.375rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "#fff",
+                  fontSize: "0.8125rem",
+                  flex: "1 1 200px",
+                  maxWidth: "400px",
+                  minWidth: 0,
+                  outline: "none",
+                }}
+              />
+              {/* Severity filter buttons */}
+              <div style={{ display: "flex", gap: "0.25rem" }}>
+                {([
+                  { value: null, label: t("All", "Alle") },
+                  { value: "critical", label: "Critical" },
+                  { value: "high", label: "High" },
+                  { value: "medium", label: "Medium" },
+                  { value: "low", label: "Low" },
+                ] as const).map(({ value, label }) => {
+                  const active = findingsSeverity === value;
+                  const sevColors: Record<string, string> = { critical: "#ff6b6b", high: "#ff922b", medium: "#fcc419", low: "#69db7c" };
+                  const color = value ? sevColors[value] : "#ffd43b";
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => { setFindingsSeverity(value); setFindingsOffset(0); }}
+                      style={{
+                        padding: "0.25rem 0.5rem",
+                        borderRadius: "4px",
+                        border: `1px solid ${active ? color : "rgba(255,255,255,0.1)"}`,
+                        background: active ? `${color}22` : "transparent",
+                        color: active ? color : "rgba(255,255,255,0.4)",
+                        cursor: "pointer",
+                        fontSize: "0.75rem",
+                        fontWeight: active ? 600 : 400,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <select
+                value={findingsTargetId || ""}
+                onChange={e => { setFindingsTargetId(e.target.value || null); setFindingsOffset(0); }}
+                style={{
+                  padding: "0.375rem 0.625rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: findingsTargetId ? "#ffd43b" : "rgba(255,255,255,0.5)",
+                  fontSize: "0.8125rem",
+                  outline: "none",
+                  cursor: "pointer",
+                  minWidth: "140px",
+                  maxWidth: "280px",
+                }}
+              >
+                <option value="">{t("All targets", "Alle Ziele")}</option>
+                {targets.map(tgt => (
+                  <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
+                ))}
+              </select>
+              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
+                {globalFindingsTotal.toLocaleString()} {t("findings", "Funde")}
+              </span>
+            </div>
+
+            {globalFindings.length === 0 && !loading ? (
+              <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
+                {findingsSearch || findingsSeverity || findingsTargetId
+                  ? t("No findings match your filters.", "Keine Funde entsprechen Ihren Filtern.")
+                  : t("No findings from latest scans.", "Keine Funde aus den letzten Scans.")}
+              </p>
+            ) : (
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                                                <th style={thStyle}>{t("Vulnerability", "Schwachstelle")}</th>
+                        <th style={thStyle}>{t("Package", "Paket")}</th>
+                        <th style={thStyle}>{t("Version", "Version")}</th>
+                        <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
+                        <th style={thStyle}>{t("Fix", "Fix")}</th>
+                        <th style={thStyle}>{t("Scanners", "Scanner")}</th>
+                        <th style={thStyle}>{t("Targets", "Ziele")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {globalFindings.map((f, idx) => {
+                        const sevColors: Record<string, string> = { critical: "#ff6b6b", high: "#ff922b", medium: "#fcc419", low: "#69db7c" };
+                        const sev = (f.severity || "").toLowerCase();
+                        const sevColor = sevColors[sev] || "#868e96";
+                        const rowKey = `${f.vulnerabilityId || ""}|${f.packageName}|${f.packageVersion}`;
+                        const isExpanded = expandedFindings.has(rowKey);
+                        return (
+                          <React.Fragment key={rowKey}>
+                            <tr
+                              onClick={() => setExpandedFindings(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
+                              style={{ borderBottom: isExpanded ? "none" : "1px solid rgba(255,255,255,0.04)", cursor: "pointer", transition: "background 0.1s" }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = "rgba(255,255,255,0.03)"; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
+                            >
+                              <td style={tdStyle}>
+                                {f.vulnerabilityId ? (
+                                  <Link to={`/vulnerability/${encodeURIComponent(f.vulnerabilityId)}`} onClick={e => e.stopPropagation()} style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.8125rem" }}>
+                                    {f.vulnerabilityId}
+                                  </Link>
+                                ) : (
+                                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8125rem" }}>{f.title || "—"}</span>
+                                )}
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.8125rem", fontFamily: "monospace" }}>{f.packageName}</td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>{f.packageVersion}</td>
+                              <td style={tdStyle}>
+                                <span style={{
+                                  display: "inline-block",
+                                  padding: "0.125rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.6875rem",
+                                  fontWeight: 600,
+                                  background: `${sevColor}22`,
+                                  color: sevColor,
+                                  textTransform: "capitalize",
+                                }}>
+                                  {sev || "unknown"}
+                                </span>
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: f.fixVersion ? "#69db7c" : "rgba(255,255,255,0.25)" }}>
+                                {f.fixVersion || "—"}
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+                                {f.scanners.join(", ")}
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+                                {f.targets.length}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={7} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500 }}>
+                                    {t("Found in targets:", "Gefunden in Zielen:")}
+                                  </div>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                                    {f.targets.map(tgt => {
+                                      const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
+                                      return (
+                                        <Link
+                                          key={`${tgt.targetId}-${tgt.scanId}`}
+                                          to={`/scans/${encodeURIComponent(tgt.scanId)}`}
+                                          onClick={e => e.stopPropagation()}
+                                          style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.8125rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}
+                                        >
+                                          <span style={{ color: "rgba(255,255,255,0.6)" }}>{tgtName}</span>
+                                        </Link>
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                {globalFindingsTotal > findingsLimit && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginTop: "1rem", fontSize: "0.8125rem" }}>
+                    <button
+                      type="button"
+                      disabled={findingsOffset === 0}
+                      onClick={() => setFindingsOffset(Math.max(0, findingsOffset - findingsLimit))}
+                      style={{
+                        padding: "0.3rem 0.75rem", borderRadius: "4px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: findingsOffset === 0 ? "transparent" : "rgba(255,255,255,0.05)",
+                        color: findingsOffset === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
+                        cursor: findingsOffset === 0 ? "default" : "pointer",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      ← {t("Previous", "Zurück")}
+                    </button>
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>
+                      {Math.floor(findingsOffset / findingsLimit) + 1} / {Math.ceil(globalFindingsTotal / findingsLimit)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={findingsOffset + findingsLimit >= globalFindingsTotal}
+                      onClick={() => setFindingsOffset(findingsOffset + findingsLimit)}
+                      style={{
+                        padding: "0.3rem 0.75rem", borderRadius: "4px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: findingsOffset + findingsLimit >= globalFindingsTotal ? "transparent" : "rgba(255,255,255,0.05)",
+                        color: findingsOffset + findingsLimit >= globalFindingsTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
+                        cursor: findingsOffset + findingsLimit >= globalFindingsTotal ? "default" : "pointer",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      {t("Next", "Weiter")} →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* SBOM tab */}
+        {tab === "sbom" && (
+          <div>
+            {/* Filter bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+              <input
+                type="text"
+                value={sbomSearch}
+                onChange={e => { setSbomSearch(e.target.value); setSbomOffset(0); }}
+                placeholder={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
+                style={{
+                  padding: "0.375rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "#fff",
+                  fontSize: "0.8125rem",
+                  flex: "1 1 200px",
+                  maxWidth: "400px",
+                  minWidth: 0,
+                  outline: "none",
+                }}
+              />
+              <select
+                value={sbomType || ""}
+                onChange={e => { setSbomType(e.target.value || null); setSbomOffset(0); }}
+                style={{
+                  padding: "0.375rem 0.625rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: sbomType ? "#ffd43b" : "rgba(255,255,255,0.5)",
+                  fontSize: "0.8125rem",
+                  outline: "none",
+                  cursor: "pointer",
+                  minWidth: "120px",
+                }}
+              >
+                <option value="">{t("All types", "Alle Typen")}</option>
+                {["library", "application", "framework", "container", "firmware", "file", "operating-system"].map(tp => (
+                  <option key={tp} value={tp}>{tp}</option>
+                ))}
+              </select>
+              <select
+                value={sbomTargetId || ""}
+                onChange={e => { setSbomTargetId(e.target.value || null); setSbomOffset(0); }}
+                style={{
+                  padding: "0.375rem 0.625rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: sbomTargetId ? "#ffd43b" : "rgba(255,255,255,0.5)",
+                  fontSize: "0.8125rem",
+                  outline: "none",
+                  cursor: "pointer",
+                  minWidth: "140px",
+                  maxWidth: "280px",
+                }}
+              >
+                <option value="">{t("All targets", "Alle Ziele")}</option>
+                {targets.map(tgt => (
+                  <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
+                ))}
+              </select>
+              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
+                {sbomTotal.toLocaleString()} {t("components", "Komponenten")}
+              </span>
+            </div>
+
+            {sbomComponents.length === 0 && !loading ? (
+              <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
+                {sbomSearch || sbomType || sbomTargetId
+                  ? t("No components match your filters.", "Keine Komponenten entsprechen Ihren Filtern.")
+                  : t("No SBOM components from latest scans.", "Keine SBOM-Komponenten aus den letzten Scans.")}
+              </p>
+            ) : (
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                                                <th style={thStyle}>{t("Component", "Komponente")}</th>
+                        <th style={thStyle}>{t("Version", "Version")}</th>
+                        <th style={thStyle}>{t("Type", "Typ")}</th>
+                        <th style={thStyle}>{t("Provenance", "Herkunft")}</th>
+                        <th style={thStyle}>{t("Licenses", "Lizenzen")}</th>
+                        <th style={thStyle}>{t("Targets", "Ziele")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sbomComponents.map(c => {
+                        const typeColors: Record<string, string> = { library: "#69db7c", application: "#ffd43b", framework: "#748ffc", container: "#ff922b" };
+                        const typeColor = typeColors[c.type] || "rgba(255,255,255,0.4)";
+                        const rowKey = `${c.name}|${c.version}`;
+                        const isExpanded = expandedSboms.has(rowKey);
+                        return (
+                          <React.Fragment key={rowKey}>
+                            <tr
+                              onClick={() => setExpandedSboms(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
+                              style={{ borderBottom: isExpanded ? "none" : "1px solid rgba(255,255,255,0.04)", cursor: "pointer", transition: "background 0.1s" }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = "rgba(255,255,255,0.03)"; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
+                            >
+                              <td style={tdStyle}>
+                                <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>{c.name}</div>
+                                {c.purl && (
+                                  <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.3)", fontFamily: "monospace", wordBreak: "break-all" }}>{c.purl}</div>
+                                )}
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.8125rem", fontFamily: "monospace", color: "rgba(255,255,255,0.6)" }}>{c.version || "—"}</td>
+                              <td style={tdStyle}>
+                                <span style={{
+                                  display: "inline-block",
+                                  padding: "0.125rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.6875rem",
+                                  fontWeight: 500,
+                                  background: `${typeColor}18`,
+                                  color: typeColor,
+                                }}>
+                                  {c.type}
+                                </span>
+                              </td>
+                              <td style={tdStyle}>
+                                {c.provenanceVerified === true && <span style={{ color: "#69db7c", fontSize: "0.8125rem" }}>✓</span>}
+                                {c.provenanceVerified === false && <span style={{ color: "#fcc419", fontSize: "0.8125rem" }}>⚠</span>}
+                                {c.provenanceVerified == null && <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "0.8125rem" }}>—</span>}
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+                                {c.licenses.length > 0 ? c.licenses.join(", ") : "—"}
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+                                {c.targets.length}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={6} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500 }}>
+                                    {t("Found in targets:", "Gefunden in Zielen:")}
+                                  </div>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                                    {c.targets.map(tgt => {
+                                      const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
+                                      return (
+                                        <Link
+                                          key={`${tgt.targetId}-${tgt.scanId}`}
+                                          to={`/scans/${encodeURIComponent(tgt.scanId)}`}
+                                          onClick={e => e.stopPropagation()}
+                                          style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.8125rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}
+                                        >
+                                          <span style={{ color: "rgba(255,255,255,0.6)" }}>{tgtName}</span>
+                                        </Link>
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                {sbomTotal > sbomLimit && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginTop: "1rem", fontSize: "0.8125rem" }}>
+                    <button
+                      type="button"
+                      disabled={sbomOffset === 0}
+                      onClick={() => setSbomOffset(Math.max(0, sbomOffset - sbomLimit))}
+                      style={{
+                        padding: "0.3rem 0.75rem", borderRadius: "4px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: sbomOffset === 0 ? "transparent" : "rgba(255,255,255,0.05)",
+                        color: sbomOffset === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
+                        cursor: sbomOffset === 0 ? "default" : "pointer",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      ← {t("Previous", "Zurück")}
+                    </button>
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>
+                      {Math.floor(sbomOffset / sbomLimit) + 1} / {Math.ceil(sbomTotal / sbomLimit)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={sbomOffset + sbomLimit >= sbomTotal}
+                      onClick={() => setSbomOffset(sbomOffset + sbomLimit)}
+                      style={{
+                        padding: "0.3rem 0.75rem", borderRadius: "4px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: sbomOffset + sbomLimit >= sbomTotal ? "transparent" : "rgba(255,255,255,0.05)",
+                        color: sbomOffset + sbomLimit >= sbomTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
+                        cursor: sbomOffset + sbomLimit >= sbomTotal ? "default" : "pointer",
                         fontSize: "0.8125rem",
                       }}
                     >

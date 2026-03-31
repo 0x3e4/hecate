@@ -126,7 +126,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
-| SCA-Scans | Scan-Ziele, letzte Scans, manueller Scan mit Severity-Badges |
+| SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (über alle Ziele), manueller Scan, Scanner-Monitoring |
 | Scan-Detail | Findings (mit Suche & sortierbaren Spalten), SBOM (mit Export, Summary-Stats & Provenance), Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 | System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
 

@@ -143,6 +143,80 @@ class ScanFindingRepository:
             log.warning("scan_finding_repository.update_fix_version_failed", scan_id=scan_id, error=str(exc))
             return 0
 
+    async def list_across_scans_consolidated(
+        self,
+        scan_ids: list[str],
+        search: str | None = None,
+        severity: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """List findings across scans, consolidated by vulnerability+package+version."""
+        if not scan_ids:
+            return 0, []
+        match_stage: dict[str, Any] = {
+            "scan_id": {"$in": scan_ids},
+            "package_type": {"$nin": ["malicious-indicator", "compliance-check"]},
+        }
+        if search:
+            regex = {"$regex": search, "$options": "i"}
+            match_stage["$or"] = [
+                {"vulnerability_id": regex},
+                {"package_name": regex},
+                {"title": regex},
+            ]
+        if severity:
+            match_stage["severity"] = severity
+
+        pipeline: list[dict[str, Any]] = [
+            {"$match": match_stage},
+            {"$group": {
+                "_id": {
+                    "vulnerability_id": "$vulnerability_id",
+                    "package_name": "$package_name",
+                    "package_version": "$package_version",
+                },
+                "severity": {"$first": "$severity"},
+                "fix_version": {"$first": "$fix_version"},
+                "fix_state": {"$first": "$fix_state"},
+                "title": {"$first": "$title"},
+                "scanners": {"$addToSet": "$scanner"},
+                "targets": {"$addToSet": {"target_id": "$target_id", "scan_id": "$scan_id"}},
+                "cvss_score": {"$max": "$cvss_score"},
+                "urls": {"$first": "$urls"},
+            }},
+            {"$sort": {"severity": 1, "_id.package_name": 1}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "items": [{"$skip": offset}, {"$limit": limit}],
+            }},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            if not result:
+                return 0, []
+            doc = result[0]
+            total = doc["total"][0]["count"] if doc["total"] else 0
+            items: list[dict[str, Any]] = []
+            for item in doc["items"]:
+                items.append({
+                    "vulnerability_id": item["_id"]["vulnerability_id"],
+                    "package_name": item["_id"]["package_name"],
+                    "package_version": item["_id"]["package_version"],
+                    "severity": item["severity"],
+                    "fix_version": item.get("fix_version"),
+                    "fix_state": item.get("fix_state", "unknown"),
+                    "title": item.get("title"),
+                    "scanners": sorted(item.get("scanners", [])),
+                    "targets": item.get("targets", []),
+                    "cvss_score": item.get("cvss_score"),
+                    "urls": item.get("urls", []),
+                })
+            return total, items
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.list_across_scans_consolidated_failed", error=str(exc))
+            return 0, []
+
     async def delete_by_scan(self, scan_id: str) -> int:
         try:
             result = await self.collection.delete_many({"scan_id": scan_id})

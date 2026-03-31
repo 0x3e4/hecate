@@ -10,6 +10,11 @@ from fastapi.responses import Response
 
 from app.core.config import settings
 from app.schemas.scan import (
+    ConsolidatedFindingListResponse,
+    ConsolidatedFindingResponse,
+    ConsolidatedSbomListResponse,
+    ConsolidatedSbomResponse,
+    ConsolidatedTargetSchema,
     SbomComponentListResponse,
     SbomComponentResponse,
     ScanComparisonFindingSchema,
@@ -310,6 +315,44 @@ async def get_findings_by_cve(
     )
 
 
+@router.get("/findings", response_model=ConsolidatedFindingListResponse)
+async def get_global_findings(
+    search: str | None = Query(default=None, description="Search by CVE, package name, or title"),
+    severity: str | None = Query(default=None, description="Filter by severity"),
+    target_id: str | None = Query(default=None, alias="targetId", description="Filter by target"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    service: ScanService = Depends(get_scan_service),
+) -> ConsolidatedFindingListResponse:
+    """Get consolidated findings from the latest completed scan of each target."""
+    total, items = await service.get_global_findings(
+        search=search, severity=severity, target_id=target_id, limit=limit, offset=offset
+    )
+    return ConsolidatedFindingListResponse(
+        total=total,
+        items=[_map_consolidated_finding(item) for item in items],
+    )
+
+
+@router.get("/sbom", response_model=ConsolidatedSbomListResponse)
+async def get_global_sbom(
+    search: str | None = Query(default=None, description="Search by name, type, purl, or license"),
+    type: str | None = Query(default=None, description="Filter by component type"),
+    target_id: str | None = Query(default=None, alias="targetId", description="Filter by target"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    service: ScanService = Depends(get_scan_service),
+) -> ConsolidatedSbomListResponse:
+    """Get consolidated SBOM components from the latest completed scan of each target."""
+    total, items = await service.get_global_sbom(
+        search=search, type_filter=type, target_id=target_id, limit=limit, offset=offset
+    )
+    return ConsolidatedSbomListResponse(
+        total=total,
+        items=[_map_consolidated_sbom(item) for item in items],
+    )
+
+
 # --- Dynamic scan routes ---
 
 
@@ -521,4 +564,38 @@ def _map_sbom_component(doc: dict[str, Any]) -> SbomComponentResponse:
         provenance_source_repo=doc.get("provenance_source_repo"),
         provenance_build_system=doc.get("provenance_build_system"),
         provenance_attestation_type=doc.get("provenance_attestation_type"),
+    )
+
+
+def _map_consolidated_finding(doc: dict[str, Any]) -> ConsolidatedFindingResponse:
+    return ConsolidatedFindingResponse(
+        vulnerability_id=doc.get("vulnerability_id"),
+        package_name=doc.get("package_name", ""),
+        package_version=doc.get("package_version", ""),
+        severity=doc.get("severity", "unknown"),
+        fix_version=doc.get("fix_version"),
+        fix_state=doc.get("fix_state", "unknown"),
+        title=doc.get("title"),
+        scanners=doc.get("scanners", []),
+        targets=[
+            ConsolidatedTargetSchema(target_id=t["target_id"], scan_id=t["scan_id"])
+            for t in doc.get("targets", [])
+        ],
+        cvss_score=doc.get("cvss_score"),
+        urls=doc.get("urls", []),
+    )
+
+
+def _map_consolidated_sbom(doc: dict[str, Any]) -> ConsolidatedSbomResponse:
+    return ConsolidatedSbomResponse(
+        name=doc.get("name", ""),
+        version=doc.get("version", ""),
+        type=doc.get("type", ""),
+        purl=doc.get("purl"),
+        licenses=doc.get("licenses", []),
+        provenance_verified=doc.get("provenance_verified"),
+        targets=[
+            ConsolidatedTargetSchema(target_id=t["target_id"], scan_id=t["scan_id"])
+            for t in doc.get("targets", [])
+        ],
     )

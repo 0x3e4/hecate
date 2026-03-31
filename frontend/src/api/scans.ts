@@ -6,6 +6,8 @@ import type {
   Scan,
   ScanFindingListResponse,
   SbomComponentListResponse,
+  ConsolidatedFindingListResponse,
+  ConsolidatedSbomListResponse,
   ScanLayerAnalysis,
   ScanHistoryResponse,
   ScanComparisonResponse,
@@ -56,6 +58,28 @@ export const fetchScanSbom = async (
   params?: { search?: string; limit?: number; offset?: number }
 ): Promise<SbomComponentListResponse> => {
   const response = await api.get<SbomComponentListResponse>(`/v1/scans/${scanId}/sbom`, { params });
+  return response.data;
+};
+
+export const fetchGlobalFindings = async (params?: {
+  search?: string;
+  severity?: string;
+  targetId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ConsolidatedFindingListResponse> => {
+  const response = await api.get<ConsolidatedFindingListResponse>("/v1/scans/findings", { params });
+  return response.data;
+};
+
+export const fetchGlobalSbom = async (params?: {
+  search?: string;
+  type?: string;
+  targetId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ConsolidatedSbomListResponse> => {
+  const response = await api.get<ConsolidatedSbomListResponse>("/v1/scans/sbom", { params });
   return response.data;
 };
 

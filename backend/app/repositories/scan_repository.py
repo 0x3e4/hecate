@@ -144,6 +144,22 @@ class ScanRepository:
             log.warning("scan_repository.list_all_failed", error=str(exc))
             return 0, []
 
+    async def get_latest_completed_scan_ids(self, target_id: str | None = None) -> list[str]:
+        """Return the latest completed scan _id for each target via aggregation."""
+        try:
+            pipeline: list[dict[str, Any]] = [
+                {"$match": {"status": "completed", **({"target_id": target_id} if target_id else {})}},
+                {"$sort": {"created_at": -1}},
+                {"$group": {"_id": "$target_id", "scan_id": {"$first": "$_id"}}},
+            ]
+            ids: list[str] = []
+            async for doc in self.collection.aggregate(pipeline):
+                ids.append(str(doc["scan_id"]))
+            return ids
+        except PyMongoError as exc:
+            log.warning("scan_repository.get_latest_completed_scan_ids_failed", error=str(exc))
+            return []
+
     async def get_latest_by_target(self, target_id: str) -> dict[str, Any] | None:
         try:
             cursor = (
