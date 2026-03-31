@@ -168,7 +168,7 @@ The malware detector implements 34 detection rules across 14 categories, informe
 | HEC-080 | Sandbox evasion with suspicious payload | high | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (CI env check + credential theft) |
 | HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (sys.platform + subprocess per OS) |
 | HEC-082 | Media file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
-| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
+| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026), [axios 1.14.1/0.30.4](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan), [Shai-Hulud @ctrl/tinycolor + 37 packages](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/) |
 
 #### Kategorien-Zusammenfassung
 
@@ -187,7 +187,7 @@ The malware detector implements 34 detection rules across 14 categories, informe
 | `worm` | HEC-075–076 | Selbstverbreitung, destruktive Payloads |
 | `ai_abuse` | HEC-078 | KI-Tool-Missbrauch (Bypass-Flags) |
 | `sandbox_evasion` | HEC-079–080 | Bedingte Ausführung basierend auf Umgebungserkennung |
-| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen (LiteLLM, Nx, Telnyx) |
+| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud) |
 
 #### Kombinations-Scoring
 
@@ -234,6 +234,8 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 | s1ngularity/Nx | Aug 2025 | AI-Tool-Missbrauch, Triple-Base64 | [Orca Security](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) |
 | tj-actions/changed-files (CVE-2025-30066) | März 2025 | Tag-Poisoning, Runner-Memory-Dump | [CISA](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
 | Telnyx SDK v4.87.1/4.87.2 (TeamPCP) | März 2026 | WAV-Steganografie, plattformspezifische Payloads, Windows Startup Persistence | [Telnyx](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
+| Axios v1.14.1/v0.30.4 | März 2026 | Gestohlene Maintainer-Credentials, RAT-Dropper via plain-crypto-js, Self-Cleaning | [StepSecurity](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan) |
+| Shai-Hulud (V1 + V2) | Sep–Nov 2025 | npm-Wurm, preinstall credential theft, self-propagation via npm publish, destructive fallback | [Unit 42](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/) |
 | Backstabber's Knife Collection | 2020 (Studie) | Taxonomie von 174 bösartigen Paketen | [PMC/DIMVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) |
 
 #### Output-Format (`hecate-json`)
