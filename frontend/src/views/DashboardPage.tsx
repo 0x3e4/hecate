@@ -1076,9 +1076,9 @@ const DashboardVulnCard = ({
                   </a> 
                 </>
               )}
-              {vuln.sourceId && (
+              {(vuln.sourceId?.startsWith("EUVD-") || vuln.vulnId?.startsWith("CVE-")) && (
                 <a
-                  href={`https://euvd.enisa.europa.eu/vulnerability/${encodeURIComponent(vuln.sourceId)}`}
+                  href={`https://euvd.enisa.europa.eu/vulnerability/${encodeURIComponent(vuln.sourceId?.startsWith("EUVD-") ? vuln.sourceId : vuln.vulnId)}`}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -1125,6 +1125,19 @@ const DashboardVulnCard = ({
                     🔗
                   </span>
                   GHSA
+                </a>
+              ))}
+              {ghsaAliases.map((alias) => (
+                <a
+                  key={`osv-${alias}`}
+                  href={`https://osv.dev/vulnerability/${encodeURIComponent(alias)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span role="img" aria-label="OSV">
+                    🧩
+                  </span>
+                  OSV
                 </a>
               ))}
             </div>
