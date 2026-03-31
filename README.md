@@ -69,7 +69,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   │   ├── router.tsx    # React Router v7 Konfiguration
 │   │   ├── types.ts      # TypeScript-Interfaces
 │   │   └── styles.css    # Globales Dark-Theme CSS
-│   ├── package.json      # Node-Abhängigkeiten (npm)
+│   ├── package.json      # Node-Abhängigkeiten (pnpm)
 │   └── Dockerfile        # Multi-Stage Build (node:24-alpine)
 ├── scanner/              # Scanner-Sidecar (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive)
 │   ├── app/
@@ -186,8 +186,8 @@ cd backend && poetry install
 uvicorn app.main:app --reload
 
 # Frontend (in einem separaten Terminal)
-cd frontend && npm install
-npm run dev   # Dev-Server auf Port 3000, proxied /api -> Backend
+cd frontend && corepack enable pnpm && pnpm install
+pnpm run dev   # Dev-Server auf Port 3000, proxied /api -> Backend
 ```
 
 Vite proxied `/api`-Anfragen im Dev-Modus automatisch an `http://backend:8000` (Docker) bzw. `http://localhost:8000` (lokal).
