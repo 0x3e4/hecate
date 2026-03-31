@@ -147,19 +147,21 @@ Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
 
 ### Abhängigkeiten verwalten
 
-Dieses Projekt verwendet [npm](https://www.npmjs.com/) für die Verwaltung von Abhängigkeiten.
+Dieses Projekt verwendet [pnpm](https://pnpm.io/) für die Verwaltung von Abhängigkeiten. pnpm wird über [Corepack](https://nodejs.org/api/corepack.html) verwaltet (Version in `package.json` gepinnt).
+
+**Supply-Chain-Schutz:** `minimumReleaseAge: 20160` in `pnpm-workspace.yaml` blockiert Pakete, die weniger als 14 Tage alt sind.
 
 #### Neue Abhängigkeit hinzufügen
 
 ```bash
 # Abhängigkeit hinzufügen:
-npm install <paket-name>
+pnpm add <paket-name>
 
 # Entwicklungs-Abhängigkeit:
-npm install --save-dev <paket-name>
+pnpm add -D <paket-name>
 
 # Dann beide Dateien committen:
-git add package.json package-lock.json
+git add package.json pnpm-lock.yaml
 git commit -m "Add <paket-name> dependency"
 ```
 
@@ -167,20 +169,20 @@ git commit -m "Add <paket-name> dependency"
 
 ```bash
 # Alle Abhängigkeiten aktualisieren:
-npm update
+pnpm update
 
 # Ein bestimmtes Paket aktualisieren:
-npm update <paket-name>
+pnpm update <paket-name>
 
 # Dann committen:
-git add package-lock.json
+git add pnpm-lock.yaml
 git commit -m "Update dependencies"
 ```
 
 #### Entwicklungsserver starten
 
 ```bash
-npm install && npm run dev
+corepack enable pnpm && pnpm install && pnpm run dev
 ```
 
 Dev-Server läuft auf Port 3000, proxied `/api` automatisch an `http://backend:8000`.
@@ -188,7 +190,7 @@ Dev-Server läuft auf Port 3000, proxied `/api` automatisch an `http://backend:8
 ### Linting
 
 ```bash
-npm run lint
+pnpm run lint
 ```
 
 ### Docker Build

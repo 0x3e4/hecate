@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - esbuild
+
+minimumReleaseAge: 20160
