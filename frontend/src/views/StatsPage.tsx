@@ -266,6 +266,7 @@ const ChartCard = ({ title, children }: { title: string; children: ReactNode }) 
       borderRadius: "12px",
       padding: "1.25rem",
       border: "1px solid rgba(255,255,255,0.06)",
+      overflow: "hidden",
     }}
   >
     <h3 style={{ marginBottom: "0.75rem" }}>{title}</h3>
@@ -296,10 +297,13 @@ const SeverityChart = ({ data }: { data: TermsBucket[] }) => {
       return [];
     }
     const order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
-    const mapped = data.map((bucket) => ({
-      key: bucket.key ? bucket.key.toUpperCase() : "UNKNOWN",
-      doc_count: bucket.doc_count,
-    }));
+    const merged: Record<string, number> = {};
+    for (const bucket of data) {
+      let key = bucket.key ? bucket.key.toUpperCase() : "UNKNOWN";
+      if (key === "NONE") key = "UNKNOWN";
+      merged[key] = (merged[key] || 0) + bucket.doc_count;
+    }
+    const mapped = Object.entries(merged).map(([key, doc_count]) => ({ key, doc_count }));
     const weight = (value: string) => {
       const index = order.indexOf(value);
       return index === -1 ? order.length : index;
@@ -1080,7 +1084,7 @@ const TopList = ({ data, emptyMessage, limit = 6 }: { data: TermsBucket[]; empty
             return false;
           }
           const normalized = item.key.trim().toLowerCase();
-          return item.doc_count > 0 && normalized !== "n/a" && normalized !== "na";
+          return item.doc_count > 0 && normalized !== "n/a" && normalized !== "na" && normalized !== "*** n/a ***";
         })
         .slice(0, limit),
     [data, limit]

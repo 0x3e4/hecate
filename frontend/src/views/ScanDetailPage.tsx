@@ -610,7 +610,7 @@ export const ScanDetailPage = () => {
               )}
             </div>
           </div>
-          <div style={{ textAlign: "right", fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)" }}>
+          <div style={{ textAlign: "right", fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", marginLeft: "auto" }}>
             {scan.imageRef && (() => {
               const tag = getImageTag(scan.imageRef);
               const digest = getImageDigest(scan.imageRef);

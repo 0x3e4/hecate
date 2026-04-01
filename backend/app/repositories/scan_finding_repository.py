@@ -156,7 +156,7 @@ class ScanFindingRepository:
             return 0, []
         match_stage: dict[str, Any] = {
             "scan_id": {"$in": scan_ids},
-            "package_type": {"$nin": ["malicious-indicator", "compliance-check"]},
+            "package_type": {"$nin": ["malicious-indicator", "compliance-check", "sast-finding", "secret-finding"]},
         }
         if search:
             regex = {"$regex": search, "$options": "i"}
