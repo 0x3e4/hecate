@@ -25,6 +25,13 @@ RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.5/os
 RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_0.13.1_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin dive
 
+# Install Semgrep (SAST scanner) — needs setuptools<74 for pkg_resources (removed in 74+)
+RUN pip install --no-cache-dir "setuptools<74" semgrep==1.114.0
+
+# Install TruffleHog (secret scanner)
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.88.23/trufflehog_3.88.23_linux_amd64.tar.gz \
+    | tar xz -C /usr/local/bin trufflehog
+
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all
 

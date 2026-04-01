@@ -33,7 +33,9 @@ from app.services.scan_parser import (
     parse_grype_json,
     parse_hecate_json,
     parse_osv_json,
+    parse_semgrep_json,
     parse_trivy_json,
+    parse_trufflehog_json,
 )
 
 log = structlog.get_logger()
@@ -249,6 +251,10 @@ class ScanService:
                         await self.scan_repo.update_fields(scan_id, {
                             "compliance_summary": compliance_summary,
                         })
+                    elif fmt == "semgrep-json":
+                        findings, _ = parse_semgrep_json(report, scan_id, target_id)
+                    elif fmt == "trufflehog-json":
+                        findings, _ = parse_trufflehog_json(report, scan_id, target_id)
                     elif fmt == "dive-json":
                         layer_doc = parse_dive_json(report, scan_id, target_id)
                         await self.layer_repo.insert(layer_doc)

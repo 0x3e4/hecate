@@ -13,10 +13,12 @@ Scanner-Sidecar für die SCA-Funktionalität (Software Composition Analysis) von
 | Hecate Analyzer | SBOM-Extraktion (18 Parser, 12 Ökosysteme) + Malware-Erkennung | `hecate-json` |
 | [Dockle](https://github.com/goodwithtech/dockle) | CIS Docker Benchmark Linter (nur Container-Images) | `dockle-json` |
 | [Dive](https://github.com/wagoodman/dive) | Docker-Image-Schichtanalyse (nur Container-Images) | `dive-json` |
+| [Semgrep](https://github.com/semgrep/semgrep) | SAST-Scanner (nur Source-Repos) | `semgrep-json` |
+| [TruffleHog](https://github.com/trufflesecurity/trufflehog) | Secret-Scanner (nur Source-Repos) | `trufflehog-json` |
 
-Trivy, Grype, Syft, Dockle und OSV Scanner werden als Binaries im Docker-Image installiert. Dive wird als GitHub-Release heruntergeladen. Der Hecate Analyzer ist ein nativer Python-Scanner ohne externe Abhängigkeiten.
+Trivy, Grype, Syft, Dockle und OSV Scanner werden als Binaries im Docker-Image installiert. Dive und TruffleHog werden als GitHub-Releases heruntergeladen. Semgrep wird via pip installiert. Der Hecate Analyzer ist ein nativer Python-Scanner ohne externe Abhängigkeiten.
 
-**Hinweis:** Dockle und Dive sind nur für Container-Image-Scans verfügbar und standardmäßig nicht aktiviert (opt-in über die Scanner-Auswahl).
+**Hinweis:** Dockle und Dive sind nur für Container-Image-Scans verfügbar. Semgrep, TruffleHog, OSV Scanner und Hecate Analyzer sind nur für Source-Repo-Scans verfügbar.
 
 ### Erweiterte Erkennung
 - **Trivy:** `--list-all-pkgs` für vollständige Paketlistung (inkl. nicht-vulnerabler Pakete)
@@ -39,6 +41,8 @@ CI/CD oder Frontend
         │                |  Hecate   |
         │                |  Dockle   |
         │                |  Dive     |
+        │                |  Semgrep  |
+        │                |  TruffleH.|
         │                +-----------+
         v
   +-----------+
@@ -168,7 +172,7 @@ The malware detector implements 34 detection rules across 14 categories, informe
 | HEC-080 | Sandbox evasion with suspicious payload | high | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (CI env check + credential theft) |
 | HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (sys.platform + subprocess per OS) |
 | HEC-082 | Media file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
-| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026), [axios 1.14.1/0.30.4](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan), [Shai-Hulud @ctrl/tinycolor + 37 packages](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/) |
+| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026), [axios 1.14.1/0.30.4](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan), [Shai-Hulud @ctrl/tinycolor + 37 packages](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/), [TeamPCP: trivy-action, setup-trivy, kics-github-action, ast-github-action](https://www.wiz.io/blog/tracking-teampcp-investigating-post-compromise-attacks-seen-in-the-wild) |
 
 #### Kategorien-Zusammenfassung
 
@@ -187,7 +191,7 @@ The malware detector implements 34 detection rules across 14 categories, informe
 | `worm` | HEC-075–076 | Selbstverbreitung, destruktive Payloads |
 | `ai_abuse` | HEC-078 | KI-Tool-Missbrauch (Bypass-Flags) |
 | `sandbox_evasion` | HEC-079–080 | Bedingte Ausführung basierend auf Umgebungserkennung |
-| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud) |
+| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen und GitHub Actions (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP) |
 
 #### Kombinations-Scoring
 
@@ -236,6 +240,7 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 | Telnyx SDK v4.87.1/4.87.2 (TeamPCP) | März 2026 | WAV-Steganografie, plattformspezifische Payloads, Windows Startup Persistence | [Telnyx](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
 | Axios v1.14.1/v0.30.4 | März 2026 | Gestohlene Maintainer-Credentials, RAT-Dropper via plain-crypto-js, Self-Cleaning | [StepSecurity](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan) |
 | Shai-Hulud (V1 + V2) | Sep–Nov 2025 | npm-Wurm, preinstall credential theft, self-propagation via npm publish, destructive fallback | [Unit 42](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/) |
+| TeamPCP/KICS GitHub Actions | März 2026 | GitHub Action Tag-Hijacking, Credential Harvesting | [Checkmarx](https://checkmarx.com/blog/checkmarx-security-update/), [Wiz](https://www.wiz.io/blog/tracking-teampcp-investigating-post-compromise-attacks-seen-in-the-wild) |
 | Backstabber's Knife Collection | 2020 (Studie) | Taxonomie von 174 bösartigen Paketen | [PMC/DIMVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) |
 
 #### Output-Format (`hecate-json`)

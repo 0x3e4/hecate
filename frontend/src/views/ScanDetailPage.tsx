@@ -15,7 +15,7 @@ import type {
   SbomComponent,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "compare" | "alerts" | "bestpractices" | "layers";
+type Tab = "findings" | "sbom" | "history" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets";
 
 /** Format bytes to human-readable string */
 function formatBytes(bytes: number): string {
@@ -24,6 +24,17 @@ function formatBytes(bytes: number): string {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / Math.pow(1024, i);
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/** Strip scanner temp directory prefix from file paths for display */
+function stripScanPath(path: string | null | undefined): string {
+  if (!path) return "";
+  return path.replace(/^\/tmp\/hecate-(?:scan|upload)-[^/]+\//, "");
+}
+
+/** Extract domain from URL for display */
+function urlDomain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
 /** Map purl/type to deps.dev ecosystem name */
@@ -191,6 +202,7 @@ interface MergedFinding {
   dataSource: string | null;
   scanners: string[];
   cvssScore: number | null;
+  urls: string[];
 }
 
 /** Pick the best fix version: reject downgrades (fix major < pkg major), prefer same-major */
@@ -223,15 +235,16 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
   for (const f of findings) {
     const ver = normalizeVersion(f.packageVersion);
     const fix = f.fixVersion ? normalizeVersion(f.fixVersion) : "";
-    // Malicious indicators have no CVE — use file path to keep them distinct
-    const keyId = f.packageType === "malicious-indicator"
+    // Non-CVE finding types — use title + path to keep them distinct
+    const nonCveType = f.packageType === "malicious-indicator" || f.packageType === "sast-finding" || f.packageType === "secret-finding";
+    const keyId = nonCveType
       ? `${f.title ?? ""}:${f.packagePath ?? ""}`
       : (f.vulnerabilityId ?? "");
     const key = `${keyId}:${f.packageName}:${ver}`;
 
     // If this finding has no CVE, try to merge into an existing entry with a CVE
-    // that shares the same package + version + fix (skip malicious indicators)
-    if (!f.vulnerabilityId && fix && f.packageType !== "malicious-indicator") {
+    // that shares the same package + version + fix (skip non-CVE types)
+    if (!f.vulnerabilityId && fix && !nonCveType) {
       let merged = false;
       for (const entry of map.values()) {
         if (entry.packageName === f.packageName && entry.packageVersion === ver
@@ -281,6 +294,7 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
           dataSource: f.dataSource ?? null,
           scanners: [f.scanner],
           cvssScore: f.cvssScore ?? null,
+          urls: f.urls ?? [],
           _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
         });
       }
@@ -328,7 +342,7 @@ export const ScanDetailPage = () => {
   const [layerAnalysis, setLayerAnalysis] = useState<ScanLayerAnalysis | null>(null);
   const [layerLoading, setLayerLoading] = useState(false);
 
-  /** Separate malicious-indicator and compliance-check findings from regular vulnerability findings */
+  /** Separate findings by type into dedicated tabs */
   const alertFindings = useMemo(
     () => merged.filter(f => f.packageType === "malicious-indicator"),
     [merged],
@@ -337,8 +351,21 @@ export const ScanDetailPage = () => {
     () => merged.filter(f => f.packageType === "compliance-check"),
     [merged],
   );
+  const sastFindings = useMemo(
+    () => merged.filter(f => f.packageType === "sast-finding"),
+    [merged],
+  );
+  const secretFindings = useMemo(
+    () => merged.filter(f => f.packageType === "secret-finding"),
+    [merged],
+  );
   const vulnFindings = useMemo(
-    () => merged.filter(f => f.packageType !== "malicious-indicator" && f.packageType !== "compliance-check"),
+    () => merged.filter(f =>
+      f.packageType !== "malicious-indicator" &&
+      f.packageType !== "compliance-check" &&
+      f.packageType !== "sast-finding" &&
+      f.packageType !== "secret-finding"
+    ),
     [merged],
   );
 
@@ -730,6 +757,34 @@ export const ScanDetailPage = () => {
                 {t("Layer Analysis", "Schichtanalyse")}
               </button>
             </>
+          )}
+          {sastFindings.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab("sast")}
+              style={{
+                ...tabStyle(tab === "sast"),
+                borderColor: tab === "sast" ? "rgba(167,139,250,0.5)" : "rgba(167,139,250,0.3)",
+                background: tab === "sast" ? "rgba(167,139,250,0.15)" : "rgba(167,139,250,0.05)",
+                color: tab === "sast" ? "#a78bfa" : "#c4b5fd",
+              }}
+            >
+              SAST ({sastFindings.length})
+            </button>
+          )}
+          {secretFindings.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab("secrets")}
+              style={{
+                ...tabStyle(tab === "secrets"),
+                borderColor: tab === "secrets" ? "rgba(56,189,248,0.5)" : "rgba(56,189,248,0.3)",
+                background: tab === "secrets" ? "rgba(56,189,248,0.15)" : "rgba(56,189,248,0.05)",
+                color: tab === "secrets" ? "#38bdf8" : "#7dd3fc",
+              }}
+            >
+              {t("Secrets", "Secrets")} ({secretFindings.length})
+            </button>
           )}
         </div>
 
@@ -1603,6 +1658,343 @@ export const ScanDetailPage = () => {
                               border: `1px solid ${confidence === "high" ? "rgba(255,107,107,0.2)" : confidence === "medium" ? "rgba(252,196,25,0.2)" : "rgba(255,255,255,0.1)"}`,
                             }}>
                               {confidence} {t("confidence", "Konfidenz")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "sast" && (
+          <>
+            {sastFindings.length === 0 ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
+                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
+                  {t("No SAST findings.", "Keine SAST-Ergebnisse.")}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary banner */}
+                <div style={{
+                  padding: "0.75rem 1rem",
+                  marginBottom: "1rem",
+                  background: "rgba(167,139,250,0.08)",
+                  border: "1px solid rgba(167,139,250,0.2)",
+                  borderRadius: "8px",
+                  display: "flex",
+                  gap: "1rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}>
+                  <span style={{ color: "#a78bfa", fontWeight: 600, fontSize: "0.875rem" }}>
+                    {t(
+                      `${sastFindings.length} code issue${sastFindings.length !== 1 ? "s" : ""} found by Semgrep`,
+                      `${sastFindings.length} Code-Problem${sastFindings.length !== 1 ? "e" : ""} von Semgrep gefunden`,
+                    )}
+                  </span>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {(() => {
+                      const sevs: Record<string, number> = {};
+                      for (const f of sastFindings) {
+                        const s = f.severity.toLowerCase();
+                        sevs[s] = (sevs[s] || 0) + 1;
+                      }
+                      return Object.entries(sevs).sort(([a], [b]) => {
+                        const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+                        return (order[a] ?? 9) - (order[b] ?? 9);
+                      }).map(([s, count]) => (
+                        <span key={s} style={{
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.7rem",
+                          background: s === "critical" ? "rgba(255,107,107,0.1)" : s === "high" ? "rgba(255,146,43,0.1)" : s === "medium" ? "rgba(252,196,25,0.1)" : "rgba(255,255,255,0.06)",
+                          color: s === "critical" ? "#ff6b6b" : s === "high" ? "#ff922b" : s === "medium" ? "#fcc419" : "rgba(255,255,255,0.5)",
+                        }}>
+                          {count} {s}
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                {/* SAST finding cards */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {sastFindings.map((finding, idx) => {
+                    const sev = finding.severity.toLowerCase();
+                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : sev === "low" ? "#69db7c" : "#868e96";
+                    const ruleId = finding.packageName || "";
+                    // Parse structured sections from description
+                    const desc = finding.description || "";
+                    const codeSplit = desc.split("\n\nCode:\n");
+                    const textPart = codeSplit[0] || "";
+                    const codeRaw = codeSplit[1]?.replace(/^```\n?/, "").replace(/\n?```$/, "") || "";
+                    const codeBlock = (codeRaw && codeRaw !== "requires login") ? codeRaw : "";
+                    // Extract CWE, OWASP, and main message from text
+                    const lines = textPart.split("\n\n");
+                    const message = lines[0] || "";
+                    const cweLines: string[] = [];
+                    const owaspItems: string[] = [];
+                    for (const line of lines.slice(1)) {
+                      if (line.startsWith("CWE: ")) cweLines.push(...line.slice(5).split(", ").map(s => s.trim()));
+                      else if (line.startsWith("OWASP: ")) owaspItems.push(...line.slice(7).split(", ").map(s => s.trim()));
+                    }
+                    const chipStyle = { padding: "0.125rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" };
+
+                    return (
+                      <div key={idx} style={{
+                        background: "rgba(255,255,255,0.02)",
+                        border: `1px solid ${sevColor}33`,
+                        borderLeft: `4px solid ${sevColor}`,
+                        borderRadius: "8px",
+                        padding: "1rem",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
+                              <span style={{
+                                padding: "0.125rem 0.5rem",
+                                borderRadius: "4px",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${sevColor}20`,
+                                color: sevColor,
+                              }}>
+                                {sev}
+                              </span>
+                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
+                                {finding.title}
+                              </span>
+                            </div>
+
+                            {/* File path (stripped) */}
+                            {finding.packagePath && (
+                              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", fontFamily: "monospace", marginBottom: "0.375rem" }}>
+                                {stripScanPath(finding.packagePath)}
+                              </div>
+                            )}
+
+                            {/* Message */}
+                            <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0.375rem 0", lineHeight: 1.5 }}>
+                              {message}
+                            </p>
+
+                            {/* CWE chips */}
+                            {cweLines.length > 0 && (
+                              <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", marginTop: "0.375rem" }}>
+                                {cweLines.map((cwe, i) => {
+                                  const idMatch = cwe.match(/^(CWE-\d+):?\s*(.*)/);
+                                  return (
+                                    <span key={i} style={{ ...chipStyle, background: "rgba(92,132,255,0.1)", border: "1px solid rgba(92,132,255,0.2)" }}>
+                                      <span style={{ fontWeight: 700, color: "#5c84ff", fontSize: "0.7rem" }}>{idMatch?.[1] || cwe}</span>
+                                      {idMatch?.[2] && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}>{idMatch[2]}</span>}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* OWASP chips */}
+                            {owaspItems.length > 0 && (
+                              <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", marginTop: "0.375rem" }}>
+                                {owaspItems.map((item, i) => {
+                                  const parts = item.split(" - ");
+                                  return (
+                                    <span key={i} style={{ ...chipStyle, background: "rgba(252,196,25,0.08)", border: "1px solid rgba(252,196,25,0.2)" }}>
+                                      <span style={{ fontWeight: 700, color: "#fcc419", fontSize: "0.7rem" }}>{parts[0]}</span>
+                                      {parts[1] && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}>{parts[1]}</span>}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Code snippet */}
+                            {codeBlock && (
+                              <div style={{
+                                marginTop: "0.5rem",
+                                padding: "0.5rem 0.75rem",
+                                background: "rgba(0,0,0,0.3)",
+                                borderRadius: "4px",
+                                fontFamily: "monospace",
+                                fontSize: "0.75rem",
+                                color: "rgba(255,255,255,0.6)",
+                                overflowX: "auto",
+                                whiteSpace: "pre",
+                                maxHeight: "120px",
+                              }}>
+                                {codeBlock}
+                              </div>
+                            )}
+
+                            {/* Reference links with domain + icon */}
+                            {finding.urls && finding.urls.length > 0 && (
+                              <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                                {finding.urls.slice(0, 3).map((url, i) => (
+                                  <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                                    style={{ fontSize: "0.7rem", color: "#5c84ff", display: "inline-flex", alignItems: "center", gap: "0.25rem", textDecoration: "none" }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                                    {urlDomain(url)}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Rule ID badge */}
+                          <span style={{
+                            padding: "0.125rem 0.5rem",
+                            borderRadius: "4px",
+                            fontSize: "0.65rem",
+                            fontFamily: "monospace",
+                            background: "rgba(167,139,250,0.1)",
+                            color: "#a78bfa",
+                            border: "1px solid rgba(167,139,250,0.2)",
+                            flexShrink: 0,
+                            maxWidth: "200px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}>
+                            {ruleId.split(".").slice(-2).join(".")}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "secrets" && (
+          <>
+            {secretFindings.length === 0 ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
+                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
+                  {t("No secrets detected.", "Keine Secrets erkannt.")}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary banner */}
+                <div style={{
+                  padding: "0.75rem 1rem",
+                  marginBottom: "1rem",
+                  background: "rgba(56,189,248,0.08)",
+                  border: "1px solid rgba(56,189,248,0.2)",
+                  borderRadius: "8px",
+                  display: "flex",
+                  gap: "1rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}>
+                  <span style={{ color: "#38bdf8", fontWeight: 600, fontSize: "0.875rem" }}>
+                    {t(
+                      `${secretFindings.length} secret${secretFindings.length !== 1 ? "s" : ""} detected by TruffleHog`,
+                      `${secretFindings.length} Secret${secretFindings.length !== 1 ? "s" : ""} von TruffleHog erkannt`,
+                    )}
+                  </span>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {(() => {
+                      const types: Record<string, number> = {};
+                      for (const f of secretFindings) {
+                        types[f.packageName] = (types[f.packageName] || 0) + 1;
+                      }
+                      return Object.entries(types).slice(0, 8).map(([t, count]) => (
+                        <span key={t} style={{
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.7rem",
+                          background: "rgba(255,255,255,0.06)",
+                          color: "rgba(255,255,255,0.5)",
+                        }}>
+                          {count} {t}
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                {/* Secret finding cards */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {secretFindings.map((secret, idx) => {
+                    const sev = secret.severity.toLowerCase();
+                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : "#69db7c";
+                    // Parse verified status from description (set by backend: "Status: Verified" or "Status: Unverified")
+                    const isVerified = /Status:\s*Verified/i.test(secret.description || "");
+                    const detectorType = secret.packageName || "Unknown";
+
+                    return (
+                      <div key={idx} style={{
+                        background: "rgba(255,255,255,0.02)",
+                        border: `1px solid ${sevColor}33`,
+                        borderLeft: `4px solid ${sevColor}`,
+                        borderRadius: "8px",
+                        padding: "1rem",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
+                              <span style={{
+                                padding: "0.125rem 0.5rem",
+                                borderRadius: "4px",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${sevColor}20`,
+                                color: sevColor,
+                              }}>
+                                {sev}
+                              </span>
+                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
+                                {secret.title}
+                              </span>
+                            </div>
+
+                            {/* File path (stripped) */}
+                            {secret.packagePath && (
+                              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", fontFamily: "monospace", marginBottom: "0.375rem" }}>
+                                {stripScanPath(secret.packagePath)}
+                              </div>
+                            )}
+
+                            {/* Description */}
+                            <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0.375rem 0", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                              {secret.description}
+                            </p>
+                          </div>
+
+                          {/* Right side badges */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
+                            <span style={{
+                              padding: "0.125rem 0.5rem",
+                              borderRadius: "4px",
+                              fontSize: "0.7rem",
+                              background: "rgba(56,189,248,0.1)",
+                              color: "#38bdf8",
+                              border: "1px solid rgba(56,189,248,0.2)",
+                            }}>
+                              {detectorType}
+                            </span>
+                            <span style={{
+                              padding: "0.125rem 0.5rem",
+                              borderRadius: "4px",
+                              fontSize: "0.7rem",
+                              background: isVerified ? "rgba(99,230,190,0.1)" : "rgba(252,196,25,0.1)",
+                              color: isVerified ? "#63e6be" : "#fcc419",
+                              border: `1px solid ${isVerified ? "rgba(99,230,190,0.2)" : "rgba(252,196,25,0.2)"}`,
+                            }}>
+                              {isVerified ? t("Verified", "Verifiziert") : t("Unverified", "Unverifiziert")}
                             </span>
                           </div>
                         </div>
