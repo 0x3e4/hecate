@@ -46,7 +46,7 @@ services:
       - db
 
   scanner:
-    build: ./scanner
+    image: ghcr.io/0x3e4/hecate-scanner:latest
     restart: unless-stopped
     env_file: ".env"
     security_opt:
