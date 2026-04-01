@@ -46,7 +46,7 @@ services:
       - db
 
   scanner:
-    build: ./scanner
+    image: git.nohub.lol/rk/hecate-scanner:latest
     restart: unless-stopped
     env_file: ".env"
     security_opt:
