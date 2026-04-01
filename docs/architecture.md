@@ -10,7 +10,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 - FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
 - OpenSearch dient als performanter Query-Index, MongoDB hält Normalformdaten und Jobzustand.
 - Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
-- Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
+- Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
 
 ## Deployment-Topologie
 
@@ -29,7 +29,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
                        |  |           |
                        |  |     +-----v-----+
                        |  |     |  Scanner  |  Trivy, Grype, Syft, OSV, Hecate,
-                       |  |     |  :8080    |  Dockle, Dive (FastAPI Sidecar)
+                       |  |     |  :8080    |  Dockle, Dive, Semgrep, TruffleHog
                        |  |     +-----------+
                        |  |
                        |  +--+
@@ -169,14 +169,16 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - Konfiguration: `max_result_window` = 200.000, `total_fields.limit` = 2.000.
 
 ### SCA-Scanning (Software Composition Analysis)
-- **Scanner-Sidecar:** Separater Docker-Container mit 7 Scannern: Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle und Dive.
+- **Scanner-Sidecar:** Separater Docker-Container mit 9 Scannern: Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep (SAST) und TruffleHog (Secret Detection).
 - **Scan-Ablauf:** CI/CD oder manuelle Anfrage → Backend → Scanner-Sidecar → Ergebnisse parsen → MongoDB speichern → Antwort.
 - **Image-Pull:** Scanner-Tools ziehen Container-Images direkt über Registry-APIs (kein Docker-Socket). Dive nutzt Skopeo zum Image-Pull als docker-archive.
 - **Registry-Auth:** Konfigurierbar über `SCANNER_AUTH` Umgebungsvariable.
-- **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON, Hecate-JSON, Dockle-JSON, Dive-JSON werden in einheitliche Modelle überführt.
+- **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON, Hecate-JSON, Dockle-JSON, Dive-JSON, Semgrep-JSON, TruffleHog-JSON werden in einheitliche Modelle überführt.
 - **Hecate Analyzer:** Eigener SBOM-Extraktor (18 Parser, 12 Ökosysteme: Docker, npm, Python, Go, Rust, Ruby, PHP, Java, .NET, Swift, Elixir, Dart, CocoaPods) + Malware-Detektor (34 Regeln, HEC-001 bis HEC-090) + Provenance-Verifikation (8 Ökosysteme: npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker).
 - **Dockle:** CIS Docker Benchmark Linter — prüft Container-Images auf Best Practices (~21 Checkpoints). Ergebnisse als `ScanFindingDocument` mit `package_type="compliance-check"`, werden nicht in Vulnerability-Summary gezählt. Nur für Container-Images, opt-in.
 - **Dive:** Docker-Image-Schichtanalyse — Effizienz, verschwendeter Speicher, Layer-Aufschlüsselung. Ergebnisse in separater `scan_layer_analysis` Collection. Nur für Container-Images, opt-in.
+- **Semgrep:** SAST-Scanner für Code-Schwachstellen (SQLi, XSS, Command Injection etc.). Ergebnisse als `ScanFindingDocument` mit `package_type="sast-finding"`. Konfigurierbare Rulesets via `SEMGREP_RULES` (Default: `p/security-audit`). Nur für Source-Repos.
+- **TruffleHog:** Secret-Scanner für exponierte Credentials (API-Keys, Tokens, Passwörter). Ergebnisse als `ScanFindingDocument` mit `package_type="secret-finding"`. Verifizierte Secrets = `critical`, unverifizierte = `high`. Nur für Source-Repos.
 - **Scanner-Auswahl pro Target:** Beim Erst-Scan gewählte Scanner werden auf dem `ScanTargetDocument` gespeichert und für Auto-Scans wiederverwendet.
 - **Scan-Vergleich:** Findings können zwischen zwei Scans verglichen werden (Added, Removed, Changed). "Changed" gruppiert Findings mit gleichem Paket aber unterschiedlicher Schwachstelle.
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export über `GET /api/v1/scans/{scan_id}/sbom/export?format=cyclonedx-json|spdx-json`. Pure-Function-Builder in `sbom_export.py` (keine externen Bibliotheken). Download mit `Content-Disposition: attachment` Header. EU Cyber Resilience Act (CRA) Compliance.
@@ -247,7 +249,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Dienste-Status |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 
 ### State-Management
 - Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
@@ -348,6 +350,6 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA)
 | HTTP-Client | httpx 0.28 (async), Axios 1.13 (Frontend) |
 | Logging | structlog 25 |
 | KI | OpenAI, Anthropic, Google Gemini |
-| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Skopeo, FastAPI |
+| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |

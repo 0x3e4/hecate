@@ -133,6 +133,10 @@ async def run_scanner(
         return await _run_dockle(target, target_type)
     elif scanner_name == "dive":
         return await _run_dive(target, target_type)
+    elif scanner_name == "semgrep":
+        return await _run_semgrep(target, target_type, source_dir)
+    elif scanner_name == "trufflehog":
+        return await _run_trufflehog(target, target_type, source_dir)
     else:
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
@@ -561,3 +565,103 @@ async def _run_dive(target: str, target_type: str) -> ScannerResult:
         for f in (output_file, archive_file):
             if os.path.exists(f):
                 os.remove(f)
+
+
+async def _run_semgrep(
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
+    """Run Semgrep SAST scanner. Only supports source repos."""
+    if target_type == "container_image":
+        return ScannerResult(
+            scanner="semgrep", format="semgrep-json", report={},
+            error="Semgrep only supports source repository scanning",
+        )
+
+    clone_dir: str | None = None
+    try:
+        scan_dir = source_dir
+        if not scan_dir:
+            clone_dir = await _clone_repo(target)
+            scan_dir = clone_dir
+
+        # Use security-audit + secrets rulesets by default;
+        # configurable via SEMGREP_RULES env var.
+        rules = os.environ.get("SEMGREP_RULES", "p/security-audit")
+        cmd = [
+            "semgrep", "scan",
+            "--json", "--quiet",
+            f"--config={rules}",
+            "--max-target-bytes=1048576",  # skip files > 1MB
+            scan_dir,
+        ]
+
+        stdout, stderr, rc = await _run_command(cmd)
+        # Semgrep exit codes: 0 = no findings, 1 = findings found, other = error
+        if rc not in (0, 1):
+            if not stdout.strip():
+                return ScannerResult(
+                    scanner="semgrep", format="semgrep-json", report={},
+                    error=f"Semgrep failed (exit {rc}): {_sanitize_error(stderr)}",
+                )
+        return _parse_json_output(stdout, "semgrep", "semgrep-json")
+    except RuntimeError as exc:
+        return ScannerResult(scanner="semgrep", format="semgrep-json", report={}, error=str(exc))
+    finally:
+        if clone_dir:
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+async def _run_trufflehog(
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
+    """Run TruffleHog secret scanner. Only supports source repos."""
+    if target_type == "container_image":
+        return ScannerResult(
+            scanner="trufflehog", format="trufflehog-json", report={},
+            error="TruffleHog only supports source repository scanning",
+        )
+
+    clone_dir: str | None = None
+    try:
+        scan_dir = source_dir
+        if not scan_dir:
+            clone_dir = await _clone_repo(target)
+            scan_dir = clone_dir
+
+        cmd = [
+            "trufflehog", "filesystem",
+            "--json", "--no-update",
+            scan_dir,
+        ]
+
+        stdout, stderr, rc = await _run_command(cmd, timeout=300)
+        # TruffleHog exit 0 = no secrets, 183 = secrets found
+        if rc not in (0, 183):
+            if not stdout.strip():
+                return ScannerResult(
+                    scanner="trufflehog", format="trufflehog-json", report={},
+                    error=f"TruffleHog failed (exit {rc}): {_sanitize_error(stderr)}",
+                )
+
+        # TruffleHog outputs JSON Lines (one JSON object per line), not a single JSON doc.
+        # Collect all results into a list.
+        results: list[dict[str, Any]] = []
+        for line in stdout.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                results.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+        return ScannerResult(scanner="trufflehog", format="trufflehog-json", report={"results": results})
+    except RuntimeError as exc:
+        return ScannerResult(scanner="trufflehog", format="trufflehog-json", report={}, error=str(exc))
+    finally:
+        if clone_dir:
+            shutil.rmtree(clone_dir, ignore_errors=True)

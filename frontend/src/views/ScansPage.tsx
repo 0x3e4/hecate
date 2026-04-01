@@ -281,7 +281,7 @@ export const ScansPage = () => {
     try {
       const fallbackScanners = target.type === "container_image"
         ? ["trivy", "grype", "syft", "dockle", "dive"]
-        : ["trivy", "grype", "syft", "osv-scanner", "hecate"];
+        : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"];
       await submitManualScan({
         target: target.id,
         type: target.type,
@@ -1108,7 +1108,7 @@ export const ScansPage = () => {
                       checked={scanType === "source_repo"}
                       onChange={() => {
                         setScanType("source_repo");
-                        setScanners(["trivy", "grype", "syft", "osv-scanner", "hecate"]);
+                        setScanners(["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"]);
                       }}
                     />
                     Source Repository
@@ -1201,7 +1201,7 @@ export const ScansPage = () => {
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
                   {(scanType === "container_image"
                     ? ["trivy", "grype", "syft", "dockle", "dive"]
-                    : ["trivy", "grype", "syft", "osv-scanner", "hecate"]
+                    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"]
                   ).map(name => (
                     <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
                       <input

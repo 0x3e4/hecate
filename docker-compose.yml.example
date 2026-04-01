@@ -49,9 +49,6 @@ services:
     build: ./scanner
     restart: unless-stopped
     env_file: ".env"
-    environment:
-      - TRIVY_CACHE_DIR=/tmp/.trivy-cache
-      - GRYPE_DB_CACHE_DIR=/tmp/.grype-cache
     security_opt:
       - no-new-privileges:true
     read_only: true

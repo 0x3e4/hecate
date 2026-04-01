@@ -658,3 +658,161 @@ def parse_dive_json(
         layers=layers,
         pass_threshold=data.get("pass", True),
     )
+
+
+# ---------------------------------------------------------------------------
+# Semgrep (SAST)
+# ---------------------------------------------------------------------------
+
+
+_SEMGREP_SEVERITY_MAP = {
+    "ERROR": "high",
+    "WARNING": "medium",
+    "INFO": "low",
+}
+
+
+def parse_semgrep_json(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> tuple[list[ScanFindingDocument], ScanSummary]:
+    """Parse Semgrep JSON output into SAST findings."""
+    findings: list[ScanFindingDocument] = []
+    seen: set[str] = set()
+
+    results = data.get("results", [])
+    if not isinstance(results, list):
+        return findings, ScanSummary()
+
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+
+        check_id = result.get("check_id", "")
+        path = result.get("path", "")
+        message = result.get("extra", {}).get("message", "") if isinstance(result.get("extra"), dict) else ""
+        raw_severity = result.get("extra", {}).get("severity", "WARNING") if isinstance(result.get("extra"), dict) else "WARNING"
+        severity = _SEMGREP_SEVERITY_MAP.get(raw_severity, "medium")
+
+        # Extract metadata
+        extra = result.get("extra", {}) or {}
+        metadata = extra.get("metadata", {}) or {} if isinstance(extra, dict) else {}
+
+        # CWE extraction
+        cwe_list = metadata.get("cwe", []) if isinstance(metadata, dict) else []
+        cwe_str = ", ".join(cwe_list) if isinstance(cwe_list, list) else str(cwe_list)
+
+        # Dedup by check_id + path + line
+        start = result.get("start", {}) or {}
+        line = start.get("line", 0) if isinstance(start, dict) else 0
+        dedup_key = f"{check_id}:{path}:{line}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        # Build description
+        desc_parts = [message]
+        if cwe_str:
+            desc_parts.append(f"CWE: {cwe_str}")
+        owasp = metadata.get("owasp", []) if isinstance(metadata, dict) else []
+        if owasp:
+            desc_parts.append(f"OWASP: {', '.join(owasp) if isinstance(owasp, list) else str(owasp)}")
+
+        # Extract matched code snippet
+        matched_lines = extra.get("lines", "") if isinstance(extra, dict) else ""
+
+        findings.append(ScanFindingDocument(
+            scan_id=scan_id,
+            target_id=target_id,
+            vulnerability_id=None,
+            scanner="semgrep",
+            package_name=check_id,
+            package_version="",
+            package_type="sast-finding",
+            package_path=path or None,
+            severity=severity,
+            title=f"[{check_id.rsplit('.', 1)[-1]}] {message[:120]}" if message else f"[{check_id}]",
+            description="\n\n".join(desc_parts) + (f"\n\nCode:\n```\n{matched_lines}\n```" if matched_lines else ""),
+            fix_version=None,
+            fix_state="not_fixed",
+            data_source=f"semgrep:{check_id}",
+            urls=[ref for ref in (metadata.get("references", []) if isinstance(metadata, dict) else []) if isinstance(ref, str)],
+        ))
+
+    return findings, _build_summary(findings)
+
+
+# ---------------------------------------------------------------------------
+# TruffleHog (Secret Detection)
+# ---------------------------------------------------------------------------
+
+_TRUFFLEHOG_SEVERITY_MAP = {
+    # Verified secrets are critical, unverified are high
+    True: "critical",
+    False: "high",
+}
+
+
+def parse_trufflehog_json(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> tuple[list[ScanFindingDocument], ScanSummary]:
+    """Parse TruffleHog JSON output into secret findings.
+
+    TruffleHog outputs are pre-collected into {"results": [...]} by the scanner sidecar.
+    """
+    findings: list[ScanFindingDocument] = []
+    seen: set[str] = set()
+
+    results = data.get("results", [])
+    if not isinstance(results, list):
+        return findings, ScanSummary()
+
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+
+        detector_name = result.get("DetectorName", result.get("SourceMetadata", {}).get("DetectorName", "unknown"))
+        verified = result.get("Verified", False)
+
+        # Extract source file info
+        source_meta = result.get("SourceMetadata", {})
+        source_data = source_meta.get("Data", {}) if isinstance(source_meta, dict) else {}
+        file_path = None
+        if isinstance(source_data, dict):
+            # Filesystem source
+            file_path = source_data.get("Filesystem", {}).get("file") if isinstance(source_data.get("Filesystem"), dict) else None
+
+        # Redact the raw secret — only show type + first/last chars
+        raw = result.get("Raw", "")
+        redacted = f"{raw[:4]}...{raw[-4:]}" if len(raw) > 12 else "***"
+
+        # Dedup by detector + file + redacted value
+        dedup_key = f"{detector_name}:{file_path}:{redacted}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        severity = _TRUFFLEHOG_SEVERITY_MAP.get(verified, "high")
+        verified_label = "Verified" if verified else "Unverified"
+
+        findings.append(ScanFindingDocument(
+            scan_id=scan_id,
+            target_id=target_id,
+            vulnerability_id=None,
+            scanner="trufflehog",
+            package_name=detector_name,
+            package_version="",
+            package_type="secret-finding",
+            package_path=file_path,
+            severity=severity,
+            title=f"[{detector_name}] {verified_label} Secret Detected",
+            description=f"Type: {detector_name}\nStatus: {verified_label}\nRedacted: {redacted}",
+            fix_version=None,
+            fix_state="not_fixed",
+            data_source=f"trufflehog:{detector_name.lower()}",
+        ))
+
+    return findings, _build_summary(findings)
