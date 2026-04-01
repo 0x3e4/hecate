@@ -315,7 +315,7 @@ class ScanService:
             error=error_text,
         )
         # Persist scanner-reported metadata (commit SHA, image digest)
-        meta_update: dict[str, Any] = {"summary_version": 2, "severity_overridden": True}
+        meta_update: dict[str, Any] = {"summary_version": 3, "severity_overridden": True}
         if scan_metadata.get("commit_sha"):
             meta_update["commit_sha"] = scan_metadata["commit_sha"]
         if scan_metadata.get("image_digest"):
@@ -378,7 +378,7 @@ class ScanService:
 
     async def _get_deduped_summary(self, scan: dict[str, Any]) -> dict[str, Any]:
         """Return the deduped summary for a scan, lazily correcting if needed."""
-        if scan.get("summary_version") == 2:
+        if scan.get("summary_version") == 3:
             return scan.get("summary", {})
         # Recompute from findings with dedup
         scan_id = str(scan.get("_id", ""))
@@ -387,6 +387,9 @@ class ScanService:
         counts: dict[str, int] = {
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
+        # Exclude non-vulnerability findings from summary
+        _excluded = ("malicious-indicator", "compliance-check", "sast-finding", "secret-finding")
+        findings = [f for f in findings if f.get("package_type") not in _excluded]
         # First pass: keyed entries with CVE; collect no-CVE separately
         keyed: dict[str, str] = {}
         no_cve: list[dict[str, Any]] = []
@@ -435,7 +438,7 @@ class ScanService:
             db = await get_database()
             await db[settings.mongo_scans_collection].update_one(
                 {"_id": ObjectId(scan_id)},
-                {"$set": {"summary_version": 2}},
+                {"$set": {"summary_version": 3}},
             )
         except Exception:
             pass
@@ -1283,8 +1286,9 @@ class ScanService:
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
         nv = ScanService._normalize_ver
-        # Exclude malicious-indicator and compliance-check findings from vulnerability summary
-        vuln_findings = [f for f in findings if f.package_type not in ("malicious-indicator", "compliance-check")]
+        # Exclude non-vulnerability findings from vulnerability summary
+        _excluded = ("malicious-indicator", "compliance-check", "sast-finding", "secret-finding")
+        vuln_findings = [f for f in findings if f.package_type not in _excluded]
         # First pass: collect all findings keyed by (vuln_id, pkg, ver)
         # Track no-CVE findings separately so we can merge them with CVE entries
         keyed: dict[str, str] = {}  # dedup_key -> severity
