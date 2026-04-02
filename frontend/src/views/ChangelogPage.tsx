@@ -14,7 +14,7 @@ export const ChangelogPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [sourceFilter, setSourceFilter] = useState("");
   const showSkeleton = loading && !data;
 
@@ -57,7 +57,7 @@ export const ChangelogPage = () => {
 
   const handleFilterReset = () => {
     setFromDate("");
-    setToDate("");
+    setToDate(new Date().toISOString().slice(0, 10));
     setSourceFilter("");
     setPage(0);
   };
@@ -127,9 +127,10 @@ export const ChangelogPage = () => {
               <option value="GHSA">GHSA</option>
               <option value="KEV">KEV</option>
               <option value="CIRCL">CIRCL</option>
+              <option value="OSV">OSV</option>
             </select>
           </label>
-          {(fromDate || toDate || sourceFilter) && (
+          {(fromDate || sourceFilter) && (
             <button
               onClick={handleFilterReset}
               style={{
@@ -153,10 +154,10 @@ export const ChangelogPage = () => {
         </div>
 
         {showSkeleton && <ChangelogSkeleton />}
-        {error && <p className="muted">{error}</p>}
+        {error && !data && <p className="muted">{error}</p>}
 
         {!showSkeleton && data && (
-          <>
+          <div style={{ opacity: loading ? 0.5 : 1, transition: "opacity 0.2s ease", pointerEvents: loading ? "none" : "auto" }}>
             <div style={{ display: "grid", gap: "0.75rem" }}>
               {data.entries.length === 0 && (
                 <p className="muted">{t("No changes available.", "Keine Änderungen verfügbar.")}</p>
@@ -204,7 +205,7 @@ export const ChangelogPage = () => {
                 </button>
               </div>
             )}
-          </>
+          </div>
         )}
       </section>
     </div>

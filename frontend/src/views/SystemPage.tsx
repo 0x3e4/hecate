@@ -34,6 +34,7 @@ import {
   triggerCapecSync,
   triggerCirclSync,
   triggerGhsaSync,
+  triggerOsvSync,
   resyncVulnerability,
 } from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
@@ -796,7 +797,7 @@ export const SystemPage = () => {
     event.target.value = "";
   };
 
-  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "ghsa", initial: boolean) => {
+  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "ghsa" | "osv", initial: boolean) => {
     const syncId = `${syncType}_${initial ? "initial" : "normal"}`;
     setSyncTriggeringId(syncId);
     try {
@@ -825,6 +826,9 @@ export const SystemPage = () => {
           break;
         case "ghsa":
           response = await triggerGhsaSync(initial);
+          break;
+        case "osv":
+          response = await triggerOsvSync(initial);
           break;
       }
       showToast(response.message, "success");
@@ -889,6 +893,8 @@ export const SystemPage = () => {
       "circl_sync",
       "ghsa_sync",
       "ghsa_initial_sync",
+      "osv_sync",
+      "osv_initial_sync",
     ];
     return syncStates.sort((a: SyncState, b: SyncState) => order.indexOf(a.jobName) - order.indexOf(b.jobName));
   }, [syncStates]);
@@ -1733,6 +1739,8 @@ export const SystemPage = () => {
                     ? "circl"
                     : sync.jobName.includes("ghsa")
                     ? "ghsa"
+                    : sync.jobName.includes("osv")
+                    ? "osv"
                     : "cwe";
                   const isInitial = sync.jobName.includes("initial");
                   const syncId = `${syncType}_${isInitial ? "initial" : "normal"}`;

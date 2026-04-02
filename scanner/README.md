@@ -132,9 +132,9 @@ Der Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extrahiert SBOM-Komponent
 
 Der Malware-Detektor (`scanner/app/malware_detector/`) erkennt potenziell bösartige Pakete über statische Heuristiken. Keine externen Abhängigkeiten — alles in reinem Python implementiert.
 
-#### Detection Rules (34 Rules)
+#### Detection Rules (35 Rules)
 
-The malware detector implements 34 detection rules across 14 categories, informed by real-world supply chain attacks from 2020-2026.
+The malware detector implements 35 detection rules across 14 categories, informed by real-world supply chain attacks from 2020-2026.
 
 | Regel-ID | Name | Severity | Kategorie | Quelle / Angriff |
 |----------|------|----------|-----------|-----------------|
@@ -173,6 +173,7 @@ The malware detector implements 34 detection rules across 14 categories, informe
 | HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (sys.platform + subprocess per OS) |
 | HEC-082 | Media file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
 | HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx 20.9-20.12/21.5-21.8](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026), [axios 1.14.1/0.30.4](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan), [Shai-Hulud @ctrl/tinycolor + 37 packages](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/), [TeamPCP: trivy-action, setup-trivy, kics-github-action, ast-github-action](https://www.wiz.io/blog/tracking-teampcp-investigating-post-compromise-attacks-seen-in-the-wild) |
+| HEC-091 | Known malicious file hash | critical | `known_compromised` | SHA-256 hash matching for known malicious payload files (zero false positive detection) |
 
 #### Kategorien-Zusammenfassung
 
@@ -191,7 +192,7 @@ The malware detector implements 34 detection rules across 14 categories, informe
 | `worm` | HEC-075–076 | Selbstverbreitung, destruktive Payloads |
 | `ai_abuse` | HEC-078 | KI-Tool-Missbrauch (Bypass-Flags) |
 | `sandbox_evasion` | HEC-079–080 | Bedingte Ausführung basierend auf Umgebungserkennung |
-| `known_compromised` | HEC-090 | Blocklist bekannter kompromittierter Paketversionen und GitHub Actions (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP) |
+| `known_compromised` | HEC-090–091 | Blocklist bekannter kompromittierter Paketversionen und GitHub Actions (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP) + SHA-256 Hash-Matching maliciöser Payload-Dateien |
 
 #### Kombinations-Scoring
 
@@ -268,6 +269,26 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
   "specVersion": "1.5"
 }
 ```
+
+#### Malware-Detektor Module
+
+| Modul | Zweck |
+|-------|-------|
+| `rules.py` | 35 DetectionRule-Definitionen |
+| `install_hooks.py` | npm + Python Install-Hook-Erkennung |
+| `suspicious_patterns.py` | API-Kombos, Obfuscation, Prozessspeicher, Multi-Layer-Encoding, Platform-Payload, Steganography |
+| `typosquatting.py` | Levenshtein + Registry-Verifikation |
+| `pth_files.py` | Python .pth-Backdoor-Erkennung |
+| `cicd_analysis.py` | GitHub Actions + CI/CD-Pipeline-Analyse |
+| `persistence.py` | systemd/cron/launchd/Windows Startup/Registry Run Keys/xdg-autostart-Persistenz |
+| `unicode_obfuscation.py` | Unsichtbare Unicode-Payload-Erkennung (mit Cyrillic-Locale-Awareness) |
+| `worm_detection.py` | Selbstverbreitung, destruktive Payloads, KI-Tool-Missbrauch |
+| `sandbox_evasion.py` | Bedingte Sandbox-Erkennung |
+| `known_compromised.py` | Blocklist kompromittierter Paketversionen (LiteLLM, Nx, Telnyx, Axios) |
+| `hash_matching.py` | SHA-256 Hash-Matching bekannter maliciöser Payload-Dateien |
+| `sarif_formatter.py` | SARIF 2.1.0 Output-Formatter für GitHub/GitLab Code Scanning Integration (Severity: critical/high->error, medium->warning, low->note) |
+| `popular_packages.py` | Top-200 npm/PyPI-Pakete (Referenzlisten) |
+| `utils.py` | Shared Utilities (Package-Name-Auflösung aus Manifests/.git/config) |
 
 ### Provenance-Verifikation
 

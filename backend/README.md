@@ -91,6 +91,8 @@ app/
 │   │   ├── capec_client.py        # CAPEC XML-Parser
 │   │   ├── circl_client.py        # CIRCL API-Client
 │   │   ├── ghsa_client.py         # GHSA API-Client
+│   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client
+│   │   ├── osv_pipeline.py        # OSV (OSV.dev)
 │   │   ├── normalizer.py          # Normalisierung aller Quellen
 │   │   ├── job_tracker.py         # Job-Lifecycle & Audit
 │   │   ├── manual_refresher.py    # On-Demand Refresh
@@ -101,7 +103,7 @@ app/
 │   ├── strings.py                 # Slugify etc.
 │   └── request.py                 # IP-Extraktion
 ├── main.py                        # FastAPI App-Initialisierung
-└── cli.py                         # CLI-Einstiegspunkt (10 Befehle)
+└── cli.py                         # CLI-Einstiegspunkt (11 Befehle)
 ```
 
 ## Datenmodell
@@ -144,6 +146,7 @@ Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregati
 | CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
 | CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
+| OSV | OSV.dev GCS Bucket + REST-API | 120 min | OSV-Schwachstellen (Hybrid: CVE-Enrichment + MAL/PYSEC/OSV-Einträge, 11 Ökosysteme) |
 
 Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs: EUVD Sonntag 2 Uhr UTC, NVD Mittwoch 2 Uhr UTC.
 
@@ -193,6 +196,7 @@ poetry run python -m app.cli sync-cwe [--initial]
 poetry run python -m app.cli sync-capec [--initial]
 poetry run python -m app.cli sync-circl [--limit N]
 poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
+poetry run python -m app.cli sync-osv [--limit N] [--initial]
 poetry run python -m app.cli reindex-opensearch
 ```
 
