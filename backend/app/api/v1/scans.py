@@ -320,13 +320,16 @@ async def get_global_findings(
     search: str | None = Query(default=None, description="Search by CVE, package name, or title"),
     severity: str | None = Query(default=None, description="Filter by severity"),
     target_id: str | None = Query(default=None, alias="targetId", description="Filter by target"),
+    sort_by: str = Query(default="cvss_score", alias="sortBy", description="Sort field"),
+    sort_order: str = Query(default="desc", alias="sortOrder", description="Sort order: asc or desc"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     service: ScanService = Depends(get_scan_service),
 ) -> ConsolidatedFindingListResponse:
     """Get consolidated findings from the latest completed scan of each target."""
     total, items = await service.get_global_findings(
-        search=search, severity=severity, target_id=target_id, limit=limit, offset=offset
+        search=search, severity=severity, target_id=target_id,
+        sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset,
     )
     return ConsolidatedFindingListResponse(
         total=total,

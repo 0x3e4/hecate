@@ -615,6 +615,8 @@ class ScanService:
         search: str | None = None,
         severity: str | None = None,
         target_id: str | None = None,
+        sort_by: str = "cvss_score",
+        sort_order: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
@@ -623,7 +625,8 @@ class ScanService:
         if not scan_ids:
             return 0, []
         return await self.finding_repo.list_across_scans_consolidated(
-            scan_ids, search=search, severity=severity, limit=limit, offset=offset
+            scan_ids, search=search, severity=severity,
+            sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset,
         )
 
     async def get_global_sbom(

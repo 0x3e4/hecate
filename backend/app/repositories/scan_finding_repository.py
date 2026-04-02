@@ -148,6 +148,8 @@ class ScanFindingRepository:
         scan_ids: list[str],
         search: str | None = None,
         severity: str | None = None,
+        sort_by: str = "cvss_score",
+        sort_order: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
@@ -168,6 +170,19 @@ class ScanFindingRepository:
         if severity:
             match_stage["severity"] = severity
 
+        # Build sort specification
+        allowed_sort_fields: dict[str, str] = {
+            "cvss_score": "cvss_score",
+            "severity": "severity",
+            "package_name": "_id.package_name",
+            "package_version": "_id.package_version",
+            "vulnerability_id": "_id.vulnerability_id",
+            "fix_version": "fix_version",
+            "targets": "target_count",
+        }
+        sort_field = allowed_sort_fields.get(sort_by, "cvss_score")
+        direction = -1 if sort_order == "desc" else 1
+
         pipeline: list[dict[str, Any]] = [
             {"$match": match_stage},
             {"$group": {
@@ -185,7 +200,8 @@ class ScanFindingRepository:
                 "cvss_score": {"$max": "$cvss_score"},
                 "urls": {"$first": "$urls"},
             }},
-            {"$sort": {"severity": 1, "_id.package_name": 1}},
+            {"$addFields": {"target_count": {"$size": "$targets"}}},
+            {"$sort": {sort_field: direction, "_id.package_name": 1}},
             {"$facet": {
                 "total": [{"$count": "count"}],
                 "items": [{"$skip": offset}, {"$limit": limit}],

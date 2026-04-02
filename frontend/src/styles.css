@@ -2088,6 +2088,23 @@ table thead th {
     font-size: 0.85rem;
   }
 
+  /* Findings filter bar - mobile */
+  .findings-severity-buttons {
+    flex: 1 1 100% !important;
+    order: 10;
+  }
+
+  .findings-severity-buttons button {
+    flex: 1;
+  }
+
+  .findings-target-select {
+    height: 36px !important;
+    min-height: auto !important;
+    padding: 0 0.625rem !important;
+    font-size: 0.8125rem !important;
+  }
+
   /* Dialog backdrop */
   .saved-search-dialog-backdrop {
     padding: 1rem;
