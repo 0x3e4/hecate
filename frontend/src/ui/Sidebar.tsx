@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen } from "react-icons/lu";
 import { useEffect, useMemo, useState } from "react";
 
 import { version } from "../../package.json";
@@ -50,6 +50,13 @@ const navSections: NavSection[] = [
     titleEn: "Administration", titleDe: "Verwaltung",
     items: [{ to: "/system", label: "System", icon: LuSettings }],
   },
+  ...(config.scaFeatures.enabled ? [{
+    titleEn: "Info", titleDe: "Info",
+    items: [
+      { to: "/cicd", label: "CI/CD", icon: LuBookOpen },
+      { to: "/api-docs", label: "API", icon: LuBookOpen },
+    ],
+  }] : []),
 ];
 
 export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileMenuClose }: SidebarProps) => {
@@ -108,6 +115,8 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/audit": "Audit-Log",
     "/scans": "SCA-Scans",
     "/system": "System",
+    "/api-docs": "API",
+    "/cicd": "CI/CD",
   };
 
   const localizedSections = useMemo(

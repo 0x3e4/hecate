@@ -13,6 +13,8 @@ import { ChangelogPage } from "./views/ChangelogPage";
 import { SystemPage } from "./views/SystemPage";
 import { ScansPage } from "./views/ScansPage";
 import { ScanDetailPage } from "./views/ScanDetailPage";
+import { CiCdInfoPage } from "./views/CiCdInfoPage";
+import { ApiInfoPage } from "./views/ApiInfoPage";
 
 export const router = createBrowserRouter([
   {
@@ -33,6 +35,10 @@ export const router = createBrowserRouter([
       { path: "stats", element: <StatsPage /> },
       { path: "changelog", element: <ChangelogPage /> },
       { path: "system", element: <SystemPage /> },
+      ...(config.scaFeatures.enabled ? [
+        { path: "cicd", element: <CiCdInfoPage /> },
+        { path: "api-docs", element: <ApiInfoPage /> },
+      ] : []),
       { path: "*", element: <Navigate to="/" replace /> }
     ]
   }

@@ -20,6 +20,8 @@ def create_app() -> FastAPI:
         description="AI-assisted vulnerability intelligence backend.",
         version="0.1.0",
         openapi_url="/api/openapi.json",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
     )
 
     app.add_middleware(

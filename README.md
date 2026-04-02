@@ -129,6 +129,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (über alle Ziele), manueller Scan, Scanner-Monitoring |
 | Scan-Detail | Findings (mit Suche & sortierbaren Spalten), SBOM (mit Export, Summary-Stats & Provenance), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
 | System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
+| CI/CD | Anleitung zur CI/CD-Integration mit Pipeline-Beispielen (GitHub Actions, GitLab CI, Shell) |
+| API | Interaktive API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 
 ### Benachrichtigungen (Apprise)
 - **Apprise-Integration:** Benachrichtigungen über einen Apprise-API-Service (Slack, Discord, E-Mail, Telegram, etc.)
