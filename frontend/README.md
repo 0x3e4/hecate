@@ -14,7 +14,7 @@ src/
 │   ├── stats.ts                 # Statistik-Aggregationen
 │   ├── audit.ts                 # Ingestion-Logs
 │   ├── changelog.ts             # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── sync.ts                  # Sync-Trigger & Status
+│   ├── sync.ts                  # Sync-Trigger & Status (inkl. OSV)
 │   ├── backup.ts                # Export/Import (10 min Timeout)
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
 │   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export)
@@ -81,13 +81,13 @@ src/
 |-------|-----------|-------------|
 | `/` | `DashboardPage` | Startseite mit Schwachstellensuche, aktuellen Einträgen und Echtzeit-Refresh via SSE |
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
-| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History |
+| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History, Refresh-Dropdown (inkl. OSV) |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via Feature-Flag) |
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
-| `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter |
-| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen |
+| `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter (inkl. OSV im Job-Dropdown) |
+| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung (inkl. OSV-Trigger), gespeicherte Suchen |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, Scan-Vergleich |
 

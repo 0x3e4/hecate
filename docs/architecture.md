@@ -2,14 +2,14 @@
 
 ## Überblick
 
-Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Quellen aggregiert, normalisiert und über eine REST-API sowie ein React-Frontend bereitstellt. Ergänzend können Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
+Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Quellen aggregiert, normalisiert und über eine REST-API sowie ein React-Frontend bereitstellt. Ergänzend können Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
 
 ### Systemkontext
 
 - React Single-Page-Application konsumiert REST-APIs des FastAPI-Backends.
 - FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
 - OpenSearch dient als performanter Query-Index, MongoDB hält Normalformdaten und Jobzustand.
-- Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
+- Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
 - Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
 
 ## Deployment-Topologie
@@ -56,7 +56,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 
 ### API-Schicht
 
-14 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+15 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
 - `status.py` — Health Check / Liveness Probe, Scanner-Health
 - `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse
 - `cwe.py` — CWE-Abfragen (einzeln & bulk)
@@ -65,12 +65,13 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 8 externen Qu
 - `assets.py` — Asset-Katalog (Vendoren, Produkte, Versionen)
 - `stats.py` — Statistik-Aggregationen
 - `backup.py` — Streaming Export/Import
-- `sync.py` — Manuelle Sync-Trigger für alle 8 Datenquellen
+- `sync.py` — Manuelle Sync-Trigger für alle 9 Datenquellen
 - `saved_searches.py` — Gespeicherte Suchen (CRUD)
 - `audit.py` — Ingestion-Logs
 - `changelog.py` — Letzte Änderungen
 - `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export, Layer-Analyse)
 - `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
+- `events.py` — Server-Sent Events (SSE) Stream
 
 Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
 
@@ -106,6 +107,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
 | CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories (Hybrid: reichert CVEs an + erstellt GHSA-only-Einträge) |
+| OSV | OSV.dev GCS Bucket + REST-API | 120 min | OSV-Schwachstellen (Hybrid: reichert CVEs an + erstellt MAL-/PYSEC-/OSV-Einträge, 11 Ökosysteme) |
 
 - Alle Pipelines unterstützen inkrementelle und initiale Syncs.
 - **EUVD Pipeline:** Liest paginiert, gleicht CVE-IDs ab, reichert mit NVD- und KEV-Daten an, pflegt Change-Historie, aktualisiert OpenSearch-Index + Mongo-Dokumente.
@@ -116,7 +118,8 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **CAPEC Pipeline:** Parst MITRE CAPEC XML, erstellt Angriffsmuster-Einträge mit CWE-Zuordnung.
 - **CIRCL Pipeline:** Liest zusätzliche Schwachstelleninformationen von CIRCL und reichert bestehende Datensätze an.
 - **GHSA Pipeline:** Synchronisiert GitHub Security Advisories. Hybrid: Advisories mit CVE-ID enrichen bestehende CVE-Dokumente oder erstellen neue CVE-Dokumente (Pre-Fill). Advisories ohne CVE-ID erstellen eigenständige GHSA-Einträge. Aliases stammen nur aus `identifiers`-Array, nicht aus Referenz-URLs.
-- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA, EUVD → EUVD, GHSA → GHSA-API). Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) löscht Dokument und ruft es neu ab.
+- **OSV Pipeline:** Synchronisiert OSV.dev-Schwachstellen. Initial-Sync über GCS Bucket ZIP-Exporte, inkrementeller Sync über `modified_id.csv` + REST-API. Hybrid wie GHSA: Records mit CVE-Alias enrichen CVE-Dokumente, Records ohne CVE-Alias (MAL-*, PYSEC-*, etc.) erstellen eigenständige OSV-Einträge. ID-Priorität: CVE > GHSA > OSV ID. 11 Ökosysteme (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions).
+- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA+OSV, EUVD → EUVD, GHSA → GHSA-API). OSV-Refresh für alle ID-Typen verfügbar. Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) löscht Dokument und ruft es neu ab.
 
 ### Datenbeziehungen
 - CVE → CWE: Aus NVD `weaknesses`-Array, gespeichert auf `VulnerabilityDocument`.
@@ -124,8 +127,8 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - CAPEC-IDs werden NICHT auf `VulnerabilityDocument` gespeichert; Auflösung erfolgt zur Anzeigezeit.
 
 ### Scheduler & Job-Tracking
-- `SchedulerManager` initialisiert APScheduler (AsyncIO) mit Intervallen für alle 8 Datenquellen + optionalem SCA Auto-Scan.
-- Initial-Bootstrap läuft beim Start einmalig (EUVD, CPE, NVD, KEV, CWE, CAPEC, GHSA) und wird in `IngestionStateRepository` (Mongo) als abgeschlossen markiert.
+- `SchedulerManager` initialisiert APScheduler (AsyncIO) mit Intervallen für alle 9 Datenquellen + optionalem SCA Auto-Scan.
+- Initial-Bootstrap läuft beim Start einmalig (EUVD, CPE, NVD, KEV, CWE, CAPEC, GHSA, OSV) und wird in `IngestionStateRepository` (Mongo) als abgeschlossen markiert.
 - CIRCL hat keinen Bootstrap-Job, da es nur bestehende Datensätze anreichert.
 - `JobTracker` aktualisiert Laufzeitstatus, setzt Overdue-Flags und persistiert Fortschritt im Audit-Log.
 - Startup-Cleanup markiert Zombie-Jobs (Running-Status bei Neustart) als abgebrochen.
@@ -174,7 +177,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Image-Pull:** Scanner-Tools ziehen Container-Images direkt über Registry-APIs (kein Docker-Socket). Dive nutzt Skopeo zum Image-Pull als docker-archive.
 - **Registry-Auth:** Konfigurierbar über `SCANNER_AUTH` Umgebungsvariable.
 - **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON, Hecate-JSON, Dockle-JSON, Dive-JSON, Semgrep-JSON, TruffleHog-JSON werden in einheitliche Modelle überführt.
-- **Hecate Analyzer:** Eigener SBOM-Extraktor (18 Parser, 12 Ökosysteme: Docker, npm, Python, Go, Rust, Ruby, PHP, Java, .NET, Swift, Elixir, Dart, CocoaPods) + Malware-Detektor (34 Regeln, HEC-001 bis HEC-090) + Provenance-Verifikation (8 Ökosysteme: npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker).
+- **Hecate Analyzer:** Eigener SBOM-Extraktor (18 Parser, 12 Ökosysteme: Docker, npm, Python, Go, Rust, Ruby, PHP, Java, .NET, Swift, Elixir, Dart, CocoaPods) + Malware-Detektor (35 Regeln, HEC-001 bis HEC-091) + Provenance-Verifikation (8 Ökosysteme: npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker).
 - **Dockle:** CIS Docker Benchmark Linter — prüft Container-Images auf Best Practices (~21 Checkpoints). Ergebnisse als `ScanFindingDocument` mit `package_type="compliance-check"`, werden nicht in Vulnerability-Summary gezählt. Nur für Container-Images, opt-in.
 - **Dive:** Docker-Image-Schichtanalyse — Effizienz, verschwendeter Speicher, Layer-Aufschlüsselung. Ergebnisse in separater `scan_layer_analysis` Collection. Nur für Container-Images, opt-in.
 - **Semgrep:** SAST-Scanner für Code-Schwachstellen (SQLi, XSS, Command Injection etc.). Ergebnisse als `ScanFindingDocument` mit `package_type="sast-finding"`. Konfigurierbare Rulesets via `SEMGREP_RULES` (Default: `p/security-audit`). Nur für Source-Repos.
@@ -226,6 +229,7 @@ poetry run python -m app.cli sync-cwe [--initial]
 poetry run python -m app.cli sync-capec [--initial]
 poetry run python -m app.cli sync-circl [--limit N]
 poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
+poetry run python -m app.cli sync-osv [--limit N] [--initial]
 poetry run python -m app.cli reindex-opensearch
 ```
 
@@ -305,7 +309,7 @@ Alle Quellen werden über `normalizer.py` in ein einheitliches `VulnerabilityDoc
 Scheduler / CLI
       │
       v
-Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA)
+Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
       │
       ├──> Normalizer ──> VulnerabilityDocument
       │                         │
@@ -335,6 +339,7 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA)
 | CAPEC (MITRE) | XML-Download | Angriffsmuster (`capec.mitre.org`) |
 | CIRCL | REST-API | Zusätzliche Schwachstelleninformationen (`vulnerability.circl.lu`) |
 | GHSA (GitHub) | REST-API | GitHub Security Advisories (`api.github.com`) |
+| OSV (OSV.dev) | GCS Bucket + REST-API | OSV-Schwachstellen (`storage.googleapis.com/osv-vulnerabilities`, 11 Ökosysteme) |
 | OpenAI | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
 | Anthropic | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
 | Google Gemini | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |

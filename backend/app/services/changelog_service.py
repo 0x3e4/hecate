@@ -42,32 +42,19 @@ class ChangelogService:
             # Build optional filters
             query_filter: dict = {}
             if from_date or to_date:
+                # Filter on last_change_at (denormalized, indexed) so the date
+                # range reflects when changes actually happened.
                 date_constraint: dict = {}
                 if from_date:
                     date_constraint["$gte"] = from_date
                 if to_date:
                     date_constraint["$lte"] = to_date
-                query_filter["ingested_at"] = date_constraint
+                query_filter["last_change_at"] = date_constraint
             if source:
-                # Filter by the *most recent* change_history entry's job_name
-                # (not the vulnerability's primary source) so enrichment-only
-                # jobs like KEV and CIRCL show their changes correctly, and
-                # e.g. NVD filter doesn't include entries last touched by CIRCL.
+                # Use the denormalized last_change_job field (indexed) instead of
+                # an expensive $expr scan over the change_history array.
                 source_lower = source.lower()
-                query_filter["$expr"] = {
-                    "$let": {
-                        "vars": {
-                            "last": {"$arrayElemAt": [{"$ifNull": ["$change_history", []]}, -1]},
-                        },
-                        "in": {
-                            "$regexMatch": {
-                                "input": {"$ifNull": [{"$getField": {"field": "job_name", "input": "$$last"}}, ""]},
-                                "regex": f"^{source_lower}_",
-                                "options": "i",
-                            }
-                        },
-                    }
-                }
+                query_filter["last_change_job"] = {"$regex": f"^{source_lower}_", "$options": "i"}
 
             # Only fetch the fields we need to improve performance
             projection = {
@@ -75,12 +62,13 @@ class ChangelogService:
                 "title": 1,
                 "source": 1,
                 "ingested_at": 1,
+                "last_change_at": 1,
                 "modified": 1,
                 "cvss.base_score": 1,
                 "cvss.severity": 1,
                 "change_history": 1,
             }
-            cursor = collection.find(query_filter, projection).sort("ingested_at", -1).skip(offset).limit(limit)
+            cursor = collection.find(query_filter, projection).sort("last_change_at", -1).skip(offset).limit(limit)
             documents = await cursor.to_list(length=limit)
 
             # Use count_documents when a filter is active for accuracy,
@@ -97,61 +85,65 @@ class ChangelogService:
                 try:
                     cvss_data = doc.get("cvss", {}) or {}
 
-                    # Determine change type based on modified vs ingested_at
                     ingested_at = doc.get("ingested_at")
-                    modified = doc.get("modified")
 
-                    log.debug(f"Processing doc {doc.get('_id')}: ingested_at={ingested_at}, modified={modified}")
+                    # Derive change_type and timestamp from the latest
+                    # change_history entry when available; fall back to
+                    # the ingested_at / modified heuristic.
+                    change_history = doc.get("change_history", [])
+                    latest_ch = None
+                    if change_history and isinstance(change_history, list):
+                        sorted_ch = sorted(
+                            [h for h in change_history if isinstance(h, dict) and h.get("changed_at")],
+                            key=lambda x: x["changed_at"],
+                            reverse=True,
+                        )
+                        if sorted_ch:
+                            latest_ch = sorted_ch[0]
 
-                    # If modified exists and is significantly different from ingested_at, it's an update
-                    change_type = "created"
-                    timestamp = ingested_at if ingested_at else datetime.now()
+                    # Use last_change_at (matches the date filter), fall back to ingested_at
+                    last_change_at = doc.get("last_change_at")
+                    timestamp = last_change_at if isinstance(last_change_at, datetime) else (ingested_at if ingested_at else datetime.now())
 
-                    if modified and ingested_at:
-                        # If modified is more than 1 hour after ingested_at, consider it an update
-                        if isinstance(modified, datetime) and isinstance(ingested_at, datetime):
-                            time_diff = (modified - ingested_at).total_seconds()
-                            if abs(time_diff) > 3600:  # More than 1 hour difference
-                                change_type = "updated"
-                                # Keep timestamp as ingested_at (don't change to modified)
+                    if latest_ch:
+                        ch_type = latest_ch.get("change_type", "")
+                        change_type = "created" if ch_type == "create" else "updated"
+                    else:
+                        change_type = "created"
+                        modified = doc.get("modified")
+                        if modified and ingested_at:
+                            if isinstance(modified, datetime) and isinstance(ingested_at, datetime):
+                                if abs((modified - ingested_at).total_seconds()) > 3600:
+                                    change_type = "updated"
 
                     # Ensure timestamp is a datetime object
                     if not isinstance(timestamp, datetime):
                         log.warning(f"Timestamp is not datetime: {type(timestamp)}, converting")
                         timestamp = datetime.now()
 
-                    # Get latest change history entry
+                    # Build latest_change from the entry we already resolved above
                     latest_change = None
-                    change_history = doc.get("change_history", [])
-                    if change_history and isinstance(change_history, list) and len(change_history) > 0:
-                        # Sort by changed_at to get the most recent
-                        sorted_history = sorted(
-                            [h for h in change_history if h.get("changed_at")],
-                            key=lambda x: x.get("changed_at"),
-                            reverse=True
-                        )
-                        if sorted_history:
-                            latest = sorted_history[0]
-                            fields_data = latest.get("fields", [])
-                            fields = []
-                            if isinstance(fields_data, list):
-                                for field in fields_data:
-                                    if isinstance(field, dict):
-                                        fields.append(
-                                            ChangeHistoryField(
-                                                name=str(field.get("name", "")),
-                                                previous=field.get("previous"),
-                                                current=field.get("current"),
-                                            )
+                    if latest_ch:
+                        fields_data = latest_ch.get("fields", [])
+                        fields = []
+                        if isinstance(fields_data, list):
+                            for field in fields_data:
+                                if isinstance(field, dict):
+                                    fields.append(
+                                        ChangeHistoryField(
+                                            name=str(field.get("name", "")),
+                                            previous=field.get("previous"),
+                                            current=field.get("current"),
                                         )
+                                    )
 
-                            latest_change = LatestChange(
-                                changed_at=latest.get("changed_at").isoformat() if isinstance(latest.get("changed_at"), datetime) else str(latest.get("changed_at")),
-                                change_type=str(latest.get("change_type", "")),
-                                job_name=str(latest.get("job_name", "")),
-                                job_label=str(latest.get("job_label")) if latest.get("job_label") else None,
-                                fields=fields,
-                            )
+                        latest_change = LatestChange(
+                            changed_at=latest_ch["changed_at"].isoformat() if isinstance(latest_ch["changed_at"], datetime) else str(latest_ch["changed_at"]),
+                            change_type=str(latest_ch.get("change_type", "")),
+                            job_name=str(latest_ch.get("job_name", "")),
+                            job_label=str(latest_ch.get("job_label")) if latest_ch.get("job_label") else None,
+                            fields=fields,
+                        )
 
                     entry = ChangelogEntry(
                         vuln_id=str(doc.get("_id", "")),

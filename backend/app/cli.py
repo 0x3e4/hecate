@@ -8,6 +8,7 @@ from typing import Any
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
+from app.services.ingestion.osv_pipeline import OsvPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.nvd_pipeline import NVDPipeline
 from app.services.ingestion.kev_pipeline import KevPipeline
@@ -31,8 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-ghsa", "reindex-opensearch"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-ghsa, reindex-opensearch).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-ghsa", "sync-osv", "reindex-opensearch"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-ghsa, sync-osv, reindex-opensearch).",
     )
     parser.add_argument(
         "--since",
@@ -126,6 +127,12 @@ def main() -> None:
         effective_limit = args.limit if args.limit is not None else (0 if args.initial else None)
         result = asyncio.run(run_ghsa_sync_once(limit=effective_limit, initial_sync=args.initial))
         print(f"GHSA sync finished: {result}")
+    elif args.command == "sync-osv":
+        if args.since:
+            parser.error("The --since option is not supported for sync-osv.")
+        effective_limit = args.limit if args.limit is not None else (0 if args.initial else None)
+        result = asyncio.run(run_osv_sync_once(limit=effective_limit, initial_sync=args.initial))
+        print(f"OSV sync finished: {result}")
     elif args.command == "reindex-opensearch":
         if args.limit is not None:
             parser.error("The --limit option is not supported for reindex-opensearch.")
@@ -175,6 +182,19 @@ async def run_ghsa_sync_once(
 ) -> dict[str, int]:
     """Run GHSA sync once from CLI."""
     pipeline = GhsaPipeline()
+    try:
+        return await pipeline.sync(limit=limit, initial_sync=initial_sync)
+    finally:
+        await pipeline.close()
+
+
+async def run_osv_sync_once(
+    limit: int | None = None,
+    *,
+    initial_sync: bool = False,
+) -> dict[str, int]:
+    """Run OSV sync once from CLI."""
+    pipeline = OsvPipeline()
     try:
         return await pipeline.sync(limit=limit, initial_sync=initial_sync)
     finally:

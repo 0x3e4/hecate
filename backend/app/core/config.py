@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     ghsa_rate_limit_seconds: float = 1.0
     ghsa_max_records_per_run: OptionalInt = 5000
 
+    osv_base_url: str = "https://api.osv.dev/v1"
+    osv_timeout_seconds: int = 30
+    osv_rate_limit_seconds: float = 0.5
+    osv_max_records_per_run: OptionalInt = 5000
+
     ingestion_user_agent: str = "hecate-ingestion/0.1"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True
@@ -117,6 +122,7 @@ class Settings(BaseSettings):
     scheduler_capec_interval_days: int = 7
     scheduler_circl_interval_minutes: int = 120
     scheduler_ghsa_interval_minutes: int = 120
+    scheduler_osv_interval_minutes: int = 120
 
     # Full sync scheduling (weekly verification runs)
     scheduler_euvd_full_sync_enabled: bool = True

@@ -105,6 +105,16 @@ async def trigger_ghsa_sync(
     return TriggerSyncResponse(**result)
 
 
+@router.post("/trigger/osv", response_model=TriggerSyncResponse)
+async def trigger_osv_sync(
+    request: TriggerSyncRequest = TriggerSyncRequest(),
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger OSV sync (normal or initial)."""
+    result = await service.trigger_osv_sync(initial=request.initial)
+    return TriggerSyncResponse(**result)
+
+
 class ResyncRequest(BaseModel):
     vuln_id: str = Field(alias="vulnId", serialization_alias="vulnId")
 

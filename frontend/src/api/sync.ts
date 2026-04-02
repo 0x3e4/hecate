@@ -46,6 +46,11 @@ export const triggerGhsaSync = async (initial: boolean = false): Promise<Trigger
   return response.data;
 };
 
+export const triggerOsvSync = async (initial: boolean = false): Promise<TriggerSyncResponse> => {
+  const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/osv", { initial } as TriggerSyncRequest);
+  return response.data;
+};
+
 export const resyncVulnerability = async (vulnId: string): Promise<ResyncResponse> => {
   const response = await api.post<ResyncResponse>("/v1/sync/resync", { vulnId });
   return response.data;

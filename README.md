@@ -1,6 +1,6 @@
 # Hecate
 
-Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherung und Analyse von Sicherheitslücken. Die Anwendung sammelt Daten aus 8 externen Quellen (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA), normalisiert sie in ein einheitliches Schema und stellt sie über eine REST-API sowie ein React-Frontend bereit. Zusätzlich können Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
+Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherung und Analyse von Sicherheitslücken. Die Anwendung sammelt Daten aus 9 externen Quellen (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV), normalisiert sie in ein einheitliches Schema und stellt sie über eine REST-API sowie ein React-Frontend bereit. Zusätzlich können Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
 
 ## Architektur
 
@@ -51,7 +51,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   │   ├── repositories/ # Datenzugriffsschicht (Repository-Pattern)
 │   │   ├── schemas/      # API Request/Response Schemata
 │   │   ├── services/     # Business-Logik, AI, Backup, Stats
-│   │   │   ├── ingestion/    # Datenpipelines & Clients (8 Quellen)
+│   │   │   ├── ingestion/    # Datenpipelines & Clients (9 Quellen)
 │   │   │   ├── scheduling/   # APScheduler Job-Verwaltung
 │   │   │   └── http/         # HTTP Rate-Limiting
 │   │   └── utils/        # String- und Request-Hilfsfunktionen
@@ -87,7 +87,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 ## Kernfunktionen
 
 ### Datenaggregation & Automatisierung
-- **8 Datenquellen:** EUVD, NVD, CISA KEV, CPE, CWE (MITRE API), CAPEC (MITRE XML), CIRCL, GHSA (GitHub Advisory)
+- **9 Datenquellen:** EUVD, NVD, CISA KEV, CPE, CWE (MITRE API), CAPEC (MITRE XML), CIRCL, GHSA (GitHub Advisory), OSV (OSV.dev — GCS Bucket + REST-API, 11 Ökosysteme)
 - **APScheduler** steuert periodische Syncs mit konfigurierbaren Intervallen und Bootstrap-on-Startup
 - **Normalisierung:** Alle Quellen werden in ein einheitliches `VulnerabilityDocument`-Schema überführt
 - **Asset-Katalog:** Vendoren, Produkte und Versionen werden aus ingestierten Daten extrahiert
@@ -101,7 +101,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbares Intervall via `SCA_AUTO_SCAN_INTERVAL_MINUTES`, Change-Detection über Image-Digest/Commit-SHA)
 - **SBOM-Generierung:** CycloneDX-Format via Syft
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
-- **Malware-Erkennung:** Hecate Analyzer mit 34 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads)
+- **Malware-Erkennung:** Hecate Analyzer mit 35 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads, SHA-256 Hash-Matching)
 - **Provenance-Verifikation:** Automatische Prüfung der Paketherkunft über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker)
 - **Best Practices:** Dockle prüft CIS Docker Benchmarks (nur Container-Images, opt-in)
 - **Layer-Analyse:** Dive analysiert Image-Schichten auf Effizienz und Verschwendung (nur Container-Images, opt-in)
@@ -145,7 +145,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Backup & Restore** für Schwachstellen (EUVD/NVD/Alle) und gespeicherte Suchen
 - **Gespeicherte Suchen** mit Sidebar-Integration und Audit-Trail
 - **Statistiken** mit OpenSearch-Aggregationen (Mongo-Fallback bei Ausfällen)
-- **Manuelle Sync-Trigger** für alle 8 Datenquellen über die API
+- **Manuelle Sync-Trigger** für alle 9 Datenquellen über die API
 
 ## Schnellstart (Docker Compose)
 
@@ -246,7 +246,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/stats/overview` — Statistik-Aggregationen
 - `GET /api/v1/audit/ingestion` — Audit-Log
 - `GET /api/v1/changelog` — Letzte Änderungen (mit Pagination, Datum- und Source-Filter)
-- `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa)
+- `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa, osv)
 - `POST /api/v1/sync/resync` — Vulnerability löschen und neu von Upstream abrufen
 - `GET/POST /api/v1/backup/...` — Export/Import
 
@@ -262,6 +262,7 @@ poetry run python -m app.cli sync-cwe [--initial]
 poetry run python -m app.cli sync-capec [--initial]
 poetry run python -m app.cli sync-circl [--limit N]
 poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
+poetry run python -m app.cli sync-osv [--limit N] [--initial]
 poetry run python -m app.cli reindex-opensearch
 ```
 
@@ -275,7 +276,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD` |
 | **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
-| **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN` |
+| **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN`, `OSV_BASE_URL`, `OSV_TIMEOUT_SECONDS`, `OSV_RATE_LIMIT_SECONDS`, `OSV_MAX_RECORDS_PER_RUN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
 | **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCANNER_AUTH`, `SEMGREP_RULES`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |

@@ -20,12 +20,16 @@ from app.services.ingestion.circl_pipeline import _build_impacted_products_from_
 from app.services.ingestion.euvd_client import EUVDClient
 from app.services.ingestion.ghsa_client import GhsaClient
 from app.services.ingestion.nvd_client import NVDClient
+from app.services.ingestion.osv_client import OsvClient
 from app.services.ingestion.normalizer import (
     build_document,
     build_document_from_nvd,
     build_document_from_ghsa,
+    build_document_from_osv,
     _extract_ghsa_package_info,
     _extract_ghsa_cvss,
+    _extract_osv_package_info,
+    _extract_osv_cvss,
 )
 from app.utils.strings import slugify
 
@@ -55,6 +59,7 @@ class ManualRefresher:
         self._euvd_client = euvd_client or EUVDClient()
         self._circl_client = circl_client or CirclClient()
         self._ghsa_client = ghsa_client or GhsaClient()
+        self._osv_client = OsvClient()
 
     async def refresh(
         self,
@@ -197,6 +202,14 @@ class ManualRefresher:
                 )
             elif source_upper == "GHSA":
                 return await self._refresh_from_ghsa(
+                    original_identifier=original_identifier,
+                    normalized_identifier=normalized_identifier,
+                    repository=repository,
+                    asset_catalog=asset_catalog,
+                    is_cve=is_cve,
+                )
+            elif source_upper == "OSV":
+                return await self._refresh_from_osv(
                     original_identifier=original_identifier,
                     normalized_identifier=normalized_identifier,
                     repository=repository,
@@ -881,6 +894,172 @@ class ManualRefresher:
             provider="CIRCL",
             status="updated",
             message="Enriched with CIRCL data.",
+        )
+
+    async def _refresh_from_osv(
+        self,
+        *,
+        original_identifier: str,
+        normalized_identifier: str,
+        repository: VulnerabilityRepository,
+        asset_catalog: AssetCatalogService,
+        is_cve: bool,
+    ) -> VulnerabilityRefreshStatus:
+        """Refresh vulnerability data from OSV.dev (supports CVE, GHSA, MAL, PYSEC IDs)."""
+        # OSV API accepts any ID it knows about
+        record = await self._osv_client.fetch_vulnerability(normalized_identifier)
+
+        if not record:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="OSV",
+                status="skipped",
+                message="No record found in OSV.dev.",
+            )
+
+        osv_id = record.get("id")
+        if not isinstance(osv_id, str) or not osv_id.strip():
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="OSV",
+                status="skipped",
+                message="OSV record has no ID.",
+            )
+        raw_osv_id = osv_id.strip()
+
+        # Normalize for lookup
+        _UPPER_PREFIXES = ("GHSA-", "MAL-", "PYSEC-")
+        osv_id_normalized = raw_osv_id.upper() if raw_osv_id.upper().startswith(_UPPER_PREFIXES) else raw_osv_id
+
+        # Determine vuln_id from aliases (prefer CVE > GHSA > OSV ID)
+        cve_alias: str | None = None
+        ghsa_alias: str | None = None
+        aliases_raw = record.get("aliases") or []
+        if isinstance(aliases_raw, list):
+            for alias in aliases_raw:
+                if not isinstance(alias, str) or not alias.strip():
+                    continue
+                upper = alias.strip().upper()
+                if upper.startswith("CVE-") and cve_alias is None:
+                    cve_alias = upper
+                elif upper.startswith("GHSA-") and ghsa_alias is None:
+                    ghsa_alias = upper
+
+        has_cve = cve_alias is not None
+        if has_cve:
+            vuln_id = cve_alias
+        elif ghsa_alias:
+            vuln_id = ghsa_alias
+        else:
+            vuln_id = osv_id_normalized
+
+        # Extract data
+        vendors, products, product_versions, product_version_map, impacted_products = _extract_osv_package_info(record)
+        cvss, cvss_metrics = _extract_osv_cvss(record)
+
+        # References
+        references: list[str] = []
+        refs_raw = record.get("references") or []
+        if isinstance(refs_raw, list):
+            for ref in refs_raw:
+                if isinstance(ref, dict):
+                    url = ref.get("url")
+                    if isinstance(url, str) and url.strip():
+                        references.append(url.strip())
+                elif isinstance(ref, str):
+                    references.append(ref)
+
+        # CWEs
+        cwes: list[str] = []
+        db_specific = record.get("database_specific") or {}
+        cwe_ids = db_specific.get("cwe_ids") or []
+        if isinstance(cwe_ids, list):
+            for cwe_id in cwe_ids:
+                if isinstance(cwe_id, str) and cwe_id.strip():
+                    cwes.append(cwe_id.strip())
+
+        # Aliases
+        aliases: list[str] = [osv_id_normalized]
+        seen_upper: set[str] = {osv_id_normalized.upper()}
+        if has_cve and cve_alias.upper() not in seen_upper:
+            aliases.append(cve_alias)
+            seen_upper.add(cve_alias.upper())
+        if ghsa_alias and ghsa_alias.upper() not in seen_upper:
+            aliases.append(ghsa_alias)
+            seen_upper.add(ghsa_alias.upper())
+        if isinstance(aliases_raw, list):
+            for alias in aliases_raw:
+                if isinstance(alias, str) and alias.strip():
+                    normed = alias.strip().upper() if alias.strip().upper().startswith(_UPPER_PREFIXES + ("CVE-",)) else alias.strip()
+                    if normed.upper() not in seen_upper:
+                        seen_upper.add(normed.upper())
+                        aliases.append(normed)
+
+        # Record assets
+        catalog_result = None
+        try:
+            catalog_result = await asset_catalog.record_assets(
+                vendors=vendors,
+                product_versions=product_version_map,
+                cpes=[],
+                cpe_configurations=None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("manual_refresher.osv_asset_catalog_failed", osv_id=raw_osv_id, error=str(exc))
+
+        change_context = {
+            "job_name": "manual_refresh",
+            "job_label": "Manual Refresh",
+            "metadata": {"trigger": "manual", "provider": "OSV", "identifier": original_identifier},
+        }
+
+        build_result = build_document_from_osv(record, ingested_at=datetime.now(tz=UTC))
+        document = build_result[0] if build_result is not None else None
+
+        result = await repository.upsert_from_osv(
+            vuln_id=vuln_id,
+            osv_id=osv_id_normalized,
+            document=document,
+            vendors=vendors,
+            products=products,
+            product_versions=product_versions,
+            vendor_slugs=catalog_result.vendor_slugs if catalog_result else [slugify(v) or v.lower() for v in vendors],
+            product_slugs=catalog_result.product_slugs if catalog_result else [slugify(p) or p.lower() for p in products],
+            product_version_ids=catalog_result.version_ids if catalog_result else [],
+            impacted_products=impacted_products,
+            references=references,
+            aliases=aliases,
+            cwes=cwes,
+            cvss=cvss,
+            cvss_metrics=cvss_metrics,
+            summary=record.get("summary"),
+            osv_raw=record,
+            change_context=change_context,
+        )
+
+        resolved = vuln_id if vuln_id != original_identifier.upper() else None
+
+        if result == "inserted":
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="OSV",
+                status="inserted",
+                message="Created from OSV record.",
+                resolved_id=resolved,
+            )
+        elif result == "updated":
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="OSV",
+                status="updated",
+                message="Enriched with OSV data.",
+                resolved_id=resolved,
+            )
+        return VulnerabilityRefreshStatus(
+            identifier=original_identifier,
+            provider="OSV",
+            status="skipped",
+            message="No new data from OSV.",
         )
 
     async def _enrich_with_circl(

@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
+from app.services.ingestion.osv_pipeline import OsvPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
 from app.services.ingestion.kev_pipeline import KevPipeline
 from app.services.ingestion.nvd_pipeline import NVDPipeline
@@ -155,6 +156,13 @@ class SchedulerManager:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            _scheduled_osv_sync,
+            trigger=IntervalTrigger(minutes=settings.scheduler_osv_interval_minutes),
+            id="osv_sync",
+            replace_existing=True,
+        )
+
         # EUVD weekly full sync
         if settings.scheduler_euvd_full_sync_enabled:
             self.scheduler.add_job(
@@ -215,6 +223,7 @@ class SchedulerManager:
             ("cwe", "cwe_initial_sync", _initial_cwe_sync, "bootstrap-cwe"),
             ("capec", "capec_initial_sync", _initial_capec_sync, "bootstrap-capec"),
             ("ghsa", "ghsa_initial_sync", _initial_ghsa_sync, "bootstrap-ghsa"),
+            ("osv", "osv_initial_sync", _initial_osv_sync, "bootstrap-osv"),
         )
 
         tasks: list[tuple[str, asyncio.Task[None]]] = []
@@ -579,6 +588,39 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
         event = "scheduler.ghsa_sync_failed" if not initial_sync else "scheduler.ghsa_initial_sync_failed"
         log.exception(event, error=str(exc))
         await _notify_sync_failed("ghsa_sync", str(exc))
+    finally:
+        await pipeline.close()
+
+
+async def _scheduled_osv_sync() -> None:
+    """Scheduled OSV sync job."""
+    if settings.ingestion_bootstrap_on_startup:
+        completed = await _initial_sync_already_completed("osv_initial_sync")
+        if not completed:
+            log.info("scheduler.osv_sync_skipped_initial_sync_incomplete")
+            return
+    await _execute_osv_sync(initial_sync=False)
+
+
+async def _initial_osv_sync() -> None:
+    """Initial OSV sync on startup."""
+    await _execute_osv_sync(initial_sync=True)
+
+
+async def _execute_osv_sync(*, initial_sync: bool) -> None:
+    """Execute OSV sync."""
+    pipeline = OsvPipeline()
+    try:
+        limit = 0 if initial_sync else None
+        result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        event = "scheduler.osv_sync_completed" if not initial_sync else "scheduler.osv_initial_sync_completed"
+        log.info(event, **result)
+        await _notify_new_vulnerabilities("OSV", result.get("created", 0))
+        await _evaluate_watch_rules_after_pipeline("OSV")
+    except Exception as exc:  # noqa: BLE001
+        event = "scheduler.osv_sync_failed" if not initial_sync else "scheduler.osv_initial_sync_failed"
+        log.exception(event, error=str(exc))
+        await _notify_sync_failed("osv_sync", str(exc))
     finally:
         await pipeline.close()
 

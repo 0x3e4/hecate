@@ -2286,3 +2286,310 @@ def build_document_from_ghsa(
         raw={"ghsa": advisory},
     )
     return document, product_version_map
+
+
+# ---------------------------------------------------------------------------
+# OSV.dev helpers
+# ---------------------------------------------------------------------------
+
+# Mapping from OSV ecosystem names to display names
+_OSV_ECOSYSTEM_MAP: dict[str, str] = {
+    "npm": "npm",
+    "PyPI": "pip",
+    "Go": "Go",
+    "Maven": "Maven",
+    "RubyGems": "RubyGems",
+    "crates.io": "Cargo",
+    "NuGet": "NuGet",
+    "Packagist": "Packagist",
+    "Pub": "Pub",
+    "Hex": "Hex",
+}
+
+
+def _extract_osv_package_info(
+    osv_record: dict[str, Any],
+) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[dict[str, Any]]]:
+    """
+    Extract vendor/product/version info and impactedProducts from an OSV record.
+
+    Returns: (vendors, products, product_versions, product_version_map, impacted_products)
+    """
+    vendors: set[str] = set()
+    products: set[str] = set()
+    versions: set[str] = set()
+    product_version_map: dict[str, set[str]] = {}
+    impacted_products: list[dict[str, Any]] = []
+
+    affected = osv_record.get("affected") or []
+    if not isinstance(affected, list):
+        return [], [], [], {}, []
+
+    for entry in affected:
+        if not isinstance(entry, dict):
+            continue
+
+        pkg = entry.get("package") or {}
+        ecosystem = pkg.get("ecosystem")
+        package_name = pkg.get("name")
+
+        if not isinstance(package_name, str) or not package_name.strip():
+            continue
+
+        package_name = package_name.strip()
+        ecosystem_name = _OSV_ECOSYSTEM_MAP.get(ecosystem, ecosystem) if isinstance(ecosystem, str) else "Unknown"
+
+        vendors.add(ecosystem_name)
+        products.add(package_name)
+
+        # Collect version strings
+        ver_strings: list[str] = []
+        patched_versions: list[str] = []
+
+        # Explicit versions list
+        explicit_versions = entry.get("versions") or []
+        if isinstance(explicit_versions, list):
+            for v in explicit_versions:
+                if isinstance(v, str) and v.strip():
+                    versions.add(v.strip())
+                    bucket = product_version_map.setdefault(package_name, set())
+                    bucket.add(v.strip())
+
+        # Version ranges (SEMVER / ECOSYSTEM / GIT)
+        ranges = entry.get("ranges") or []
+        if isinstance(ranges, list):
+            for range_obj in ranges:
+                if not isinstance(range_obj, dict):
+                    continue
+                events = range_obj.get("events") or []
+                introduced = None
+                fixed = None
+                for event in events:
+                    if not isinstance(event, dict):
+                        continue
+                    if "introduced" in event:
+                        introduced = event["introduced"]
+                    if "fixed" in event:
+                        fixed = event["fixed"]
+
+                if introduced is not None:
+                    range_str = f">={introduced}"
+                    if fixed is not None:
+                        range_str += f" <{fixed}"
+                        patched_versions.append(str(fixed))
+                    ver_strings.append(range_str)
+
+        vendor_slug = slugify(ecosystem_name) or ecosystem_name.lower()
+        product_slug = slugify(package_name) or package_name.lower()
+
+        impacted_products.append({
+            "vendor": {"name": ecosystem_name, "slug": vendor_slug},
+            "product": {"name": package_name, "slug": product_slug},
+            "versions": ver_strings,
+            "patchedVersions": patched_versions,
+            "vulnerable": True,
+            "environments": [ecosystem_name],
+        })
+
+    return sorted(vendors), sorted(products), sorted(versions), product_version_map, impacted_products
+
+
+def _extract_osv_cvss(
+    osv_record: dict[str, Any],
+) -> tuple[CvssScore, dict[str, list[dict[str, Any]]]]:
+    """Extract CVSS score and metrics from an OSV record."""
+    cvss = CvssScore()
+    cvss_metrics: dict[str, list[dict[str, Any]]] = {}
+
+    severity_entries = osv_record.get("severity") or []
+    if not isinstance(severity_entries, list):
+        severity_entries = []
+
+    for sev in severity_entries:
+        if not isinstance(sev, dict):
+            continue
+        sev_type = sev.get("type")
+        score_str = sev.get("score")
+        if not isinstance(score_str, str):
+            continue
+
+        if sev_type == "CVSS_V3":
+            parsed = _parse_cvss_vector_string(score_str)
+            version = parsed.get("version", "3.1")
+            severity_label = None
+            # Try to infer severity from the vector components
+            base_score_str = parsed.get("baseScore")
+            base_score: float | None = None
+            if isinstance(base_score_str, str):
+                try:
+                    base_score = float(base_score_str)
+                except (ValueError, TypeError):
+                    pass
+            severity_label = _infer_severity_from_score(base_score, version) if base_score else None
+            cvss = CvssScore(
+                version=version,
+                base_score=base_score,
+                vector=score_str,
+                severity=severity_label,
+            )
+            version_key = "v31" if version in ("3.0", "3.1") else f"v{version.replace('.', '')}"
+            entry: dict[str, Any] = {"source": "OSV", "type": "Primary"}
+            data: dict[str, Any] = {"vectorString": score_str, "version": version}
+            if base_score is not None:
+                data["baseScore"] = base_score
+            if severity_label:
+                data["baseSeverity"] = severity_label
+            entry["data"] = data
+            cvss_metrics[version_key] = [entry]
+
+        elif sev_type == "CVSS_V4":
+            entry_v4: dict[str, Any] = {"source": "OSV", "type": "Primary"}
+            data_v4: dict[str, Any] = {"vectorString": score_str, "version": "4.0"}
+            entry_v4["data"] = data_v4
+            cvss_metrics["v40"] = [entry_v4]
+            if cvss.base_score is None:
+                cvss = CvssScore(
+                    version="4.0",
+                    base_score=None,
+                    vector=score_str,
+                    severity=None,
+                )
+
+    # Fall back to database_specific severity
+    if cvss.base_score is None and cvss.severity is None:
+        db_specific = osv_record.get("database_specific") or {}
+        sev_str = db_specific.get("severity")
+        if isinstance(sev_str, str) and sev_str.lower() in ("critical", "high", "medium", "low"):
+            cvss = CvssScore(severity=sev_str.lower())
+
+    return cvss, cvss_metrics
+
+
+def build_document_from_osv(
+    osv_record: dict[str, Any],
+    *,
+    ingested_at: datetime,
+) -> tuple[VulnerabilityDocument, dict[str, set[str]]] | None:
+    """
+    Build a VulnerabilityDocument from an OSV.dev record.
+    Used for standalone OSV entries (MAL-*, PYSEC-*, etc. without CVE alias).
+
+    Returns (document, product_version_map) or None if record is invalid.
+    """
+    raw_osv_id = osv_record.get("id")
+    if not isinstance(raw_osv_id, str) or not raw_osv_id.strip():
+        return None
+    raw_osv_id = raw_osv_id.strip()  # original case — preserved for source_id / URLs
+
+    # Normalize GHSA/MAL/PYSEC prefixed IDs to uppercase (matches GHSA pipeline convention)
+    _UPPER_PREFIXES = ("GHSA-", "MAL-", "PYSEC-")
+    osv_id = raw_osv_id.upper() if raw_osv_id.upper().startswith(_UPPER_PREFIXES) else raw_osv_id
+
+    # Determine vuln_id: use CVE alias if available, otherwise OSV ID
+    aliases_raw = osv_record.get("aliases") or []
+    if not isinstance(aliases_raw, list):
+        aliases_raw = []
+
+    cve_alias: str | None = None
+    ghsa_alias: str | None = None
+    for alias in aliases_raw:
+        if not isinstance(alias, str) or not alias.strip():
+            continue
+        upper = alias.strip().upper()
+        if upper.startswith("CVE-") and cve_alias is None:
+            cve_alias = upper
+        elif upper.startswith("GHSA-") and ghsa_alias is None:
+            ghsa_alias = upper
+
+    # Prefer CVE > GHSA > OSV ID as canonical document ID
+    if cve_alias:
+        vuln_id = cve_alias
+    elif ghsa_alias:
+        vuln_id = ghsa_alias
+    else:
+        vuln_id = osv_id
+
+    title = vuln_id
+
+    summary = osv_record.get("details") or osv_record.get("summary") or vuln_id
+    if isinstance(summary, str) and len(summary) > 10000:
+        summary = summary[:10000]
+
+    # References
+    references: list[str] = []
+    refs_raw = osv_record.get("references") or []
+    if isinstance(refs_raw, list):
+        for ref in refs_raw:
+            if isinstance(ref, dict):
+                url = ref.get("url")
+                if isinstance(url, str) and url.strip():
+                    references.append(url.strip())
+            elif isinstance(ref, str):
+                references.append(ref)
+
+    # CWEs from database_specific
+    cwes: list[str] = []
+    db_specific = osv_record.get("database_specific") or {}
+    cwe_ids = db_specific.get("cwe_ids") or []
+    if isinstance(cwe_ids, list):
+        for cwe_id in cwe_ids:
+            if isinstance(cwe_id, str) and cwe_id.strip():
+                cwes.append(cwe_id.strip())
+
+    # Aliases (case-insensitive dedup)
+    aliases: list[str] = []
+    seen_upper: set[str] = {vuln_id.upper()}
+    if osv_id.upper() != vuln_id.upper():
+        aliases.append(osv_id)
+        seen_upper.add(osv_id.upper())
+    for alias in aliases_raw:
+        if isinstance(alias, str) and alias.strip():
+            normed = alias.strip().upper() if alias.strip().upper().startswith(("GHSA-", "MAL-", "PYSEC-", "CVE-")) else alias.strip()
+            if normed.upper() not in seen_upper:
+                seen_upper.add(normed.upper())
+                aliases.append(normed)
+
+    # CVSS
+    cvss, cvss_metrics = _extract_osv_cvss(osv_record)
+
+    # Package info
+    vendors, products, product_versions, product_version_map, impacted_products = _extract_osv_package_info(osv_record)
+
+    # Timestamps
+    published = _parse_datetime(osv_record.get("published"), allow_none=True)
+    modified = _parse_datetime(osv_record.get("modified"), fallback=published, allow_none=True)
+
+    # Withdrawn check
+    rejected = osv_record.get("withdrawn") is not None
+
+    document = VulnerabilityDocument.model_construct(
+        vuln_id=vuln_id,
+        source_id=raw_osv_id,
+        source="OSV",
+        title=title,
+        summary=summary,
+        references=references,
+        cwes=cwes,
+        cpes=[],
+        cpe_configurations=[],
+        cpe_version_tokens=[],
+        impacted_products=impacted_products,
+        aliases=aliases,
+        rejected=rejected,
+        assigner=None,
+        exploited=None,
+        epss_score=None,
+        vendors=vendors,
+        products=products,
+        product_versions=product_versions,
+        vendor_slugs=[slugify(v) or v.lower() for v in vendors],
+        product_slugs=[slugify(p) or p.lower() for p in products],
+        product_version_ids=[],
+        cvss=cvss,
+        cvss_metrics=cvss_metrics,
+        published=published,
+        modified=modified,
+        ingested_at=ingested_at.astimezone(UTC),
+        raw={"osv": osv_record},
+    )
+    return document, product_version_map
