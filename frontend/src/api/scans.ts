@@ -65,6 +65,8 @@ export const fetchGlobalFindings = async (params?: {
   search?: string;
   severity?: string;
   targetId?: string;
+  sortBy?: string;
+  sortOrder?: string;
   limit?: number;
   offset?: number;
 }): Promise<ConsolidatedFindingListResponse> => {

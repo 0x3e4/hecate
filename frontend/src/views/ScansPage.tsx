@@ -62,9 +62,12 @@ export const ScansPage = () => {
   // Global findings tab
   const [globalFindings, setGlobalFindings] = useState<ConsolidatedFinding[]>([]);
   const [globalFindingsTotal, setGlobalFindingsTotal] = useState(0);
+  const [findingsLoading, setFindingsLoading] = useState(false);
   const [findingsSearch, setFindingsSearch] = useState("");
   const [findingsSeverity, setFindingsSeverity] = useState<string | null>(null);
   const [findingsTargetId, setFindingsTargetId] = useState<string | null>(null);
+  const [findingsSortBy, setFindingsSortBy] = useState("cvss_score");
+  const [findingsSortOrder, setFindingsSortOrder] = useState<"asc" | "desc">("desc");
   const [findingsOffset, setFindingsOffset] = useState(0);
   const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
   const findingsLimit = 50;
@@ -74,6 +77,7 @@ export const ScansPage = () => {
   // Global SBOM tab
   const [sbomComponents, setSbomComponents] = useState<ConsolidatedSbom[]>([]);
   const [sbomTotal, setSbomTotal] = useState(0);
+  const [sbomLoading, setSbomLoading] = useState(false);
   const [sbomSearch, setSbomSearch] = useState("");
   const [sbomType, setSbomType] = useState<string | null>(null);
   const [sbomTargetId, setSbomTargetId] = useState<string | null>(null);
@@ -163,12 +167,15 @@ export const ScansPage = () => {
   // Debounced fetch for global findings tab
   useEffect(() => {
     if (tab !== "findings") return;
+    setFindingsLoading(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetchGlobalFindings({
           search: findingsSearchRef.current || undefined,
           severity: findingsSeverity || undefined,
           targetId: findingsTargetId || undefined,
+          sortBy: findingsSortBy,
+          sortOrder: findingsSortOrder,
           limit: findingsLimit,
           offset: findingsOffset,
         });
@@ -176,14 +183,17 @@ export const ScansPage = () => {
         setGlobalFindingsTotal(res.total);
       } catch (err) {
         console.error("Failed to load global findings", err);
+      } finally {
+        setFindingsLoading(false);
       }
     }, findingsSearch ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [tab, findingsSearch, findingsSeverity, findingsTargetId, findingsOffset]);
+  }, [tab, findingsSearch, findingsSeverity, findingsTargetId, findingsSortBy, findingsSortOrder, findingsOffset]);
 
   // Debounced fetch for global SBOM tab
   useEffect(() => {
     if (tab !== "sbom") return;
+    setSbomLoading(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetchGlobalSbom({
@@ -197,6 +207,8 @@ export const ScansPage = () => {
         setSbomTotal(res.total);
       } catch (err) {
         console.error("Failed to load global SBOM", err);
+      } finally {
+        setSbomLoading(false);
       }
     }, sbomSearch ? 300 : 0);
     return () => clearTimeout(timer);
@@ -645,7 +657,7 @@ export const ScansPage = () => {
         {tab === "findings" && (
           <div>
             {/* Filter bar */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+            <div className="findings-filter-bar" style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
               <input
                 type="text"
                 value={findingsSearch}
@@ -662,10 +674,12 @@ export const ScansPage = () => {
                   maxWidth: "400px",
                   minWidth: 0,
                   outline: "none",
+                  height: "32px",
+                  boxSizing: "border-box",
                 }}
               />
               {/* Severity filter buttons */}
-              <div style={{ display: "flex", gap: "0.25rem" }}>
+              <div className="findings-severity-buttons" style={{ display: "flex", gap: "0.25rem" }}>
                 {([
                   { value: null, label: t("All", "Alle") },
                   { value: "critical", label: "Critical" },
@@ -682,7 +696,7 @@ export const ScansPage = () => {
                       type="button"
                       onClick={() => { setFindingsSeverity(value); setFindingsOffset(0); }}
                       style={{
-                        padding: "0.25rem 0.5rem",
+                        padding: "0 0.5rem",
                         borderRadius: "4px",
                         border: `1px solid ${active ? color : "rgba(255,255,255,0.1)"}`,
                         background: active ? `${color}22` : "transparent",
@@ -690,6 +704,8 @@ export const ScansPage = () => {
                         cursor: "pointer",
                         fontSize: "0.75rem",
                         fontWeight: active ? 600 : 400,
+                        height: "32px",
+                        boxSizing: "border-box",
                       }}
                     >
                       {label}
@@ -700,8 +716,9 @@ export const ScansPage = () => {
               <select
                 value={findingsTargetId || ""}
                 onChange={e => { setFindingsTargetId(e.target.value || null); setFindingsOffset(0); }}
+                className="findings-target-select"
                 style={{
-                  padding: "0.375rem 0.625rem",
+                  padding: "0 0.625rem",
                   borderRadius: "6px",
                   border: "1px solid rgba(255,255,255,0.12)",
                   background: "rgba(255,255,255,0.05)",
@@ -711,6 +728,8 @@ export const ScansPage = () => {
                   cursor: "pointer",
                   minWidth: "140px",
                   maxWidth: "280px",
+                  height: "32px",
+                  boxSizing: "border-box",
                 }}
               >
                 <option value="">{t("All targets", "Alle Ziele")}</option>
@@ -723,7 +742,30 @@ export const ScansPage = () => {
               </span>
             </div>
 
-            {globalFindings.length === 0 && !loading ? (
+            {findingsLoading ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                      {[t("Vulnerability", "Schwachstelle"), t("Package", "Paket"), t("Version", "Version"), t("Severity", "Schweregrad"), "CVSS", t("Fix", "Fix"), t("Scanners", "Scanner"), t("Targets", "Ziele")].map(label => (
+                        <th key={label} style={thStyle}>{label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 10 }).map((_, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                        {Array.from({ length: 8 }).map((_, j) => (
+                          <td key={j} style={tdStyle}>
+                            <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 4 ? "40px" : j === 7 ? "30px" : "60%"} radius={4} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : globalFindings.length === 0 ? (
               <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
                 {findingsSearch || findingsSeverity || findingsTargetId
                   ? t("No findings match your filters.", "Keine Funde entsprechen Ihren Filtern.")
@@ -735,13 +777,38 @@ export const ScansPage = () => {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                                                <th style={thStyle}>{t("Vulnerability", "Schwachstelle")}</th>
-                        <th style={thStyle}>{t("Package", "Paket")}</th>
-                        <th style={thStyle}>{t("Version", "Version")}</th>
-                        <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
-                        <th style={thStyle}>{t("Fix", "Fix")}</th>
-                        <th style={thStyle}>{t("Scanners", "Scanner")}</th>
-                        <th style={thStyle}>{t("Targets", "Ziele")}</th>
+                        {([
+                          { key: "vulnerability_id", label: t("Vulnerability", "Schwachstelle") },
+                          { key: "package_name", label: t("Package", "Paket") },
+                          { key: "package_version", label: t("Version", "Version") },
+                          { key: "severity", label: t("Severity", "Schweregrad") },
+                          { key: "cvss_score", label: "CVSS" },
+                          { key: "fix_version", label: t("Fix", "Fix") },
+                          { key: null as string | null, label: t("Scanners", "Scanner") },
+                          { key: "targets", label: t("Targets", "Ziele") },
+                        ] as const).map(({ key, label }) => (
+                          <th
+                            key={label}
+                            style={{ ...thStyle, cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}
+                            onClick={() => {
+                              if (!key) return;
+                              if (findingsSortBy === key) {
+                                setFindingsSortOrder(prev => prev === "asc" ? "desc" : "asc");
+                              } else {
+                                setFindingsSortBy(key);
+                                setFindingsSortOrder(key === "package_name" || key === "vulnerability_id" ? "asc" : "desc");
+                              }
+                              setFindingsOffset(0);
+                            }}
+                          >
+                            {label}
+                            {key && findingsSortBy === key && (
+                              <span style={{ marginLeft: "0.25rem", fontSize: "0.625rem" }}>
+                                {findingsSortOrder === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -784,6 +851,9 @@ export const ScansPage = () => {
                                   {sev || "unknown"}
                                 </span>
                               </td>
+                              <td style={{ ...tdStyle, fontSize: "0.75rem", fontFamily: "monospace", color: f.cvssScore != null ? "#ffd43b" : "rgba(255,255,255,0.2)" }}>
+                                {f.cvssScore != null ? f.cvssScore.toFixed(1) : "—"}
+                              </td>
                               <td style={{ ...tdStyle, fontSize: "0.75rem", color: f.fixVersion ? "#69db7c" : "rgba(255,255,255,0.25)" }}>
                                 {f.fixVersion || "—"}
                               </td>
@@ -796,11 +866,11 @@ export const ScansPage = () => {
                             </tr>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={7} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500 }}>
+                                <td colSpan={8} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
+                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
                                     {t("Found in targets:", "Gefunden in Zielen:")}
                                   </div>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
                                     {f.targets.map(tgt => {
                                       const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
                                       return (
@@ -937,7 +1007,30 @@ export const ScansPage = () => {
               </span>
             </div>
 
-            {sbomComponents.length === 0 && !loading ? (
+            {sbomLoading ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                      {[t("Component", "Komponente"), t("Version", "Version"), t("Type", "Typ"), t("Provenance", "Herkunft"), t("Licenses", "Lizenzen"), t("Targets", "Ziele")].map(label => (
+                        <th key={label} style={thStyle}>{label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 10 }).map((_, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <td key={j} style={tdStyle}>
+                            <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 3 ? "30px" : j === 5 ? "30px" : "60%"} radius={4} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : sbomComponents.length === 0 ? (
               <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
                 {sbomSearch || sbomType || sbomTargetId
                   ? t("No components match your filters.", "Keine Komponenten entsprechen Ihren Filtern.")
@@ -1005,11 +1098,11 @@ export const ScansPage = () => {
                             </tr>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={6} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500 }}>
+                                <td colSpan={6} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
+                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
                                     {t("Found in targets:", "Gefunden in Zielen:")}
                                   </div>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
                                     {c.targets.map(tgt => {
                                       const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
                                       return (
