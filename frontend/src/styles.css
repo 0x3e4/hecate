@@ -3716,3 +3716,103 @@ table thead th {
     gap: 0.375rem;
   }
 }
+
+/* ── CI/CD Info Page ── */
+.cicd-info-page pre {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 0.5rem 0;
+}
+
+.cicd-info-page code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.cicd-info-page pre code {
+  background: none;
+  padding: 0;
+}
+
+.cicd-info-page table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.cicd-info-page th,
+.cicd-info-page td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cicd-info-page th {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+
+.cicd-info-page h3 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.cicd-info-page h4 {
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── API Info Page ── */
+.api-info-page pre {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 0.5rem 0;
+}
+
+.api-info-page code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.api-info-page pre code {
+  background: none;
+  padding: 0;
+}
+
+.api-info-page table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.api-info-page th,
+.api-info-page td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.api-info-page th {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+

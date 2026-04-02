@@ -90,9 +90,11 @@ src/
 | `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung (inkl. OSV-Trigger), gespeicherte Suchen |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, Scan-Vergleich |
+| `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
+| `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 
 Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
-Die SCA-Scans-Seite wird nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
+Die SCA-Scans-, CI/CD- und API-Seiten werden nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
 
 ## State-Management
 
