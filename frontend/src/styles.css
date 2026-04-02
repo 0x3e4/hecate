@@ -3702,3 +3702,17 @@ table thead th {
 .tabs-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* Scan detail cards: stack badges below content on mobile */
+@media (max-width: 768px) {
+  .scan-card-row {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .scan-card-badges {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+}

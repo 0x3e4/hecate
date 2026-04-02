@@ -1579,7 +1579,7 @@ export const ScanDetailPage = () => {
                         borderRadius: "8px",
                         padding: "1rem",
                       }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                        <div className="scan-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             {/* Title with severity */}
                             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
@@ -1636,7 +1636,7 @@ export const ScanDetailPage = () => {
                           </div>
 
                           {/* Right side badges */}
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
+                          <div className="scan-card-badges" style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
                             {category && (
                               <span style={{
                                 padding: "0.125rem 0.5rem",
@@ -1755,7 +1755,7 @@ export const ScanDetailPage = () => {
                         borderRadius: "8px",
                         padding: "1rem",
                       }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                        <div className="scan-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
                               <span style={{
@@ -1942,7 +1942,7 @@ export const ScanDetailPage = () => {
                         borderRadius: "8px",
                         padding: "1rem",
                       }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                        <div className="scan-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
                               <span style={{
@@ -1975,7 +1975,7 @@ export const ScanDetailPage = () => {
                           </div>
 
                           {/* Right side badges */}
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
+                          <div className="scan-card-badges" style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
                             <span style={{
                               padding: "0.125rem 0.5rem",
                               borderRadius: "4px",

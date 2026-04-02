@@ -334,6 +334,8 @@ def _filter_and_merge_sbom(
     for comp in components:
         if comp.type.lower() == "file":
             continue
+        if not comp.name or not comp.name.strip():
+            continue
         key = f"{comp.name}:{comp.version}"
         if key in merged:
             existing = merged[key]
