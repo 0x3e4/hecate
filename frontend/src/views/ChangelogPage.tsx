@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChangelogEntry, ChangelogResponse, fetchChangelog } from "../api/changelog";
 import { SkeletonBlock } from "../components/Skeleton";
+import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 
@@ -17,6 +18,30 @@ export const ChangelogPage = () => {
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [sourceFilter, setSourceFilter] = useState("");
   const showSkeleton = loading && !data;
+
+  // SSE: refresh changelog when ingestion jobs complete
+  const { jobs: sseJobs } = useSSE();
+  const lastFinishedAt = useRef("");
+  const [sseRefreshKey, setSseRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let latest = "";
+    for (const [, ev] of sseJobs) {
+      if (ev.eventType === "job_completed" && ev.finishedAt && ev.finishedAt > latest) {
+        latest = ev.finishedAt;
+      }
+    }
+    if (latest && latest !== lastFinishedAt.current) {
+      lastFinishedAt.current = latest;
+      setSseRefreshKey((k) => k + 1);
+    }
+  }, [sseJobs]);
+
+  // Polling fallback: SSE may be interrupted by proxies (e.g. Cloudflare)
+  useEffect(() => {
+    const interval = setInterval(() => setSseRefreshKey((k) => k + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     document.title = t("Hecate Cyber Defense - Changelog", "Hecate Cyber Defense - Changelog");
@@ -51,7 +76,7 @@ export const ChangelogPage = () => {
     };
 
     load();
-  }, [t, page, fromDate, toDate, sourceFilter]);
+  }, [t, page, fromDate, toDate, sourceFilter, sseRefreshKey]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
