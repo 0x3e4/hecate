@@ -227,9 +227,14 @@ async def update_target(
     body: dict[str, Any] = None,
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Update target settings (e.g., auto_scan)."""
+    """Update target settings (e.g., auto_scan, scanners)."""
     if body and "autoScan" in body:
         await service.update_target_auto_scan(target_id, bool(body["autoScan"]))
+    if body and "scanners" in body:
+        try:
+            await service.update_target_scanners(target_id, body["scanners"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")

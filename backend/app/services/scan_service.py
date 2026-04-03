@@ -767,9 +767,20 @@ class ScanService:
             "unchanged_count": unchanged_count,
         }
 
+    VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog"}
+
     async def update_target_auto_scan(self, target_id: str, auto_scan: bool) -> bool:
         """Update auto_scan flag on a target."""
         return await self.target_repo.update_auto_scan(target_id, auto_scan)
+
+    async def update_target_scanners(self, target_id: str, scanners: list[str]) -> bool:
+        """Update default scanners on a target."""
+        if not scanners:
+            raise ValueError("At least one scanner must be selected")
+        invalid = set(scanners) - self.VALID_SCANNERS
+        if invalid:
+            raise ValueError(f"Invalid scanners: {', '.join(sorted(invalid))}")
+        return await self.target_repo.update_scanners(target_id, scanners)
 
     async def list_auto_scan_targets(self) -> list[dict[str, Any]]:
         """List all targets with auto_scan enabled."""
