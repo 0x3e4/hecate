@@ -132,7 +132,7 @@ app/
 
 Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregationen. Nested `sources`-Pfad für Quell-Aggregationen. Flaches `sourceNames`-Keyword-Array für DQL-Source-Alias-Suche (`source:X` sucht automatisch in `source` und `sourceNames`).
 
-**Konfiguration:** `max_result_window` = 200.000, `total_fields.limit` = 2.000
+**Konfiguration:** `max_result_window` = 200.000, `total_fields.limit` = 2.000, `OPENSEARCH_VERIFY_CERTS` (SSL-Zertifikatsüberprüfung, Default: false), `OPENSEARCH_CA_CERT` (Pfad zum CA-Zertifikat, optional)
 
 ## Ingestion-Pipelines
 

@@ -20,7 +20,7 @@ src/
 │   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export)
 │   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
 │   └── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
-├── views/                       # Seitenkomponenten (11 Ansichten)
+├── views/                       # Seitenkomponenten (13 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
@@ -31,6 +31,8 @@ src/
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan)
 │   ├── ScanDetailPage.tsx       # Scan-Details (Findings, SBOM mit Export & Stats, Security Alerts, Best Practices, Layer Analysis)
+│   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
+│   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
 │   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
