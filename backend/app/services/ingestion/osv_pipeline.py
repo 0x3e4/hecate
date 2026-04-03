@@ -14,6 +14,7 @@ from app.services.ingestion.osv_client import OsvClient
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.normalizer import (
     build_document_from_osv,
+    extract_osv_downstream_references,
     _extract_osv_package_info,
     _extract_osv_cvss,
 )
@@ -233,6 +234,11 @@ class OsvPipeline:
                         references.append(url.strip())
                 elif isinstance(ref, str):
                     references.append(ref)
+
+        # Add downstream distro reference URLs (Debian, Ubuntu)
+        for downstream_url in extract_osv_downstream_references(record, vuln_id):
+            if downstream_url not in references:
+                references.append(downstream_url)
 
         # Extract CWEs
         cwes: list[str] = []

@@ -2106,6 +2106,8 @@ def _extract_ghsa_cvss(advisory: dict[str, Any]) -> tuple[CvssScore, dict[str, l
     if isinstance(v4_score, (int, float)) and v4_score > 0 and isinstance(v4_vector, str):
         entry_v4: dict[str, Any] = {"source": "GHSA", "type": "Primary"}
         data_v4: dict[str, Any] = {"baseScore": float(v4_score), "version": "4.0", "vectorString": v4_vector}
+        if severity_label:
+            data_v4["baseSeverity"] = severity_label
         entry_v4["data"] = data_v4
         cvss_metrics["v40"] = [entry_v4]
         # Prefer v4 as primary if no v3
@@ -2307,6 +2309,31 @@ _OSV_ECOSYSTEM_MAP: dict[str, str] = {
 }
 
 
+def extract_osv_downstream_references(
+    osv_record: dict[str, Any],
+    vuln_id: str,
+) -> list[str]:
+    """Generate reference URLs from downstream distro entries in the ``related`` field.
+
+    Scans for Debian (DSA-/DLA-) and Ubuntu (USN-) related entries and
+    produces security-tracker URLs.  Does NOT add the distro IDs as aliases.
+    """
+    related = osv_record.get("related") or []
+    if not isinstance(related, list) or not vuln_id.upper().startswith("CVE-"):
+        return []
+
+    refs: list[str] = []
+    has_debian = any(isinstance(r, str) and (r.startswith("DSA-") or r.startswith("DLA-")) for r in related)
+    has_ubuntu = any(isinstance(r, str) and r.startswith("USN-") for r in related)
+
+    if has_debian:
+        refs.append(f"https://security-tracker.debian.org/tracker/{vuln_id}")
+    if has_ubuntu:
+        refs.append(f"https://ubuntu.com/security/{vuln_id}")
+
+    return refs
+
+
 def _extract_osv_package_info(
     osv_record: dict[str, Any],
 ) -> tuple[list[str], list[str], list[str], dict[str, set[str]], list[dict[str, Any]]]:
@@ -2378,6 +2405,10 @@ def _extract_osv_package_info(
                         range_str += f" <{fixed}"
                         patched_versions.append(str(fixed))
                     ver_strings.append(range_str)
+
+        # Fall back to explicit versions if no ranges produced version strings
+        if not ver_strings and explicit_versions:
+            ver_strings = [v.strip() for v in explicit_versions if isinstance(v, str) and v.strip()]
 
         vendor_slug = slugify(ecosystem_name) or ecosystem_name.lower()
         product_slug = slugify(package_name) or package_name.lower()
@@ -2526,6 +2557,11 @@ def build_document_from_osv(
                     references.append(url.strip())
             elif isinstance(ref, str):
                 references.append(ref)
+
+    # Add downstream distro reference URLs (Debian, Ubuntu)
+    for downstream_url in extract_osv_downstream_references(osv_record, vuln_id):
+        if downstream_url not in references:
+            references.append(downstream_url)
 
     # CWEs from database_specific
     cwes: list[str] = []

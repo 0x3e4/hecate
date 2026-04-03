@@ -1,6 +1,10 @@
 import asyncio
+import os
 import ssl
+import warnings
 from typing import Any
+
+from urllib3.exceptions import InsecureRequestWarning
 
 import structlog
 from opensearchpy import OpenSearch, RequestError
@@ -64,21 +68,38 @@ def get_client() -> OpenSearch:
         use_ssl = settings.opensearch_url.startswith("https")
         ssl_context = None
         if use_ssl:
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
+            verify = settings.opensearch_verify_certs
+            if verify and settings.opensearch_ca_cert:
+                if not os.path.isfile(settings.opensearch_ca_cert):
+                    raise FileNotFoundError(
+                        f"OpenSearch CA certificate not found: {settings.opensearch_ca_cert}"
+                    )
+                ssl_context = ssl.create_default_context(cafile=settings.opensearch_ca_cert)
+            elif verify:
+                ssl_context = ssl.create_default_context()
+            else:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+
+            log.info(
+                "opensearch.ssl_configured",
+                verify_certs=verify,
+                ca_cert=settings.opensearch_ca_cert or "system-default",
+            )
 
         _client = OpenSearch(
             hosts=[settings.opensearch_url],
             http_auth=auth,
             use_ssl=use_ssl,
-            verify_certs=False,
+            verify_certs=settings.opensearch_verify_certs,
             ssl_context=ssl_context,
-            ssl_show_warn=False,
-            timeout=10,  # 10 second timeout for queries
+            ssl_show_warn=settings.opensearch_verify_certs,
+            timeout=10,
             max_retries=1,
             retry_on_timeout=False,
-            pool_maxsize=10,  # Maximum connections in the pool
+            pool_maxsize=10,
         )
     return _client
 
