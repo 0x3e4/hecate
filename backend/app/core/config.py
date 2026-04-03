@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     opensearch_index: str = "hecate-vulnerabilities"
     opensearch_index_total_fields_limit: int = 2000
     opensearch_index_max_result_window: int = 200000
+    opensearch_verify_certs: bool = False
+    opensearch_ca_cert: str | None = None
 
     euvd_base_url: str = "https://euvdservices.enisa.europa.eu/api"
     euvd_timeout_seconds: int = 30

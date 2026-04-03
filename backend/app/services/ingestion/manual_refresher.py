@@ -26,6 +26,7 @@ from app.services.ingestion.normalizer import (
     build_document_from_nvd,
     build_document_from_ghsa,
     build_document_from_osv,
+    extract_osv_downstream_references,
     _extract_ghsa_package_info,
     _extract_ghsa_cvss,
     _extract_osv_package_info,
@@ -60,6 +61,28 @@ class ManualRefresher:
         self._circl_client = circl_client or CirclClient()
         self._ghsa_client = ghsa_client or GhsaClient()
         self._osv_client = OsvClient()
+
+    async def _resolve_lookup_alias(
+        self,
+        normalized_identifier: str,
+        repository: VulnerabilityRepository,
+        preferred_prefixes: tuple[str, ...] = ("GHSA-", "MAL-", "CVE-"),
+    ) -> str | None:
+        """Look up an existing document by _id and return the best alias for external API lookups."""
+        doc = await repository.collection.find_one(
+            {"_id": normalized_identifier},
+            {"aliases": 1},
+        )
+        if not doc:
+            return None
+        aliases = doc.get("aliases")
+        if not isinstance(aliases, list):
+            return None
+        for prefix in preferred_prefixes:
+            for alias in aliases:
+                if isinstance(alias, str) and alias.upper().startswith(prefix):
+                    return alias.strip()
+        return None
 
     async def refresh(
         self,
@@ -667,6 +690,20 @@ class ManualRefresher:
             advisory = await self._ghsa_client.fetch_advisory_by_id(upper_normalized)
         elif is_cve:
             advisory = await self._ghsa_client.fetch_advisory_by_cve(upper_normalized)
+        elif EUVD_PATTERN.fullmatch(upper_normalized):
+            # EUVD IDs are not recognized by GHSA API; resolve via stored aliases
+            resolved = await self._resolve_lookup_alias(
+                normalized_identifier, repository, preferred_prefixes=("GHSA-", "CVE-"),
+            )
+            if resolved:
+                resolved_upper = resolved.upper()
+                if GHSA_PATTERN.fullmatch(resolved_upper):
+                    advisory = await self._ghsa_client.fetch_advisory_by_id(resolved_upper)
+                elif CVE_PATTERN.fullmatch(resolved_upper):
+                    advisory = await self._ghsa_client.fetch_advisory_by_cve(resolved_upper)
+
+        # When enriching an EUVD document, keep its _id as vuln_id target
+        euvd_target_id = normalized_identifier if EUVD_PATTERN.fullmatch(upper_normalized) else None
 
         if not advisory:
             return VulnerabilityRefreshStatus(
@@ -688,7 +725,12 @@ class ManualRefresher:
 
         cve_id = advisory.get("cve_id")
         has_cve = isinstance(cve_id, str) and cve_id.strip()
-        vuln_id = cve_id if has_cve else ghsa_id
+        if euvd_target_id:
+            vuln_id = euvd_target_id
+        elif has_cve:
+            vuln_id = cve_id
+        else:
+            vuln_id = ghsa_id
 
         # Extract package info
         vendors, products, product_versions, product_version_map, impacted_products = _extract_ghsa_package_info(advisory)
@@ -906,8 +948,23 @@ class ManualRefresher:
         is_cve: bool,
     ) -> VulnerabilityRefreshStatus:
         """Refresh vulnerability data from OSV.dev (supports CVE, GHSA, MAL, PYSEC IDs)."""
-        # OSV API accepts any ID it knows about
-        record = await self._osv_client.fetch_vulnerability(normalized_identifier)
+        # EUVD IDs are not known to OSV; resolve via stored aliases
+        lookup_id = normalized_identifier
+        euvd_target_id: str | None = None
+        if EUVD_PATTERN.fullmatch(normalized_identifier.upper()):
+            resolved = await self._resolve_lookup_alias(
+                normalized_identifier, repository, preferred_prefixes=("GHSA-", "MAL-", "CVE-"),
+            )
+            if resolved:
+                lookup_id = resolved
+                # Remember the EUVD doc ID so the upsert enriches the correct document
+                euvd_target_id = normalized_identifier
+
+        # OSV API is case-sensitive for GHSA IDs (requires lowercase)
+        if lookup_id.upper().startswith("GHSA-"):
+            lookup_id = lookup_id.lower()
+
+        record = await self._osv_client.fetch_vulnerability(lookup_id)
 
         if not record:
             return VulnerabilityRefreshStatus(
@@ -946,7 +1003,10 @@ class ManualRefresher:
                     ghsa_alias = upper
 
         has_cve = cve_alias is not None
-        if has_cve:
+        if euvd_target_id:
+            # Enriching an existing EUVD document — keep its _id as vuln_id
+            vuln_id = euvd_target_id
+        elif has_cve:
             vuln_id = cve_alias
         elif ghsa_alias:
             vuln_id = ghsa_alias
@@ -968,6 +1028,11 @@ class ManualRefresher:
                         references.append(url.strip())
                 elif isinstance(ref, str):
                     references.append(ref)
+
+        # Add downstream distro reference URLs (Debian, Ubuntu)
+        for downstream_url in extract_osv_downstream_references(record, vuln_id):
+            if downstream_url not in references:
+                references.append(downstream_url)
 
         # CWEs
         cwes: list[str] = []
