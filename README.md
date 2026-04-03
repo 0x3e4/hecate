@@ -61,7 +61,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   ├── src/
 │   │   ├── api/          # Axios-basierte Service-Module
 │   │   ├── components/   # Wiederverwendbare UI-Komponenten
-│   │   ├── views/        # Seitenkomponenten (11 Ansichten)
+│   │   ├── views/        # Seitenkomponenten (13 Ansichten)
 │   │   ├── hooks/        # Custom React Hooks
 │   │   ├── ui/           # Layout-Komponenten (Sidebar, Header)
 │   │   ├── utils/        # CVSS-Parsing, Datumsformatierung
@@ -276,7 +276,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 |-----------|-------------------|
 | **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ` |
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
-| **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD` |
+| **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_VERIFY_CERTS`, `OPENSEARCH_CA_CERT` |
 | **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN`, `OSV_BASE_URL`, `OSV_TIMEOUT_SECONDS`, `OSV_RATE_LIMIT_SECONDS`, `OSV_MAX_RECORDS_PER_RUN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
