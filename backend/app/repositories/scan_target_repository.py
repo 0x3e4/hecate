@@ -144,6 +144,17 @@ class ScanTargetRepository:
             log.warning("scan_target_repository.update_auto_scan_failed", target_id=target_id, error=str(exc))
             return False
 
+    async def update_scanners(self, target_id: str, scanners: list[str]) -> bool:
+        try:
+            result = await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {"scanners": scanners, "updated_at": datetime.now(tz=UTC)}},
+            )
+            return result.modified_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_scanners_failed", target_id=target_id, error=str(exc))
+            return False
+
     async def update_last_fingerprint(
         self, target_id: str, image_digest: str | None = None, commit_sha: str | None = None,
     ) -> None:

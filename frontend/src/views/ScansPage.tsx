@@ -362,6 +362,15 @@ export const ScansPage = () => {
     }
   };
 
+  const handleUpdateScanners = async (targetId: string, newScanners: string[]) => {
+    try {
+      await updateScanTarget(targetId, { scanners: newScanners });
+      setTargets(prev => prev.map((tt: ScanTarget) => tt.id === targetId ? { ...tt, scanners: newScanners } : tt));
+    } catch (err) {
+      console.error("Update scanners failed", err);
+    }
+  };
+
   const isSubmitDisabled =
     scanning
     || scanners.length === 0
@@ -446,7 +455,7 @@ export const ScansPage = () => {
             {!loading && targets.length > 0 && (
               <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
                 {targets.map(target => (
-                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onCancelScan={handleCancelScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setScanOffset(0); setTab("scans"); }} />
+                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onUpdateScanners={handleUpdateScanners} onCancelScan={handleCancelScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setScanOffset(0); setTab("scans"); }} />
                 ))}
               </div>
             )}
@@ -1505,10 +1514,29 @@ export const ScansPage = () => {
 
 // --- Sub-components ---
 
-const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onFilterScans, onCancelScan }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
+const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onFilterScans, onCancelScan }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
   const isRunning = !!target.hasRunningScan;
   const autoScan = target.autoScan !== false; // default true
+  const [editingScanners, setEditingScanners] = useState(false);
+  const [selectedScanners, setSelectedScanners] = useState<string[]>([]);
+
+  const availableScanners = target.type === "container_image"
+    ? ["trivy", "grype", "syft", "dockle", "dive"]
+    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"];
+
+  const startEditing = () => {
+    setSelectedScanners(target.scanners?.length ? [...target.scanners] : []);
+    setEditingScanners(true);
+  };
+
+  const saveScanners = () => {
+    if (selectedScanners.length > 0) {
+      onUpdateScanners(target.id, selectedScanners);
+      setEditingScanners(false);
+    }
+  };
+
   return (
     <div style={{
       padding: "1rem 1.25rem",
@@ -1545,6 +1573,73 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onFilterScan
         {target.id}
       </p>
       {target.latestSummary && <SeverityBadges summary={target.latestSummary} />}
+
+      {/* Scanner pills / editor */}
+      <div style={{ marginTop: "0.625rem" }}>
+        {editingScanners ? (
+          <div style={{ padding: "0.5rem 0" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+              {availableScanners.map(name => (
+                <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", fontSize: "0.75rem", color: "rgba(255,255,255,0.8)" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedScanners.includes(name)}
+                    onChange={() => setSelectedScanners(prev => prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name])}
+                  />
+                  {name}
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: "0.375rem" }}>
+              <button
+                type="button"
+                onClick={saveScanners}
+                disabled={selectedScanners.length === 0}
+                style={{
+                  padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: selectedScanners.length === 0 ? "not-allowed" : "pointer",
+                  background: "rgba(105,219,124,0.15)", border: "1px solid rgba(105,219,124,0.3)", color: "#69db7c",
+                  opacity: selectedScanners.length === 0 ? 0.4 : 1,
+                }}
+              >
+                {t("Save", "Speichern")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingScanners(false)}
+                style={{
+                  padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: "pointer",
+                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)",
+                }}
+              >
+                {t("Cancel", "Abbrechen")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", flexWrap: "wrap" }}>
+            {(target.scanners || []).map(s => (
+              <span key={s} style={{
+                display: "inline-block", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.675rem",
+                background: "rgba(92,132,255,0.1)", border: "1px solid rgba(92,132,255,0.2)", color: "rgba(92,132,255,0.8)",
+              }}>
+                {s}
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={startEditing}
+              title={t("Edit scanners", "Scanner bearbeiten")}
+              style={{
+                background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "rgba(255,255,255,0.35)",
+                cursor: "pointer", fontSize: "0.675rem", padding: "0.1rem 0.35rem", lineHeight: 1,
+              }}
+            >
+              ✎
+            </button>
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
         <div style={{ display: "flex", gap: "1rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
           <span

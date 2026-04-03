@@ -140,7 +140,7 @@ export const deleteScan = async (scanId: string): Promise<void> => {
 
 export const updateScanTarget = async (
   targetId: string,
-  data: { autoScan?: boolean }
+  data: { autoScan?: boolean; scanners?: string[] }
 ): Promise<ScanTarget> => {
   const response = await api.patch<ScanTarget>(
     `/v1/scans/targets/${encodeURIComponent(targetId)}`,
