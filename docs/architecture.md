@@ -205,7 +205,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Channels:** Apprise-URLs mit Tags, gespeichert in MongoDB, konfigurierbar über System-Seite.
 - **Regeln:** Event-basiert (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`) und Watch-basiert (`saved_search`, `vendor`, `product`, `dql`).
 - **Nachrichtenvorlagen:** Anpassbare Titel/Body-Templates pro Event-Typ mit `{placeholder}`-Variablen und `{#each}...{/each}`-Schleifen. Auflösung: exakter Tag-Match → `all`-Fallback → hardcodierter Default.
-- **Watch-Auswertung:** Nach jeder Ingestion werden Watch-Regeln automatisch gegen neue Einträge in OpenSearch evaluiert.
+- **Watch-Auswertung:** Nach jeder Ingestion werden Watch-Regeln automatisch gegen neue Einträge in OpenSearch evaluiert. Zusätzlich erfolgt 30s nach Backend-Start eine einmalige Auswertung, um die Lücke bis zum ersten Scheduler-Lauf abzudecken.
 - Partial Delivery (HTTP 424 von Apprise) wird als Erfolg gewertet.
 
 ### Backup & Restore

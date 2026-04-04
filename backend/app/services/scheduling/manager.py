@@ -60,7 +60,7 @@ async def _evaluate_watch_rules_after_pipeline(source: str) -> None:
         notifier = get_notification_service()
         await notifier.evaluate_watch_rules()
     except Exception:
-        log.debug("scheduler.watch_rule_evaluation_failed", source=source)
+        log.warning("scheduler.watch_rule_evaluation_failed", source=source, exc_info=True)
 
 
 class SchedulerManager:
@@ -97,6 +97,14 @@ class SchedulerManager:
             asyncio.create_task(
                 _delayed_auto_scan_bootstrap(),
                 name="bootstrap-auto-scan",
+            )
+
+        # Evaluate watch rules shortly after startup to cover the gap between
+        # container restart and the first scheduled pipeline run.
+        if settings.notifications_enabled:
+            asyncio.create_task(
+                _delayed_watch_rule_evaluation(),
+                name="bootstrap-watch-rules",
             )
 
     def _schedule_jobs(self) -> None:
@@ -623,6 +631,17 @@ async def _execute_osv_sync(*, initial_sync: bool) -> None:
         await _notify_sync_failed("osv_sync", str(exc))
     finally:
         await pipeline.close()
+
+
+async def _delayed_watch_rule_evaluation() -> None:
+    """Evaluate watch rules once on startup after a short delay.
+
+    Covers the gap between container restart and the first scheduled
+    pipeline run, ensuring any new vulnerabilities trigger notifications.
+    """
+    await asyncio.sleep(30)
+    log.info("scheduler.startup_watch_rule_evaluation")
+    await _evaluate_watch_rules_after_pipeline("startup")
 
 
 async def _delayed_auto_scan_bootstrap() -> None:
