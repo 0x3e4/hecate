@@ -7,6 +7,7 @@ from typing import Any, AsyncIterator
 
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from app.core.config import settings
 from app.mcp.auth import MCPAuthMiddleware
@@ -25,7 +26,15 @@ def get_rate_limiter() -> RateLimiter:
 
 def create_mcp_server() -> FastMCP:
     """Create and configure the MCP server with all tool registrations."""
-    mcp = FastMCP("hecate-vuln-db", stateless_http=True, streamable_http_path="/")
+    # Disable DNS rebinding protection — we have our own auth middleware
+    # and the server runs behind a reverse proxy with varying Host headers.
+    transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    mcp = FastMCP(
+        "hecate-vuln-db",
+        stateless_http=True,
+        streamable_http_path="/mcp",
+        transport_security=transport_security,
+    )
 
     # Register tools from each module
     from app.mcp.tools.vulnerabilities import register as register_vulnerabilities

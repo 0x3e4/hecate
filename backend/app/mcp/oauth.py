@@ -75,6 +75,24 @@ async def oauth_metadata(request: Request) -> JSONResponse:
     })
 
 
+# ---------- Protected Resource Metadata (RFC 9728) ----------
+
+@router.get("/.well-known/oauth-protected-resource")
+async def protected_resource_metadata(request: Request) -> JSONResponse:
+    """OAuth 2.0 Protected Resource Metadata (RFC 9728).
+
+    Returned URL in WWW-Authenticate header tells the client where to find
+    the authorization server metadata.
+    """
+    base = _base_url(request)
+    return JSONResponse({
+        "resource": f"{base}/mcp",
+        "authorization_servers": [base],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp:read", "mcp:write"],
+    })
+
+
 # ---------- Dynamic Client Registration (RFC 7591) ----------
 
 @router.post("/mcp/oauth/register")
@@ -147,47 +165,77 @@ async def authorize(request: Request) -> HTMLResponse:
     if code_challenge_method and code_challenge_method != "S256":
         return HTMLResponse("<h1>Error: Only S256 code challenge method is supported</h1>", status_code=400)
 
-    # Render a simple authorization page
+    # Render authorization page styled to match Hecate UI
     page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hecate MCP — Authorize</title>
+    <title>Hecate Cyber Defense - MCP Authorize</title>
+    <link rel="icon" href="/logo.png" type="image/png">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0d1117; color: #c9d1d9;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #080a12; color: #f5f7fa;
             display: flex; justify-content: center; align-items: center;
             min-height: 100vh; padding: 20px;
         }}
         .card {{
-            background: #161b22; border: 1px solid #30363d; border-radius: 12px;
-            padding: 40px; max-width: 440px; width: 100%;
+            background: #05070d; border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px; padding: 48px; max-width: 440px; width: 100%;
         }}
-        h1 {{ color: #58a6ff; font-size: 24px; margin-bottom: 8px; }}
-        .subtitle {{ color: #8b949e; margin-bottom: 24px; font-size: 14px; }}
-        label {{ display: block; margin-bottom: 6px; font-size: 14px; color: #c9d1d9; }}
+        .branding {{
+            display: flex; align-items: center; gap: 14px; margin-bottom: 8px;
+        }}
+        .branding img {{
+            height: 48px; width: 48px;
+        }}
+        .branding h1 {{
+            font-size: 1.45rem; margin: 0; color: #f5f7fa;
+        }}
+        .subtitle {{
+            color: rgba(255, 255, 255, 0.55); margin-bottom: 28px; font-size: 14px;
+        }}
+        label {{
+            display: block; margin-bottom: 6px; font-size: 14px; color: rgba(255, 255, 255, 0.75);
+        }}
         input[type="password"] {{
-            width: 100%; padding: 10px 14px; background: #0d1117; border: 1px solid #30363d;
-            border-radius: 6px; color: #c9d1d9; font-size: 16px; margin-bottom: 20px;
+            width: 100%; padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px; color: #f5f7fa; font-size: 16px; margin-bottom: 20px;
+            font-family: inherit;
         }}
-        input[type="password"]:focus {{ border-color: #58a6ff; outline: none; }}
+        input[type="password"]:focus {{
+            border-color: #ffd43b; outline: none;
+            box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.15);
+        }}
+        input[type="password"]::placeholder {{ color: rgba(255, 255, 255, 0.3); }}
         button {{
-            width: 100%; padding: 12px; background: #238636; border: none; border-radius: 6px;
-            color: #fff; font-size: 16px; font-weight: 600; cursor: pointer;
+            width: 100%; padding: 12px; border: none; border-radius: 6px;
+            font-size: 16px; font-weight: 600; cursor: pointer;
+            background: rgba(255, 212, 59, 0.35); color: #ffd43b;
+            font-family: inherit; transition: background 0.15s;
         }}
-        button:hover {{ background: #2ea043; }}
-        .error {{ color: #f85149; margin-bottom: 16px; font-size: 14px; display: none; }}
-        .scope-info {{ color: #8b949e; font-size: 13px; margin-bottom: 20px; }}
+        button:hover {{ background: rgba(255, 212, 59, 0.5); }}
+        .scope-info {{
+            color: rgba(255, 255, 255, 0.4); font-size: 13px; margin-bottom: 20px;
+        }}
+        .error-msg {{
+            background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3);
+            border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;
+            color: #f85149; font-size: 14px;
+        }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>Hecate MCP</h1>
+        <div class="branding">
+            <img src="/logo.png" alt="Hecate">
+            <h1>Hecate MCP</h1>
+        </div>
         <p class="subtitle">Authorize access to the vulnerability database</p>
-        <div class="error" id="error">Invalid API key. Please try again.</div>
+        {"<div class='error-msg'>Invalid API key. Please try again.</div>" if request.query_params.get("error") else ""}
         <form method="POST" action="/mcp/oauth/authorize">
             <input type="hidden" name="client_id" value="{html.escape(client_id)}">
             <input type="hidden" name="redirect_uri" value="{html.escape(redirect_uri)}">
@@ -197,7 +245,7 @@ async def authorize(request: Request) -> HTMLResponse:
             <input type="hidden" name="scope" value="{html.escape(scope)}">
             <label for="api_key">MCP API Key</label>
             <input type="password" id="api_key" name="api_key" placeholder="Enter your MCP API key" required autofocus>
-            <p class="scope-info">This will grant read access to vulnerability data.</p>
+            <p class="scope-info">This will grant read access to the Hecate vulnerability database.</p>
             <button type="submit">Authorize</button>
         </form>
     </div>
