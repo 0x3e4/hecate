@@ -34,10 +34,27 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix=settings.api_prefix)
 
+    # Mount MCP server (fail-closed: only if enabled AND API key configured)
+    _mcp_server = None
+    if settings.mcp_enabled and settings.mcp_api_key:
+        from app.mcp.server import create_mcp_app
+        from app.mcp.oauth import router as oauth_router
+
+        # OAuth endpoints must be on the main FastAPI app (not behind auth middleware)
+        app.include_router(oauth_router)
+        # MCP protocol endpoint (behind auth middleware)
+        mcp_asgi, _mcp_server = create_mcp_app()
+        app.mount("/mcp", mcp_asgi)
+
     @app.on_event("startup")
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
         await cleanup_stale_jobs()
         await get_scheduler().start()
+        # Start MCP session manager if MCP is enabled
+        if _mcp_server is not None:
+            import asyncio
+            app.state.mcp_session_cm = _mcp_server.session_manager.run()
+            await app.state.mcp_session_cm.__aenter__()
         # Warm up caches in background to improve first page load
         import asyncio
         asyncio.create_task(_warm_stats_cache())
@@ -73,6 +90,9 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown_scheduler() -> None:  # pragma: no cover - wiring code
+        # Stop MCP session manager
+        if hasattr(app.state, "mcp_session_cm"):
+            await app.state.mcp_session_cm.__aexit__(None, None, None)
         await get_scheduler().shutdown()
 
     return app

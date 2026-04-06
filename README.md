@@ -240,6 +240,14 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET/POST /api/v1/notifications/templates` — Nachrichtenvorlagen auflisten/erstellen
 - `PUT/DELETE /api/v1/notifications/templates/{id}` — Vorlage aktualisieren/löschen
 
+### MCP Server (Model Context Protocol)
+- `POST /mcp` — MCP-Protokoll-Endpoint (Streamable HTTP, erfordert `MCP_ENABLED=true` + `MCP_API_KEY`)
+- `GET /.well-known/oauth-authorization-server` — OAuth 2.0 Discovery
+- `POST /mcp/oauth/register` — Dynamische Client-Registrierung (RFC 7591)
+- `GET/POST /mcp/oauth/authorize` — OAuth-Autorisierung
+- `POST /mcp/oauth/token` — Token-Austausch mit PKCE (S256)
+- 11 Tools: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `trigger_scan`, `trigger_sync`
+
 ### Echtzeit-Events (SSE)
 - `GET /api/v1/events` — Server-Sent Events Stream (Job-Status, neue Schwachstellen, AI-Analyse-Ergebnisse)
 
@@ -283,6 +291,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Frontend** | `VITE_TIMEZONE`, `VITE_AI_FEATURES_ENABLED`, `VITE_API_BASE_URL` |
 | **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCANNER_AUTH`, `SEMGREP_RULES`, `VITE_SCA_FEATURES_ENABLED`, `VITE_SCA_AUTO_SCAN_ENABLED` |
 | **Benachrichtigungen** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |
+| **MCP Server** | `MCP_ENABLED`, `MCP_API_KEY`, `MCP_WRITE_API_KEY`, `MCP_RATE_LIMIT_PER_MINUTE`, `MCP_MAX_RESULTS`, `MCP_MAX_CONCURRENT_CONNECTIONS` |
 
 ## CI/CD
 
@@ -303,6 +312,7 @@ Gitea-Workflows in `.gitea/workflows/`:
 | KI | OpenAI, Anthropic, Google Gemini (jeweils optional) |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
+| MCP Server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
 
 ## Weiterführende Dokumentation

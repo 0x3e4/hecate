@@ -73,6 +73,8 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 - `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
 - `events.py` — Server-Sent Events (SSE) Stream
 
+Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit 11 Tools, OAuth 2.0 (PKCE), Rate-Limiting und Audit-Logging.
+
 Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
 
 ### Services & Domain
@@ -359,4 +361,5 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
 | KI | OpenAI, Anthropic, Google Gemini |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
+| MCP Server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
 | CI/CD | Gitea Actions, Grype, Trivy, SonarQube |

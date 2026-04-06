@@ -21,6 +21,7 @@ apscheduler = "^3.11.1"
 google-genai = "^1.49.0"
 starlette = "0.52.1"
 opensearch-protobufs = "1.2.0"
+mcp = {version = "^1.9", extras = ["cli"]}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "9.0.2"
