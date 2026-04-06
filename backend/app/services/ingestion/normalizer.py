@@ -22,17 +22,21 @@ CVSS_METRIC_VERSION_PREFERENCE: tuple[tuple[str, str | None], ...] = (
     ("other", None),
 )
 
-_GHSA_PATTERN = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}", re.IGNORECASE)
+_GHSA_ADVISORY_URL = re.compile(
+    r"https?://github\.com/advisories/(GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4})",
+    re.IGNORECASE,
+)
 
 
 def extract_ghsa_ids(references: list[str]) -> list[str]:
-    """Extract unique GHSA IDs from reference URLs."""
+    """Extract unique GHSA IDs from direct GitHub advisory URLs only."""
     ghsa_ids: list[str] = []
     for ref in references:
         if not isinstance(ref, str):
             continue
-        for m in _GHSA_PATTERN.finditer(ref):
-            ghsa_id = m.group(0).upper()
+        m = _GHSA_ADVISORY_URL.match(ref)
+        if m:
+            ghsa_id = m.group(1).upper()
             if ghsa_id not in ghsa_ids:
                 ghsa_ids.append(ghsa_id)
     return ghsa_ids
