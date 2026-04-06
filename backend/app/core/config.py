@@ -149,6 +149,14 @@ class Settings(BaseSettings):
     notifications_apprise_tags: str = "all"
     notifications_apprise_timeout: int = 10
 
+    # MCP Server
+    mcp_enabled: bool = False
+    mcp_api_key: str | None = None
+    mcp_write_api_key: str | None = None
+    mcp_rate_limit_per_minute: int = 60
+    mcp_max_results: int = 50
+    mcp_max_concurrent_connections: int = 20
+
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"
     trusted_proxy_real_ip_header: str | None = "x-real-ip"

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { fetchIngestionLogs } from "../api/audit";
+import { api } from "../api/client";
 import { IngestionLogEntry } from "../types";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
@@ -43,6 +45,40 @@ const PAGE_SIZE = 50;
 
 export const AuditLogPage = () => {
   const { t, locale } = useI18n();
+  const navigate = useNavigate();
+
+  // --- System password gate ---
+  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [authOk, setAuthOk] = useState(false);
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authChecking, setAuthChecking] = useState(false);
+
+  useEffect(() => {
+    api.get<{ required: boolean }>("/v1/status/system-auth").then((r) => {
+      setAuthRequired(r.data.required);
+      if (!r.data.required) setAuthOk(true);
+    }).catch(() => {
+      setAuthRequired(false);
+      setAuthOk(true);
+    });
+  }, []);
+
+  const handleAuthSubmit = async () => {
+    setAuthChecking(true);
+    setAuthError("");
+    try {
+      const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
+      if (r.data.authenticated) {
+        setAuthOk(true);
+      }
+    } catch {
+      setAuthError(t("Invalid password.", "Falsches Passwort."));
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
   const [logs, setLogs] = useState<IngestionLogEntry[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
@@ -279,6 +315,47 @@ export const AuditLogPage = () => {
   const pageEndIndex = total === 0 ? 0 : Math.min(pageEndIndexRaw, total);
 
   return (
+    <>
+    {authRequired && !authOk ? (
+      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }} onClick={() => navigate(-1)}>
+        <div className="dialog" onClick={(e) => e.stopPropagation()}>
+          <h3>{t("System Password", "System-Passwort")}</h3>
+          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
+            placeholder={t("Password", "Passwort")}
+            autoFocus
+          />
+          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate(-1)}
+            >
+              {t("Cancel", "Abbrechen")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleAuthSubmit()}
+              disabled={authChecking || !authPassword}
+            >
+              {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : authRequired === null ? (
+      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }}>
+        <div className="dialog">
+          <p className="muted">{t("Loading...", "Laden…")}</p>
+        </div>
+      </div>
+    ) : (
     <div className="page">
       <section className="card">
         <h2>Audit Log</h2>
@@ -390,6 +467,8 @@ export const AuditLogPage = () => {
         </div>
       </section>
     </div>
+    )}
+    </>
   );
 };
 

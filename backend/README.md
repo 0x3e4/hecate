@@ -23,6 +23,19 @@ app/
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   └── status.py            # Health Check
+├── mcp/                         # MCP Server (Model Context Protocol)
+│   ├── server.py                # ASGI Sub-App Factory (FastMCP)
+│   ├── auth.py                  # Bearer Token + OAuth 2.0 Auth Middleware
+│   ├── oauth.py                 # OAuth 2.0 Endpoints (Metadata, Authorize, Token, Register)
+│   ├── security.py              # Rate-Limiting, Input-Sanitisierung
+│   ├── audit.py                 # Dual Audit (structlog + MongoDB)
+│   └── tools/                   # 11 MCP-Tools (6 Module)
+│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability
+│       ├── cpe.py               # search_cpe
+│       ├── assets.py            # search_vendors, search_products
+│       ├── stats.py             # get_vulnerability_stats
+│       ├── cwe_capec.py         # get_cwe, get_capec
+│       └── scans.py             # get_scan_findings, trigger_scan, trigger_sync
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
 │   └── logging_config.py    # structlog-Konfiguration
