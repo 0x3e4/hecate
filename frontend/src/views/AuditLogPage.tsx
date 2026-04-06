@@ -30,6 +30,9 @@ const JOB_LABELS: Record<string, string> = {
   ai_investigation: "AI analysis",
   ai_batch_investigation: "AI batch analysis",
   "sca-scan": "SCA Scan",
+  osv_sync: "OSV Sync",
+  osv_initial_sync: "OSV Initial Sync",
+  mcp: "MCP",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -401,6 +404,9 @@ export const AuditLogPage = () => {
               <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
               <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
               <option value="sca-scan">SCA Scan</option>
+              <option value="osv_sync">OSV Sync</option>
+              <option value="osv_initial_sync">OSV Initial Sync</option>
+              <option value="mcp">MCP</option>
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", minWidth: "180px" }}>

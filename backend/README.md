@@ -25,8 +25,8 @@ app/
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
 │   ├── server.py                # ASGI Sub-App Factory (FastMCP)
-│   ├── auth.py                  # Bearer Token + OAuth 2.0 Auth Middleware
-│   ├── oauth.py                 # OAuth 2.0 Endpoints (Metadata, Authorize, Token, Register)
+│   ├── auth.py                  # Bearer Token + OAuth 2.0 Auth Middleware (API-Key + OAuth-Token)
+│   ├── oauth.py                 # OAuth 2.0 Endpoints (Metadata, Authorize, Token, Register, PKCE)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
 │   ├── audit.py                 # Dual Audit (structlog + MongoDB)
 │   └── tools/                   # 11 MCP-Tools (6 Module)

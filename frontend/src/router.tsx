@@ -15,6 +15,7 @@ import { ScansPage } from "./views/ScansPage";
 import { ScanDetailPage } from "./views/ScanDetailPage";
 import { CiCdInfoPage } from "./views/CiCdInfoPage";
 import { ApiInfoPage } from "./views/ApiInfoPage";
+import { McpInfoPage } from "./views/McpInfoPage";
 
 export const router = createBrowserRouter([
   {
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       ...(config.scaFeatures.enabled ? [
         { path: "cicd", element: <CiCdInfoPage /> },
         { path: "api-docs", element: <ApiInfoPage /> },
+        { path: "mcp", element: <McpInfoPage /> },
       ] : []),
       { path: "*", element: <Navigate to="/" replace /> }
     ]

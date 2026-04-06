@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from app.mcp.auth import mcp_client_id
+from app.mcp.auth import mcp_client_id, mcp_client_ip
 
 log = structlog.get_logger()
 
@@ -25,12 +25,14 @@ async def log_tool_invocation(
     finished_at = datetime.now(tz=UTC)
     duration_ms = (finished_at - started_at).total_seconds() * 1000
     client = mcp_client_id.get()
+    client_ip = mcp_client_ip.get()
 
     # 1. Structured log (always)
     log.info(
         "mcp.tool_invocation",
         tool=tool_name,
         client=client,
+        client_ip=client_ip or None,
         duration_ms=round(duration_ms, 1),
         success=success,
         results=result_count,
@@ -42,16 +44,19 @@ async def log_tool_invocation(
         from app.services.audit_service import get_audit_service
 
         audit_service = await get_audit_service()
+        metadata: dict[str, Any] = {
+            "tool": tool_name,
+            "client": client,
+            "inputs": _redact_sensitive(inputs),
+        }
+        if client_ip:
+            metadata["clientIp"] = client_ip
         await audit_service.record_event(
-            "mcp-tool",
+            "mcp",
             status="completed" if success else "failed",
             started_at=started_at,
             finished_at=finished_at,
-            metadata={
-                "tool": tool_name,
-                "client": client,
-                "inputs": _redact_sensitive(inputs),
-            },
+            metadata=metadata,
             result={"items_returned": result_count} if result_count is not None else None,
             error=error,
         )

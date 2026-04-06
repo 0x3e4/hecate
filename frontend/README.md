@@ -20,7 +20,7 @@ src/
 │   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export)
 │   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
 │   └── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
-├── views/                       # Seitenkomponenten (13 Ansichten)
+├── views/                       # Seitenkomponenten (14 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
@@ -94,9 +94,10 @@ src/
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, Scan-Vergleich |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
+| `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |
 
 Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
-Die SCA-Scans-, CI/CD- und API-Seiten werden nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
+Die SCA-Scans-, CI/CD-, API- und MCP-Seiten werden nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
 
 ## State-Management
 

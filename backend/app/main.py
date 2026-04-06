@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
         app.include_router(oauth_router)
         # MCP protocol endpoint (behind auth middleware)
         mcp_asgi, _mcp_server = create_mcp_app()
-        app.mount("/mcp", mcp_asgi)
+        app.mount("", mcp_asgi)
 
     @app.on_event("startup")
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
