@@ -1655,10 +1655,10 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
           {target.lastScanAt && <span>{t("Last", "Letzter")}: {formatDateTime(target.lastScanAt)}</span>}
         </div>
         <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", marginLeft: "auto" }}>
-          {isRunning && target.latestScanId && onCancelScan ? (
+          {isRunning && (target.runningScanId || target.latestScanId) && onCancelScan ? (
             <button
               type="button"
-              onClick={() => onCancelScan(target.latestScanId!)}
+              onClick={() => onCancelScan(target.runningScanId || target.latestScanId!)}
               title={t("Stop scan", "Scan stoppen")}
               style={{
                 background: "rgba(255,107,107,0.15)",

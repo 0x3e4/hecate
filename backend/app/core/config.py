@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
     vite_sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
+    sca_max_concurrent_scans: int = 2
+    sca_min_free_memory_mb: int = 1024
+    sca_min_free_disk_mb: int = 2048
 
     # Notifications (Apprise)
     notifications_enabled: bool = False

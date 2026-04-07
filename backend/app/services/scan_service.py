@@ -43,6 +43,16 @@ log = structlog.get_logger()
 # Module-level dict to track running scan tasks across ScanService instances
 _running_scan_tasks: dict[str, asyncio.Task] = {}
 
+# Lazy-initialised semaphore to limit concurrent scans
+_scan_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_scan_semaphore() -> asyncio.Semaphore:
+    global _scan_semaphore
+    if _scan_semaphore is None:
+        _scan_semaphore = asyncio.Semaphore(settings.sca_max_concurrent_scans)
+    return _scan_semaphore
+
 
 class ScanService:
     def __init__(
@@ -105,26 +115,23 @@ class ScanService:
             )
             await self.target_repo.upsert(target_doc)
 
-        # 2. Create scan record (status=running)
-        started_at = datetime.now(tz=UTC)
+        # 2. Create scan record (status=pending — will transition to running when semaphore acquired)
+        submitted_at = datetime.now(tz=UTC)
         scan_doc = ScanDocument(
             target_id=target_id,
             target_name=target_name,
             scanners=scanners,
-            status="running",
+            status="pending",
             source=source,
             image_ref=target if target_type == "container_image" else None,
             commit_sha=commit_sha,
             branch=branch,
             pipeline_url=pipeline_url,
-            started_at=started_at,
+            started_at=submitted_at,
         )
         scan_id = await self.scan_repo.insert(scan_doc)
 
         # 3. Fire off background task and return immediately
-        from app.services.event_bus import publish_job_started
-        publish_job_started(f"sca_scan_{scan_id}", started_at, target=target, scan_id=scan_id)
-
         task = asyncio.create_task(
             self._run_scan_background(
                 scan_id=scan_id,
@@ -133,7 +140,7 @@ class ScanService:
                 target_type=target_type,
                 scanners=scanners,
                 source=source,
-                started_at=started_at,
+                submitted_at=submitted_at,
                 source_archive_base64=source_archive_base64,
             )
         )
@@ -143,7 +150,7 @@ class ScanService:
         return {
             "scan_id": scan_id,
             "target_id": target_id,
-            "status": "running",
+            "status": "pending",
             "findings_count": 0,
             "sbom_component_count": 0,
             "summary": ScanSummary().model_dump(),
@@ -158,32 +165,45 @@ class ScanService:
         target_type: str,
         scanners: list[str],
         source: str,
-        started_at: datetime,
+        submitted_at: datetime,
         source_archive_base64: str | None = None,
     ) -> None:
-        """Execute scan in background. Each scanner runs independently and results are
-        stored incrementally so the frontend can display partial results while other
-        scanners are still running."""
-        from app.services.event_bus import publish_job_completed, publish_job_failed
+        """Execute scan in background with concurrency limiting.
 
+        The scan waits in "pending" state until a semaphore slot opens, then
+        transitions to "running" and calls the scanner sidecar.
+        """
+        from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
+
+        sem = _get_scan_semaphore()
         try:
-            await self._run_scan_background_inner(
-                scan_id, target, target_id, target_type, scanners, source, started_at, source_archive_base64,
-            )
-            finished_at = datetime.now(tz=UTC)
-            publish_job_completed(f"sca_scan_{scan_id}", started_at, finished_at, scan_id=scan_id)
+            async with sem:
+                # Semaphore acquired — transition to running
+                started_at = datetime.now(tz=UTC)
+                await self.scan_repo.update_status(scan_id, "running")
+                await self.scan_repo.update_fields(scan_id, {"started_at": started_at})
+                publish_job_started(f"sca_scan_{scan_id}", started_at, target=target, scan_id=scan_id)
+
+                # Wait for scanner sidecar to have sufficient resources
+                await self._wait_for_scanner_resources(scan_id)
+
+                await self._run_scan_background_inner(
+                    scan_id, target, target_id, target_type, scanners, source, started_at, source_archive_base64,
+                )
+                finished_at = datetime.now(tz=UTC)
+                publish_job_completed(f"sca_scan_{scan_id}", started_at, finished_at, scan_id=scan_id)
         except asyncio.CancelledError:
             log.info("scan_service.scan_cancelled", scan_id=scan_id, target=target)
             finished_at = datetime.now(tz=UTC)
             await self.scan_repo.update_status(scan_id, "cancelled", finished_at=finished_at,
-                                               duration_seconds=(finished_at - started_at).total_seconds())
+                                               duration_seconds=(finished_at - submitted_at).total_seconds())
             await self.finding_repo.delete_by_scan(scan_id)
             await self.sbom_repo.delete_by_scan(scan_id)
-            publish_job_failed(f"sca_scan_{scan_id}", started_at, finished_at, error="cancelled")
+            publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error="cancelled")
         except Exception as exc:
             log.exception("scan_service.scan_background_error", scan_id=scan_id, error=str(exc))
             finished_at = datetime.now(tz=UTC)
-            publish_job_failed(f"sca_scan_{scan_id}", started_at, finished_at, error=str(exc))
+            publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
     async def _run_scan_background_inner(
         self,
@@ -460,6 +480,8 @@ class ScanService:
                     item["latest_summary"] = await self._get_deduped_summary(latest)
                     item["latest_scan_id"] = str(latest.get("_id", ""))
                 item["has_running_scan"] = await self.scan_repo.has_running_scan(target_id)
+                if item["has_running_scan"]:
+                    item["running_scan_id"] = await self.scan_repo.get_running_scan_id(target_id)
         return total, items
 
     async def get_target(self, target_id: str) -> dict[str, Any] | None:
@@ -469,6 +491,9 @@ class ScanService:
             if latest:
                 target["latest_summary"] = await self._get_deduped_summary(latest)
                 target["latest_scan_id"] = str(latest.get("_id", ""))
+            target["has_running_scan"] = await self.scan_repo.has_running_scan(target_id)
+            if target.get("has_running_scan"):
+                target["running_scan_id"] = await self.scan_repo.get_running_scan_id(target_id)
         return target
 
     async def delete_target(self, target_id: str) -> bool:
@@ -798,6 +823,8 @@ class ScanService:
             return False
         finished_at = datetime.now(tz=UTC)
         started = scan.get("started_at") or finished_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
         await self.scan_repo.update_status(scan_id, "cancelled", finished_at=finished_at,
                                            duration_seconds=(finished_at - started).total_seconds())
         await self.finding_repo.delete_by_scan(scan_id)
@@ -1214,6 +1241,49 @@ class ScanService:
                 overridden=updated_count,
                 total_with_cve=len(cve_ids),
             )
+
+    async def _wait_for_scanner_resources(self, scan_id: str) -> None:
+        """Poll scanner /stats until memory and disk are sufficient, or timeout."""
+        min_mem = settings.sca_min_free_memory_mb * 1024 * 1024
+        min_disk = settings.sca_min_free_disk_mb * 1024 * 1024
+        max_wait = 600  # 10 minutes
+        retry_interval = 30
+
+        waited = 0
+        while waited < max_wait:
+            try:
+                url = f"{settings.sca_scanner_url}/stats"
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                mem_free = data.get("memory_limit_bytes", 0) - data.get("memory_used_bytes", 0)
+                disk_free = data.get("tmp_disk_free_bytes", 0)
+                active = data.get("active_scans", 0)
+
+                if mem_free >= min_mem and disk_free >= min_disk:
+                    return  # Resources OK
+
+                # If no other scan is active, proceed anyway (run alone)
+                if active == 0:
+                    log.warning("scan_service.resource_low_but_solo", scan_id=scan_id,
+                                mem_free_mb=mem_free // (1024 * 1024),
+                                disk_free_mb=disk_free // (1024 * 1024))
+                    return
+
+                log.info("scan_service.waiting_for_resources", scan_id=scan_id,
+                         mem_free_mb=mem_free // (1024 * 1024),
+                         disk_free_mb=disk_free // (1024 * 1024),
+                         active_scans=active, waited_seconds=waited)
+            except Exception as exc:
+                log.warning("scan_service.resource_check_failed", scan_id=scan_id, error=str(exc))
+                return  # Fail-open
+
+            await asyncio.sleep(retry_interval)
+            waited += retry_interval
+
+        log.warning("scan_service.resource_wait_timeout", scan_id=scan_id, waited_seconds=waited)
 
     async def _call_scanner_sidecar(
         self,
