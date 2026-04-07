@@ -26,8 +26,13 @@ from app.models import ScannerResult
 def setup_auth(auth_entries: str) -> None:
     """Configure authentication for both container registries and git cloning.
 
-    Format: host:token[,host2:token2]
-    Sets up ~/.docker/config.json (for Trivy/Grype/Syft) and
+    Format: host:token OR host:user:token (comma-separated for multiple entries)
+      - host:token        — token used as username with empty password (Gitea, GitHub PATs)
+      - host:user:token   — explicit username + token/password (Docker Hub PATs)
+    Examples:
+      SCANNER_AUTH=git.nohub.lol:gitea_token
+      SCANNER_AUTH=docker.io:myuser:dckr_pat_xxx,github.com:ghp_xxx
+    Sets up ~/.docker/config.json (for Trivy/Grype/Syft/Dockle/Dive/Skopeo) and
     ~/.git-credentials (for git clone of private repos).
     """
     docker_auths: dict[str, dict[str, str]] = {}
@@ -37,17 +42,24 @@ def setup_auth(auth_entries: str) -> None:
         entry = entry.strip()
         if not entry:
             continue
-        parts = entry.split(":", 1)
-        if len(parts) != 2:
+        parts = entry.split(":", 2)
+        if len(parts) == 3:
+            # host:user:token — explicit username (e.g. Docker Hub)
+            host, user, token = parts
+            encoded = base64.b64encode(f"{user}:{token}".encode()).decode()
+            git_credentials.append(f"https://{user}:{token}@{host}")
+        elif len(parts) == 2:
+            # host:token — token as username (e.g. Gitea, GitHub)
+            host, token = parts
+            encoded = base64.b64encode(f"{token}:".encode()).decode()
+            git_credentials.append(f"https://oauth2:{token}@{host}")
+        else:
             continue
-        host, token = parts
 
-        # Docker registry auth
-        encoded = base64.b64encode(f"{token}:".encode()).decode()
         docker_auths[host] = {"auth": encoded}
-
-        # Git credential
-        git_credentials.append(f"https://oauth2:{token}@{host}")
+        # Docker Hub requires auth under "https://index.docker.io/v1/" as well
+        if host == "docker.io":
+            docker_auths["https://index.docker.io/v1/"] = {"auth": encoded}
 
     # Write ~/.docker/config.json
     docker_dir = Path.home() / ".docker"
