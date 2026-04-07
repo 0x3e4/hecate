@@ -170,7 +170,7 @@ class AIClient:
             "model": model,
             "instructions": system_prompt,
             "input": user_prompt,
-            "max_output_tokens": settings.openai_max_output_tokens or 16000,
+            "max_output_tokens": settings.ai_max_output_tokens,
         }
 
         # Enable reasoning
@@ -229,7 +229,7 @@ class AIClient:
     async def _call_anthropic(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
         payload = {
             "model": settings.anthropic_model or "claude-3-haiku-20240307",
-            "max_tokens": 4000,
+            "max_tokens": settings.ai_max_output_tokens,
             "temperature": 0.3,
             "system": system_prompt,
             "messages": [
@@ -355,7 +355,7 @@ class AIClient:
             config_kwargs: dict[str, Any] = {
                 "system_instruction": system_prompt,
                 "temperature": 0.3,
-                "max_output_tokens": 4000,
+                "max_output_tokens": settings.ai_max_output_tokens,
             }
             if safety_settings is not None:
                 config_kwargs["safety_settings"] = safety_settings
