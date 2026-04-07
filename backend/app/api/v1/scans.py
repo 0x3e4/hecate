@@ -27,6 +27,7 @@ from app.schemas.scan import (
     ImportSbomRequest,
     SbomComponentListResponse,
     SbomComponentResponse,
+    ScanComparisonChangedSchema,
     ScanComparisonFindingSchema,
     ScanComparisonResponse,
     ScanFindingListResponse,
@@ -321,6 +322,7 @@ async def compare_scans(
         summary_b=ScanSummarySchema(**summary_b) if isinstance(summary_b, dict) else ScanSummarySchema(),
         added=[ScanComparisonFindingSchema(**f) for f in result.get("added", [])],
         removed=[ScanComparisonFindingSchema(**f) for f in result.get("removed", [])],
+        changed=[ScanComparisonChangedSchema(**c) for c in result.get("changed", [])],
         unchanged_count=result.get("unchanged_count", 0),
     )
 

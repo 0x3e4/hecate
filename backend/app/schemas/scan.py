@@ -394,6 +394,13 @@ class ScanComparisonFindingSchema(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ScanComparisonChangedSchema(BaseModel):
+    before: ScanComparisonFindingSchema
+    after: ScanComparisonFindingSchema
+
+    model_config = {"populate_by_name": True}
+
+
 class ScanComparisonResponse(BaseModel):
     scan_id_a: str = Field(alias="scanIdA", serialization_alias="scanIdA")
     scan_id_b: str = Field(alias="scanIdB", serialization_alias="scanIdB")
@@ -401,6 +408,7 @@ class ScanComparisonResponse(BaseModel):
     summary_b: ScanSummarySchema = Field(alias="summaryB", serialization_alias="summaryB")
     added: list[ScanComparisonFindingSchema]
     removed: list[ScanComparisonFindingSchema]
+    changed: list[ScanComparisonChangedSchema] = []
     unchanged_count: int = Field(
         default=0, alias="unchangedCount", serialization_alias="unchangedCount"
     )
