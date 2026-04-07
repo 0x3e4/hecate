@@ -502,6 +502,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         latest_summary=ScanSummarySchema(**latest_summary) if latest_summary else None,
         latest_scan_id=doc.get("latest_scan_id"),
         has_running_scan=doc.get("has_running_scan", False),
+        running_scan_id=doc.get("running_scan_id"),
         auto_scan=doc.get("auto_scan", True),
         scanners=doc.get("scanners", []),
     )

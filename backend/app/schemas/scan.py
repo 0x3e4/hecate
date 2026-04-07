@@ -89,6 +89,9 @@ class ScanTargetResponse(BaseModel):
     has_running_scan: bool = Field(
         default=False, alias="hasRunningScan", serialization_alias="hasRunningScan"
     )
+    running_scan_id: str | None = Field(
+        default=None, alias="runningScanId", serialization_alias="runningScanId"
+    )
     auto_scan: bool = Field(
         default=True, alias="autoScan", serialization_alias="autoScan"
     )

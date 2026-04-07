@@ -82,7 +82,7 @@ app/
 │   ├── saved_search_service.py    # Gespeicherte Suchen
 │   ├── cpe_service.py             # CPE-Katalog
 │   ├── asset_catalog_service.py   # Asset-Katalog
-│   ├── scan_service.py            # SCA-Scan-Orchestrierung
+│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating)
 │   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
 │   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
