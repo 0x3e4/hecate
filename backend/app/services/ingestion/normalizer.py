@@ -2098,6 +2098,10 @@ def _extract_ghsa_cvss(advisory: dict[str, Any]) -> tuple[CvssScore, dict[str, l
         data: dict[str, Any] = {"baseScore": float(v3_score), "version": "3.1"}
         if isinstance(v3_vector, str):
             data["vectorString"] = v3_vector
+            parsed = _parse_cvss_vector_string(v3_vector)
+            for k, v in parsed.items():
+                if k != "version" and k not in data:
+                    data[k] = v
         if severity_label:
             data["baseSeverity"] = severity_label
         entry["data"] = data
@@ -2110,6 +2114,10 @@ def _extract_ghsa_cvss(advisory: dict[str, Any]) -> tuple[CvssScore, dict[str, l
     if isinstance(v4_score, (int, float)) and v4_score > 0 and isinstance(v4_vector, str):
         entry_v4: dict[str, Any] = {"source": "GHSA", "type": "Primary"}
         data_v4: dict[str, Any] = {"baseScore": float(v4_score), "version": "4.0", "vectorString": v4_vector}
+        parsed_v4 = _parse_cvss_vector_string(v4_vector)
+        for k, v in parsed_v4.items():
+            if k != "version" and k not in data_v4:
+                data_v4[k] = v
         if severity_label:
             data_v4["baseSeverity"] = severity_label
         entry_v4["data"] = data_v4
