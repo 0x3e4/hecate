@@ -435,7 +435,7 @@ export interface Scan {
   targetName?: string | null;
   scanners: string[];
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  source: "ci_cd" | "manual" | "scheduled";
+  source: "ci_cd" | "manual" | "scheduled" | "sbom-import";
   imageRef?: string | null;
   commitSha?: string | null;
   branch?: string | null;
@@ -447,6 +447,7 @@ export interface Scan {
   sbomComponentCount?: number | null;
   error?: string | null;
   complianceSummary?: Record<string, number> | null;
+  licenseComplianceSummary?: Record<string, number> | null;
   layerAnalysisAvailable?: boolean;
 }
 
@@ -485,6 +486,9 @@ export interface ScanFinding {
   urls?: string[];
   cvssScore?: number | null;
   cvssVector?: string | null;
+  vexStatus?: "not_affected" | "affected" | "fixed" | "under_investigation" | null;
+  vexJustification?: string | null;
+  vexUpdatedAt?: string | null;
 }
 
 export interface ScanFindingListResponse {
@@ -712,4 +716,75 @@ export interface SubmitScanResponse {
   sbomComponentCount: number;
   summary: ScanSummary;
   error?: string | null;
+}
+
+// --- License Compliance ---
+
+export interface LicensePolicy {
+  id: string;
+  name: string;
+  description?: string | null;
+  allowed: string[];
+  denied: string[];
+  reviewed: string[];
+  defaultAction: "allow" | "warn" | "deny";
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LicensePolicyListResponse {
+  items: LicensePolicy[];
+  total: number;
+}
+
+export interface LicenseGroups {
+  permissive: string[];
+  weakCopyleft: string[];
+  copyleft: string[];
+}
+
+export interface EvaluatedLicense {
+  licenseId: string;
+  status: "allowed" | "denied" | "warned" | "unknown";
+}
+
+export interface LicenseViolation {
+  name: string;
+  version: string;
+  type: string;
+  purl?: string | null;
+  licenses: string[];
+  status: "denied" | "warned" | "unknown";
+  evaluatedLicenses: EvaluatedLicense[];
+}
+
+export interface LicenseComplianceSummary {
+  allowed: number;
+  denied: number;
+  warned: number;
+  unknown: number;
+}
+
+export interface LicenseComplianceResult {
+  policyId: string | null;
+  policyName: string | null;
+  summary: LicenseComplianceSummary;
+  violations: LicenseViolation[];
+}
+
+export interface LicenseOverviewComponent {
+  name: string;
+  version: string;
+}
+
+export interface LicenseOverviewItem {
+  licenseId: string;
+  componentCount: number;
+  components: LicenseOverviewComponent[];
+}
+
+export interface LicenseOverviewResponse {
+  items: LicenseOverviewItem[];
+  total: number;
 }

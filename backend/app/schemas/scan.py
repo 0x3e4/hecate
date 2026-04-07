@@ -59,6 +59,26 @@ class SubmitScanRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ImportSbomRequest(BaseModel):
+    """Request to import an external SBOM file."""
+
+    sbom: dict[str, Any] = Field(description="The SBOM document (CycloneDX or SPDX JSON)")
+    format: str | None = Field(
+        default=None,
+        description="cyclonedx-json or spdx-json (auto-detected if omitted)",
+    )
+    target_name: str | None = Field(
+        default=None, alias="targetName", serialization_alias="targetName",
+        description="Display name for the import target",
+    )
+    target_id: str | None = Field(
+        default=None, alias="targetId", serialization_alias="targetId",
+        description="Reuse existing target ID",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 # --- Response schemas ---
 
 
@@ -141,6 +161,11 @@ class ScanResponse(BaseModel):
     compliance_summary: dict[str, int] | None = Field(
         default=None, alias="complianceSummary", serialization_alias="complianceSummary"
     )
+    license_compliance_summary: dict[str, int] | None = Field(
+        default=None,
+        alias="licenseComplianceSummary",
+        serialization_alias="licenseComplianceSummary",
+    )
     layer_analysis_available: bool = Field(
         default=False, alias="layerAnalysisAvailable", serialization_alias="layerAnalysisAvailable"
     )
@@ -194,6 +219,15 @@ class ScanFindingResponse(BaseModel):
     )
     cvss_vector: str | None = Field(
         default=None, alias="cvssVector", serialization_alias="cvssVector"
+    )
+    vex_status: str | None = Field(
+        default=None, alias="vexStatus", serialization_alias="vexStatus"
+    )
+    vex_justification: str | None = Field(
+        default=None, alias="vexJustification", serialization_alias="vexJustification"
+    )
+    vex_updated_at: datetime | None = Field(
+        default=None, alias="vexUpdatedAt", serialization_alias="vexUpdatedAt"
     )
 
     model_config = {"populate_by_name": True}

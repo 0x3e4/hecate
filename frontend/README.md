@@ -17,9 +17,10 @@ src/
 │   ├── sync.ts                  # Sync-Trigger & Status (inkl. OSV)
 │   ├── backup.ts                # Export/Import (10 min Timeout)
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
-│   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export)
+│   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export, SBOM-Import, VEX, License-Compliance)
 │   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
-│   └── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
+│   ├── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
+│   └── licensePolicy.ts        # Lizenz-Policy-Verwaltung (CRUD, Default, Gruppen)
 ├── views/                       # Seitenkomponenten (14 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
@@ -29,8 +30,8 @@ src/
 │   ├── StatsPage.tsx            # Statistik-Dashboard
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
-│   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan)
-│   ├── ScanDetailPage.tsx       # Scan-Details (Findings, SBOM mit Export & Stats, Security Alerts, Best Practices, Layer Analysis)
+│   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit VEX-Status, SBOM, Security Alerts, Best Practices, Layer Analysis, License Compliance, VEX-Export)
 │   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
 │   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
@@ -89,9 +90,9 @@ src/
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter (inkl. OSV im Job-Dropdown) |
-| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung (inkl. OSV-Trigger), gespeicherte Suchen |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, Scan-Vergleich |
+| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung (inkl. OSV-Trigger), gespeicherte Suchen, Lizenz-Policies |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen) |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, License Compliance, Scan-Vergleich, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |

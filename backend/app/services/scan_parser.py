@@ -326,6 +326,86 @@ def parse_cyclonedx_sbom(
     return components, len(components)
 
 
+def parse_spdx_sbom(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> tuple[list[ScanSbomComponentDocument], int]:
+    """Parse SPDX 2.3 JSON into SBOM components."""
+    components: list[ScanSbomComponentDocument] = []
+
+    packages = data.get("packages", [])
+    if not isinstance(packages, list):
+        return components, 0
+
+    # The document itself is SPDXRef-DOCUMENT — skip it
+    doc_spdx_id = data.get("SPDXID", "SPDXRef-DOCUMENT")
+
+    for pkg in packages:
+        if not isinstance(pkg, dict):
+            continue
+        spdx_id = pkg.get("SPDXID", "")
+        if spdx_id == doc_spdx_id:
+            continue
+
+        name = pkg.get("name", "")
+        version = pkg.get("versionInfo", "")
+        if not name:
+            continue
+
+        # Extract licenses
+        licenses: list[str] = []
+        for field in ("licenseConcluded", "licenseDeclared"):
+            lic_val = pkg.get(field, "")
+            if isinstance(lic_val, str) and lic_val and lic_val != "NOASSERTION" and lic_val != "NONE":
+                if lic_val not in licenses:
+                    licenses.append(lic_val)
+
+        # Extract PURL from external references
+        purl = None
+        for ref in pkg.get("externalRefs", []) or []:
+            if isinstance(ref, dict):
+                ref_type = ref.get("referenceType", "")
+                if ref_type in ("purl", "pkg:"):
+                    purl = ref.get("referenceLocator")
+                    break
+
+        # Supplier
+        supplier = None
+        supplier_val = pkg.get("supplier", "")
+        if isinstance(supplier_val, str) and supplier_val and supplier_val != "NOASSERTION":
+            supplier = supplier_val.replace("Organization: ", "").strip()
+
+        # Determine type from primary package purpose or default to library
+        purpose = pkg.get("primaryPackagePurpose", "LIBRARY")
+        type_map = {
+            "APPLICATION": "application",
+            "FRAMEWORK": "framework",
+            "LIBRARY": "library",
+            "CONTAINER": "container",
+            "OPERATING_SYSTEM": "operating-system",
+            "DEVICE": "device",
+            "FIRMWARE": "firmware",
+            "FILE": "file",
+            "SOURCE": "source",
+        }
+        comp_type = type_map.get(str(purpose).upper(), "library")
+
+        components.append(ScanSbomComponentDocument(
+            scan_id=scan_id,
+            target_id=target_id,
+            name=name,
+            version=version,
+            type=comp_type,
+            purl=purl,
+            licenses=licenses,
+            supplier=supplier,
+        ))
+
+    components = _filter_and_merge_sbom(components)
+    return components, len(components)
+
+
 def _filter_and_merge_sbom(
     components: list[ScanSbomComponentDocument],
 ) -> list[ScanSbomComponentDocument]:

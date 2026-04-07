@@ -5,16 +5,26 @@ import binascii
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from app.core.config import settings
+from app.repositories.license_policy_repository import LicensePolicyRepository
+from app.repositories.scan_finding_repository import ScanFindingRepository
+from app.repositories.scan_repository import ScanRepository
+from app.repositories.scan_sbom_repository import ScanSbomRepository
+from app.schemas.license_policy import (
+    LicenseComplianceResultResponse,
+    LicenseOverviewItem,
+    LicenseOverviewResponse,
+)
 from app.schemas.scan import (
     ConsolidatedFindingListResponse,
     ConsolidatedFindingResponse,
     ConsolidatedSbomListResponse,
     ConsolidatedSbomResponse,
     ConsolidatedTargetSchema,
+    ImportSbomRequest,
     SbomComponentListResponse,
     SbomComponentResponse,
     ScanComparisonFindingSchema,
@@ -34,7 +44,17 @@ from app.schemas.scan import (
     SubmitScanRequest,
     SubmitScanResponse,
 )
+from app.schemas.vex import (
+    VexBulkUpdateRequest,
+    VexBulkUpdateResponse,
+    VexImportRequest,
+    VexImportResponse,
+    VexUpdateRequest,
+    VexUpdateResponse,
+)
+from app.services.license_compliance_service import LicenseComplianceService
 from app.services.scan_service import ScanService, get_scan_service
+from app.services.vex_service import VexService
 
 router = APIRouter()
 
@@ -361,6 +381,139 @@ async def get_global_sbom(
     )
 
 
+@router.post("/import-sbom", response_model=SubmitScanResponse, status_code=201)
+async def import_sbom(
+    request: ImportSbomRequest,
+    service: ScanService = Depends(get_scan_service),
+) -> SubmitScanResponse:
+    """Import an external SBOM file (CycloneDX or SPDX JSON)."""
+    try:
+        result = await service.import_sbom(
+            sbom_data=request.sbom,
+            format=request.format,
+            target_name=request.target_name,
+            target_id=request.target_id,
+        )
+        summary = result.get("summary")
+        return SubmitScanResponse(
+            scan_id=result["scan_id"],
+            target_id=result["target_id"],
+            status=result["status"],
+            findings_count=result.get("findings_count", 0),
+            sbom_component_count=result.get("sbom_component_count", 0),
+            summary=ScanSummarySchema(**summary.model_dump()) if hasattr(summary, "model_dump") else ScanSummarySchema(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/import-sbom/upload", response_model=SubmitScanResponse, status_code=201)
+async def import_sbom_upload(
+    file: UploadFile = File(...),
+    target_name: str | None = Query(default=None, alias="targetName"),
+    format: str | None = Query(default=None),
+    service: ScanService = Depends(get_scan_service),
+) -> SubmitScanResponse:
+    """Import an external SBOM file via multipart file upload."""
+
+    content = await file.read()
+    try:
+        sbom_data = json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+
+    try:
+        result = await service.import_sbom(
+            sbom_data=sbom_data,
+            format=format,
+            target_name=target_name,
+        )
+        summary = result.get("summary")
+        return SubmitScanResponse(
+            scan_id=result["scan_id"],
+            target_id=result["target_id"],
+            status=result["status"],
+            findings_count=result.get("findings_count", 0),
+            sbom_component_count=result.get("sbom_component_count", 0),
+            summary=ScanSummarySchema(**summary.model_dump()) if hasattr(summary, "model_dump") else ScanSummarySchema(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/license-overview", response_model=LicenseOverviewResponse)
+async def get_license_overview(
+    service: ScanService = Depends(get_scan_service),
+) -> LicenseOverviewResponse:
+    """Get aggregated license usage across the latest completed scan of each target."""
+    scan_ids = await service.get_latest_completed_scan_ids()
+    policy_repo = await LicensePolicyRepository.create()
+    sbom_repo = await ScanSbomRepository.create()
+    compliance_svc = LicenseComplianceService(policy_repo, sbom_repo)
+    items = await compliance_svc.get_license_overview(scan_ids)
+    return LicenseOverviewResponse(
+        items=[LicenseOverviewItem(**item) for item in items],
+        total=len(items),
+    )
+
+
+# --- VEX endpoints (static routes before dynamic) ---
+
+
+@router.put("/vex/findings/{finding_id}", response_model=VexUpdateResponse)
+async def update_finding_vex(
+    finding_id: str,
+    request: VexUpdateRequest,
+) -> VexUpdateResponse:
+    """Update VEX status on a single finding. Pass null to clear."""
+    valid_statuses = {"not_affected", "affected", "fixed", "under_investigation"}
+    if request.vex_status is not None and request.vex_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid VEX status. Must be one of: {valid_statuses}")
+
+    finding_repo = await ScanFindingRepository.create()
+    success = await finding_repo.update_vex_status(
+        finding_id=finding_id,
+        vex_status=request.vex_status,
+        vex_justification=request.vex_justification if request.vex_status else None,
+        vex_detail=request.vex_detail if request.vex_status else None,
+        vex_response=request.vex_response if request.vex_status else None,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return VexUpdateResponse(success=True, findingId=finding_id)
+
+
+@router.post("/vex/bulk-update", response_model=VexBulkUpdateResponse)
+async def bulk_update_vex(
+    request: VexBulkUpdateRequest,
+) -> VexBulkUpdateResponse:
+    """Bulk-apply VEX status to all findings matching vulnerability + target."""
+    valid_statuses = {"not_affected", "affected", "fixed", "under_investigation"}
+    if request.vex_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid VEX status. Must be one of: {valid_statuses}")
+
+    finding_repo = await ScanFindingRepository.create()
+    count = await finding_repo.bulk_update_vex_by_vulnerability(
+        target_id=request.target_id,
+        vulnerability_id=request.vulnerability_id,
+        vex_status=request.vex_status,
+        vex_justification=request.vex_justification,
+    )
+    return VexBulkUpdateResponse(updated=count)
+
+
+@router.post("/vex/import", response_model=VexImportResponse)
+async def import_vex(
+    request: VexImportRequest,
+) -> VexImportResponse:
+    """Import a CycloneDX VEX document and apply to matching findings."""
+    finding_repo = await ScanFindingRepository.create()
+    scan_repo = await ScanRepository.create()
+    vex_service = VexService(finding_repo, scan_repo)
+    result = await vex_service.import_cyclonedx_vex(request.vex_document, request.target_id)
+    return VexImportResponse(**result)
+
+
 # --- Dynamic scan routes ---
 
 
@@ -482,6 +635,48 @@ async def get_scan_layers(
     )
 
 
+@router.get("/{scan_id}/license-compliance", response_model=LicenseComplianceResultResponse)
+async def get_scan_license_compliance(
+    scan_id: str,
+    policy_id: str | None = Query(default=None, alias="policyId"),
+    service: ScanService = Depends(get_scan_service),
+) -> LicenseComplianceResultResponse:
+    """Evaluate SBOM components of a scan against a license policy."""
+    scan = await service.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    policy_repo = await LicensePolicyRepository.create()
+    sbom_repo = await ScanSbomRepository.create()
+    compliance_svc = LicenseComplianceService(policy_repo, sbom_repo)
+    result = await compliance_svc.evaluate_scan(scan_id, policy_id)
+    return LicenseComplianceResultResponse(**result)
+
+
+@router.get("/{scan_id}/vex/export")
+async def export_vex(
+    scan_id: str,
+    service: ScanService = Depends(get_scan_service),
+) -> Response:
+    """Export CycloneDX VEX document for a scan."""
+    scan = await service.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    finding_repo = await ScanFindingRepository.create()
+    scan_repo = await ScanRepository.create()
+    vex_service = VexService(finding_repo, scan_repo)
+    vex_doc = await vex_service.export_cyclonedx_vex(scan_id)
+    if not vex_doc:
+        raise HTTPException(status_code=404, detail="No VEX data available for this scan")
+
+    return Response(
+        content=json.dumps(vex_doc, default=str, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=vex-{scan_id}.cdx.json"},
+    )
+
+
 # --- Mapping helpers ---
 
 
@@ -528,6 +723,7 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         sbom_component_count=doc.get("sbom_component_count"),
         error=doc.get("error"),
         compliance_summary=doc.get("compliance_summary"),
+        license_compliance_summary=doc.get("license_compliance_summary"),
         layer_analysis_available=doc.get("layer_analysis_available", False),
     )
 
@@ -553,6 +749,9 @@ def _map_finding(doc: dict[str, Any]) -> ScanFindingResponse:
         urls=doc.get("urls", []),
         cvss_score=doc.get("cvss_score"),
         cvss_vector=doc.get("cvss_vector"),
+        vex_status=doc.get("vex_status"),
+        vex_justification=doc.get("vex_justification"),
+        vex_updated_at=doc.get("vex_updated_at"),
     )
 
 

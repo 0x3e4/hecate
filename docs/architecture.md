@@ -56,7 +56,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 
 ### API-Schicht
 
-15 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+16 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
 - `status.py` — Health Check / Liveness Probe, Scanner-Health
 - `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse
 - `cwe.py` — CWE-Abfragen (einzeln & bulk)
@@ -69,9 +69,10 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 - `saved_searches.py` — Gespeicherte Suchen (CRUD)
 - `audit.py` — Ingestion-Logs
 - `changelog.py` — Letzte Änderungen
-- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export, Layer-Analyse)
+- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export, SBOM-Import, Layer-Analyse, VEX, License-Compliance)
 - `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
 - `events.py` — Server-Sent Events (SSE) Stream
+- `license_policies.py` — Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
 
 Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit 11 Tools, OAuth 2.0 (PKCE), Rate-Limiting und Audit-Logging.
 
@@ -92,7 +93,9 @@ Service-Klasse je Anwendungsfall:
 - `ChangelogService` — Change-Tracking
 - `SavedSearchService` — Gespeicherte Suchen
 - `AssetCatalogService` — Asset-Katalog aus ingestierten Daten
-- `ScanService` — SCA-Scan-Orchestrierung (Scanner-Sidecar, Ergebnisverarbeitung)
+- `ScanService` — SCA-Scan-Orchestrierung (Scanner-Sidecar, Ergebnisverarbeitung, SBOM-Import)
+- `VexService` — VEX-Export/Import (CycloneDX VEX), VEX Carry-Forward zwischen Scans
+- `LicenseComplianceService` — Lizenz-Policy-Auswertung, automatische Evaluierung nach Scans
 - `NotificationService` — Apprise-Anbindung, Regeln, Channels, Nachrichtenvorlagen mit Template-Engine
 
 Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + Mongo Operationen. Der Asset-Katalog wird aus ingestierten Daten abgeleitet (Vendor-/Produkt-/Versions-Slugs) und füttert die Filter-UI.
@@ -139,7 +142,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 
 ### Persistenz
 
-#### MongoDB (19 Collections)
+#### MongoDB (20 Collections)
 
 | Collection | Beschreibung |
 |-----------|-------------|
@@ -162,6 +165,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL) |
 | `notification_channels` | Apprise-Channels (URL + Tag) |
 | `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
+| `license_policies` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
 
 - Repositories auf Basis von Motor (async) kapseln Abfragen und Updates.
 - Repository-Pattern: `create()` Classmethod erstellt Indexes, `_id` = Entity-ID, `upsert()` gibt `"inserted"` / `"updated"` / `"unchanged"` zurück.
@@ -187,6 +191,9 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Scanner-Auswahl pro Target:** Beim Erst-Scan gewählte Scanner werden auf dem `ScanTargetDocument` gespeichert und für Auto-Scans wiederverwendet.
 - **Scan-Vergleich:** Findings können zwischen zwei Scans verglichen werden (Added, Removed, Changed). "Changed" gruppiert Findings mit gleichem Paket aber unterschiedlicher Schwachstelle.
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export über `GET /api/v1/scans/{scan_id}/sbom/export?format=cyclonedx-json|spdx-json`. Pure-Function-Builder in `sbom_export.py` (keine externen Bibliotheken). Download mit `Content-Disposition: attachment` Header. EU Cyber Resilience Act (CRA) Compliance.
+- **SBOM-Import:** Externes CycloneDX- und SPDX-SBOM-Upload über `POST /api/v1/scans/import-sbom` (JSON) oder `/import-sbom/upload` (Multipart-Datei). Automatische Format-Erkennung. Importierte Komponenten werden gegen die Vulnerability-DB gematcht. Erstellt Targets mit `type="sbom-import"` und Scans mit `source="sbom-import"`.
+- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (`not_affected`, `affected`, `fixed`, `under_investigation`) mit Justification und Detail. Inline-Bearbeitung im Frontend, Bulk-Updates über Vulnerability-ID. CycloneDX VEX Export/Import. Automatischer VEX Carry-Forward: Nach jedem Scan werden VEX-Annotationen vom vorherigen Scan auf übereinstimmende neue Findings übertragen.
+- **License Compliance:** Lizenz-Policy-Management über `license_policies` Collection. Policies definieren erlaubte, verbotene und Review-pflichtige Lizenzen. Eine Default-Policy kann gesetzt werden. Nach jedem Scan wird die License-Compliance automatisch evaluiert und als `license_compliance_summary` auf dem Scan-Dokument gespeichert. License-Compliance-Übersicht über alle Scans via `GET /api/v1/scans/license-overview`.
 - **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird zusammengeführt.
 - **Provenance-Verifikation:** Nach SBOM-Extraktion prüft der Hecate Analyzer die Herkunft/Attestierung jeder Komponente über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Ergebnisse werden auf SBOM-Komponenten gespeichert und im Frontend als Provenance-Spalte angezeigt.
 - **Scan-Concurrency:** Gleichzeitige Scans werden über `SCA_MAX_CONCURRENT_SCANS` (Default: 2) begrenzt. Überschüssige Scans bleiben als `pending` in der Warteschlange. Vor dem Start wird die Ressourcenverfügbarkeit des Scanner-Sidecars geprüft (`SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`); bei unzureichenden Ressourcen wird gewartet, bei keinem anderen aktiven Scan trotzdem gestartet.
@@ -254,9 +261,9 @@ poetry run python -m app.cli reindex-opensearch
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
-| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Dienste-Status |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings, SBOM (Export & Summary-Stats), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
+| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Lizenz-Policies, Dienste-Status |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen) |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM (Export & Summary-Stats), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, Scan-Vergleich, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |

@@ -199,3 +199,70 @@ export const compareScans = async (
   });
   return response.data;
 };
+
+export const updateFindingVex = async (
+  findingId: string,
+  payload: {
+    vexStatus: string | null;
+    vexJustification?: string;
+    vexDetail?: string;
+    vexResponse?: string[];
+  }
+): Promise<{ success: boolean; findingId: string }> => {
+  const response = await api.put(`/v1/scans/vex/findings/${findingId}`, payload);
+  return response.data;
+};
+
+export const bulkUpdateVex = async (payload: {
+  targetId: string;
+  vulnerabilityId: string;
+  vexStatus: string;
+  vexJustification?: string;
+}): Promise<{ updated: number }> => {
+  const response = await api.post("/v1/scans/vex/bulk-update", payload);
+  return response.data;
+};
+
+export const exportVex = async (scanId: string): Promise<Blob> => {
+  const response = await api.get(`/v1/scans/${scanId}/vex/export`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
+export const importVex = async (payload: {
+  vexDocument: Record<string, unknown>;
+  targetId: string;
+  format?: string;
+}): Promise<{ applied: number; skipped: number; notFound: number }> => {
+  const response = await api.post("/v1/scans/vex/import", payload);
+  return response.data;
+};
+
+export const importSbom = async (payload: {
+  sbom: Record<string, unknown>;
+  format?: string;
+  targetName?: string;
+  targetId?: string;
+}): Promise<SubmitScanResponse> => {
+  const response = await api.post<SubmitScanResponse>("/v1/scans/import-sbom", payload);
+  return response.data;
+};
+
+export const importSbomFile = async (
+  file: File,
+  targetName?: string,
+  format?: string,
+): Promise<SubmitScanResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const params: Record<string, string> = {};
+  if (targetName) params.targetName = targetName;
+  if (format) params.format = format;
+  const response = await api.post<SubmitScanResponse>(
+    "/v1/scans/import-sbom/upload",
+    formData,
+    { params, headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return response.data;
+};

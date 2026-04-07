@@ -44,7 +44,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 .
 ├── backend/              # FastAPI-Service, Ingestion-Pipelines, Scheduler, CLI
 │   ├── app/
-│   │   ├── api/v1/       # REST-Endpunkte (15 Router-Module)
+│   │   ├── api/v1/       # REST-Endpunkte (16 Router-Module)
 │   │   ├── core/         # Konfiguration (Pydantic Settings), Logging
 │   │   ├── db/           # MongoDB (Motor) & OpenSearch Verbindungen
 │   │   ├── models/       # MongoDB-Dokument-Schemata
@@ -61,7 +61,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   ├── src/
 │   │   ├── api/          # Axios-basierte Service-Module
 │   │   ├── components/   # Wiederverwendbare UI-Komponenten
-│   │   ├── views/        # Seitenkomponenten (13 Ansichten)
+│   │   ├── views/        # Seitenkomponenten (14 Ansichten)
 │   │   ├── hooks/        # Custom React Hooks
 │   │   ├── ui/           # Layout-Komponenten (Sidebar, Header)
 │   │   ├── utils/        # CVSS-Parsing, Datumsformatierung
@@ -101,6 +101,9 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbares Intervall via `SCA_AUTO_SCAN_INTERVAL_MINUTES`, Change-Detection über Image-Digest/Commit-SHA)
 - **SBOM-Generierung:** CycloneDX-Format via Syft
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
+- **SBOM-Import:** Externes CycloneDX- und SPDX-SBOM-Upload (JSON oder Datei-Upload) mit automatischem Format-Erkennung und Schwachstellen-Matching gegen die Vulnerability-DB
+- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (not_affected, affected, fixed, under_investigation), Inline-Bearbeitung, Bulk-Updates, CycloneDX VEX Export/Import, automatischer VEX Carry-Forward zwischen Scans
+- **License Compliance:** Lizenz-Policy-Management mit konfigurierbaren Regeln (erlaubt, verboten, Review-erforderlich), automatische Auswertung nach jedem Scan, License-Compliance-Übersicht über alle Scans
 - **Malware-Erkennung:** Hecate Analyzer mit 35 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads, SHA-256 Hash-Matching)
 - **Provenance-Verifikation:** Automatische Prüfung der Paketherkunft über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker)
 - **Best Practices:** Dockle prüft CIS Docker Benchmarks (nur Container-Images, opt-in)
@@ -126,9 +129,9 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
-| SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (über alle Ziele), manueller Scan, Scanner-Monitoring |
-| Scan-Detail | Findings (mit Suche & sortierbaren Spalten), SBOM (mit Export, Summary-Stats & Provenance), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), Scan-Vergleich |
-| System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen |
+| SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (über alle Ziele), manueller Scan, SBOM-Import, Lizenzen, Scanner-Monitoring |
+| Scan-Detail | Findings (mit Suche, sortierbaren Spalten & VEX-Status), SBOM (mit Export, Summary-Stats & Provenance), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, Scan-Vergleich, VEX-Export |
+| System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen, Lizenz-Policies |
 | CI/CD | Anleitung zur CI/CD-Integration mit Pipeline-Beispielen (GitHub Actions, GitLab CI, Shell) |
 | API | Interaktive API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 
@@ -229,6 +232,25 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/scans/{scanId}/sbom` — SBOM-Komponenten eines Scans
 - `GET /api/v1/scans/{scanId}/sbom/export` — SBOM-Export (CycloneDX 1.5 oder SPDX 2.3 JSON)
 - `GET /api/v1/scans/{scanId}/layers` — Layer-Analyse eines Scans (Dive)
+- `POST /api/v1/scans/import-sbom` — Externes SBOM importieren (JSON)
+- `POST /api/v1/scans/import-sbom/upload` — Externes SBOM importieren (Datei-Upload)
+- `GET /api/v1/scans/{scanId}/license-compliance` — License-Compliance-Auswertung eines Scans
+- `GET /api/v1/scans/license-overview` — License-Compliance-Übersicht über alle Scans
+
+### VEX (Vulnerability Exploitability Exchange)
+- `PUT /api/v1/scans/vex/findings/{findingId}` — VEX-Status eines Findings setzen
+- `POST /api/v1/scans/vex/bulk-update` — VEX-Status für mehrere Findings setzen
+- `POST /api/v1/scans/vex/import` — VEX-Dokument importieren (CycloneDX VEX)
+- `GET /api/v1/scans/{scanId}/vex/export` — VEX-Dokument exportieren (CycloneDX VEX)
+
+### License Policies
+- `GET /api/v1/license-policies` — Lizenz-Policies auflisten
+- `POST /api/v1/license-policies` — Neue Policy erstellen
+- `GET /api/v1/license-policies/{id}` — Policy abrufen
+- `PUT /api/v1/license-policies/{id}` — Policy aktualisieren
+- `DELETE /api/v1/license-policies/{id}` — Policy löschen
+- `POST /api/v1/license-policies/{id}/set-default` — Policy als Standard setzen
+- `GET /api/v1/license-policies/groups` — Lizenzgruppen abrufen
 
 ### Benachrichtigungen
 - `GET /api/v1/notifications/status` — Benachrichtigungs-Status (Apprise erreichbar?)

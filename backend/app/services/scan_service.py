@@ -205,6 +205,174 @@ class ScanService:
             finished_at = datetime.now(tz=UTC)
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
+    async def import_sbom(
+        self,
+        sbom_data: dict[str, Any],
+        format: str | None = None,
+        target_name: str | None = None,
+        target_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Import an external SBOM file. Creates target + scan + components + matched findings."""
+        from app.services.scan_parser import parse_cyclonedx_sbom, parse_spdx_sbom
+
+        # Auto-detect format
+        if not format:
+            if sbom_data.get("bomFormat") == "CycloneDX":
+                format = "cyclonedx-json"
+            elif sbom_data.get("spdxVersion"):
+                format = "spdx-json"
+            else:
+                raise ValueError("Cannot auto-detect SBOM format. Provide 'format' parameter.")
+
+        # Derive target name from SBOM metadata if not given
+        if not target_name:
+            if format == "cyclonedx-json":
+                meta = sbom_data.get("metadata", {})
+                comp = meta.get("component", {}) if isinstance(meta, dict) else {}
+                target_name = comp.get("name", "SBOM Import") if isinstance(comp, dict) else "SBOM Import"
+            elif format == "spdx-json":
+                target_name = sbom_data.get("name", "SBOM Import")
+            else:
+                target_name = "SBOM Import"
+
+        # Create or reuse target
+        if not target_id:
+            target_id = f"sbom-import-{target_name.lower().replace(' ', '-')[:60]}"
+
+        existing_target = await self.target_repo.get(target_id)
+        if not existing_target:
+            from app.models.scan import ScanTargetDocument
+            target_doc = ScanTargetDocument(
+                target_id=target_id,
+                type="sbom-import",
+                name=target_name,
+                scanners=["sbom-import"],
+                auto_scan=False,
+            )
+            await self.target_repo.upsert(target_doc)
+
+        # Create scan record
+        started_at = datetime.now(tz=UTC)
+        from app.models.scan import ScanDocument, ScanSummary
+        scan_doc = ScanDocument(
+            target_id=target_id,
+            target_name=target_name,
+            scanners=["sbom-import"],
+            status="completed",
+            source="sbom-import",
+            started_at=started_at,
+            finished_at=started_at,
+            duration_seconds=0,
+        )
+        scan_id_val = await self.scan_repo.insert(scan_doc)
+
+        # Parse components
+        if format == "cyclonedx-json":
+            components, comp_count = parse_cyclonedx_sbom(sbom_data, scan_id_val, target_id)
+        else:
+            components, comp_count = parse_spdx_sbom(sbom_data, scan_id_val, target_id)
+
+        # Store components
+        if components:
+            await self.sbom_repo.bulk_insert(components)
+
+        # Match vulnerabilities for imported components
+        all_findings: list[Any] = []
+        try:
+            findings = await self._match_vulnerabilities_for_components(scan_id_val, target_id, components)
+            if findings:
+                await self.finding_repo.bulk_insert(findings)
+                all_findings = findings
+        except Exception:
+            log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
+
+        # Compute summary
+        summary = self._compute_summary(all_findings)
+
+        # Evaluate license compliance
+        lc_summary = None
+        try:
+            from app.repositories.license_policy_repository import LicensePolicyRepository
+            from app.services.license_compliance_service import LicenseComplianceService
+
+            lp_repo = await LicensePolicyRepository.create()
+            lc_service = LicenseComplianceService(lp_repo, self.sbom_repo)
+            lc_summary = await lc_service.compute_summary(scan_id_val)
+        except Exception:
+            pass
+
+        # Update scan record
+        from app.db.mongo import get_database
+        db = await get_database()
+        update_data: dict[str, Any] = {
+            "summary": summary.model_dump(),
+            "sbom_component_count": comp_count,
+        }
+        if lc_summary:
+            update_data["license_compliance_summary"] = lc_summary
+        await db[settings.mongo_scans_collection].update_one(
+            {"_id": ObjectId(scan_id_val)},
+            {"$set": update_data},
+        )
+
+        await self.target_repo.update_last_scan(target_id, started_at)
+
+        return {
+            "scan_id": scan_id_val,
+            "target_id": target_id,
+            "status": "completed",
+            "findings_count": len(all_findings),
+            "sbom_component_count": comp_count,
+            "summary": summary,
+        }
+
+    async def _match_vulnerabilities_for_components(
+        self,
+        scan_id: str,
+        target_id: str,
+        components: list[Any],
+    ) -> list[ScanFindingDocument]:
+        """Search local vulnerability DB for CVEs matching SBOM components."""
+        if not components:
+            return []
+
+        try:
+            from app.db.opensearch import async_search
+        except Exception:
+            return []
+
+        findings: list[ScanFindingDocument] = []
+        cache: dict[str, str | None] = {}
+
+        for comp in components:
+            pkg_name = comp.name if hasattr(comp, "name") else comp.get("name", "")
+            pkg_version = comp.version if hasattr(comp, "version") else comp.get("version", "")
+            if not pkg_name:
+                continue
+
+            pkg_key = pkg_name.lower().strip()
+            if pkg_key in cache:
+                cve_id = cache[pkg_key]
+            else:
+                cve_id = await self._search_cve_by_package(pkg_name, async_search)
+                cache[pkg_key] = cve_id
+
+            if cve_id:
+                findings.append(ScanFindingDocument(
+                    scan_id=scan_id,
+                    target_id=target_id,
+                    vulnerability_id=cve_id,
+                    matched_from="sbom-import",
+                    scanner="sbom-import",
+                    package_name=pkg_name,
+                    package_version=pkg_version,
+                    package_type=comp.type if hasattr(comp, "type") else comp.get("type", ""),
+                    severity="unknown",
+                    title=f"Matched from local DB for {pkg_name}",
+                ))
+
+        return findings
+
     async def _run_scan_background_inner(
         self,
         scan_id: str,
@@ -359,6 +527,42 @@ class ScanService:
             await self.target_repo.update_last_fingerprint(target_id, image_digest=scan_metadata["image_digest"])
         if scan_metadata.get("commit_sha"):
             await self.target_repo.update_last_fingerprint(target_id, commit_sha=scan_metadata["commit_sha"])
+
+        # VEX carry-forward: copy VEX annotations from previous scan
+        try:
+            _, prev_scans = await self.scan_repo.list_by_target(target_id, limit=2)
+            prev_scan_id = None
+            for ps in prev_scans:
+                ps_id = str(ps.get("_id", ""))
+                if ps_id != scan_id and ps.get("status") == "completed":
+                    prev_scan_id = ps_id
+                    break
+            if prev_scan_id:
+                from app.services.vex_service import VexService
+                vex_svc = VexService(self.finding_repo, self.scan_repo)
+                carried = await vex_svc.carry_forward_vex(prev_scan_id, scan_id)
+                if carried:
+                    log.info("scan_service.vex_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried)
+        except Exception:
+            log.warning("scan_service.vex_carry_forward_failed", scan_id=scan_id, exc_info=True)
+
+        # Evaluate license compliance if a default policy exists
+        try:
+            from app.repositories.license_policy_repository import LicensePolicyRepository
+            from app.services.license_compliance_service import LicenseComplianceService
+
+            lp_repo = await LicensePolicyRepository.create()
+            lc_service = LicenseComplianceService(lp_repo, self.sbom_repo)
+            lc_summary = await lc_service.compute_summary(scan_id)
+            if lc_summary:
+                from app.db.mongo import get_database as _get_db
+                _db = await _get_db()
+                await _db[settings.mongo_scans_collection].update_one(
+                    {"_id": ObjectId(scan_id)},
+                    {"$set": {"license_compliance_summary": lc_summary}},
+                )
+        except Exception:
+            log.warning("scan_service.license_compliance_failed", scan_id=scan_id, exc_info=True)
 
         log.info(
             "scan_service.scan_completed",
@@ -653,6 +857,12 @@ class ScanService:
             scan_ids, search=search, severity=severity,
             sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset,
         )
+
+    async def get_latest_completed_scan_ids(
+        self, target_id: str | None = None
+    ) -> list[str]:
+        """Get the latest completed scan ID for each target."""
+        return await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
 
     async def get_global_sbom(
         self,
