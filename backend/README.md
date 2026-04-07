@@ -7,7 +7,7 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 ```
 app/
 ├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung (15 Module)
+│   ├── routes.py            # Router-Registrierung (16 Module)
 │   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
@@ -19,9 +19,10 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export)
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export, SBOM-Import, VEX, License-Compliance)
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
+│   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
 │   ├── server.py                # ASGI Sub-App Factory (FastMCP)
@@ -47,8 +48,9 @@ app/
 │   ├── cwe.py               # CWEEntry
 │   ├── capec.py             # CAPECEntry
 │   ├── scan.py              # SCA-Scan-Modelle (Target, Scan, Finding, SBOM)
+│   ├── license_policy.py    # LicensePolicyDocument
 │   └── kev.py               # CisaKevEntry, CisaKevCatalog
-├── repositories/            # Datenzugriffsschicht (13 Repositories)
+├── repositories/            # Datenzugriffsschicht (14 Repositories)
 │   ├── vulnerability_repository.py
 │   ├── cwe_repository.py
 │   ├── capec_repository.py
@@ -61,13 +63,16 @@ app/
 │   ├── scan_target_repository.py
 │   ├── scan_repository.py
 │   ├── scan_finding_repository.py
-│   └── scan_sbom_repository.py
+│   ├── scan_sbom_repository.py
+│   └── license_policy_repository.py
 ├── schemas/                 # API Request/Response Schemata
 │   ├── vulnerability.py     # VulnerabilityQuery, VulnerabilityDetail
 │   ├── cwe.py, capec.py, cpe.py, assets.py
 │   ├── ai.py                # AI-Analyse Schemata
 │   ├── backup.py, sync.py, audit.py, changelog.py
-│   ├── scan.py              # SCA-Scan API-Schemata
+│   ├── scan.py              # SCA-Scan API-Schemata (inkl. ImportSbomRequest)
+│   ├── vex.py               # VEX API-Schemata
+│   ├── license_policy.py    # License-Policy API-Schemata
 │   └── saved_search.py
 ├── services/                # Business-Logik
 │   ├── vulnerability_service.py   # Suche, Refresh, Lookup
@@ -82,9 +87,11 @@ app/
 │   ├── saved_search_service.py    # Gespeicherte Suchen
 │   ├── cpe_service.py             # CPE-Katalog
 │   ├── asset_catalog_service.py   # Asset-Katalog
-│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating)
-│   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV)
+│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import)
+│   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV, SPDX-SBOM)
 │   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
+│   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward
+│   ├── license_compliance_service.py  # Lizenz-Policy-Auswertung
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
 │   ├── notification_service.py    # Apprise-Benachrichtigungen
 │   ├── http/
@@ -140,6 +147,11 @@ app/
 | `scans` | `ScanDocument` | Scan-Durchläufe mit Status und Zusammenfassung |
 | `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans (exportierbar als CycloneDX 1.5 / SPDX 2.3) |
+| `scan_layer_analysis` | `ScanLayerAnalysisDocument` | Image-Schichtanalyse aus Dive-Scans |
+| `notification_rules` | — | Benachrichtigungsregeln (Event, Watch, DQL) |
+| `notification_channels` | — | Apprise-Channels (URL + Tag) |
+| `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
+| `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 

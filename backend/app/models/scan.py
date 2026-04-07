@@ -56,6 +56,7 @@ class ScanDocument(BaseModel):
     error: str | None = None
     scanner_version: str | None = None
     compliance_summary: dict[str, int] | None = None
+    license_compliance_summary: dict[str, int] | None = None
     layer_analysis_available: bool = False
 
 
@@ -80,6 +81,14 @@ class ScanFindingDocument(BaseModel):
     urls: list[str] = Field(default_factory=list)
     cvss_score: float | None = None
     cvss_vector: str | None = None
+    vex_status: str | None = Field(
+        default=None, description="VEX status: not_affected, affected, fixed, under_investigation"
+    )
+    vex_justification: str | None = None
+    vex_detail: str | None = None
+    vex_response: list[str] | None = Field(default=None, description="e.g. will_not_fix, workaround_available")
+    vex_updated_at: datetime | None = None
+    vex_updated_by: str | None = Field(default=None, description="user or vex-import")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

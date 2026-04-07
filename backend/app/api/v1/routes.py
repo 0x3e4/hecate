@@ -9,6 +9,7 @@ from app.api.v1 import (
     cpe,
     cwe,
     events,
+    license_policies,
     notifications,
     saved_searches,
     scans,
@@ -33,4 +34,5 @@ api_router.include_router(backup.router, prefix="/backup", tags=["backup"])
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(scans.router, prefix="/scans", tags=["scans"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(license_policies.router, prefix="/license-policies", tags=["license-policies"])
 api_router.include_router(events.router, prefix="/events", tags=["events"])

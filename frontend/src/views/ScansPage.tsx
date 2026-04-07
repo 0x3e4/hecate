@@ -15,7 +15,9 @@ import {
   updateScanTarget,
   cancelScan,
   fetchScannerStats,
+  importSbomFile,
 } from "../api/scans";
+import { fetchLicenseOverview } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
@@ -27,9 +29,10 @@ import type {
   ConsolidatedSbom,
   ScannerStats,
   SubmitScanResponse,
+  LicenseOverviewItem,
 } from "../types";
 
-type Tab = "targets" | "scans" | "findings" | "sbom" | "manual" | "scanner";
+type Tab = "targets" | "scans" | "findings" | "sbom" | "licenses" | "manual" | "scanner";
 type SourceRepoInputMode = "url" | "zip";
 
 interface ConfirmModal {
@@ -58,6 +61,20 @@ export const ScansPage = () => {
 
   // Scanner stats
   const [scannerStats, setScannerStats] = useState<ScannerStats | null>(null);
+
+  // License overview tab
+  const [licenseOverview, setLicenseOverview] = useState<LicenseOverviewItem[]>([]);
+  const [licenseOverviewTotal, setLicenseOverviewTotal] = useState(0);
+  const [licensesLoading, setLicensesLoading] = useState(false);
+  const [licenseSearch, setLicenseSearch] = useState("");
+
+  // SBOM import
+  const [sbomImportFile, setSbomImportFile] = useState<File | null>(null);
+  const [sbomImportTargetName, setSbomImportTargetName] = useState("");
+  const [sbomImportFormat, setSbomImportFormat] = useState("");
+  const [sbomImportLoading, setSbomImportLoading] = useState(false);
+  const [sbomImportResult, setSbomImportResult] = useState<SubmitScanResponse | null>(null);
+  const [sbomImportError, setSbomImportError] = useState<string | null>(null);
 
   // Global findings tab
   const [globalFindings, setGlobalFindings] = useState<ConsolidatedFinding[]>([]);
@@ -155,6 +172,14 @@ export const ScansPage = () => {
             setDiskHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.tmpDiskUsedBytes }]);
           }
         } catch { setScannerStats(null); }
+      } else if (tab === "licenses") {
+        setLicensesLoading(true);
+        try {
+          const res = await fetchLicenseOverview();
+          setLicenseOverview(res.items);
+          setLicenseOverviewTotal(res.total);
+        } catch { setLicenseOverview([]); setLicenseOverviewTotal(0); }
+        setLicensesLoading(false);
       }
     } catch (err) {
       console.error("Failed to load scan data", err);
@@ -398,6 +423,7 @@ export const ScansPage = () => {
             { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
             { key: "findings" as Tab, label: t("Findings", "Funde"), count: globalFindingsTotal || undefined },
             { key: "sbom" as Tab, label: "SBOM", count: sbomTotal || undefined },
+            { key: "licenses" as Tab, label: t("Licenses", "Lizenzen"), count: licenseOverviewTotal || undefined },
             { key: "manual" as Tab, label: t("New Scan", "Neuer Scan") },
             { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
           ]).map(({ key, label, count }) => (
@@ -950,6 +976,165 @@ export const ScansPage = () => {
         {/* SBOM tab */}
         {tab === "sbom" && (
           <div>
+            {/* SBOM Import card */}
+            {!sbomImportResult ? (
+              <div
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={e => {
+                  e.preventDefault(); e.stopPropagation();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && (file.name.endsWith(".json") || file.type === "application/json")) {
+                    setSbomImportFile(file);
+                    setSbomImportResult(null);
+                    setSbomImportError(null);
+                  }
+                }}
+                style={{
+                  marginBottom: "1.25rem",
+                  padding: "1rem 1.25rem",
+                  border: "1px dashed rgba(255,212,59,0.25)",
+                  borderRadius: "10px",
+                  background: "rgba(255,212,59,0.03)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ flex: "1 1 0", minWidth: "200px" }}>
+                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "rgba(255,255,255,0.8)", marginBottom: "0.25rem" }}>
+                    {t("Import SBOM", "SBOM importieren")}
+                  </div>
+                  {sbomImportFile ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{
+                        padding: "0.25rem 0.625rem", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 500,
+                        background: "rgba(255,212,59,0.12)", color: "#ffd43b", border: "1px solid rgba(255,212,59,0.25)",
+                        maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {sbomImportFile.name}
+                      </span>
+                      <button type="button" onClick={() => { setSbomImportFile(null); setSbomImportError(null); }}
+                        style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: "0.875rem", padding: "0 0.25rem" }}>
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={{ cursor: "pointer" }}>
+                      <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
+                        {t("Drop a CycloneDX / SPDX JSON file here or ", "CycloneDX / SPDX JSON-Datei hierher ziehen oder ")}
+                        <span style={{ color: "#ffd43b", textDecoration: "underline" }}>{t("browse", "durchsuchen")}</span>
+                      </span>
+                      <input type="file" accept=".json,application/json" style={{ display: "none" }}
+                        onChange={e => {
+                          setSbomImportFile(e.target.files?.[0] || null);
+                          setSbomImportResult(null);
+                          setSbomImportError(null);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
+                  {sbomImportError && (
+                    <div style={{ fontSize: "0.75rem", color: "#ff6b6b", marginTop: "0.25rem" }}>{sbomImportError}</div>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                  <select
+                    value={sbomImportFormat}
+                    onChange={e => setSbomImportFormat(e.target.value)}
+                    style={{
+                      padding: "0.3rem 0.5rem", borderRadius: "6px",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)",
+                      fontSize: "0.75rem", outline: "none",
+                    }}
+                  >
+                    <option value="">{t("Auto-detect", "Auto")}</option>
+                    <option value="cyclonedx-json">CycloneDX</option>
+                    <option value="spdx-json">SPDX</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={sbomImportTargetName}
+                    onChange={e => setSbomImportTargetName(e.target.value)}
+                    placeholder={t("Target name (optional)", "Zielname (opt.)")}
+                    style={{
+                      padding: "0.3rem 0.5rem", borderRadius: "6px",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "rgba(255,255,255,0.05)", color: "#fff",
+                      fontSize: "0.75rem", outline: "none", width: "160px",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={!sbomImportFile || sbomImportLoading}
+                    onClick={async () => {
+                      if (!sbomImportFile) return;
+                      setSbomImportLoading(true);
+                      setSbomImportError(null);
+                      setSbomImportResult(null);
+                      try {
+                        const res = await importSbomFile(
+                          sbomImportFile,
+                          sbomImportTargetName || undefined,
+                          sbomImportFormat || undefined,
+                        );
+                        setSbomImportResult(res);
+                      } catch (err: any) {
+                        setSbomImportError(err?.response?.data?.detail || err?.message || t("Import failed.", "Import fehlgeschlagen."));
+                      } finally {
+                        setSbomImportLoading(false);
+                      }
+                    }}
+                    style={{
+                      padding: "0.375rem 1rem",
+                      borderRadius: "6px",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      cursor: sbomImportFile && !sbomImportLoading ? "pointer" : "default",
+                      background: sbomImportFile && !sbomImportLoading ? "rgba(255,212,59,0.15)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${sbomImportFile && !sbomImportLoading ? "rgba(255,212,59,0.35)" : "rgba(255,255,255,0.08)"}`,
+                      color: sbomImportFile && !sbomImportLoading ? "#ffd43b" : "rgba(255,255,255,0.25)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sbomImportLoading ? t("Importing...", "Importiert...") : t("Import", "Importieren")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                marginBottom: "1.25rem",
+                padding: "0.75rem 1.25rem",
+                border: "1px solid rgba(105,219,124,0.3)",
+                borderRadius: "10px",
+                background: "rgba(105,219,124,0.06)",
+                display: "flex",
+                alignItems: "center",
+                gap: "1rem",
+              }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 600, color: "#69db7c", fontSize: "0.8125rem" }}>
+                    {t("SBOM imported!", "SBOM importiert!")}
+                  </span>
+                  <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.75rem", marginLeft: "0.5rem" }}>
+                    {sbomImportResult.sbomComponentCount} {t("components", "Komponenten")} · {sbomImportResult.findingsCount} {t("findings", "Funde")}
+                  </span>
+                </div>
+                <Link
+                  to={`/scans/${sbomImportResult.scanId}`}
+                  style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.75rem", fontWeight: 600, whiteSpace: "nowrap" }}
+                >
+                  {t("View details", "Details")} →
+                </Link>
+                <button type="button" onClick={() => { setSbomImportResult(null); setSbomImportFile(null); setSbomImportError(null); }}
+                  style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: "1rem", padding: "0 0.25rem" }}>
+                  ×
+                </button>
+              </div>
+            )}
+
             {/* Filter bar */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
               <input
@@ -1363,9 +1548,106 @@ export const ScansPage = () => {
                 </Link>
               </div>
             )}
+
           </div>
         )}
         {/* Scanner tab */}
+        {/* Licenses tab */}
+        {tab === "licenses" && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+              <input
+                type="text"
+                value={licenseSearch}
+                onChange={e => setLicenseSearch(e.target.value)}
+                placeholder={t("Search licenses...", "Lizenzen suchen...")}
+                style={{
+                  padding: "0.375rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "#fff",
+                  fontSize: "0.8125rem",
+                  flex: "1 1 200px",
+                  maxWidth: "400px",
+                  minWidth: 0,
+                  outline: "none",
+                }}
+              />
+              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
+                {licenseOverviewTotal} {t("licenses", "Lizenzen")}
+              </span>
+            </div>
+
+            {licensesLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonBlock key={i} height={40} radius={6} />
+                ))}
+              </div>
+            ) : licenseOverview.length === 0 ? (
+              <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
+                {t("No license data available. Run a scan with SBOM generation first.", "Keine Lizenzdaten verfügbar. Führen Sie zuerst einen Scan mit SBOM-Generierung durch.")}
+              </p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                      <th style={thStyle}>{t("License", "Lizenz")}</th>
+                      <th style={thStyle}>{t("Components", "Komponenten")}</th>
+                      <th style={thStyle}>{t("Used By", "Verwendet von")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {licenseOverview
+                      .filter(item => !licenseSearch || item.licenseId.toLowerCase().includes(licenseSearch.toLowerCase()))
+                      .map(item => (
+                        <tr key={item.licenseId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          <td style={tdStyle}>
+                            <span style={{ fontWeight: 500, color: "#fff" }}>{item.licenseId}</span>
+                          </td>
+                          <td style={tdStyle}>
+                            <span style={{
+                              padding: "0.125rem 0.5rem",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              background: "rgba(92,132,255,0.15)",
+                              color: "#5c84ff",
+                            }}>
+                              {item.componentCount}
+                            </span>
+                          </td>
+                          <td style={{ ...tdStyle, maxWidth: "500px" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                              {item.components.slice(0, 8).map((c, i) => (
+                                <span key={i} style={{
+                                  padding: "0.0625rem 0.375rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.6875rem",
+                                  background: "rgba(255,255,255,0.06)",
+                                  color: "rgba(255,255,255,0.6)",
+                                }}>
+                                  {c.name}@{c.version}
+                                </span>
+                              ))}
+                              {item.componentCount > 8 && (
+                                <span style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.35)" }}>
+                                  +{item.componentCount - 8} {t("more", "weitere")}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === "scanner" && (
           <div>
             {loading && <SkeletonBlock height={200} radius={8} />}

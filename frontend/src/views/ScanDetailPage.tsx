@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom } from "../api/scans";
+import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex } from "../api/scans";
+import { fetchScanLicenseCompliance } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
@@ -13,9 +14,10 @@ import type {
   ScanComparisonResponse,
   ScanLayerAnalysis,
   SbomComponent,
+  LicenseComplianceResult,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets";
+type Tab = "findings" | "sbom" | "history" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance";
 
 /** Format bytes to human-readable string */
 function formatBytes(bytes: number): string {
@@ -188,6 +190,7 @@ function normalizeVersion(v: string): string {
 /** Merged finding: same CVE + package across scanners */
 interface MergedFinding {
   key: string;
+  findingIds: string[];
   vulnerabilityId: string | null;
   matchedFrom: string | null;
   packageName: string;
@@ -203,6 +206,8 @@ interface MergedFinding {
   scanners: string[];
   cvssScore: number | null;
   urls: string[];
+  vexStatus: string | null;
+  vexJustification: string | null;
 }
 
 /** Pick the best fix version: reject downgrades (fix major < pkg major), prefer same-major */
@@ -223,6 +228,7 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
   const map = new Map<string, Entry>();
 
   const mergeInto = (existing: Entry, f: ScanFinding) => {
+    if (!existing.findingIds.includes(f.id)) existing.findingIds.push(f.id);
     if (!existing.scanners.includes(f.scanner)) existing.scanners.push(f.scanner);
     if (f.fixVersion) existing._fixCandidates.push(normalizeVersion(f.fixVersion));
     if (!existing.cvssScore && f.cvssScore) existing.cvssScore = f.cvssScore;
@@ -230,6 +236,11 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
     if (!existing.matchedFrom && f.matchedFrom) existing.matchedFrom = f.matchedFrom;
     // Promote CVE if the existing entry has none
     if (!existing.vulnerabilityId && f.vulnerabilityId) existing.vulnerabilityId = f.vulnerabilityId;
+    // VEX: take first non-null
+    if (!existing.vexStatus && f.vexStatus) {
+      existing.vexStatus = f.vexStatus;
+      existing.vexJustification = f.vexJustification ?? null;
+    }
   };
 
   for (const f of findings) {
@@ -280,6 +291,7 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
       } else {
         map.set(key, {
           key,
+          findingIds: [f.id],
           vulnerabilityId: f.vulnerabilityId ?? null,
           matchedFrom: f.matchedFrom ?? null,
           packageName: f.packageName,
@@ -295,6 +307,8 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
           scanners: [f.scanner],
           cvssScore: f.cvssScore ?? null,
           urls: f.urls ?? [],
+          vexStatus: f.vexStatus ?? null,
+          vexJustification: f.vexJustification ?? null,
           _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
         });
       }
@@ -324,6 +338,15 @@ export const ScanDetailPage = () => {
   const [findingsSort, setFindingsSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "severity", dir: "asc" });
   const [sbomSearch, setSbomSearch] = useState("");
   const [sbomExporting, setSbomExporting] = useState<string | null>(null);
+
+  // License compliance
+  const [licenseCompliance, setLicenseCompliance] = useState<LicenseComplianceResult | null>(null);
+  const [licenseComplianceLoading, setLicenseComplianceLoading] = useState(false);
+
+  // VEX editing
+  const [vexEditingId, setVexEditingId] = useState<string | null>(null);
+  const [vexEditStatus, setVexEditStatus] = useState("");
+  const [vexEditJustification, setVexEditJustification] = useState("");
 
   // History chart state
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
@@ -544,6 +567,16 @@ export const ScanDetailPage = () => {
       setSbomTotal(data.total);
     }).catch(err => console.error("Failed to load SBOM", err));
   }, [sbomSearch]);
+
+  // Load license compliance data on tab switch
+  useEffect(() => {
+    if (tab !== "license-compliance" || !scanId || licenseCompliance) return;
+    setLicenseComplianceLoading(true);
+    fetchScanLicenseCompliance(scanId)
+      .then(setLicenseCompliance)
+      .catch(err => console.error("Failed to load license compliance", err))
+      .finally(() => setLicenseComplianceLoading(false));
+  }, [tab, scanId]);
 
   if (loading) return (
     <div className="page">
@@ -786,6 +819,20 @@ export const ScanDetailPage = () => {
               {t("Secrets", "Secrets")} ({secretFindings.length})
             </button>
           )}
+          {sbomTotal > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab("license-compliance")}
+              style={{
+                ...tabStyle(tab === "license-compliance"),
+                borderColor: tab === "license-compliance" ? "rgba(99,230,190,0.5)" : "rgba(99,230,190,0.3)",
+                background: tab === "license-compliance" ? "rgba(99,230,190,0.15)" : "rgba(99,230,190,0.05)",
+                color: tab === "license-compliance" ? "#63e6be" : "#96f2d7",
+              }}
+            >
+              {t("Licenses", "Lizenzen")}
+            </button>
+          )}
         </div>
 
         {tab === "findings" && (
@@ -887,6 +934,7 @@ export const ScanDetailPage = () => {
                           {label} {findingsSort.col === col ? (findingsSort.dir === "asc" ? "\u25B2" : "\u25BC") : ""}
                         </th>
                       ))}
+                      <th style={thStyle}>VEX</th>
                       <th style={thStyle}>{t("Links", "Links")}</th>
                     </tr>
                   </thead>
@@ -926,6 +974,61 @@ export const ScanDetailPage = () => {
                           </td>
                           <td style={tdStyle}>
                             <span style={{ color: "rgba(255,255,255,0.4)" }}>{f.scanners.join(", ")}</span>
+                          </td>
+                          <td style={tdStyle}>
+                            {vexEditingId === f.key ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: "140px" }}>
+                                <select value={vexEditStatus} onChange={e => setVexEditStatus(e.target.value)}
+                                  style={{ padding: "0.25rem 0.375rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.6875rem" }}>
+                                  <option value="">{t("— Clear —", "— Löschen —")}</option>
+                                  <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
+                                  <option value="affected">{t("Affected", "Betroffen")}</option>
+                                  <option value="fixed">{t("Fixed", "Behoben")}</option>
+                                  <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
+                                </select>
+                                <input type="text" value={vexEditJustification} onChange={e => setVexEditJustification(e.target.value)}
+                                  placeholder={t("Justification...", "Begründung...")}
+                                  style={{ padding: "0.25rem 0.375rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.6875rem" }} />
+                                <div style={{ display: "flex", gap: "0.25rem" }}>
+                                  <button type="button" onClick={async () => {
+                                    if (f.findingIds.length > 0) {
+                                      await updateFindingVex(f.findingIds[0], { vexStatus: vexEditStatus || null, vexJustification: vexEditJustification || undefined });
+                                    }
+                                    setVexEditingId(null);
+                                    if (scanId) {
+                                      const data = await fetchScanFindings(scanId, { limit: 500 });
+                                      setFindings(data.items);
+                                      setFindingsTotal(data.total);
+                                    }
+                                  }} style={{ fontSize: "0.625rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.15)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.25)", cursor: "pointer" }}>
+                                    {t("Save", "OK")}
+                                  </button>
+                                  <button type="button" onClick={() => setVexEditingId(null)}
+                                    style={{ fontSize: "0.625rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer" }}>
+                                    {t("Cancel", "X")}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span
+                                onClick={() => { setVexEditingId(f.key); setVexEditStatus(f.vexStatus || ""); setVexEditJustification(f.vexJustification || ""); }}
+                                style={{ cursor: "pointer" }}
+                                title={f.vexJustification || t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
+                              >
+                                {f.vexStatus ? (() => {
+                                  const vexColors: Record<string, string> = { not_affected: "#69db7c", affected: "#ff6b6b", fixed: "#5c84ff", under_investigation: "#fcc419" };
+                                  const vexLabels: Record<string, string> = { not_affected: "Not Affected", affected: "Affected", fixed: "Fixed", under_investigation: "Investigating" };
+                                  const c = vexColors[f.vexStatus] || "rgba(255,255,255,0.4)";
+                                  return (
+                                    <span style={{ padding: "0.0625rem 0.375rem", borderRadius: "4px", fontSize: "0.6875rem", fontWeight: 500, background: `${c}15`, color: c, border: `1px solid ${c}30` }}>
+                                      {vexLabels[f.vexStatus] || f.vexStatus}
+                                    </span>
+                                  );
+                                })() : (
+                                  <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "0.6875rem" }}>—</span>
+                                )}
+                              </span>
+                            )}
                           </td>
                           <td style={tdStyle}>
                             <div style={{ display: "flex", gap: "0.375rem" }}>
@@ -998,6 +1101,28 @@ export const ScanDetailPage = () => {
                   }}
                 >
                   {sbomExporting === "spdx-json" ? "..." : "SPDX"}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!scanId) return;
+                    try {
+                      const blob = await exportVex(scanId);
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `vex-${scanId}.cdx.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch {
+                      // VEX export may fail if no VEX data
+                    }
+                  }}
+                  style={{
+                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: "pointer",
+                    background: "rgba(99,230,190,0.12)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.3)",
+                  }}
+                >
+                  VEX
                 </button>
               </div>
             </div>
@@ -1870,6 +1995,121 @@ export const ScanDetailPage = () => {
                     );
                   })}
                 </div>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "license-compliance" && (
+          <>
+            {licenseComplianceLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonBlock key={i} height={40} radius={6} />
+                ))}
+              </div>
+            ) : !licenseCompliance || !licenseCompliance.policyId ? (
+              <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                <p className="muted">{t("No license policy configured. Create a default policy on the System page.", "Keine Lizenzrichtlinie konfiguriert. Erstellen Sie eine Standardrichtlinie auf der Systemseite.")}</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary banner */}
+                <div style={{
+                  display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap",
+                  padding: "0.75rem 1rem",
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "8px",
+                }}>
+                  <div style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", alignSelf: "center" }}>
+                    {t("Policy", "Richtlinie")}: <strong style={{ color: "#fff" }}>{licenseCompliance.policyName}</strong>
+                  </div>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: "0.75rem" }}>
+                    {(["allowed", "denied", "warned", "unknown"] as const).map(status => {
+                      const count = licenseCompliance.summary[status];
+                      const colors: Record<string, string> = { allowed: "#69db7c", denied: "#ff6b6b", warned: "#fcc419", unknown: "rgba(255,255,255,0.4)" };
+                      return (
+                        <span key={status} style={{
+                          padding: "0.125rem 0.625rem",
+                          borderRadius: "4px",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          background: `${colors[status]}15`,
+                          color: colors[status],
+                        }}>
+                          {count} {status}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Violations list */}
+                {licenseCompliance.violations.length === 0 ? (
+                  <p style={{ textAlign: "center", padding: "1rem 0", color: "#69db7c", fontSize: "0.875rem" }}>
+                    {t("All components comply with the license policy.", "Alle Komponenten entsprechen der Lizenzrichtlinie.")}
+                  </p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Component", "Komponente")}</th>
+                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Version", "Version")}</th>
+                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Licenses", "Lizenzen")}</th>
+                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Status", "Status")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {licenseCompliance.violations.map((v, i) => {
+                          const statusColors: Record<string, string> = { denied: "#ff6b6b", warned: "#fcc419", unknown: "rgba(255,255,255,0.4)" };
+                          const color = statusColors[v.status] || "rgba(255,255,255,0.4)";
+                          return (
+                            <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle" }}>
+                                <span style={{ fontWeight: 500, color: "#fff" }}>{v.name}</span>
+                              </td>
+                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle", fontFamily: "monospace", fontSize: "0.8125rem" }}>{v.version}</td>
+                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle" }}>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                                  {v.evaluatedLicenses.map((el, j) => {
+                                    const licColor = el.status === "denied" ? "#ff6b6b" : el.status === "warned" ? "#fcc419" : el.status === "allowed" ? "#69db7c" : "rgba(255,255,255,0.4)";
+                                    return (
+                                      <span key={j} style={{
+                                        padding: "0.0625rem 0.375rem",
+                                        borderRadius: "4px",
+                                        fontSize: "0.6875rem",
+                                        fontWeight: 500,
+                                        background: `${licColor}15`,
+                                        color: licColor,
+                                        border: `1px solid ${licColor}30`,
+                                      }}>
+                                        {el.licenseId}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle" }}>
+                                <span style={{
+                                  padding: "0.125rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  background: `${color}15`,
+                                  color,
+                                }}>
+                                  {v.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </>
             )}
           </>

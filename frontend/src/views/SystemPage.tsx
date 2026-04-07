@@ -25,6 +25,14 @@ import {
 } from "../api/notifications";
 import { api } from "../api/client";
 import {
+  fetchLicensePolicies,
+  createLicensePolicy,
+  updateLicensePolicy,
+  deleteLicensePolicy,
+  setDefaultLicensePolicy,
+  fetchLicenseGroups,
+} from "../api/licensePolicy";
+import {
   fetchSyncStates,
   triggerEuvdSync,
   triggerNvdSync,
@@ -52,6 +60,8 @@ import type {
   NotificationTemplateCreate,
   SavedSearch,
   SyncState,
+  LicensePolicy,
+  LicenseGroups,
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
@@ -135,6 +145,19 @@ export const SystemPage = () => {
 
   const [resyncInput, setResyncInput] = useState("");
   const [resyncBusy, setResyncBusy] = useState(false);
+
+  // License policies
+  const [licensePolicies, setLicensePolicies] = useState<LicensePolicy[]>([]);
+  const [licensePoliciesLoading, setLicensePoliciesLoading] = useState(true);
+  const [licenseGroups, setLicenseGroups] = useState<LicenseGroups | null>(null);
+  const [lpEditing, setLpEditing] = useState<LicensePolicy | null>(null);
+  const [lpCreating, setLpCreating] = useState(false);
+  const [lpFormName, setLpFormName] = useState("");
+  const [lpFormDescription, setLpFormDescription] = useState("");
+  const [lpFormAllowed, setLpFormAllowed] = useState("");
+  const [lpFormDenied, setLpFormDenied] = useState("");
+  const [lpFormDefaultAction, setLpFormDefaultAction] = useState("warn");
+  const [lpFormIsDefault, setLpFormIsDefault] = useState(false);
 
   // SSE for real-time job updates
   const { jobs: sseJobs, connected: sseConnected } = useSSE();
@@ -595,12 +618,107 @@ export const SystemPage = () => {
     };
   }, [t]);
 
+  const loadLicensePolicies = async () => {
+    try {
+      const [policiesRes, groupsRes] = await Promise.all([
+        fetchLicensePolicies(),
+        fetchLicenseGroups(),
+      ]);
+      setLicensePolicies(policiesRes.items);
+      setLicenseGroups(groupsRes);
+    } catch (error) {
+      console.error("Failed to load license policies", error);
+    } finally {
+      setLicensePoliciesLoading(false);
+    }
+  };
+
+  const resetLpForm = () => {
+    setLpFormName("");
+    setLpFormDescription("");
+    setLpFormAllowed("");
+    setLpFormDenied("");
+    setLpFormDefaultAction("warn");
+    setLpFormIsDefault(false);
+    setLpEditing(null);
+    setLpCreating(false);
+  };
+
+  const handleCreateLicensePolicy = async () => {
+    try {
+      await createLicensePolicy({
+        name: lpFormName,
+        description: lpFormDescription || undefined,
+        allowed: lpFormAllowed.split(",").map(s => s.trim()).filter(Boolean),
+        denied: lpFormDenied.split(",").map(s => s.trim()).filter(Boolean),
+        defaultAction: lpFormDefaultAction,
+        isDefault: lpFormIsDefault,
+      });
+      resetLpForm();
+      void loadLicensePolicies();
+      showToast(t("Policy created.", "Richtlinie erstellt."));
+    } catch (error) {
+      showToast(t("Failed to create policy.", "Richtlinie konnte nicht erstellt werden."), "error");
+    }
+  };
+
+  const handleUpdateLicensePolicy = async () => {
+    if (!lpEditing) return;
+    try {
+      await updateLicensePolicy(lpEditing.id, {
+        name: lpFormName,
+        description: lpFormDescription || undefined,
+        allowed: lpFormAllowed.split(",").map(s => s.trim()).filter(Boolean),
+        denied: lpFormDenied.split(",").map(s => s.trim()).filter(Boolean),
+        defaultAction: lpFormDefaultAction,
+        isDefault: lpFormIsDefault,
+      });
+      resetLpForm();
+      void loadLicensePolicies();
+      showToast(t("Policy updated.", "Richtlinie aktualisiert."));
+    } catch (error) {
+      showToast(t("Failed to update policy.", "Richtlinie konnte nicht aktualisiert werden."), "error");
+    }
+  };
+
+  const handleDeleteLicensePolicy = async (policyId: string) => {
+    try {
+      await deleteLicensePolicy(policyId);
+      void loadLicensePolicies();
+      showToast(t("Policy deleted.", "Richtlinie gelöscht."));
+    } catch (error) {
+      showToast(t("Failed to delete policy.", "Richtlinie konnte nicht gelöscht werden."), "error");
+    }
+  };
+
+  const handleSetDefaultPolicy = async (policyId: string) => {
+    try {
+      await setDefaultLicensePolicy(policyId);
+      void loadLicensePolicies();
+      showToast(t("Default policy updated.", "Standardrichtlinie aktualisiert."));
+    } catch (error) {
+      showToast(t("Failed to set default policy.", "Standardrichtlinie konnte nicht gesetzt werden."), "error");
+    }
+  };
+
+  const startEditingLicensePolicy = (policy: LicensePolicy) => {
+    setLpEditing(policy);
+    setLpCreating(false);
+    setLpFormName(policy.name);
+    setLpFormDescription(policy.description || "");
+    setLpFormAllowed(policy.allowed.join(", "));
+    setLpFormDenied(policy.denied.join(", "));
+    setLpFormDefaultAction(policy.defaultAction);
+    setLpFormIsDefault(policy.isDefault);
+  };
+
   useEffect(() => {
     void loadNotificationStatus();
     void loadNotifRules();
     void loadChannels();
     void loadTemplates();
     void loadScannerStatus();
+    void loadLicensePolicies();
   }, []);
 
   useEffect(() => {
@@ -1894,6 +2012,166 @@ export const SystemPage = () => {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>{t("License Policies", "Lizenzrichtlinien")}</h2>
+        <p className="muted">
+          {t(
+            "Define policies to evaluate SBOM component licenses. The default policy is automatically applied after each scan.",
+            "Definieren Sie Richtlinien zur Bewertung von SBOM-Komponentenlizenzen. Die Standardrichtlinie wird nach jedem Scan automatisch angewendet."
+          )}
+        </p>
+
+        <div style={{ marginTop: "1rem" }}>
+          {!lpCreating && !lpEditing && (
+            <button
+              type="button"
+              onClick={() => { resetLpForm(); setLpCreating(true); }}
+              style={{ marginBottom: "1rem" }}
+            >
+              + {t("Create Policy", "Richtlinie erstellen")}
+            </button>
+          )}
+
+          {(lpCreating || lpEditing) && (
+            <div style={{
+              padding: "1rem", marginBottom: "1rem",
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "8px",
+            }}>
+              <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.9375rem" }}>
+                {lpEditing ? t("Edit Policy", "Richtlinie bearbeiten") : t("New Policy", "Neue Richtlinie")}
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 500, color: "rgba(255,255,255,0.6)", marginBottom: "0.25rem" }}>
+                    {t("Name", "Name")}
+                  </label>
+                  <input type="text" value={lpFormName} onChange={e => setLpFormName(e.target.value)} style={{ width: "100%", maxWidth: "400px" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 500, color: "rgba(255,255,255,0.6)", marginBottom: "0.25rem" }}>
+                    {t("Description", "Beschreibung")}
+                  </label>
+                  <input type="text" value={lpFormDescription} onChange={e => setLpFormDescription(e.target.value)} style={{ width: "100%", maxWidth: "600px" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 500, color: "rgba(255,255,255,0.6)", marginBottom: "0.25rem" }}>
+                    {t("Allowed Licenses (comma-separated SPDX IDs)", "Erlaubte Lizenzen (kommagetrennte SPDX-IDs)")}
+                  </label>
+                  <input type="text" value={lpFormAllowed} onChange={e => setLpFormAllowed(e.target.value)} placeholder="MIT, Apache-2.0, BSD-3-Clause, ISC" style={{ width: "100%", maxWidth: "600px" }} />
+                  {licenseGroups && (
+                    <div style={{ marginTop: "0.375rem", display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => setLpFormAllowed(licenseGroups.permissive.join(", "))}
+                        style={{ fontSize: "0.6875rem", padding: "0.125rem 0.5rem", borderRadius: "4px", background: "rgba(99,230,190,0.1)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.2)", cursor: "pointer" }}>
+                        {t("Fill: Permissive", "Einfügen: Permissiv")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 500, color: "rgba(255,255,255,0.6)", marginBottom: "0.25rem" }}>
+                    {t("Denied Licenses (comma-separated SPDX IDs)", "Verbotene Lizenzen (kommagetrennte SPDX-IDs)")}
+                  </label>
+                  <input type="text" value={lpFormDenied} onChange={e => setLpFormDenied(e.target.value)} placeholder="GPL-3.0-only, AGPL-3.0-only" style={{ width: "100%", maxWidth: "600px" }} />
+                  {licenseGroups && (
+                    <div style={{ marginTop: "0.375rem", display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => setLpFormDenied(licenseGroups.copyleft.join(", "))}
+                        style={{ fontSize: "0.6875rem", padding: "0.125rem 0.5rem", borderRadius: "4px", background: "rgba(255,107,107,0.1)", color: "#ff6b6b", border: "1px solid rgba(255,107,107,0.2)", cursor: "pointer" }}>
+                        {t("Fill: Copyleft", "Einfügen: Copyleft")}
+                      </button>
+                      <button type="button" onClick={() => setLpFormDenied([...licenseGroups.copyleft, ...licenseGroups.weakCopyleft].join(", "))}
+                        style={{ fontSize: "0.6875rem", padding: "0.125rem 0.5rem", borderRadius: "4px", background: "rgba(252,196,25,0.1)", color: "#fcc419", border: "1px solid rgba(252,196,25,0.2)", cursor: "pointer" }}>
+                        {t("Fill: All Copyleft", "Einfügen: Alle Copyleft")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 500, color: "rgba(255,255,255,0.6)", marginBottom: "0.25rem" }}>
+                    {t("Default Action (for unlisted licenses)", "Standardaktion (für nicht gelistete Lizenzen)")}
+                  </label>
+                  <select value={lpFormDefaultAction} onChange={e => setLpFormDefaultAction(e.target.value)}
+                    style={{ padding: "0.375rem 0.625rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.8125rem" }}>
+                    <option value="allow">{t("Allow", "Erlauben")}</option>
+                    <option value="warn">{t("Warn", "Warnen")}</option>
+                    <option value="deny">{t("Deny", "Verweigern")}</option>
+                  </select>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontSize: "0.8125rem", color: "rgba(255,255,255,0.7)" }}>
+                  <input type="checkbox" checked={lpFormIsDefault} onChange={e => setLpFormIsDefault(e.target.checked)} />
+                  {t("Set as default policy", "Als Standardrichtlinie festlegen")}
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                  <button type="button" onClick={lpEditing ? handleUpdateLicensePolicy : handleCreateLicensePolicy}
+                    disabled={!lpFormName.trim()}>
+                    {lpEditing ? t("Save", "Speichern") : t("Create", "Erstellen")}
+                  </button>
+                  <button type="button" onClick={resetLpForm}
+                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.7)" }}>
+                    {t("Cancel", "Abbrechen")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {licensePoliciesLoading ? (
+            <p className="muted">{t("Loading...", "Laden...")}</p>
+          ) : licensePolicies.length === 0 ? (
+            <p className="muted">{t("No license policies configured yet.", "Noch keine Lizenzrichtlinien konfiguriert.")}</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {licensePolicies.map(policy => (
+                <div key={policy.id} style={{
+                  display: "flex", alignItems: "center", gap: "0.75rem",
+                  padding: "0.75rem 1rem",
+                  background: "rgba(255,255,255,0.02)",
+                  border: `1px solid ${policy.isDefault ? "rgba(99,230,190,0.3)" : "rgba(255,255,255,0.06)"}`,
+                  borderRadius: "8px",
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <strong style={{ fontSize: "0.875rem" }}>{policy.name}</strong>
+                      {policy.isDefault && (
+                        <span style={{
+                          padding: "0.0625rem 0.375rem", borderRadius: "4px", fontSize: "0.6875rem", fontWeight: 600,
+                          background: "rgba(99,230,190,0.15)", color: "#63e6be",
+                        }}>
+                          {t("Default", "Standard")}
+                        </span>
+                      )}
+                    </div>
+                    {policy.description && (
+                      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.125rem" }}>{policy.description}</div>
+                    )}
+                    <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.35)", marginTop: "0.25rem" }}>
+                      {policy.allowed.length} {t("allowed", "erlaubt")} · {policy.denied.length} {t("denied", "verboten")} · {t("default:", "Standard:")} {policy.defaultAction}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
+                    {!policy.isDefault && (
+                      <button type="button" onClick={() => handleSetDefaultPolicy(policy.id)}
+                        style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", background: "rgba(99,230,190,0.1)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.2)", borderRadius: "4px", cursor: "pointer" }}>
+                        {t("Set Default", "Als Standard")}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => startEditingLicensePolicy(policy)}
+                      style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", cursor: "pointer" }}>
+                      {t("Edit", "Bearbeiten")}
+                    </button>
+                    <button type="button" onClick={() => handleDeleteLicensePolicy(policy.id)}
+                      style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", background: "rgba(255,107,107,0.1)", color: "#ff6b6b", border: "1px solid rgba(255,107,107,0.2)", borderRadius: "4px", cursor: "pointer" }}>
+                      {t("Delete", "Löschen")}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

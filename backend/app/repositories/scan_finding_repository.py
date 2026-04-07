@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import PyMongoError
 
@@ -25,6 +27,7 @@ class ScanFindingRepository:
         await collection.create_index("target_id")
         await collection.create_index("vulnerability_id")
         await collection.create_index("severity")
+        await collection.create_index("vex_status", sparse=True)
         return cls(collection)
 
     async def bulk_insert(self, findings: list[ScanFindingDocument]) -> int:
@@ -247,4 +250,110 @@ class ScanFindingRepository:
             return result.deleted_count
         except PyMongoError as exc:
             log.warning("scan_finding_repository.delete_by_target_failed", target_id=target_id, error=str(exc))
+            return 0
+
+    # --- VEX methods ---
+
+    async def update_vex_status(
+        self,
+        finding_id: str,
+        vex_status: str,
+        vex_justification: str | None = None,
+        vex_detail: str | None = None,
+        vex_response: list[str] | None = None,
+        vex_updated_by: str = "user",
+    ) -> bool:
+        """Update VEX status on a single finding."""
+        try:
+            update: dict[str, Any] = {
+                "vex_status": vex_status,
+                "vex_justification": vex_justification,
+                "vex_detail": vex_detail,
+                "vex_response": vex_response,
+                "vex_updated_at": datetime.now(tz=UTC),
+                "vex_updated_by": vex_updated_by,
+            }
+            result = await self.collection.update_one(
+                {"_id": ObjectId(finding_id)},
+                {"$set": update},
+            )
+            return result.modified_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.update_vex_failed", finding_id=finding_id, error=str(exc))
+            return False
+
+    async def bulk_update_vex_by_vulnerability(
+        self,
+        target_id: str,
+        vulnerability_id: str,
+        vex_status: str,
+        vex_justification: str | None = None,
+        vex_updated_by: str = "user",
+    ) -> int:
+        """Apply VEX status to all findings matching vulnerability+target across scans."""
+        try:
+            update: dict[str, Any] = {
+                "vex_status": vex_status,
+                "vex_justification": vex_justification,
+                "vex_updated_at": datetime.now(tz=UTC),
+                "vex_updated_by": vex_updated_by,
+            }
+            result = await self.collection.update_many(
+                {"target_id": target_id, "vulnerability_id": vulnerability_id},
+                {"$set": update},
+            )
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.bulk_update_vex_failed", error=str(exc))
+            return 0
+
+    async def get_vex_findings_by_scan(self, scan_id: str) -> list[dict[str, Any]]:
+        """Get all findings with VEX annotations for a scan."""
+        try:
+            cursor = self.collection.find(
+                {"scan_id": scan_id, "vex_status": {"$ne": None}},
+            ).sort("vulnerability_id", 1)
+            items: list[dict[str, Any]] = []
+            async for doc in cursor:
+                doc["_id"] = str(doc["_id"])
+                items.append(doc)
+            return items
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.get_vex_findings_failed", scan_id=scan_id, error=str(exc))
+            return []
+
+    async def carry_forward_vex(self, old_scan_id: str, new_scan_id: str) -> int:
+        """Copy VEX annotations from old scan findings to matching new scan findings."""
+        try:
+            old_vex = await self.get_vex_findings_by_scan(old_scan_id)
+            if not old_vex:
+                return 0
+
+            carried = 0
+            for old_finding in old_vex:
+                vuln_id = old_finding.get("vulnerability_id")
+                pkg_name = old_finding.get("package_name")
+                if not vuln_id or not pkg_name:
+                    continue
+
+                result = await self.collection.update_many(
+                    {
+                        "scan_id": new_scan_id,
+                        "vulnerability_id": vuln_id,
+                        "package_name": pkg_name,
+                        "vex_status": None,
+                    },
+                    {"$set": {
+                        "vex_status": old_finding.get("vex_status"),
+                        "vex_justification": old_finding.get("vex_justification"),
+                        "vex_detail": old_finding.get("vex_detail"),
+                        "vex_response": old_finding.get("vex_response"),
+                        "vex_updated_at": old_finding.get("vex_updated_at"),
+                        "vex_updated_by": "carry-forward",
+                    }},
+                )
+                carried += result.modified_count
+            return carried
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.carry_forward_vex_failed", error=str(exc))
             return 0
