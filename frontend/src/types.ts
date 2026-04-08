@@ -225,6 +225,26 @@ export interface VulnerabilityQuery {
   includeReserved?: boolean;
   exploitedOnly?: boolean;
   aiAnalysedOnly?: boolean;
+  // Advanced filters
+  epssScoreMin?: number;
+  epssScoreMax?: number;
+  assigner?: string[];
+  cwes?: string[];
+  sources?: string[];
+  cvssVersion?: string;
+  cvssScoreMin?: number;
+  cvssScoreMax?: number;
+  attackVector?: string[];
+  attackComplexity?: string[];
+  attackRequirements?: string[];
+  privilegesRequired?: string[];
+  userInteraction?: string[];
+  scope?: string[];
+  confidentialityImpact?: string[];
+  integrityImpact?: string[];
+  availabilityImpact?: string[];
+  publishedFrom?: string;
+  publishedTo?: string;
   limit?: number;
 }
 
@@ -295,6 +315,7 @@ export interface VulnerabilityRefreshResponse {
 export interface PagedVulnerabilityResponse {
   total: number;
   items: VulnerabilityPreview[];
+  maxOffset?: number;
 }
 
 export interface CatalogVendor {

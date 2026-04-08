@@ -122,7 +122,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Ansicht | Beschreibung |
 |---------|-------------|
 | Dashboard | Schwachstellensuche mit CVSS, EPSS, Exploitation-Status, Echtzeit-Refresh via SSE |
-| Schwachstellen-Liste | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
+| Schwachstellen-Liste | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
 | Detail-Seite | Vollständige Schwachstellendetails mit AI-Assessments, Referenzen, Change-History |
 | Query Builder | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | KI-Analyse | Einzel- und Batch-Analyse über verschiedene AI-Provider |
