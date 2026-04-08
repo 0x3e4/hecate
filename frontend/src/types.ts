@@ -463,6 +463,7 @@ export interface Scan {
   imageRef?: string | null;
   commitSha?: string | null;
   branch?: string | null;
+  repositoryUrl?: string | null;
   pipelineUrl?: string | null;
   startedAt: string;
   finishedAt?: string | null;
