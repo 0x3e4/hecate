@@ -646,6 +646,31 @@ export const ScansPage = () => {
                             : null;
                         const refFull = scan.imageRef || scan.commitSha || null;
                         const refLabel = scan.imageRef ? "Digest" : "Commit";
+                        const refUrl = (() => {
+                          if (scan.commitSha) {
+                            const repoUrl = scan.repositoryUrl || (scan.targetId.startsWith("http") ? scan.targetId : null);
+                            if (repoUrl) return `${repoUrl.replace(/\/$/, "")}/commit/${scan.commitSha}`;
+                          }
+                          if (scan.imageRef) {
+                            const imgRef = scan.imageRef;
+                            if (imgRef.startsWith("http://") || imgRef.startsWith("https://")) return imgRef;
+                            const withoutDigest = imgRef.split("@")[0];
+                            const cleaned = withoutDigest.split(":")[0];
+                            if (cleaned.startsWith("ghcr.io/")) {
+                              const parts = cleaned.replace("ghcr.io/", "").split("/");
+                              const owner = parts[0];
+                              const pkg = parts.slice(1).join("/");
+                              if (owner && pkg) return `https://github.com/${owner}/pkgs/container/${pkg}`;
+                            }
+                            if (cleaned.startsWith("docker.io/")) {
+                              const path = cleaned.replace("docker.io/", "");
+                              const tag = withoutDigest.includes(":") ? withoutDigest.split(":").pop() : "latest";
+                              return `https://hub.docker.com/layers/${path}/${tag}/images`;
+                            }
+                            if (cleaned.includes(".") && cleaned.includes("/")) return `https://${cleaned}`;
+                          }
+                          return null;
+                        })();
                         return (
                           <tr key={scan.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                             <td style={tdStyle}>
@@ -654,7 +679,14 @@ export const ScansPage = () => {
                               </Link>
                             </td>
                             <td style={{ ...tdStyle, fontFamily: ref ? "monospace" : undefined, fontSize: ref ? "0.75rem" : "0.875rem", color: ref ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.25)" }} title={refFull || undefined}>
-                              {ref ? <span>{refLabel}: {ref}</span> : "—"}
+                              {ref ? (
+                                <span>
+                                  {refLabel}: {ref}
+                                  {refUrl && (
+                                    <a href={refUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "0.35rem", color: "rgba(255,255,255,0.4)", textDecoration: "none", fontSize: "0.7rem" }} title={refUrl}>↗</a>
+                                  )}
+                                </span>
+                              ) : "—"}
                             </td>
                             <td style={tdStyle}><StatusBadge status={scan.status} /></td>
                             <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>

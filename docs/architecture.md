@@ -197,7 +197,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird zusammengeführt.
 - **Provenance-Verifikation:** Nach SBOM-Extraktion prüft der Hecate Analyzer die Herkunft/Attestierung jeder Komponente über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Ergebnisse werden auf SBOM-Komponenten gespeichert und im Frontend als Provenance-Spalte angezeigt.
 - **Scan-Concurrency:** Gleichzeitige Scans werden über `SCA_MAX_CONCURRENT_SCANS` (Default: 2) begrenzt. Überschüssige Scans bleiben als `pending` in der Warteschlange. Vor dem Start wird die Ressourcenverfügbarkeit des Scanner-Sidecars geprüft (`SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`); bei unzureichenden Ressourcen wird gewartet, bei keinem anderen aktiven Scan trotzdem gestartet.
-- **Auto-Scan:** Optionales periodisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbar über `SCA_AUTO_SCAN_INTERVAL_MINUTES`).
+- **Auto-Scan:** Optionales periodisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbar über `SCA_AUTO_SCAN_INTERVAL_MINUTES`). Change-Detection via Scanner-Sidecar `/check`-Endpoint (Image-Digest / Commit-SHA Vergleich); bei fehlgeschlagenem Check wird der Scan übersprungen wenn `last_scan_at` innerhalb des Intervalls liegt und ein gespeicherter Fingerprint existiert.
 - **Audit-Integration:** Scan-Ereignisse werden im Ingestion-Log protokolliert.
 
 ### KI & Analyse

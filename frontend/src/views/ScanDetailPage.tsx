@@ -154,16 +154,62 @@ function buildRegistryUrl(name: string, version: string, type: string, purl?: st
   }
 }
 
-/** Build a clickable source URL from image ref or target id */
+/** Build a clickable source URL from image ref or target id.
+ *  For source repos: links to the specific commit when commitSha is available.
+ *  For container images: links to the registry-specific package page with digest when available.
+ */
 function buildSourceUrl(scan: Scan): string | null {
-  const ref = scan.imageRef || scan.targetId;
-  if (!ref) return null;
-  // If it already looks like a URL
-  if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
+  // Source repo: use repositoryUrl or targetId (which IS the repo URL for source repos)
+  if (!scan.imageRef) {
+    const repoUrl = scan.repositoryUrl || scan.targetId;
+    if (!repoUrl) return null;
+    const base = repoUrl.startsWith("http://") || repoUrl.startsWith("https://") ? repoUrl : `https://${repoUrl}`;
+    const cleanBase = base.replace(/\/$/, "");
+    if (scan.commitSha) return `${cleanBase}/commit/${scan.commitSha}`;
+    return cleanBase;
+  }
+  // Container image
+  const ref = scan.imageRef;
+  const digest = ref.includes("@") ? ref.split("@")[1] : null;
   const withoutDigest = ref.split("@")[0];
   const cleaned = withoutDigest.split(":")[0];
   const tag = withoutDigest.includes(":") ? withoutDigest.split(":").pop() : "latest";
-  // Docker Hub images: docker.io/library/X or docker.io/org/X → hub.docker.com/layers/...
+  // ghcr.io: github.com package page
+  if (cleaned.startsWith("ghcr.io/")) {
+    const parts = cleaned.replace("ghcr.io/", "").split("/");
+    const owner = parts[0];
+    const pkg = parts.slice(1).join("/");
+    if (owner && pkg) return `https://github.com/${owner}/pkgs/container/${pkg}`;
+  }
+  // Docker Hub
+  if (cleaned.startsWith("docker.io/")) {
+    const path = cleaned.replace("docker.io/", "");
+    return `https://hub.docker.com/layers/${path}/${tag}/images${digest ? `/${digest}` : ""}`;
+  }
+  // Generic registry with domain
+  if (cleaned.includes(".") && cleaned.includes("/")) {
+    return `https://${cleaned}`;
+  }
+  return null;
+}
+
+/** Build a base source URL (without commit/digest specifics) for the repo/image header link */
+function buildBaseSourceUrl(scan: Scan): string | null {
+  if (!scan.imageRef) {
+    const repoUrl = scan.repositoryUrl || scan.targetId;
+    if (!repoUrl) return null;
+    return repoUrl.startsWith("http://") || repoUrl.startsWith("https://") ? repoUrl.replace(/\/$/, "") : `https://${repoUrl}`;
+  }
+  const ref = scan.imageRef;
+  const withoutDigest = ref.split("@")[0];
+  const cleaned = withoutDigest.split(":")[0];
+  const tag = withoutDigest.includes(":") ? withoutDigest.split(":").pop() : "latest";
+  if (cleaned.startsWith("ghcr.io/")) {
+    const parts = cleaned.replace("ghcr.io/", "").split("/");
+    const owner = parts[0];
+    const pkg = parts.slice(1).join("/");
+    if (owner && pkg) return `https://github.com/${owner}/pkgs/container/${pkg}`;
+  }
   if (cleaned.startsWith("docker.io/")) {
     const path = cleaned.replace("docker.io/", "");
     return `https://hub.docker.com/layers/${path}/${tag}/images`;
@@ -676,6 +722,7 @@ export const ScanDetailPage = () => {
   if (!scan) return <div className="page"><section className="card"><p className="muted">{t("Scan not found.", "Scan nicht gefunden.")}</p></section></div>;
 
   const sourceUrl = buildSourceUrl(scan);
+  const baseSourceUrl = buildBaseSourceUrl(scan);
 
   const loadHistory = (range: HistoryRange) => {
     setHistoryLoading(true);
@@ -704,9 +751,9 @@ export const ScanDetailPage = () => {
             </Link>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.5rem 0 0.25rem" }}>
               <h2 style={{ margin: 0 }}>{scan.targetName || scan.targetId}</h2>
-              {sourceUrl && (
+              {baseSourceUrl && (
                 <a
-                  href={sourceUrl}
+                  href={baseSourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   title={t("Open source", "Quelle öffnen")}
@@ -758,13 +805,19 @@ export const ScanDetailPage = () => {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
                   <span style={{ wordBreak: "break-all" }}>{scan.targetName || scan.targetId}</span>
-                  {sourceUrl && (
-                    <a href={sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#ffd43b", fontSize: "0.75rem", flexShrink: 0 }}>↗</a>
+                  {baseSourceUrl && (
+                    <a href={baseSourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#ffd43b", fontSize: "0.75rem", flexShrink: 0 }}>↗</a>
                   )}
                 </div>
-                <div title={scan.commitSha} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>
-                  {scan.commitSha.substring(0, 12)}
-                </div>
+                {sourceUrl ? (
+                  <a href={sourceUrl} target="_blank" rel="noopener noreferrer" title={scan.commitSha} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", textDecoration: "none" }}>
+                    {scan.commitSha.substring(0, 12)} ↗
+                  </a>
+                ) : (
+                  <div title={scan.commitSha} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>
+                    {scan.commitSha.substring(0, 12)}
+                  </div>
+                )}
               </div>
             )}
             {scan.branch && <div>Branch: {scan.branch}</div>}

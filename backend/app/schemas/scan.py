@@ -146,6 +146,9 @@ class ScanResponse(BaseModel):
         default=None, alias="commitSha", serialization_alias="commitSha"
     )
     branch: str | None = None
+    repository_url: str | None = Field(
+        default=None, alias="repositoryUrl", serialization_alias="repositoryUrl"
+    )
     pipeline_url: str | None = Field(
         default=None, alias="pipelineUrl", serialization_alias="pipelineUrl"
     )

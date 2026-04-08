@@ -737,12 +737,16 @@ class ScanService:
         total, items = await self.scan_repo.list_all(
             target_id=target_id, status=status, limit=limit, offset=offset
         )
-        # Enrich with target name + deduped summary
+        # Enrich with target name, repository_url + deduped summary
         for item in items:
             tid = item.get("target_id")
-            if not item.get("target_name") and tid:
+            if tid and (not item.get("target_name") or not item.get("repository_url")):
                 target = await self.target_repo.get(tid)
-                item["target_name"] = target.get("name") if target else item.get("target_name") or tid
+                if target:
+                    if not item.get("target_name"):
+                        item["target_name"] = target.get("name") or tid
+                    if not item.get("repository_url") and target.get("repository_url"):
+                        item["repository_url"] = target["repository_url"]
             if item.get("status") == "completed":
                 item["summary"] = await self._get_deduped_summary(item)
         return total, items
@@ -751,9 +755,13 @@ class ScanService:
         scan = await self.scan_repo.get(scan_id)
         if scan:
             tid = scan.get("target_id")
-            if not scan.get("target_name") and tid:
+            if tid:
                 target = await self.target_repo.get(tid)
-                scan["target_name"] = target.get("name") if target else scan.get("target_name") or tid
+                if target:
+                    if not scan.get("target_name"):
+                        scan["target_name"] = target.get("name") or tid
+                    if not scan.get("repository_url") and target.get("repository_url"):
+                        scan["repository_url"] = target["repository_url"]
             scan["summary"] = await self._get_deduped_summary(scan)
         return scan
 
@@ -1065,8 +1073,12 @@ class ScanService:
     async def check_target_changed(self, target: str, target_type: str, target_doc: dict[str, Any]) -> bool:
         """Call scanner sidecar /check and compare with stored fingerprint.
 
-        Returns True if changed or if comparison is not possible (fail-open).
+        Returns True if changed.  When the /check call fails or cannot determine
+        the current fingerprint, falls back to a staleness check: if the target
+        was scanned within the current auto-scan interval and a stored
+        fingerprint exists, treat as unchanged to avoid redundant scans.
         """
+        data: dict[str, Any] = {}
         try:
             url = f"{settings.sca_scanner_url}/check"
             async with httpx.AsyncClient(timeout=30) as client:
@@ -1075,19 +1087,46 @@ class ScanService:
                 data = resp.json()
         except Exception as exc:
             log.warning("scan_service.change_check_failed", target=target, error=str(exc))
-            return True  # If check fails, scan anyway
 
+        # Extract current and previous fingerprints
         if target_type == "container_image":
             current = data.get("current_digest")
             previous = target_doc.get("last_image_digest")
-            if current and previous and current == previous:
-                return False
         elif target_type == "source_repo":
             current = data.get("current_commit_sha")
             previous = target_doc.get("last_commit_sha")
-            if current and previous and current == previous:
+        else:
+            return True
+
+        # Happy path: both fingerprints available — compare directly
+        if current and previous:
+            return current != previous
+
+        # Valid current fingerprint but no previous → first scan needed
+        if current and not previous:
+            return True
+
+        # Fallback: /check failed or returned None for current fingerprint.
+        # If we have a stored fingerprint from a recent scan, skip the rescan.
+        if previous and target_doc.get("last_scan_at"):
+            from datetime import UTC, datetime, timedelta
+
+            last_scan_at = target_doc["last_scan_at"]
+            if isinstance(last_scan_at, str):
+                last_scan_at = datetime.fromisoformat(last_scan_at)
+            if not last_scan_at.tzinfo:
+                last_scan_at = last_scan_at.replace(tzinfo=UTC)
+            interval = timedelta(minutes=settings.sca_auto_scan_interval_minutes)
+            if datetime.now(tz=UTC) - last_scan_at < interval:
+                log.info(
+                    "scan_service.change_check_fallback_unchanged",
+                    target=target,
+                    reason="recent_scan_with_fingerprint",
+                )
                 return False
 
+        # No stored fingerprint or last scan too old → fail-open
+        log.info("scan_service.change_check_fallback_changed", target=target)
         return True
 
     # --- Private helpers ---

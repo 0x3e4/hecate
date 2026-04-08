@@ -244,7 +244,7 @@ const SingleVulnQuery = ({
 
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
-      {isLoading && (
+      {queryLoading && (
         <div style={{ marginBottom: "0.5rem" }}>
           <span
             style={{
@@ -318,12 +318,6 @@ const SingleVulnQuery = ({
         </p>
       )}
 
-      {syncLoading && (
-        <p style={{ margin: "0.75rem 0 0", color: "rgba(255,193,7,0.9)", fontSize: "0.9rem" }}>
-          {t("Loading from NVD/EUVD...", "Lade von NVD/EUVD…")}
-        </p>
-      )}
-
       {showNotFound && (
         <div
           style={{
@@ -331,49 +325,79 @@ const SingleVulnQuery = ({
             padding: "1rem",
             borderRadius: "0.5rem",
             background: "rgba(255,193,7,0.1)",
-            border: "1px solid rgba(255,193,7,0.25)",
+            border: syncLoading ? "1px solid rgba(255,193,7,0.15)" : "1px solid rgba(255,193,7,0.25)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
-            <span style={{ fontSize: "1.25rem", lineHeight: 1 }}>⚠️</span>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 500 }}>
-                {t(`"${queryNotFound}" not found in local database`, `„${queryNotFound}" nicht in lokaler Datenbank`)}
-              </p>
-              <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.9rem" }}>
-                {t(
-                  "This vulnerability has not been synchronized yet. Load it from official sources?",
-                  "Die Schwachstelle wurde noch nicht synchronisiert. Soll sie von den offiziellen Quellen abgerufen werden?"
-                )}
-              </p>
-              <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <button
-                  onClick={onSync}
-                  disabled={syncLoading}
-                  className="btn"
-                  style={{
-                    padding: "0.5rem 1rem",
-                    background: "rgba(255,193,7,0.3)",
-                    border: "1px solid rgba(255,193,7,0.5)",
-                    fontWeight: 500,
-                  }}
-                >
-                  {t("Load from NVD/EUVD/GHSA", "Von NVD/EUVD/GHSA laden")}
-                </button>
-                <button
-                  onClick={onClear}
-                  className="btn"
-                  style={{
-                    padding: "0.5rem 1rem",
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.2)",
-                  }}
-                >
-                  {t("Cancel", "Abbrechen")}
-                </button>
+          {syncLoading ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "1.25rem",
+                  height: "1.25rem",
+                  border: "2px solid rgba(255,193,7,0.3)",
+                  borderTopColor: "rgba(255,193,7,0.9)",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontWeight: 500, color: "rgba(255,193,7,0.9)" }}>
+                  {t(
+                    `Fetching "${queryNotFound}" from upstream sources...`,
+                    `„${queryNotFound}" wird von Upstream-Quellen abgerufen…`
+                  )}
+                </p>
+                <p style={{ margin: "0.25rem 0 0", color: "rgba(255,255,255,0.5)", fontSize: "0.85rem" }}>
+                  {t(
+                    "Checking NVD, EUVD and GitHub Security Advisories",
+                    "NVD, EUVD und GitHub Security Advisories werden abgefragt"
+                  )}
+                </p>
               </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+              <span style={{ fontSize: "1.25rem", lineHeight: 1 }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontWeight: 500 }}>
+                  {t(`"${queryNotFound}" not found in local database`, `„${queryNotFound}" nicht in lokaler Datenbank`)}
+                </p>
+                <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.9rem" }}>
+                  {t(
+                    "This vulnerability has not been synchronized yet. Load it from official sources?",
+                    "Die Schwachstelle wurde noch nicht synchronisiert. Soll sie von den offiziellen Quellen abgerufen werden?"
+                  )}
+                </p>
+                <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    onClick={onSync}
+                    className="btn"
+                    style={{
+                      padding: "0.5rem 1rem",
+                      background: "rgba(255,193,7,0.3)",
+                      border: "1px solid rgba(255,193,7,0.5)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {t("Load from NVD/EUVD/GHSA", "Von NVD/EUVD/GHSA laden")}
+                  </button>
+                  <button
+                    onClick={onClear}
+                    className="btn"
+                    style={{
+                      padding: "0.5rem 1rem",
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.2)",
+                    }}
+                  >
+                    {t("Cancel", "Abbrechen")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -527,16 +551,21 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
   }
 
   const todayDate = data.todayDate;
+  const nextDay = (() => {
+    const d = new Date(todayDate + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
 
   const dqlQuote = (v: string) => `"${v.replace(/\//g, "\\/")}"`;
 
   const vendorDql = (vendorSlug: string) => {
-    const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND published:>=${todayDate}`;
+    const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND published:>=${todayDate} AND published:<${nextDay}`;
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
   const productDql = (vendorSlug: string, productSlug: string) => {
-    const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND productSlugs:${dqlQuote(productSlug)} AND published:>=${todayDate}`;
+    const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND productSlugs:${dqlQuote(productSlug)} AND published:>=${todayDate} AND published:<${nextDay}`;
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
