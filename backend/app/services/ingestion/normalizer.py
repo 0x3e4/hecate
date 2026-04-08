@@ -483,13 +483,20 @@ def build_document(
             seen.add(a)
             deduped.append(a)
     aliases = deduped
+    # Filter out contaminated aliases from EUVD prefix-matching bugs.
+    # EUVD sometimes returns aliases for CVE-2024-1234x when queried for CVE-2024-1234.
+    # Keep only: the canonical CVE ID, EUVD source ID, and non-CVE/non-GHSA aliases.
+    # GHSA IDs are not trusted from EUVD — the GHSA pipeline is the authoritative source.
+    if cve_id and cve_id.upper().startswith("CVE-"):
+        cve_upper = cve_id.upper()
+        aliases = [
+            a for a in aliases
+            if not (a.upper().startswith("CVE-") and a.upper() != cve_upper)
+            and not a.upper().startswith("GHSA-")
+        ]
     # Add the EUVD source ID to aliases if present and not already included
     if source_id and source_id not in aliases and source_id != cve_id:
         aliases.append(source_id)
-    # Extract GHSA IDs from references and add as aliases
-    for ghsa_id in extract_ghsa_ids(references):
-        if ghsa_id not in aliases:
-            aliases.append(ghsa_id)
 
     assigner = _ensure_str(euvd_record.get("assigner"))
     exploited = _to_optional_bool(euvd_record.get("exploited"))

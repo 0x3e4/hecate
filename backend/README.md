@@ -66,7 +66,7 @@ app/
 │   ├── scan_sbom_repository.py
 │   └── license_policy_repository.py
 ├── schemas/                 # API Request/Response Schemata
-│   ├── vulnerability.py     # VulnerabilityQuery, VulnerabilityDetail
+│   ├── vulnerability.py     # VulnerabilityQuery (inkl. Advanced Filters: Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum), VulnerabilityDetail
 │   ├── cwe.py, capec.py, cpe.py, assets.py
 │   ├── ai.py                # AI-Analyse Schemata
 │   ├── backup.py, sync.py, audit.py, changelog.py

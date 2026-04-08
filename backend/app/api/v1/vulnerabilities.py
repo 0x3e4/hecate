@@ -192,20 +192,34 @@ async def list_vulnerabilities(
         alias="aiAnalysedOnly",
         description="Return only vulnerabilities with AI analysis.",
     ),
+    # Advanced filters
+    severity: list[str] = Query(default_factory=list),
+    epss_score_min: float | None = Query(default=None, alias="epssScoreMin"),
+    epss_score_max: float | None = Query(default=None, alias="epssScoreMax"),
+    assigner: list[str] = Query(default_factory=list),
+    cwes: list[str] = Query(default_factory=list),
+    sources: list[str] = Query(default_factory=list),
+    cvss_version: str | None = Query(default=None, alias="cvssVersion"),
+    cvss_score_min: float | None = Query(default=None, alias="cvssScoreMin"),
+    cvss_score_max: float | None = Query(default=None, alias="cvssScoreMax"),
+    attack_vector: list[str] = Query(default_factory=list, alias="attackVector"),
+    attack_complexity: list[str] = Query(default_factory=list, alias="attackComplexity"),
+    attack_requirements: list[str] = Query(default_factory=list, alias="attackRequirements"),
+    privileges_required: list[str] = Query(default_factory=list, alias="privilegesRequired"),
+    user_interaction: list[str] = Query(default_factory=list, alias="userInteraction"),
+    scope: list[str] = Query(default_factory=list),
+    confidentiality_impact: list[str] = Query(default_factory=list, alias="confidentialityImpact"),
+    integrity_impact: list[str] = Query(default_factory=list, alias="integrityImpact"),
+    availability_impact: list[str] = Query(default_factory=list, alias="availabilityImpact"),
+    published_from: str | None = Query(default=None, alias="publishedFrom"),
+    published_to: str | None = Query(default=None, alias="publishedTo"),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> PagedVulnerabilityResponse:
     max_window = settings.opensearch_index_max_result_window
-    if offset + limit > max_window:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Requested page exceeds the OpenSearch result window. "
-                f"Use a smaller offset or filter the result set (max window: {max_window}, "
-                "adjustable via OPENSEARCH_INDEX_MAX_RESULT_WINDOW)."
-            ),
-        )
+    max_offset = max(0, max_window - limit)
+    offset = min(offset, max_offset)
 
     query = VulnerabilityQuery(
         searchTerm=search,
@@ -215,13 +229,35 @@ async def list_vulnerabilities(
         vendorSlugs=vendorSlugs,
         productSlugs=productSlugs,
         versionFilters=versionFilters,
+        severity=severity,
         limit=limit,
         includeRejected=include_rejected,
         includeReserved=include_reserved,
         exploitedOnly=exploited_only,
         aiAnalysedOnly=ai_analysed_only,
+        epssScoreMin=epss_score_min,
+        epssScoreMax=epss_score_max,
+        assigner=assigner,
+        cwes=cwes,
+        sources=sources,
+        cvssVersion=cvss_version,
+        cvssScoreMin=cvss_score_min,
+        cvssScoreMax=cvss_score_max,
+        attackVector=attack_vector,
+        attackComplexity=attack_complexity,
+        attackRequirements=attack_requirements,
+        privilegesRequired=privileges_required,
+        userInteraction=user_interaction,
+        scope=scope,
+        confidentialityImpact=confidentiality_impact,
+        integrityImpact=integrity_impact,
+        availabilityImpact=availability_impact,
+        publishedFrom=published_from,
+        publishedTo=published_to,
     )
-    return await service.search_paginated(query, limit=limit, offset=offset)
+    result = await service.search_paginated(query, limit=limit, offset=offset)
+    result.max_offset = max_offset
+    return result
 
 
 @router.get("/dql/fields/{field_name}/aggregation", response_model=DQLFieldAggregation)

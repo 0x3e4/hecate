@@ -254,7 +254,7 @@ poetry run python -m app.cli reindex-opensearch
 | Route | Komponente | Beschreibung |
 |-------|-----------|-------------|
 | `/` | `DashboardPage` | Startseite mit Schwachstellensuche und aktuellen Einträgen |
-| `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
+| `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via `VITE_AI_FEATURES_ENABLED`) |
@@ -314,7 +314,7 @@ start(job_name) → Running in MongoDB → finish(ctx, result) → Completed + L
 Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
 
 ### Normalizer
-Alle Quellen werden über `normalizer.py` in ein einheitliches `VulnerabilityDocument`-Schema überführt. CVSS-Metriken normalisiert über v2.0, v3.0, v3.1 und v4.0.
+Alle Quellen werden über `normalizer.py` in ein einheitliches `VulnerabilityDocument`-Schema überführt. CVSS-Metriken normalisiert über v2.0, v3.0, v3.1 und v4.0. EUVD-Aliases werden sanitisiert: fremde CVE-IDs und GHSA-IDs werden entfernt (EUVD hat Prefix-Kollisionen bei Aliases). GHSA-zu-CVE-Zuordnung erfolgt ausschließlich über die GHSA-Pipeline.
 
 ## Datenfluss
 

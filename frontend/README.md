@@ -23,7 +23,7 @@ src/
 │   └── licensePolicy.ts        # Lizenz-Policy-Verwaltung (CRUD, Default, Gruppen)
 ├── views/                       # Seitenkomponenten (14 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
-│   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern
+│   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern (inkl. erweiterte Filter)
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
 │   ├── QueryBuilderPage.tsx     # Interaktiver DQL-Editor
 │   ├── AIAnalysePage.tsx        # KI-Analyse (einzeln & Batch)
@@ -45,6 +45,7 @@ src/
 │   │   ├── FieldBrowser.tsx     # DQL-Feld-Browser nach Kategorien
 │   │   ├── FieldItem.tsx        # Einzelnes Feld mit Typ-Info
 │   │   └── FieldAggregation.tsx # Feld-Wert-Aggregation (Top Values)
+│   ├── AdvancedFilters.tsx       # Erweiterte Filter (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum)
 │   ├── AssetFilters.tsx         # Async Multi-Select (Vendor/Produkt/Version)
 │   ├── CweList.tsx              # CWE-Anzeige mit MITRE-Links
 │   ├── CapecList.tsx            # CAPEC-Angriffsmuster mit Details
@@ -83,7 +84,7 @@ src/
 | Route | Komponente | Beschreibung |
 |-------|-----------|-------------|
 | `/` | `DashboardPage` | Startseite mit Schwachstellensuche, aktuellen Einträgen und Echtzeit-Refresh via SSE |
-| `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt- und Version-Filtern |
+| `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History, Refresh-Dropdown (inkl. OSV) |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via Feature-Flag) |
