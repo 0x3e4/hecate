@@ -39,6 +39,17 @@ function urlDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
+/** Normalize scanner-specific type names to canonical ecosystem names */
+const TYPE_ALIASES: Record<string, string> = {
+  "node-pkg": "npm",
+  "gobinary": "go",
+  "jar": "maven",
+  "pom": "maven",
+  "python-pkg": "pypi",
+  "dotnet-core": "nuget",
+  "rust-crate": "cargo",
+};
+
 /** Map purl/type to deps.dev ecosystem name */
 const DEPS_DEV_ECOSYSTEM: Record<string, string> = {
   npm: "npm",
@@ -75,14 +86,16 @@ function getEcosystemFromPurl(purl: string | null | undefined): string | null {
 }
 
 function buildDepsDevUrl(name: string, version: string, type: string, purl?: string | null): string | null {
-  const eco = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  const raw = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  const eco = TYPE_ALIASES[raw] ?? raw;
   const mapped = DEPS_DEV_ECOSYSTEM[eco];
   if (!mapped || !name || !version) return null;
   return `https://deps.dev/${mapped}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
 }
 
 function buildSnykUrl(name: string, version: string, type: string, purl?: string | null): string | null {
-  const eco = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  const raw = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  const eco = TYPE_ALIASES[raw] ?? raw;
   const mapped = SNYK_ECOSYSTEM[eco];
   if (!mapped || !name || !version) return null;
   return `https://security.snyk.io/package/${mapped}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
@@ -90,7 +103,8 @@ function buildSnykUrl(name: string, version: string, type: string, purl?: string
 
 /** Build a direct link to the package on its native registry */
 function buildRegistryUrl(name: string, version: string, type: string, purl?: string | null): { url: string; label: string } | null {
-  const eco = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  const raw = getEcosystemFromPurl(purl) ?? type.toLowerCase();
+  const eco = TYPE_ALIASES[raw] ?? raw;
   if (!name) return null;
   const v = version ? encodeURIComponent(version) : "";
   const n = encodeURIComponent(name);
@@ -107,6 +121,7 @@ function buildRegistryUrl(name: string, version: string, type: string, purl?: st
       }
       return { url: `https://central.sonatype.com/search?q=${n}`, label: "Maven" };
     }
+    case "go":
     case "golang":
       return { url: `https://pkg.go.dev/${name}${v ? `@${v}` : ""}`, label: "Go" };
     case "nuget":
@@ -338,6 +353,8 @@ export const ScanDetailPage = () => {
   const [findingsSort, setFindingsSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "severity", dir: "asc" });
   const [sbomSearch, setSbomSearch] = useState("");
   const [sbomExporting, setSbomExporting] = useState<string | null>(null);
+  const [vexExporting, setVexExporting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // License compliance
   const [licenseCompliance, setLicenseCompliance] = useState<LicenseComplianceResult | null>(null);
@@ -487,6 +504,9 @@ export const ScanDetailPage = () => {
     };
   }, [dedupedSbom]);
 
+  const hasAnyProvenance = useMemo(() => dedupedSbom.some(c => c.provenanceVerified != null), [dedupedSbom]);
+  const hasAnySupplier = useMemo(() => dedupedSbom.some(c => !!c.supplier), [dedupedSbom]);
+
   const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json") => {
     if (!scanId || sbomExporting) return;
     setSbomExporting(format);
@@ -510,6 +530,13 @@ export const ScanDetailPage = () => {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevStatusRef = useRef<string | null>(null);
+
+  // Auto-dismiss toast after 5 seconds
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     document.title = t("Hecate Cyber Defense - Scan Details", "Hecate Cyber Defense - Scan-Details");
@@ -1119,7 +1146,8 @@ export const ScanDetailPage = () => {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!scanId) return;
+                    if (!scanId || vexExporting) return;
+                    setVexExporting(true);
                     try {
                       const blob = await exportVex(scanId);
                       const url = URL.createObjectURL(blob);
@@ -1129,15 +1157,18 @@ export const ScanDetailPage = () => {
                       a.click();
                       URL.revokeObjectURL(url);
                     } catch {
-                      // VEX export may fail if no VEX data
+                      setToast({ type: "error", message: t("No VEX data available. Set VEX statuses on findings first.", "Keine VEX-Daten vorhanden. Setzen Sie zuerst VEX-Status bei den Findings.") });
+                    } finally {
+                      setVexExporting(false);
                     }
                   }}
+                  disabled={vexExporting}
                   style={{
-                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: "pointer",
+                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: vexExporting ? "wait" : "pointer",
                     background: "rgba(99,230,190,0.12)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.3)",
                   }}
                 >
-                  VEX
+                  {vexExporting ? "..." : "VEX"}
                 </button>
               </div>
             </div>
@@ -1182,9 +1213,9 @@ export const ScanDetailPage = () => {
                       <th style={thStyle}>{t("Component", "Komponente")}</th>
                       <th style={thStyle}>{t("Version", "Version")}</th>
                       <th style={thStyle}>{t("Type", "Typ")}</th>
-                      <th style={thStyle}>{t("Provenance", "Provenienz")}</th>
+                      {hasAnyProvenance && <th style={thStyle}>{t("Provenance", "Provenienz")}</th>}
                       <th style={thStyle}>{t("Licenses", "Lizenzen")}</th>
-                      <th style={thStyle}>{t("Supplier", "Lieferant")}</th>
+                      {hasAnySupplier && <th style={thStyle}>{t("Supplier", "Lieferant")}</th>}
                       <th style={thStyle}>{t("Links", "Links")}</th>
                     </tr>
                   </thead>
@@ -1215,6 +1246,7 @@ export const ScanDetailPage = () => {
                               {c.type || "—"}
                             </span>
                           </td>
+                          {hasAnyProvenance && (
                           <td style={tdStyle}>
                             {c.provenanceVerified === true ? (
                               <span
@@ -1235,6 +1267,7 @@ export const ScanDetailPage = () => {
                               <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>
                             )}
                           </td>
+                          )}
                           <td style={tdStyle}>
                             {c.licenses.length > 0
                               ? c.licenses.map((lic, i) => (
@@ -1253,9 +1286,11 @@ export const ScanDetailPage = () => {
                                 ))
                               : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
                           </td>
+                          {hasAnySupplier && (
                           <td style={tdStyle}>
                             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.75rem" }}>{c.supplier || "—"}</span>
                           </td>
+                          )}
                           <td style={tdStyle}>
                             <div style={{ display: "flex", gap: "0.5rem" }}>
                               {depsUrl && (
@@ -2295,6 +2330,28 @@ export const ScanDetailPage = () => {
           </>
         )}
       </section>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: "1.5rem",
+            right: "1.5rem",
+            padding: "1rem 1.5rem",
+            borderRadius: "0.5rem",
+            background: toast.type === "error" ? "rgba(255,82,82,0.95)" : "rgba(76,175,80,0.95)",
+            color: "#fff",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            zIndex: 9999,
+            maxWidth: "400px",
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 };
