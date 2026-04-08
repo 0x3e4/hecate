@@ -581,6 +581,7 @@ export interface ScanHistoryEntry {
   status: string;
   summary: ScanSummary;
   durationSeconds?: number | null;
+  commitSha?: string | null;
 }
 
 export interface ScanHistoryResponse {

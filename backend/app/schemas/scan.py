@@ -367,6 +367,9 @@ class ScanHistoryEntrySchema(BaseModel):
     duration_seconds: float | None = Field(
         default=None, alias="durationSeconds", serialization_alias="durationSeconds"
     )
+    commit_sha: str | None = Field(
+        default=None, alias="commitSha", serialization_alias="commitSha"
+    )
 
     model_config = {"populate_by_name": True}
 

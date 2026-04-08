@@ -516,7 +516,7 @@ export const ScansPage = () => {
                   setScanOffset(0);
                 }}
                 style={{
-                  padding: "0.375rem 0.625rem",
+                  padding: "0 0.625rem",
                   borderRadius: "6px",
                   border: "1px solid rgba(255,255,255,0.12)",
                   background: "rgba(255,255,255,0.05)",
@@ -526,6 +526,8 @@ export const ScansPage = () => {
                   cursor: "pointer",
                   minWidth: "180px",
                   maxWidth: "320px",
+                  height: "32px",
+                  boxSizing: "border-box" as const,
                 }}
               >
                 <option value="">{t("All targets", "Alle Ziele")}</option>
@@ -998,9 +1000,8 @@ export const ScansPage = () => {
                   borderRadius: "10px",
                   background: "rgba(255,212,59,0.03)",
                   display: "flex",
-                  alignItems: "center",
-                  gap: "1rem",
-                  flexWrap: "wrap",
+                  flexDirection: "column",
+                  gap: "0.75rem",
                 }}
               >
                 <div style={{ flex: "1 1 0", minWidth: "140px" }}>
@@ -1041,7 +1042,7 @@ export const ScansPage = () => {
                     <div style={{ fontSize: "0.75rem", color: "#ff6b6b", marginTop: "0.25rem" }}>{sbomImportError}</div>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                   <select
                     value={sbomImportFormat}
                     onChange={e => setSbomImportFormat(e.target.value)}
@@ -1145,7 +1146,7 @@ export const ScansPage = () => {
                 onChange={e => { setSbomSearch(e.target.value); setSbomOffset(0); }}
                 placeholder={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
                 style={{
-                  padding: "0.375rem 0.75rem",
+                  padding: "0 0.75rem",
                   borderRadius: "6px",
                   border: "1px solid rgba(255,255,255,0.15)",
                   background: "rgba(255,255,255,0.05)",
@@ -1155,13 +1156,15 @@ export const ScansPage = () => {
                   maxWidth: "400px",
                   minWidth: 0,
                   outline: "none",
+                  height: "32px",
+                  boxSizing: "border-box" as const,
                 }}
               />
               <select
                 value={sbomType || ""}
                 onChange={e => { setSbomType(e.target.value || null); setSbomOffset(0); }}
                 style={{
-                  padding: "0.375rem 0.625rem",
+                  padding: "0 0.625rem",
                   borderRadius: "6px",
                   border: "1px solid rgba(255,255,255,0.12)",
                   background: "rgba(255,255,255,0.05)",
@@ -1170,6 +1173,8 @@ export const ScansPage = () => {
                   outline: "none",
                   cursor: "pointer",
                   minWidth: "120px",
+                  height: "32px",
+                  boxSizing: "border-box" as const,
                 }}
               >
                 <option value="">{t("All types", "Alle Typen")}</option>
@@ -1181,7 +1186,7 @@ export const ScansPage = () => {
                 value={sbomTargetId || ""}
                 onChange={e => { setSbomTargetId(e.target.value || null); setSbomOffset(0); }}
                 style={{
-                  padding: "0.375rem 0.625rem",
+                  padding: "0 0.625rem",
                   borderRadius: "6px",
                   border: "1px solid rgba(255,255,255,0.12)",
                   background: "rgba(255,255,255,0.05)",
@@ -1191,6 +1196,8 @@ export const ScansPage = () => {
                   cursor: "pointer",
                   minWidth: "140px",
                   maxWidth: "280px",
+                  height: "32px",
+                  boxSizing: "border-box" as const,
                 }}
               >
                 <option value="">{t("All targets", "Alle Ziele")}</option>

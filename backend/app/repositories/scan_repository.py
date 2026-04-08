@@ -205,14 +205,17 @@ class ScanRepository:
             return None
 
     async def get_history(
-        self, target_id: str, limit: int = 30
+        self, target_id: str, limit: int = 30, since: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Return scan history for charting (most recent completed scans with summaries)."""
         try:
+            query: dict[str, Any] = {"target_id": target_id, "status": "completed"}
+            if since:
+                query["started_at"] = {"$gte": since}
             cursor = (
                 self.collection.find(
-                    {"target_id": target_id, "status": "completed"},
-                    {"_id": 1, "started_at": 1, "status": 1, "summary": 1, "duration_seconds": 1},
+                    query,
+                    {"_id": 1, "started_at": 1, "status": 1, "summary": 1, "duration_seconds": 1, "commit_sha": 1},
                 )
                 .sort("created_at", -1)
                 .limit(limit)
