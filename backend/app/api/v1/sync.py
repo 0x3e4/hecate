@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -116,15 +118,35 @@ async def trigger_osv_sync(
 
 
 class ResyncRequest(BaseModel):
-    vuln_id: str = Field(alias="vulnId", serialization_alias="vulnId")
+    vuln_ids: list[str] = Field(alias="vulnIds", serialization_alias="vulnIds")
+    delete_only: bool = Field(False, alias="deleteOnly", serialization_alias="deleteOnly")
 
     model_config = {"populate_by_name": True}
 
 
 class ResyncResponse(BaseModel):
-    deleted: bool
-    refresh: VulnerabilityRefreshResponse | None = None
+    deleted: int = 0
+    refreshed: int = 0
+    resolved_ids: list[str] = Field(default_factory=list, alias="resolvedIds", serialization_alias="resolvedIds")
+    errors: list[str] = Field(default_factory=list)
     message: str
+
+    model_config = {"populate_by_name": True}
+
+
+_WILDCARD_MAX = 1000
+_VALID_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-\.\*]+$")
+
+
+async def _resolve_wildcard_ids(repo: VulnerabilityRepository, raw_id: str) -> list[str]:
+    """Expand a wildcard pattern like CVE-2024-* into matching IDs."""
+    if "*" not in raw_id:
+        return [raw_id]
+    if not _VALID_ID_PATTERN.match(raw_id):
+        return []
+    regex = "^" + re.escape(raw_id).replace(r"\*", ".*") + "$"
+    cursor = repo.collection.find({"_id": {"$regex": regex}}, {"_id": 1}).limit(_WILDCARD_MAX)
+    return [doc["_id"] async for doc in cursor]
 
 
 @router.post("/resync", response_model=ResyncResponse)
@@ -132,32 +154,63 @@ async def resync_vulnerability(
     request: ResyncRequest,
     vuln_service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> ResyncResponse:
-    """Delete a vulnerability from MongoDB and OpenSearch, then re-fetch from upstream sources."""
+    """Delete vulnerabilities from MongoDB and OpenSearch, optionally re-fetch from upstream.
+
+    Supports multiple IDs and wildcard patterns (e.g. CVE-2024-*).
+    """
     from app.schemas.vulnerability import VulnerabilityRefreshRequest
 
-    vuln_id = request.vuln_id.strip()
-    if not vuln_id:
-        return ResyncResponse(deleted=False, message="Empty vulnerability ID.")
-
-    # Delete from MongoDB
     repo = await VulnerabilityRepository.create()
-    mongo_result = await repo.collection.delete_one({"_id": vuln_id})
-    mongo_deleted = mongo_result.deleted_count > 0
 
-    # Delete from OpenSearch
-    os_deleted = await async_delete_document(settings.opensearch_index, vuln_id)
+    # Expand wildcards and deduplicate
+    all_ids: list[str] = []
+    seen: set[str] = set()
+    for raw in request.vuln_ids:
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        resolved = await _resolve_wildcard_ids(repo, stripped)
+        for rid in resolved:
+            if rid not in seen:
+                seen.add(rid)
+                all_ids.append(rid)
 
-    if not mongo_deleted and not os_deleted:
-        return ResyncResponse(deleted=False, message=f"Vulnerability {vuln_id} not found.")
+    if not all_ids:
+        return ResyncResponse(message="No vulnerability IDs provided or matched.")
 
-    log.info("sync.resync_deleted", vuln_id=vuln_id, mongo=mongo_deleted, opensearch=os_deleted)
+    deleted_count = 0
+    refreshed_count = 0
+    errors: list[str] = []
 
-    # Re-fetch from upstream
-    payload = VulnerabilityRefreshRequest(vuln_ids=[vuln_id], source_ids=[vuln_id])
-    refresh_result = await vuln_service.trigger_refresh(payload)
+    for vuln_id in all_ids:
+        try:
+            mongo_result = await repo.collection.delete_one({"_id": vuln_id})
+            mongo_deleted = mongo_result.deleted_count > 0
+            os_deleted = await async_delete_document(settings.opensearch_index, vuln_id)
+
+            if mongo_deleted or os_deleted:
+                deleted_count += 1
+                log.info("sync.resync_deleted", vuln_id=vuln_id, mongo=mongo_deleted, opensearch=os_deleted)
+
+                if not request.delete_only:
+                    try:
+                        payload = VulnerabilityRefreshRequest(vuln_ids=[vuln_id], source_ids=[vuln_id])
+                        await vuln_service.trigger_refresh(payload)
+                        refreshed_count += 1
+                    except Exception as exc:
+                        errors.append(f"{vuln_id}: refresh failed ({exc})")
+        except Exception as exc:
+            errors.append(f"{vuln_id}: delete failed ({exc})")
+
+    if request.delete_only:
+        message = f"Deleted {deleted_count} of {len(all_ids)} vulnerabilities."
+    else:
+        message = f"Deleted {deleted_count} and re-fetched {refreshed_count} of {len(all_ids)} vulnerabilities."
 
     return ResyncResponse(
-        deleted=True,
-        refresh=refresh_result,
-        message=f"Deleted {vuln_id} and re-fetched from upstream.",
+        deleted=deleted_count,
+        refreshed=refreshed_count,
+        resolved_ids=all_ids,
+        errors=errors,
+        message=message,
     )

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { config } from "../config";
@@ -100,6 +100,8 @@ export const ScansPage = () => {
   const [sbomTargetId, setSbomTargetId] = useState<string | null>(null);
   const [sbomOffset, setSbomOffset] = useState(0);
   const [expandedSboms, setExpandedSboms] = useState<Set<string>>(new Set());
+  const [sbomSort, setSbomSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "name", dir: "asc" });
+  const [sbomFilterProvenance, setSbomFilterProvenance] = useState<string | null>(null);
   const sbomLimit = 50;
   const sbomSearchRef = useRef(sbomSearch);
   sbomSearchRef.current = sbomSearch;
@@ -240,6 +242,56 @@ export const ScansPage = () => {
     }, sbomSearch ? 300 : 0);
     return () => clearTimeout(timer);
   }, [tab, sbomSearch, sbomType, sbomTargetId, sbomOffset]);
+
+  // SBOM summary stats (computed from loaded page)
+  const sbomStats = useMemo(() => {
+    const ecosystems: Record<string, number> = {};
+    const licenses: Record<string, number> = {};
+    const types: Record<string, number> = {};
+    for (const c of sbomComponents) {
+      const ecoMatch = c.purl?.match(/^pkg:([^/]+)\//);
+      const eco = ecoMatch ? ecoMatch[1] : "unknown";
+      ecosystems[eco] = (ecosystems[eco] || 0) + 1;
+      for (const lic of c.licenses) {
+        licenses[lic] = (licenses[lic] || 0) + 1;
+      }
+      const tp = c.type || "unknown";
+      types[tp] = (types[tp] || 0) + 1;
+    }
+    const sortDesc = (obj: Record<string, number>) =>
+      Object.entries(obj).sort((a, b) => b[1] - a[1]);
+    return { ecosystems: sortDesc(ecosystems), licenses: sortDesc(licenses), types: sortDesc(types) };
+  }, [sbomComponents]);
+
+  // Client-side sort + provenance filter for loaded SBOM page
+  const filteredSortedSbom = useMemo(() => {
+    let items = sbomComponents;
+    if (sbomFilterProvenance === "verified") {
+      items = items.filter(c => c.provenanceVerified === true);
+    } else if (sbomFilterProvenance === "unverified") {
+      items = items.filter(c => c.provenanceVerified === false);
+    } else if (sbomFilterProvenance === "unknown") {
+      items = items.filter(c => c.provenanceVerified == null);
+    }
+    const sorted = [...items];
+    const dir = sbomSort.dir === "asc" ? 1 : -1;
+    sorted.sort((a, b) => {
+      let av: string, bv: string;
+      switch (sbomSort.col) {
+        case "version": av = a.version || ""; bv = b.version || ""; break;
+        case "type": av = a.type || ""; bv = b.type || ""; break;
+        case "licenses": av = a.licenses[0] || ""; bv = b.licenses[0] || ""; break;
+        case "provenance": {
+          const pv = (v: boolean | null | undefined) => v === true ? "a" : v === false ? "b" : "c";
+          av = pv(a.provenanceVerified); bv = pv(b.provenanceVerified); break;
+        }
+        case "targets": av = String(a.targets.length).padStart(5, "0"); bv = String(b.targets.length).padStart(5, "0"); break;
+        default: av = a.name || ""; bv = b.name || "";
+      }
+      return av.localeCompare(bv) * dir;
+    });
+    return sorted;
+  }, [sbomComponents, sbomSort, sbomFilterProvenance]);
 
   // Auto-poll every 4s while any scan is running/pending (both tabs)
   useEffect(() => {
@@ -1138,6 +1190,34 @@ export const ScansPage = () => {
               </div>
             )}
 
+            {/* Summary cards */}
+            {sbomComponents.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
+                {[
+                  { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b" },
+                  { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, color: "#69db7c" },
+                  { title: t("Types", "Typen"), data: sbomStats.types, color: "#8b94fc" },
+                ].map(card => (
+                  <div key={card.title} style={{ padding: "0.75rem", borderRadius: "8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      {card.title}
+                    </div>
+                    {card.data.slice(0, 5).map(([name, count]) => (
+                      <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0", fontSize: "0.75rem" }}>
+                        <span style={{ color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{name}</span>
+                        <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{count}</span>
+                      </div>
+                    ))}
+                    {card.data.length > 5 && (
+                      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginTop: "0.25rem" }}>
+                        +{card.data.length - 5} {t("more", "weitere")}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Filter bar */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
               <input
@@ -1205,8 +1285,33 @@ export const ScansPage = () => {
                   <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
                 ))}
               </select>
+              <select
+                value={sbomFilterProvenance || ""}
+                onChange={e => setSbomFilterProvenance(e.target.value || null)}
+                style={{
+                  padding: "0 0.625rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: sbomFilterProvenance ? "#ffd43b" : "rgba(255,255,255,0.5)",
+                  fontSize: "0.8125rem",
+                  outline: "none",
+                  cursor: "pointer",
+                  minWidth: "120px",
+                  height: "32px",
+                  boxSizing: "border-box" as const,
+                }}
+              >
+                <option value="">{t("All Provenance", "Alle Provenienz")}</option>
+                <option value="verified">{t("Verified", "Verifiziert")}</option>
+                <option value="unverified">{t("Unverified", "Nicht verifiziert")}</option>
+                <option value="unknown">{t("Unknown", "Unbekannt")}</option>
+              </select>
               <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
-                {sbomTotal.toLocaleString()} {t("components", "Komponenten")}
+                {filteredSortedSbom.length !== sbomComponents.length
+                  ? `${filteredSortedSbom.length} / ${sbomTotal.toLocaleString()}`
+                  : sbomTotal.toLocaleString()}{" "}
+                {t("components", "Komponenten")}
               </span>
             </div>
 
@@ -1245,16 +1350,23 @@ export const ScansPage = () => {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                                                <th style={thStyle}>{t("Component", "Komponente")}</th>
-                        <th style={thStyle}>{t("Version", "Version")}</th>
-                        <th style={thStyle}>{t("Type", "Typ")}</th>
-                        <th style={thStyle}>{t("Provenance", "Herkunft")}</th>
-                        <th style={thStyle}>{t("Licenses", "Lizenzen")}</th>
-                        <th style={thStyle}>{t("Targets", "Ziele")}</th>
+                        {([
+                          { col: "name", label: t("Component", "Komponente") },
+                          { col: "version", label: t("Version", "Version") },
+                          { col: "type", label: t("Type", "Typ") },
+                          { col: "provenance", label: t("Provenance", "Herkunft") },
+                          { col: "licenses", label: t("Licenses", "Lizenzen") },
+                          { col: "targets", label: t("Targets", "Ziele") },
+                        ] as const).map(h => (
+                          <th key={h.col} style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
+                            onClick={() => setSbomSort(prev => ({ col: h.col, dir: prev.col === h.col && prev.dir === "asc" ? "desc" : "asc" }))}>
+                            {h.label} {sbomSort.col === h.col ? (sbomSort.dir === "asc" ? "▲" : "▼") : ""}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {sbomComponents.map(c => {
+                      {filteredSortedSbom.map(c => {
                         const typeColors: Record<string, string> = { library: "#69db7c", application: "#ffd43b", framework: "#748ffc", container: "#ff922b" };
                         const typeColor = typeColors[c.type] || "rgba(255,255,255,0.4)";
                         const rowKey = `${c.name}|${c.version}`;

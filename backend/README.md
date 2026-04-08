@@ -100,19 +100,19 @@ app/
 │   │   ├── euvd_pipeline.py       # EUVD (ENISA)
 │   │   ├── nvd_pipeline.py        # NVD (NIST)
 │   │   ├── kev_pipeline.py        # CISA KEV
-│   │   ├── cpe_pipeline.py        # CPE (NVD)
+│   │   ├── cpe_pipeline.py        # CPE (NVD, Mid-Run-Progress-Reporting)
 │   │   ├── circl_pipeline.py      # CIRCL
 │   │   ├── ghsa_pipeline.py       # GHSA (GitHub Advisory)
 │   │   ├── euvd_client.py         # EUVD API-Client
 │   │   ├── nvd_client.py          # NVD API-Client
 │   │   ├── cisa_client.py         # KEV API-Client
-│   │   ├── cpe_client.py          # CPE API-Client
+│   │   ├── cpe_client.py          # CPE API-Client (Retry mit Exponential-Backoff)
 │   │   ├── cwe_client.py          # CWE MITRE API-Client
 │   │   ├── capec_client.py        # CAPEC XML-Parser
 │   │   ├── circl_client.py        # CIRCL API-Client
 │   │   ├── ghsa_client.py         # GHSA API-Client
 │   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client
-│   │   ├── osv_pipeline.py        # OSV (OSV.dev)
+│   │   ├── osv_pipeline.py        # OSV (OSV.dev, Mid-Run-Progress-Reporting)
 │   │   ├── normalizer.py          # Normalisierung aller Quellen
 │   │   ├── job_tracker.py         # Job-Lifecycle & Audit
 │   │   ├── manual_refresher.py    # On-Demand Refresh

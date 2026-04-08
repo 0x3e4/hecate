@@ -7,6 +7,7 @@ import structlog
 
 from app.core.config import settings
 from app.repositories.cpe_repository import CPERepository
+from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.cpe_client import CPEClient
@@ -41,6 +42,11 @@ class CPEPipeline:
         timeout_seconds = timeout_minutes * 60 if timeout_minutes and timeout_minutes > 0 else None
         timed_out = False
 
+        processed_total = 0
+        last_progress_log = datetime.now(tz=UTC)
+        progress_interval = 500
+        log_repo: IngestionLogRepository | None = None
+
         try:
             last_run = await state_repo.get_timestamp(STATE_KEY)
             repo = await CPERepository.create()
@@ -50,15 +56,41 @@ class CPEPipeline:
                     parsed = _normalize_cpe_record(record)
                     if not parsed:
                         failures += 1
-                        continue
+                    else:
+                        await repo.upsert(parsed)
+                        ingested += 1
 
-                    await repo.upsert(parsed)
-                    ingested += 1
+                        if parsed.get("lastModified") and isinstance(parsed["lastModified"], datetime):
+                            ts = parsed["lastModified"].astimezone(UTC)
+                            if not latest_timestamp or ts > latest_timestamp:
+                                latest_timestamp = ts
 
-                    if parsed.get("lastModified") and isinstance(parsed["lastModified"], datetime):
-                        ts = parsed["lastModified"].astimezone(UTC)
-                        if not latest_timestamp or ts > latest_timestamp:
-                            latest_timestamp = ts
+                    processed_total += 1
+                    now = datetime.now(tz=UTC)
+                    if (
+                        processed_total % progress_interval == 0
+                        or (now - last_progress_log).total_seconds() >= 60
+                    ):
+                        progress_payload = {
+                            "processed": processed_total,
+                            "ingested": ingested,
+                            "failures": failures,
+                            "limit": effective_limit,
+                        }
+                        await state_repo.update_state(
+                            f"job:{ctx.name}",
+                            {
+                                "status": "running",
+                                "progress": progress_payload,
+                                "last_progress_at": now,
+                            },
+                        )
+                        if ctx.log_id is not None:
+                            if log_repo is None:
+                                log_repo = await IngestionLogRepository.create()
+                            await log_repo.update_progress(ctx.log_id, progress_payload)
+                        log.info("cpe_pipeline.progress", **progress_payload)
+                        last_progress_log = now
 
                     if effective_limit is not None and ingested >= effective_limit:
                         break

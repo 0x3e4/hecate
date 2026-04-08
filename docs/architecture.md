@@ -117,14 +117,14 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - Alle Pipelines unterstützen inkrementelle und initiale Syncs.
 - **EUVD Pipeline:** Liest paginiert, gleicht CVE-IDs ab, reichert mit NVD- und KEV-Daten an, pflegt Change-Historie, aktualisiert OpenSearch-Index + Mongo-Dokumente.
 - **NVD Pipeline:** Aktualisiert CVSS/EPSS/Referenzen für bestehende Datensätze, optional begrenzt über `modifiedSince`.
-- **CPE Pipeline:** Synchronisiert NVD-CPE-Katalog, erzeugt Vendor-/Produkt-/Versionseinträge und legt Slug-Metadaten in Mongo ab.
+- **CPE Pipeline:** Synchronisiert NVD-CPE-Katalog, erzeugt Vendor-/Produkt-/Versionseinträge und legt Slug-Metadaten in Mongo ab. HTTP-Retry mit Exponential-Backoff (3 Versuche, 429/5xx). Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
 - **KEV Pipeline:** Hält CISA Known-Exploited-Catalog aktuell und stellt Exploitation-Metadaten für EUVD/NVD bereit.
 - **CWE Pipeline:** Synchronisiert MITRE CWE-Katalog über REST-API mit 7-Tage TTL-Cache.
 - **CAPEC Pipeline:** Parst MITRE CAPEC XML, erstellt Angriffsmuster-Einträge mit CWE-Zuordnung.
 - **CIRCL Pipeline:** Liest zusätzliche Schwachstelleninformationen von CIRCL und reichert bestehende Datensätze an.
 - **GHSA Pipeline:** Synchronisiert GitHub Security Advisories. Hybrid: Advisories mit CVE-ID enrichen bestehende CVE-Dokumente oder erstellen neue CVE-Dokumente (Pre-Fill). Advisories ohne CVE-ID erstellen eigenständige GHSA-Einträge. Aliases stammen nur aus `identifiers`-Array, nicht aus Referenz-URLs.
-- **OSV Pipeline:** Synchronisiert OSV.dev-Schwachstellen. Initial-Sync über GCS Bucket ZIP-Exporte, inkrementeller Sync über `modified_id.csv` + REST-API. Hybrid wie GHSA: Records mit CVE-Alias enrichen CVE-Dokumente, Records ohne CVE-Alias (MAL-*, PYSEC-*, etc.) erstellen eigenständige OSV-Einträge. ID-Priorität: CVE > GHSA > OSV ID. 11 Ökosysteme (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions).
-- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA+OSV, EUVD → EUVD, GHSA → GHSA-API). OSV-Refresh für alle ID-Typen verfügbar. Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) löscht Dokument und ruft es neu ab.
+- **OSV Pipeline:** Synchronisiert OSV.dev-Schwachstellen. Initial-Sync über GCS Bucket ZIP-Exporte, inkrementeller Sync über `modified_id.csv` + REST-API. Hybrid wie GHSA: Records mit CVE-Alias enrichen CVE-Dokumente, Records ohne CVE-Alias (MAL-*, PYSEC-*, etc.) erstellen eigenständige OSV-Einträge. ID-Priorität: CVE > GHSA > OSV ID. 11 Ökosysteme (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions). Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
+- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA+OSV, EUVD → EUVD, GHSA → GHSA-API). OSV-Refresh für alle ID-Typen verfügbar. Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) unterstützt mehrere IDs (`vulnIds: list[str]`), Wildcard-Patterns (z.B. `CVE-2024-*`) und Delete-Only-Modus.
 
 ### Datenbeziehungen
 - CVE → CWE: Aus NVD `weaknesses`-Array, gespeichert auf `VulnerabilityDocument`.
@@ -261,9 +261,9 @@ poetry run python -m app.cli reindex-opensearch
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
-| `/system` | `SystemPage` | 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync, Suchen), Policies (Lizenzrichtlinien) |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (7 Tabs: Targets, Scans, Findings, SBOM, Licenses, New Scan, Scanner) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM, History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
+| `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (7 Tabs: Targets, Scans, Findings, SBOM mit Summary-Cards + Spalten-Sortierung + Provenance-Filter, Licenses, New Scan, Scanner) |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |

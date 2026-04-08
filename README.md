@@ -129,9 +129,9 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
-| SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (über alle Ziele), manueller Scan, SBOM-Import, Lizenzen, Scanner-Monitoring |
-| Scan-Detail | Findings (VEX-Status), SBOM, History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
-| System | 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync, Re-Sync, Suchen), Policies (Lizenzrichtlinien) |
+| SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (Summary-Cards, Spalten-Sortierung, Provenance-Filter), manueller Scan, SBOM-Import, Lizenzen, Scanner-Monitoring |
+| Scan-Detail | Findings (VEX-Status), SBOM (sortierbar, klickbare Filter, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
+| System | Single-Card-Layout. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | CI/CD | Anleitung zur CI/CD-Integration mit Pipeline-Beispielen (GitHub Actions, GitLab CI, Shell) |
 | API | Interaktive API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 
@@ -279,7 +279,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/audit/ingestion` — Audit-Log
 - `GET /api/v1/changelog` — Letzte Änderungen (mit Pagination, Datum- und Source-Filter)
 - `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa, osv)
-- `POST /api/v1/sync/resync` — Vulnerability löschen und neu von Upstream abrufen
+- `POST /api/v1/sync/resync` — Vulnerabilities löschen und optional neu von Upstream abrufen (Multi-ID, Wildcards, Delete-Only)
 - `GET/POST /api/v1/backup/...` — Export/Import
 
 ## Backend-CLI
