@@ -1095,7 +1095,7 @@ export const SystemPage = () => {
       </div>
 
       {tab === "general" && (<>
-      <div style={subsectionStyle}>
+      <div style={firstSubsectionStyle}>
         <h2 style={subsectionHeadingStyle}>{t("Language", "Sprache")}</h2>
         <p className="muted">
           {t(
@@ -1252,7 +1252,7 @@ export const SystemPage = () => {
       </>)}
 
       {tab === "notifications" && (<>
-      <div style={subsectionStyle}>
+      <div style={firstSubsectionStyle}>
         <h2 style={subsectionHeadingStyle}>{t("Notification Channels", "Benachrichtigungskanäle")}</h2>
         <p className="muted">
           {t(
@@ -1854,7 +1854,7 @@ export const SystemPage = () => {
       </>)}
 
       {tab === "data" && (<>
-      <div style={subsectionStyle}>
+      <div style={firstSubsectionStyle}>
         <h2 style={subsectionHeadingStyle}>{t("Sync Status", "Sync-Status")}</h2>
         <p className="muted">
           {t(
@@ -2098,7 +2098,7 @@ export const SystemPage = () => {
       )}
 
       {tab === "policies" && (<>
-      <div style={subsectionStyle}>
+      <div style={firstSubsectionStyle}>
         <h2 style={subsectionHeadingStyle}>{t("License Policies", "Lizenzrichtlinien")}</h2>
         <p className="muted">
           {t(
@@ -2490,6 +2490,10 @@ const subsectionStyle: CSSProperties = {
   marginTop: "2rem",
   paddingTop: "1.5rem",
   borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+};
+
+const firstSubsectionStyle: CSSProperties = {
+  marginTop: "0",
 };
 
 const subsectionHeadingStyle: CSSProperties = {

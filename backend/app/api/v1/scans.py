@@ -703,6 +703,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         latest_scan_id=doc.get("latest_scan_id"),
         has_running_scan=doc.get("has_running_scan", False),
         running_scan_id=doc.get("running_scan_id"),
+        running_scan_status=doc.get("running_scan_status"),
         auto_scan=doc.get("auto_scan", True),
         scanners=doc.get("scanners", []),
     )

@@ -422,6 +422,7 @@ export interface ScanTarget {
   latestScanId?: string | null;
   hasRunningScan?: boolean;
   runningScanId?: string | null;
+  runningScanStatus?: string | null;
   autoScan?: boolean;
   scanners?: string[];
 }

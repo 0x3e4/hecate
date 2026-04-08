@@ -187,8 +187,8 @@ class ScanRepository:
             log.warning("scan_repository.has_running_failed", target_id=target_id, error=str(exc))
             return False
 
-    async def get_running_scan_id(self, target_id: str) -> str | None:
-        """Return the _id of the most recent running/pending scan for a target."""
+    async def get_running_scan_id(self, target_id: str) -> tuple[str, str] | None:
+        """Return (_id, status) of the most recent running/pending scan for a target."""
         try:
             cursor = (
                 self.collection.find(
@@ -198,7 +198,7 @@ class ScanRepository:
                 .limit(1)
             )
             async for doc in cursor:
-                return str(doc["_id"])
+                return str(doc["_id"]), doc.get("status", "running")
             return None
         except PyMongoError as exc:
             log.warning("scan_repository.get_running_scan_id_failed", target_id=target_id, error=str(exc))
