@@ -137,16 +137,18 @@ export const ScansPage = () => {
     setError(null);
     try {
       if (tab === "targets") {
-        const [targetsRes, scansRes, findingsRes, sbomRes] = await Promise.all([
+        const [targetsRes, scansRes, findingsRes, sbomRes, licenseRes] = await Promise.all([
           fetchScanTargets({ limit: 100 }),
           fetchScans({ limit: 1 }),
           fetchGlobalFindings({ limit: 1 }).catch(() => ({ total: 0, items: [] })),
           fetchGlobalSbom({ limit: 1 }).catch(() => ({ total: 0, items: [] })),
+          fetchLicenseOverview().catch(() => ({ total: 0, items: [] })),
         ]);
         setTargets(targetsRes.items);
         setScanTotal(scansRes.total);
         setGlobalFindingsTotal(findingsRes.total);
         setSbomTotal(sbomRes.total);
+        setLicenseOverviewTotal(licenseRes.total);
       } else if (tab === "scans") {
         // Load targets for filter dropdown if not yet loaded
         if (targets.length === 0) {
@@ -1001,7 +1003,7 @@ export const ScansPage = () => {
                   flexWrap: "wrap",
                 }}
               >
-                <div style={{ flex: "1 1 0", minWidth: "200px" }}>
+                <div style={{ flex: "1 1 0", minWidth: "140px" }}>
                   <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "rgba(255,255,255,0.8)", marginBottom: "0.25rem" }}>
                     {t("Import SBOM", "SBOM importieren")}
                   </div>
@@ -1039,7 +1041,7 @@ export const ScansPage = () => {
                     <div style={{ fontSize: "0.75rem", color: "#ff6b6b", marginTop: "0.25rem" }}>{sbomImportError}</div>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0, flexWrap: "wrap" }}>
                   <select
                     value={sbomImportFormat}
                     onChange={e => setSbomImportFormat(e.target.value)}
@@ -1063,7 +1065,7 @@ export const ScansPage = () => {
                       padding: "0.3rem 0.5rem", borderRadius: "6px",
                       border: "1px solid rgba(255,255,255,0.1)",
                       background: "rgba(255,255,255,0.05)", color: "#fff",
-                      fontSize: "0.75rem", outline: "none", width: "160px",
+                      fontSize: "0.75rem", outline: "none", width: "160px", minWidth: 0, flex: "1 1 100px",
                     }}
                   />
                   <button
@@ -1605,7 +1607,7 @@ export const ScansPage = () => {
                       .map(item => (
                         <tr key={item.licenseId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                           <td style={tdStyle}>
-                            <span style={{ fontWeight: 500, color: "#fff" }}>{item.licenseId}</span>
+                            <span style={{ fontWeight: 500, color: "#fff", fontSize: "0.8125rem" }}>{item.licenseId}</span>
                           </td>
                           <td style={tdStyle}>
                             <span style={{

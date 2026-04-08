@@ -65,6 +65,8 @@ import type {
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
+type SystemTab = "general" | "notifications" | "data" | "policies";
+
 type BackupDataset =
   | { id: "VULNERABILITIES"; label: string; description: string; type: "vuln"; source: VulnerabilitySource }
   | { id: "SAVED_SEARCHES"; label: string; description: string; type: "saved_searches" }
@@ -98,6 +100,7 @@ export const SystemPage = () => {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authChecking, setAuthChecking] = useState(false);
+  const [tab, setTab] = useState<SystemTab>("general");
 
   useEffect(() => {
     api.get<{ required: boolean }>("/v1/status/system-auth").then((r) => {
@@ -1060,6 +1063,37 @@ export const SystemPage = () => {
       </div>
     ) : (
     <div className="page">
+      <div className="tabs-scroll" style={{ display: "flex", gap: 0, marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        {([
+          { key: "general" as SystemTab, label: t("General", "Allgemein") },
+          { key: "notifications" as SystemTab, label: t("Notifications", "Benachrichtigungen") },
+          { key: "data" as SystemTab, label: t("Data", "Daten") },
+          { key: "policies" as SystemTab, label: t("Policies", "Richtlinien") },
+        ]).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            style={{
+              padding: "0.625rem 1.25rem",
+              border: "none",
+              borderBottom: tab === key ? "2px solid #ffd43b" : "2px solid transparent",
+              background: "transparent",
+              color: tab === key ? "#ffd43b" : "rgba(255,255,255,0.5)",
+              cursor: "pointer",
+              fontSize: "0.8125rem",
+              fontWeight: tab === key ? 600 : 400,
+              transition: "color 0.15s, border-color 0.15s",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "general" && (<>
       <section className="card">
         <h2>{t("Language", "Sprache")}</h2>
         <p className="muted">
@@ -1214,7 +1248,9 @@ export const SystemPage = () => {
           ) : null}
         </div>
       </section>
+      </>)}
 
+      {tab === "notifications" && (<>
       <section className="card">
         <h2>{t("Notification Channels", "Benachrichtigungskanäle")}</h2>
         <p className="muted">
@@ -1814,7 +1850,9 @@ export const SystemPage = () => {
           </div>
         )}
       </section>
+      </>)}
 
+      {tab === "data" && (<>
       <section className="card">
         <h2>{t("Sync Status", "Sync-Status")}</h2>
         <p className="muted">
@@ -1961,7 +1999,41 @@ export const SystemPage = () => {
           </div>
         )}
       </section>
+      <section className="card">
+        <h2>{t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}</h2>
+        <p className="muted">
+          {t(
+            "Delete a vulnerability from the database and re-fetch it from upstream sources (NVD, EUVD, GHSA).",
+            "Lösche eine Schwachstelle aus der Datenbank und rufe sie erneut von Upstream-Quellen ab (NVD, EUVD, GHSA)."
+          )}
+        </p>
+        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center", maxWidth: "600px" }}>
+          <input
+            type="text"
+            value={resyncInput}
+            onChange={(e) => setResyncInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !resyncBusy && resyncInput.trim()) {
+                void handleResync();
+              }
+            }}
+            placeholder={t("e.g. CVE-2026-34043 or GHSA-qj8w-gfj5-8c6v", "z.B. CVE-2026-34043 oder GHSA-qj8w-gfj5-8c6v")}
+            disabled={resyncBusy}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleResync()}
+            disabled={resyncBusy || !resyncInput.trim()}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {resyncBusy ? t("Re-syncing…", "Re-Sync…") : t("Delete & Re-Sync", "Löschen & Re-Sync")}
+          </button>
+        </div>
+      </section>
+      </>)}
 
+      {tab === "general" && (
       <section className="card">
         <h2>{t("Backup & Restore", "Backup & Restore")}</h2>
         <p className="muted">
@@ -2014,7 +2086,9 @@ export const SystemPage = () => {
           ))}
         </div>
       </section>
+      )}
 
+      {tab === "policies" && (<>
       <section className="card">
         <h2>{t("License Policies", "Lizenzrichtlinien")}</h2>
         <p className="muted">
@@ -2174,40 +2248,9 @@ export const SystemPage = () => {
           )}
         </div>
       </section>
+      </>)}
 
-      <section className="card">
-        <h2>{t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}</h2>
-        <p className="muted">
-          {t(
-            "Delete a vulnerability from the database and re-fetch it from upstream sources (NVD, EUVD, GHSA).",
-            "Lösche eine Schwachstelle aus der Datenbank und rufe sie erneut von Upstream-Quellen ab (NVD, EUVD, GHSA)."
-          )}
-        </p>
-        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center", maxWidth: "600px" }}>
-          <input
-            type="text"
-            value={resyncInput}
-            onChange={(e) => setResyncInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !resyncBusy && resyncInput.trim()) {
-                void handleResync();
-              }
-            }}
-            placeholder={t("e.g. CVE-2026-34043 or GHSA-qj8w-gfj5-8c6v", "z.B. CVE-2026-34043 oder GHSA-qj8w-gfj5-8c6v")}
-            disabled={resyncBusy}
-            style={{ flex: 1, minWidth: 0 }}
-          />
-          <button
-            type="button"
-            onClick={() => void handleResync()}
-            disabled={resyncBusy || !resyncInput.trim()}
-            style={{ whiteSpace: "nowrap" }}
-          >
-            {resyncBusy ? t("Re-syncing…", "Re-Sync…") : t("Delete & Re-Sync", "Löschen & Re-Sync")}
-          </button>
-        </div>
-      </section>
-
+      {tab === "data" && (
       <section className="card">
         <h2>{t("Saved Searches", "Gespeicherte Suchen")}</h2>
         <p className="muted">
@@ -2359,6 +2402,7 @@ export const SystemPage = () => {
           </div>
         )}
       </section>
+      )}
       {toast && (
         <div style={toastContainerStyle}>
           <div

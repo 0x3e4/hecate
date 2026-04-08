@@ -1286,7 +1286,10 @@ export const ScanDetailPage = () => {
             ) : history.length < 2 ? (
               <p className="muted">{t("Not enough scan history for a chart. Run more scans.", "Nicht genügend Scan-Verlauf für ein Diagramm. Führen Sie weitere Scans durch.")}</p>
             ) : (
-              <HistoryChart history={history} />
+              <>
+                <HistoryChart history={history} />
+                <HistoryChangesTable history={history} />
+              </>
             )}
           </>
         )}
@@ -2620,6 +2623,68 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
             <span style={{ color: "rgba(255,255,255,0.5)" }}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+};
+
+const HistoryChangesTable = ({ history }: { history: ScanHistoryEntry[] }) => {
+  const { t } = useI18n();
+  const sevs = ["critical", "high", "medium", "low"] as const;
+
+  // Compare consecutive scans, only keep rows with changes
+  const changes: { newer: ScanHistoryEntry; older: ScanHistoryEntry; deltas: Record<string, number> }[] = [];
+  for (let i = 0; i < history.length - 1; i++) {
+    const newer = history[i];
+    const older = history[i + 1];
+    const deltas: Record<string, number> = {};
+    let hasChange = false;
+    for (const sev of sevs) {
+      const d = newer.summary[sev] - older.summary[sev];
+      deltas[sev] = d;
+      if (d !== 0) hasChange = true;
+    }
+    deltas.total = newer.summary.total - older.summary.total;
+    if (deltas.total !== 0) hasChange = true;
+    if (hasChange) changes.push({ newer, older, deltas });
+  }
+
+  if (changes.length === 0) return null;
+
+  const renderDelta = (d: number) => {
+    if (d === 0) return <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>;
+    if (d > 0) return <span style={{ color: "#ff6b6b", fontWeight: 600 }}>+{d}</span>;
+    return <span style={{ color: "#69db7c", fontWeight: 600 }}>{d}</span>;
+  };
+
+  return (
+    <div style={{ marginTop: "1.25rem" }}>
+      <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.875rem", color: "rgba(255,255,255,0.7)" }}>
+        {t("Significant Changes", "Wesentliche Änderungen")}
+      </h4>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <th style={thStyle}>{t("Date", "Datum")}</th>
+              {sevs.map(sev => (
+                <th key={sev} style={{ ...thStyle, color: SEVERITY_COLORS[sev] }}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</th>
+              ))}
+              <th style={thStyle}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {changes.map(({ newer, deltas }, i) => (
+              <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.75rem" }}>{formatDateTime(newer.startedAt)}</td>
+                {sevs.map(sev => (
+                  <td key={sev} style={{ ...tdStyle, textAlign: "center" }}>{renderDelta(deltas[sev])}</td>
+                ))}
+                <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600 }}>{renderDelta(deltas.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
