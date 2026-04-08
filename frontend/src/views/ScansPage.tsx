@@ -1920,6 +1920,7 @@ export const ScansPage = () => {
 const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onFilterScans, onCancelScan }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
   const isRunning = !!target.hasRunningScan;
+  const isPending = target.runningScanStatus === "pending";
   const autoScan = target.autoScan !== false; // default true
   const [editingScanners, setEditingScanners] = useState(false);
   const [selectedScanners, setSelectedScanners] = useState<string[]>([]);
@@ -1943,9 +1944,9 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
   return (
     <div style={{
       padding: "1rem 1.25rem",
-      border: isRunning ? "1px solid rgba(92,132,255,0.3)" : "1px solid rgba(255,255,255,0.08)",
+      border: isRunning ? `1px solid ${isPending ? "rgba(240,160,48,0.3)" : "rgba(92,132,255,0.3)"}` : "1px solid rgba(255,255,255,0.08)",
       borderRadius: "8px",
-      background: isRunning ? "rgba(92,132,255,0.04)" : "rgba(255,255,255,0.02)",
+      background: isRunning ? (isPending ? "rgba(240,160,48,0.04)" : "rgba(92,132,255,0.04)") : "rgba(255,255,255,0.02)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.25rem" }}>
         <div style={{ minWidth: 0, flex: "1 1 200px" }}>
@@ -1953,7 +1954,7 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
             <span style={{ display: "block", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
               {target.type === "container_image" ? "Container" : "Source"}
             </span>
-            {isRunning && <ScanningBadge />}
+            {isRunning && <ScanningBadge status={target.runningScanStatus} />}
           </div>
           {target.latestScanId ? (
             <Link to={`/scans/${target.latestScanId}`} style={{ textDecoration: "none" }}>
@@ -2175,33 +2176,38 @@ const SeverityBadges = ({ summary, style }: { summary: ScanSummary; style?: Reac
   );
 };
 
-const ScanningBadge = () => (
-  <span style={{
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.25rem",
-    padding: "0.125rem 0.5rem",
-    borderRadius: "4px",
-    fontSize: "0.675rem",
-    fontWeight: 600,
-    background: "rgba(92,132,255,0.15)",
-    color: "#5c84ff",
-    animation: "pulse-badge 1.5s ease-in-out infinite",
-  }}>
+const ScanningBadge = ({ status }: { status?: string | null }) => {
+  const isPending = status === "pending";
+  const color = isPending ? "#f0a030" : "#5c84ff";
+  const label = isPending ? "Queued..." : "Scanning...";
+  return (
     <span style={{
-      width: "6px",
-      height: "6px",
-      borderRadius: "50%",
-      background: "#5c84ff",
-      animation: "pulse-dot 1.5s ease-in-out infinite",
-    }} />
-    Scanning...
-    <style>{`
-      @keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-      @keyframes pulse-dot { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.5; } }
-    `}</style>
-  </span>
-);
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.25rem",
+      padding: "0.125rem 0.5rem",
+      borderRadius: "4px",
+      fontSize: "0.675rem",
+      fontWeight: 600,
+      background: isPending ? "rgba(240,160,48,0.15)" : "rgba(92,132,255,0.15)",
+      color,
+      animation: "pulse-badge 1.5s ease-in-out infinite",
+    }}>
+      <span style={{
+        width: "6px",
+        height: "6px",
+        borderRadius: "50%",
+        background: color,
+        animation: "pulse-dot 1.5s ease-in-out infinite",
+      }} />
+      {label}
+      <style>{`
+        @keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+        @keyframes pulse-dot { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.5; } }
+      `}</style>
+    </span>
+  );
+};
 
 const SourceBadge = ({ source }: { source: string }) => {
   const labels: Record<string, { text: string; color: string }> = {

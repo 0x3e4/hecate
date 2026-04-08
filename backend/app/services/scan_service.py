@@ -685,7 +685,9 @@ class ScanService:
                     item["latest_scan_id"] = str(latest.get("_id", ""))
                 item["has_running_scan"] = await self.scan_repo.has_running_scan(target_id)
                 if item["has_running_scan"]:
-                    item["running_scan_id"] = await self.scan_repo.get_running_scan_id(target_id)
+                    result = await self.scan_repo.get_running_scan_id(target_id)
+                    if result:
+                        item["running_scan_id"], item["running_scan_status"] = result
         return total, items
 
     async def get_target(self, target_id: str) -> dict[str, Any] | None:
@@ -697,7 +699,9 @@ class ScanService:
                 target["latest_scan_id"] = str(latest.get("_id", ""))
             target["has_running_scan"] = await self.scan_repo.has_running_scan(target_id)
             if target.get("has_running_scan"):
-                target["running_scan_id"] = await self.scan_repo.get_running_scan_id(target_id)
+                result = await self.scan_repo.get_running_scan_id(target_id)
+                if result:
+                    target["running_scan_id"], target["running_scan_status"] = result
         return target
 
     async def delete_target(self, target_id: str) -> bool:

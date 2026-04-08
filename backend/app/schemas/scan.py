@@ -112,6 +112,9 @@ class ScanTargetResponse(BaseModel):
     running_scan_id: str | None = Field(
         default=None, alias="runningScanId", serialization_alias="runningScanId"
     )
+    running_scan_status: str | None = Field(
+        default=None, alias="runningScanStatus", serialization_alias="runningScanStatus"
+    )
     auto_scan: bool = Field(
         default=True, alias="autoScan", serialization_alias="autoScan"
     )
