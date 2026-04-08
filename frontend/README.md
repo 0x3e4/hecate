@@ -31,10 +31,10 @@ src/
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen)
-│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit VEX-Status, SBOM, Security Alerts, Best Practices, Layer Analysis, License Compliance, VEX-Export)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit VEX-Status, SBOM, History mit Zeitbereichs-Filter, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export)
 │   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
-│   └── SystemPage.tsx           # Backup, Restore, Sync-Verwaltung
+│   └── SystemPage.tsx           # System (4 Tabs: General, Notifications, Data, Policies)
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
 │   │   ├── BatchAnalysisDisplay.tsx   # Batch-Ergebnisanzeige (Markdown)
@@ -90,9 +90,9 @@ src/
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter (inkl. OSV im Job-Dropdown) |
-| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung (inkl. OSV-Trigger), gespeicherte Suchen, Lizenz-Policies |
+| `/system` | `SystemPage` | 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync, Suchen), Policies (Lizenzrichtlinien) |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM (Export & Summary-Stats), Security Alerts, Best Practices, Layer Analysis, License Compliance, Scan-Vergleich, VEX-Export |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM, History (Zeitbereichs-Filter 7d/30d/90d/All, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |

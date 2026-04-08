@@ -174,9 +174,13 @@ export const fetchScanLayers = async (scanId: string): Promise<ScanLayerAnalysis
   return response.data;
 };
 
-export const fetchTargetHistory = async (targetId: string): Promise<ScanHistoryResponse> => {
+export const fetchTargetHistory = async (
+  targetId: string,
+  params?: { since?: string; limit?: number },
+): Promise<ScanHistoryResponse> => {
   const response = await api.get<ScanHistoryResponse>(
-    `/v1/scans/targets/${encodeURIComponent(targetId)}/history`
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/history`,
+    { params },
   );
   return response.data;
 };

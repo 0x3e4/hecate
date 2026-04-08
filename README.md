@@ -130,8 +130,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (über alle Ziele), manueller Scan, SBOM-Import, Lizenzen, Scanner-Monitoring |
-| Scan-Detail | Findings (mit Suche, sortierbaren Spalten & VEX-Status), SBOM (mit Export, Summary-Stats & Provenance), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, Scan-Vergleich, VEX-Export |
-| System | Backup/Restore, Sync-Verwaltung (Echtzeit-Status via SSE), gespeicherte Suchen, Benachrichtigungen, Lizenz-Policies |
+| Scan-Detail | Findings (VEX-Status), SBOM, History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
+| System | 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync, Re-Sync, Suchen), Policies (Lizenzrichtlinien) |
 | CI/CD | Anleitung zur CI/CD-Integration mit Pipeline-Beispielen (GitHub Actions, GitLab CI, Shell) |
 | API | Interaktive API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 

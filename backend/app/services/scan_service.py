@@ -918,8 +918,8 @@ class ScanService:
     ) -> tuple[int, list[dict[str, Any]]]:
         return await self.finding_repo.find_by_cve(cve_id, limit=limit, offset=offset)
 
-    async def get_target_history(self, target_id: str, limit: int = 30) -> list[dict[str, Any]]:
-        return await self.scan_repo.get_history(target_id, limit=limit)
+    async def get_target_history(self, target_id: str, limit: int = 30, since: datetime | None = None) -> list[dict[str, Any]]:
+        return await self.scan_repo.get_history(target_id, limit=limit, since=since)
 
     async def compare_scans(
         self, scan_id_a: str, scan_id_b: str

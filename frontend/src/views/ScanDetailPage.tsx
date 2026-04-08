@@ -349,8 +349,10 @@ export const ScanDetailPage = () => {
   const [vexEditJustification, setVexEditJustification] = useState("");
 
   // History chart state
+  type HistoryRange = "7d" | "30d" | "90d" | "all";
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("30d");
 
   // Comparison state
   const [otherScans, setOtherScans] = useState<Scan[]>([]);
@@ -603,6 +605,22 @@ export const ScanDetailPage = () => {
 
   const sourceUrl = buildSourceUrl(scan);
 
+  const loadHistory = (range: HistoryRange) => {
+    setHistoryLoading(true);
+    const params: { since?: string; limit?: number } = {};
+    if (range !== "all") {
+      const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      params.since = since.toISOString();
+    }
+    params.limit = 500;
+    fetchTargetHistory(scan.targetId, params)
+      .then(res => setHistory(res.items))
+      .catch(err => console.error("Failed to load history", err))
+      .finally(() => setHistoryLoading(false));
+  };
+
   return (
     <div className="page">
       {/* Header */}
@@ -718,10 +736,7 @@ export const ScanDetailPage = () => {
             onClick={() => {
               setTab("history");
               if (history.length === 0 && !historyLoading) {
-                setHistoryLoading(true);
-                fetchTargetHistory(scan.targetId).then(res => {
-                  setHistory(res.items);
-                }).catch(err => console.error("Failed to load history", err)).finally(() => setHistoryLoading(false));
+                loadHistory(historyRange);
               }
             }}
             style={tabStyle(tab === "history")}
@@ -733,7 +748,7 @@ export const ScanDetailPage = () => {
             onClick={() => {
               setTab("compare");
               if (otherScans.length === 0 && !compareLoading) {
-                fetchScans({ targetId: scan.targetId, limit: 50 }).then(res => {
+                fetchScans({ targetId: scan.targetId, limit: 200 }).then(res => {
                   setOtherScans(res.items.filter(s => s.id !== scanId && s.status === "completed"));
                   setCompareTargetId(scan.targetId);
                 }).catch(err => console.error("Failed to load scans", err));
@@ -1277,6 +1292,36 @@ export const ScanDetailPage = () => {
         {/* History tab */}
         {tab === "history" && (
           <>
+            <div style={{ display: "flex", gap: "0.25rem", marginBottom: "1rem" }}>
+              {(["7d", "30d", "90d", "all"] as HistoryRange[]).map(range => {
+                const active = historyRange === range;
+                const label = range === "all" ? t("All", "Alle") : range;
+                return (
+                  <button
+                    key={range}
+                    type="button"
+                    onClick={() => { setHistoryRange(range); loadHistory(range); }}
+                    style={{
+                      padding: "0 0.625rem",
+                      borderRadius: "4px",
+                      border: `1px solid ${active ? "#ffd43b" : "rgba(255,255,255,0.1)"}`,
+                      background: active ? "rgba(255,212,59,0.13)" : "transparent",
+                      color: active ? "#ffd43b" : "rgba(255,255,255,0.4)",
+                      cursor: "pointer",
+                      fontSize: "0.75rem",
+                      fontWeight: active ? 600 : 400,
+                      height: "32px",
+                      boxSizing: "border-box" as const,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.3)", fontSize: "0.75rem", alignSelf: "center" }}>
+                {history.length} {t("scans", "Scans")}
+              </span>
+            </div>
             {historyLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -1288,7 +1333,7 @@ export const ScanDetailPage = () => {
             ) : (
               <>
                 <HistoryChart history={history} />
-                <HistoryChangesTable history={history} />
+                <HistoryChangesTable history={history} targetId={scan.targetId} />
               </>
             )}
           </>
@@ -2628,15 +2673,25 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
   );
 };
 
-const HistoryChangesTable = ({ history }: { history: ScanHistoryEntry[] }) => {
+const HistoryChangesTable = ({ history, targetId }: { history: ScanHistoryEntry[]; targetId?: string }) => {
   const { t } = useI18n();
   const sevs = ["critical", "high", "medium", "low"] as const;
 
-  // Compare consecutive scans, only keep rows with changes
-  const changes: { newer: ScanHistoryEntry; older: ScanHistoryEntry; deltas: Record<string, number> }[] = [];
-  for (let i = 0; i < history.length - 1; i++) {
+  // Build commit URL base from targetId (works for GitHub, GitLab, Gitea repos)
+  const commitUrlBase = (() => {
+    if (!targetId) return null;
+    // targetId for source repos is typically the repo URL or slug
+    const clean = targetId.replace(/\.git$/, "");
+    if (clean.includes("/") && !clean.startsWith("http")) return `https://${clean}/commit/`;
+    if (clean.startsWith("http")) return `${clean}/commit/`;
+    return null;
+  })();
+
+  // Compare consecutive scans (history is oldest-first from API), collect newest-first
+  const changes: { newer: ScanHistoryEntry; deltas: Record<string, number> }[] = [];
+  for (let i = history.length - 1; i > 0; i--) {
     const newer = history[i];
-    const older = history[i + 1];
+    const older = history[i - 1];
     const deltas: Record<string, number> = {};
     let hasChange = false;
     for (const sev of sevs) {
@@ -2646,7 +2701,7 @@ const HistoryChangesTable = ({ history }: { history: ScanHistoryEntry[] }) => {
     }
     deltas.total = newer.summary.total - older.summary.total;
     if (deltas.total !== 0) hasChange = true;
-    if (hasChange) changes.push({ newer, older, deltas });
+    if (hasChange) changes.push({ newer, deltas });
   }
 
   if (changes.length === 0) return null;
@@ -2656,6 +2711,9 @@ const HistoryChangesTable = ({ history }: { history: ScanHistoryEntry[] }) => {
     if (d > 0) return <span style={{ color: "#ff6b6b", fontWeight: 600 }}>+{d}</span>;
     return <span style={{ color: "#69db7c", fontWeight: 600 }}>{d}</span>;
   };
+
+  const hasAnyCommit = changes.some(c => c.newer.commitSha);
+  const thCenter: React.CSSProperties = { ...thStyle, textAlign: "center" };
 
   return (
     <div style={{ marginTop: "1.25rem" }}>
@@ -2667,16 +2725,39 @@ const HistoryChangesTable = ({ history }: { history: ScanHistoryEntry[] }) => {
           <thead>
             <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               <th style={thStyle}>{t("Date", "Datum")}</th>
+              {hasAnyCommit && <th style={thStyle}>Commit</th>}
               {sevs.map(sev => (
-                <th key={sev} style={{ ...thStyle, color: SEVERITY_COLORS[sev] }}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</th>
+                <th key={sev} style={{ ...thCenter, color: SEVERITY_COLORS[sev] }}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</th>
               ))}
-              <th style={thStyle}>Total</th>
+              <th style={thCenter}>Total</th>
             </tr>
           </thead>
           <tbody>
             {changes.map(({ newer, deltas }, i) => (
               <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                 <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.75rem" }}>{formatDateTime(newer.startedAt)}</td>
+                {hasAnyCommit && (
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.75rem" }}>
+                    {newer.commitSha ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                        <code style={{ color: "#ffd43b", fontSize: "0.7rem" }}>{newer.commitSha.slice(0, 7)}</code>
+                        {commitUrlBase && (
+                          <a
+                            href={`${commitUrlBase}${newer.commitSha}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.7rem", lineHeight: 1 }}
+                            title={t("View commit", "Commit anzeigen")}
+                          >
+                            ↗
+                          </a>
+                        )}
+                      </span>
+                    ) : (
+                      <span style={{ color: "rgba(255,255,255,0.15)" }}>—</span>
+                    )}
+                  </td>
+                )}
                 {sevs.map(sev => (
                   <td key={sev} style={{ ...tdStyle, textAlign: "center" }}>{renderDelta(deltas[sev])}</td>
                 ))}

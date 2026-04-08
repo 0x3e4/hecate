@@ -19,7 +19,7 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, Findings, SBOM, SBOM-Export, SBOM-Import, VEX, License-Compliance)
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, History mit since-Filter, Findings, SBOM, SBOM-Export, SBOM-Import, Compare, VEX, License-Compliance)
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)

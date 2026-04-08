@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
@@ -184,11 +185,12 @@ async def list_targets(
 @router.get("/targets/{target_id:path}/history", response_model=ScanHistoryResponse)
 async def get_target_history(
     target_id: str,
-    limit: int = Query(default=30, ge=1, le=100),
+    limit: int = Query(default=50, ge=1, le=500),
+    since: datetime | None = Query(default=None, description="Only return scans started after this ISO datetime"),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanHistoryResponse:
     """Get scan history for a target (for charts)."""
-    items = await service.get_target_history(target_id, limit=limit)
+    items = await service.get_target_history(target_id, limit=limit, since=since)
     return ScanHistoryResponse(
         target_id=target_id,
         items=[
@@ -198,6 +200,7 @@ async def get_target_history(
                 status=item.get("status", ""),
                 summary=ScanSummarySchema(**(item.get("summary", {}))),
                 duration_seconds=item.get("duration_seconds"),
+                commit_sha=item.get("commit_sha"),
             )
             for item in items
         ],

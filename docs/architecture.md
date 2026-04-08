@@ -261,9 +261,9 @@ poetry run python -m app.cli reindex-opensearch
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
-| `/system` | `SystemPage` | Backup/Restore, Sync-Verwaltung, gespeicherte Suchen, Benachrichtigungen, Lizenz-Policies, Dienste-Status |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM (Export & Summary-Stats), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, Scan-Vergleich, VEX-Export |
+| `/system` | `SystemPage` | 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync, Suchen), Policies (Lizenzrichtlinien) |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (7 Tabs: Targets, Scans, Findings, SBOM, Licenses, New Scan, Scanner) |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM, History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |
