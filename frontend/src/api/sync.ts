@@ -51,7 +51,7 @@ export const triggerOsvSync = async (initial: boolean = false): Promise<TriggerS
   return response.data;
 };
 
-export const resyncVulnerability = async (vulnId: string): Promise<ResyncResponse> => {
-  const response = await api.post<ResyncResponse>("/v1/sync/resync", { vulnId });
+export const resyncVulnerabilities = async (vulnIds: string[], deleteOnly: boolean = false): Promise<ResyncResponse> => {
+  const response = await api.post<ResyncResponse>("/v1/sync/resync", { vulnIds, deleteOnly });
   return response.data;
 };

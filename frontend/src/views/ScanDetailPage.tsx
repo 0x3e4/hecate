@@ -352,6 +352,11 @@ export const ScanDetailPage = () => {
   const [findingsSearch, setFindingsSearch] = useState("");
   const [findingsSort, setFindingsSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "severity", dir: "asc" });
   const [sbomSearch, setSbomSearch] = useState("");
+  const [sbomSort, setSbomSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "name", dir: "asc" });
+  const [sbomFilterEco, setSbomFilterEco] = useState<string | null>(null);
+  const [sbomFilterLicense, setSbomFilterLicense] = useState<string | null>(null);
+  const [sbomFilterType, setSbomFilterType] = useState<string | null>(null);
+  const [sbomFilterProvenance, setSbomFilterProvenance] = useState<string | null>(null);
   const [sbomExporting, setSbomExporting] = useState<string | null>(null);
   const [vexExporting, setVexExporting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -506,6 +511,46 @@ export const ScanDetailPage = () => {
 
   const hasAnyProvenance = useMemo(() => dedupedSbom.some(c => c.provenanceVerified != null), [dedupedSbom]);
   const hasAnySupplier = useMemo(() => dedupedSbom.some(c => !!c.supplier), [dedupedSbom]);
+
+  const filteredSortedSbom = useMemo(() => {
+    let items = dedupedSbom;
+    if (sbomFilterEco) {
+      items = items.filter(c => {
+        const m = c.purl?.match(/^pkg:([^/]+)\//);
+        return (m ? m[1] : "unknown") === sbomFilterEco;
+      });
+    }
+    if (sbomFilterLicense) {
+      items = items.filter(c => c.licenses.includes(sbomFilterLicense));
+    }
+    if (sbomFilterType) {
+      items = items.filter(c => (c.type || "unknown") === sbomFilterType);
+    }
+    if (sbomFilterProvenance === "verified") {
+      items = items.filter(c => c.provenanceVerified === true);
+    } else if (sbomFilterProvenance === "unverified") {
+      items = items.filter(c => c.provenanceVerified === false);
+    } else if (sbomFilterProvenance === "unknown") {
+      items = items.filter(c => c.provenanceVerified == null);
+    }
+    const sorted = [...items];
+    const dir = sbomSort.dir === "asc" ? 1 : -1;
+    sorted.sort((a, b) => {
+      let av: string, bv: string;
+      switch (sbomSort.col) {
+        case "version": av = a.version || ""; bv = b.version || ""; break;
+        case "type": av = a.type || ""; bv = b.type || ""; break;
+        case "licenses": av = a.licenses[0] || ""; bv = b.licenses[0] || ""; break;
+        case "provenance": {
+          const pv = (v: boolean | null | undefined) => v === true ? "a" : v === false ? "b" : "c";
+          av = pv(a.provenanceVerified); bv = pv(b.provenanceVerified); break;
+        }
+        default: av = a.name || ""; bv = b.name || "";
+      }
+      return av.localeCompare(bv) * dir;
+    });
+    return sorted;
+  }, [dedupedSbom, sbomSort, sbomFilterEco, sbomFilterLicense, sbomFilterType, sbomFilterProvenance]);
 
   const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json") => {
     if (!scanId || sbomExporting) return;
@@ -1120,8 +1165,27 @@ export const ScanDetailPage = () => {
                   outline: "none",
                 }}
               />
+              {hasAnyProvenance && (
+                <select
+                  value={sbomFilterProvenance || ""}
+                  onChange={e => setSbomFilterProvenance(e.target.value || null)}
+                  style={{
+                    padding: "0.375rem 0.625rem", borderRadius: "6px",
+                    border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)",
+                    color: "#fff", fontSize: "0.8125rem",
+                  }}
+                >
+                  <option value="">{t("All Provenance", "Alle Provenienz")}</option>
+                  <option value="verified">{t("Verified", "Verifiziert")}</option>
+                  <option value="unverified">{t("Unverified", "Nicht verifiziert")}</option>
+                  <option value="unknown">{t("Unknown", "Unbekannt")}</option>
+                </select>
+              )}
               <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
-                {dedupedSbom.length} {t("components", "Komponenten")}
+                {filteredSortedSbom.length !== dedupedSbom.length
+                  ? `${filteredSortedSbom.length} / ${dedupedSbom.length}`
+                  : dedupedSbom.length}{" "}
+                {t("components", "Komponenten")}
               </span>
               <div style={{ display: "flex", gap: "0.375rem", marginLeft: "auto" }}>
                 <button
@@ -1175,21 +1239,44 @@ export const ScanDetailPage = () => {
 
             {dedupedSbom.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
-                {[
-                  { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b" },
-                  { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, color: "#69db7c" },
-                  { title: t("Types", "Typen"), data: sbomStats.types, color: "#8b94fc" },
-                ].map(card => (
+                {([
+                  { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b", filterKey: "eco" as const, activeFilter: sbomFilterEco },
+                  { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, color: "#69db7c", filterKey: "license" as const, activeFilter: sbomFilterLicense },
+                  { title: t("Types", "Typen"), data: sbomStats.types, color: "#8b94fc", filterKey: "type" as const, activeFilter: sbomFilterType },
+                ] as const).map(card => (
                   <div key={card.title} style={{ padding: "0.75rem", borderRadius: "8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       {card.title}
+                      {card.activeFilter && (
+                        <button type="button" onClick={() => {
+                          if (card.filterKey === "eco") setSbomFilterEco(null);
+                          else if (card.filterKey === "license") setSbomFilterLicense(null);
+                          else setSbomFilterType(null);
+                        }} style={{ marginLeft: "0.375rem", background: "none", border: "none", color: "#ffa3a3", cursor: "pointer", fontSize: "0.7rem", padding: 0 }}>
+                          ✕
+                        </button>
+                      )}
                     </div>
-                    {card.data.slice(0, 5).map(([name, count]) => (
-                      <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0", fontSize: "0.75rem" }}>
-                        <span style={{ color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{name}</span>
-                        <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{count}</span>
-                      </div>
-                    ))}
+                    {card.data.slice(0, 5).map(([name, count]) => {
+                      const isActive = card.activeFilter === name;
+                      return (
+                        <div key={name}
+                          onClick={() => {
+                            if (card.filterKey === "eco") setSbomFilterEco(isActive ? null : name);
+                            else if (card.filterKey === "license") setSbomFilterLicense(isActive ? null : name);
+                            else setSbomFilterType(isActive ? null : name);
+                          }}
+                          style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0.25rem", fontSize: "0.75rem",
+                            cursor: "pointer", borderRadius: "3px",
+                            background: isActive ? `${card.color}22` : "transparent",
+                          }}
+                        >
+                          <span style={{ color: isActive ? card.color : "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{name}</span>
+                          <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{count}</span>
+                        </div>
+                      );
+                    })}
                     {card.data.length > 5 && (
                       <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginTop: "0.25rem" }}>
                         +{card.data.length - 5} {t("more", "weitere")}
@@ -1210,17 +1297,24 @@ export const ScanDetailPage = () => {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                      <th style={thStyle}>{t("Component", "Komponente")}</th>
-                      <th style={thStyle}>{t("Version", "Version")}</th>
-                      <th style={thStyle}>{t("Type", "Typ")}</th>
-                      {hasAnyProvenance && <th style={thStyle}>{t("Provenance", "Provenienz")}</th>}
-                      <th style={thStyle}>{t("Licenses", "Lizenzen")}</th>
+                      {([
+                        { col: "name", label: t("Component", "Komponente"), show: true },
+                        { col: "version", label: t("Version", "Version"), show: true },
+                        { col: "type", label: t("Type", "Typ"), show: true },
+                        { col: "provenance", label: t("Provenance", "Provenienz"), show: hasAnyProvenance },
+                        { col: "licenses", label: t("Licenses", "Lizenzen"), show: true },
+                      ] as const).filter(h => h.show).map(h => (
+                        <th key={h.col} style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
+                          onClick={() => setSbomSort(prev => ({ col: h.col, dir: prev.col === h.col && prev.dir === "asc" ? "desc" : "asc" }))}>
+                          {h.label} {sbomSort.col === h.col ? (sbomSort.dir === "asc" ? "▲" : "▼") : ""}
+                        </th>
+                      ))}
                       {hasAnySupplier && <th style={thStyle}>{t("Supplier", "Lieferant")}</th>}
                       <th style={thStyle}>{t("Links", "Links")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dedupedSbom.map(c => {
+                    {filteredSortedSbom.map(c => {
                       const depsUrl = buildDepsDevUrl(c.name, c.version, c.type, c.purl);
                       const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
                       const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);

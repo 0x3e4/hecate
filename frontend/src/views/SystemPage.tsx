@@ -43,7 +43,7 @@ import {
   triggerCirclSync,
   triggerGhsaSync,
   triggerOsvSync,
-  resyncVulnerability,
+  resyncVulnerabilities,
 } from "../api/sync";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
@@ -818,39 +818,32 @@ export const SystemPage = () => {
     }, 4000);
   };
 
-  const handleResync = async () => {
-    const vulnId = resyncInput.trim();
-    if (!vulnId) return;
+  const parseResyncIds = (input: string): string[] => {
+    return input
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  };
+
+  const handleResync = async (deleteOnly: boolean = false) => {
+    const ids = parseResyncIds(resyncInput);
+    if (ids.length === 0) return;
     setResyncBusy(true);
     try {
-      const result = await resyncVulnerability(vulnId);
-      if (!result.deleted) {
+      const result = await resyncVulnerabilities(ids, deleteOnly);
+      if (result.deleted === 0 && result.errors.length === 0) {
         showToast(result.message, "error");
       } else {
-        const refreshResults = result.refresh?.results || [];
-        const inserted = refreshResults.some((r) => r.status === "inserted" || r.status === "updated");
-        if (inserted) {
-          showToast(
-            t(
-              `${vulnId}: Deleted and re-fetched successfully.`,
-              `${vulnId}: Gelöscht und neu abgerufen.`
-            ),
-            "success"
-          );
-        } else {
-          showToast(
-            t(
-              `${vulnId}: Deleted, but upstream sources had no data. A placeholder was created.`,
-              `${vulnId}: Gelöscht, aber keine Daten bei Upstream-Quellen. Ein Platzhalter wurde erstellt.`
-            ),
-            "success"
-          );
+        const parts: string[] = [result.message];
+        if (result.errors.length > 0) {
+          parts.push(`${result.errors.length} error(s).`);
         }
-        setResyncInput("");
+        showToast(parts.join(" "), result.errors.length > 0 ? "error" : "success");
+        if (result.errors.length === 0) setResyncInput("");
       }
     } catch (error) {
       console.error("Resync failed", error);
-      showToast(t("Re-sync failed.", "Re-Sync fehlgeschlagen."), "error");
+      showToast(t("Operation failed.", "Vorgang fehlgeschlagen."), "error");
     } finally {
       setResyncBusy(false);
     }
@@ -1063,7 +1056,15 @@ export const SystemPage = () => {
       </div>
     ) : (
     <div className="page">
-      <div className="tabs-scroll" style={{ display: "flex", gap: 0, marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+      <section className="card">
+      <h2>System</h2>
+      <p className="muted">
+        {t(
+          "Manage system settings, data sources, notifications, and policies.",
+          "Systemeinstellungen, Datenquellen, Benachrichtigungen und Richtlinien verwalten."
+        )}
+      </p>
+      <div className="tabs-scroll" style={{ display: "flex", gap: 0, marginTop: "1rem", marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         {([
           { key: "general" as SystemTab, label: t("General", "Allgemein") },
           { key: "notifications" as SystemTab, label: t("Notifications", "Benachrichtigungen") },
@@ -1094,8 +1095,8 @@ export const SystemPage = () => {
       </div>
 
       {tab === "general" && (<>
-      <section className="card">
-        <h2>{t("Language", "Sprache")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Language", "Sprache")}</h2>
         <p className="muted">
           {t(
             "The initial default follows your browser language. Set a fixed language here.",
@@ -1116,10 +1117,10 @@ export const SystemPage = () => {
             <option value="de">🇩🇪 Deutsch</option>
           </select>
         </div>
-      </section>
+      </div>
 
-      <section className="card">
-        <h2>{t("Services", "Dienste")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Services", "Dienste")}</h2>
         <p className="muted">
           {t(
             "Connection status of external services used by Hecate.",
@@ -1247,12 +1248,12 @@ export const SystemPage = () => {
             </div>
           ) : null}
         </div>
-      </section>
+      </div>
       </>)}
 
       {tab === "notifications" && (<>
-      <section className="card">
-        <h2>{t("Notification Channels", "Benachrichtigungskanäle")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Notification Channels", "Benachrichtigungskanäle")}</h2>
         <p className="muted">
           {t(
             "Configure where notifications are sent (e.g. email, Slack, Signal, webhooks). Each channel can be tagged for rule-based routing.",
@@ -1362,10 +1363,10 @@ export const SystemPage = () => {
             ))}
           </div>
         )}
-      </section>
+      </div>
 
-      <section className="card">
-        <h2>{t("Notification Rules", "Benachrichtigungsregeln")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Notification Rules", "Benachrichtigungsregeln")}</h2>
         <p className="muted">
           {t(
             "Configure which events and vulnerability matches trigger notifications and to which channels (Apprise tags).",
@@ -1639,10 +1640,10 @@ export const SystemPage = () => {
             </table>
           </div>
         )}
-      </section>
+      </div>
 
-      <section className="card">
-        <h2>{t("Message Templates", "Nachrichtenvorlagen")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Message Templates", "Nachrichtenvorlagen")}</h2>
         <p className="muted">
           {t(
             "Customize notification messages per event type. Use a specific tag to override messages for certain channels, or 'all' for a global default. Templates use {placeholder} variables.",
@@ -1849,12 +1850,12 @@ export const SystemPage = () => {
             </table>
           </div>
         )}
-      </section>
+      </div>
       </>)}
 
       {tab === "data" && (<>
-      <section className="card">
-        <h2>{t("Sync Status", "Sync-Status")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Sync Status", "Sync-Status")}</h2>
         <p className="muted">
           {t(
             "Overview of all data source synchronizations. Auto-refresh every 5 seconds.",
@@ -1998,44 +1999,52 @@ export const SystemPage = () => {
             </table>
           </div>
         )}
-      </section>
-      <section className="card">
-        <h2>{t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}</h2>
+      </div>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}</h2>
         <p className="muted">
           {t(
-            "Delete a vulnerability from the database and re-fetch it from upstream sources (NVD, EUVD, GHSA).",
-            "Lösche eine Schwachstelle aus der Datenbank und rufe sie erneut von Upstream-Quellen ab (NVD, EUVD, GHSA)."
+            "Delete vulnerabilities from the database and optionally re-fetch from upstream sources. Supports multiple IDs and wildcard patterns.",
+            "Schwachstellen aus der Datenbank löschen und optional von Upstream-Quellen neu abrufen. Mehrere IDs und Wildcards werden unterstützt."
           )}
         </p>
-        <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center", maxWidth: "600px" }}>
-          <input
-            type="text"
+        <div style={{ marginTop: "1rem", maxWidth: "700px" }}>
+          <textarea
             value={resyncInput}
             onChange={(e) => setResyncInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !resyncBusy && resyncInput.trim()) {
-                void handleResync();
-              }
-            }}
-            placeholder={t("e.g. CVE-2026-34043 or GHSA-qj8w-gfj5-8c6v", "z.B. CVE-2026-34043 oder GHSA-qj8w-gfj5-8c6v")}
+            placeholder={t(
+              "One ID per line or comma-separated. Wildcards supported (e.g. CVE-2024-*).\nCVE-2026-34043\nGHSA-qj8w-gfj5-8c6v",
+              "Eine ID pro Zeile oder kommagetrennt. Wildcards möglich (z.B. CVE-2024-*).\nCVE-2026-34043\nGHSA-qj8w-gfj5-8c6v"
+            )}
             disabled={resyncBusy}
-            style={{ flex: 1, minWidth: 0 }}
+            rows={3}
+            style={{ width: "100%", minWidth: 0, resize: "vertical", fontFamily: "inherit", fontSize: "0.875rem" }}
           />
-          <button
-            type="button"
-            onClick={() => void handleResync()}
-            disabled={resyncBusy || !resyncInput.trim()}
-            style={{ whiteSpace: "nowrap" }}
-          >
-            {resyncBusy ? t("Re-syncing…", "Re-Sync…") : t("Delete & Re-Sync", "Löschen & Re-Sync")}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={() => void handleResync(false)}
+              disabled={resyncBusy || !resyncInput.trim()}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {resyncBusy ? t("Processing…", "Verarbeitung…") : t("Delete & Re-Sync", "Löschen & Re-Sync")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleResync(true)}
+              disabled={resyncBusy || !resyncInput.trim()}
+              style={{ whiteSpace: "nowrap", background: "rgba(255,107,107,0.1)", color: "#ff6b6b", border: "1px solid rgba(255,107,107,0.2)" }}
+            >
+              {t("Delete Only", "Nur löschen")}
+            </button>
+          </div>
         </div>
-      </section>
+      </div>
       </>)}
 
       {tab === "general" && (
-      <section className="card">
-        <h2>{t("Backup & Restore", "Backup & Restore")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Backup & Restore", "Backup & Restore")}</h2>
         <p className="muted">
           {t(
             "Download source backups or restore previously exported backup files.",
@@ -2085,12 +2094,12 @@ export const SystemPage = () => {
             </div>
           ))}
         </div>
-      </section>
+      </div>
       )}
 
       {tab === "policies" && (<>
-      <section className="card">
-        <h2>{t("License Policies", "Lizenzrichtlinien")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("License Policies", "Lizenzrichtlinien")}</h2>
         <p className="muted">
           {t(
             "Define policies to evaluate SBOM component licenses. The default policy is automatically applied after each scan.",
@@ -2247,12 +2256,12 @@ export const SystemPage = () => {
             </div>
           )}
         </div>
-      </section>
+      </div>
       </>)}
 
       {tab === "data" && (
-      <section className="card">
-        <h2>{t("Saved Searches", "Gespeicherte Suchen")}</h2>
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Saved Searches", "Gespeicherte Suchen")}</h2>
         <p className="muted">
           {t("Manage saved filters for the vulnerabilities view.", "Verwalte gespeicherte Filter für die Vulnerability-Ansicht.")}{" "}
           {t("Total:", "Gesamt:")} {sortedSavedSearches.length.toLocaleString(locale)}.
@@ -2401,8 +2410,9 @@ export const SystemPage = () => {
             </table>
           </div>
         )}
-      </section>
+      </div>
       )}
+      </section>
       {toast && (
         <div style={toastContainerStyle}>
           <div
@@ -2474,6 +2484,16 @@ const toastSuccessStyle: CSSProperties = {
 const toastErrorStyle: CSSProperties = {
   borderColor: "rgba(252, 92, 101, 0.65)",
   color: "#ffb4b6",
+};
+
+const subsectionStyle: CSSProperties = {
+  marginTop: "2rem",
+  paddingTop: "1.5rem",
+  borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+};
+
+const subsectionHeadingStyle: CSSProperties = {
+  marginTop: 0,
 };
 
 const syncTableHeaderStyle: CSSProperties = {

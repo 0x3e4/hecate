@@ -7,6 +7,7 @@ from typing import Any
 import structlog
 
 from app.core.config import settings
+from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.asset_catalog_service import AssetCatalogService
@@ -78,6 +79,11 @@ class OsvPipeline:
         timeout_seconds = timeout_minutes * 60 if timeout_minutes and timeout_minutes > 0 else None
         timed_out = False
 
+        processed_total = 0
+        last_progress_log = datetime.now(tz=UTC)
+        progress_interval = 500
+        log_repo: IngestionLogRepository | None = None
+
         try:
             repository = await VulnerabilityRepository.create()
             asset_catalog = await AssetCatalogService.create()
@@ -132,7 +138,36 @@ class OsvPipeline:
                             error=str(exc),
                         )
                         failures += 1
-                        continue
+
+                    processed_total += 1
+                    now = datetime.now(tz=UTC)
+                    if (
+                        processed_total % progress_interval == 0
+                        or (now - last_progress_log).total_seconds() >= 60
+                    ):
+                        progress_payload = {
+                            "processed": processed_total,
+                            "created": created,
+                            "enriched": enriched,
+                            "unchanged": unchanged,
+                            "skipped": skipped,
+                            "failures": failures,
+                            "limit": effective_limit,
+                        }
+                        await state_repo.update_state(
+                            f"job:{ctx.name}",
+                            {
+                                "status": "running",
+                                "progress": progress_payload,
+                                "last_progress_at": now,
+                            },
+                        )
+                        if ctx.log_id is not None:
+                            if log_repo is None:
+                                log_repo = await IngestionLogRepository.create()
+                            await log_repo.update_progress(ctx.log_id, progress_payload)
+                        log.info("osv_pipeline.progress", **progress_payload)
+                        last_progress_log = now
 
         except TimeoutError:
             timed_out = True

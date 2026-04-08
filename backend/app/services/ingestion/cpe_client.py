@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
@@ -61,15 +63,13 @@ class CPEClient:
         while results_returned > 0:
             params["startIndex"] = start_index
 
-            try:
-                async with self._rate_limiter.slot():
-                    response = await self._client.get(self.base_url, params=params)
-                response.raise_for_status()
-            except httpx.HTTPError as exc:
-                log.error("cpe_client.request_failed", error=str(exc), params=params)
-                raise
+            response = await self._request_with_retry(params)
 
-            payload = response.json()
+            try:
+                payload = response.json()
+            except json.JSONDecodeError as exc:
+                log.error("cpe_client.json_decode_failed", error=str(exc), start_index=start_index)
+                raise
             results = payload.get("products") or []
             if not isinstance(results, list):
                 log.warning("cpe_client.invalid_payload", payload_type=type(results))
@@ -96,6 +96,50 @@ class CPEClient:
                 start_index += results_per_page
             else:
                 break
+
+    async def _request_with_retry(
+        self,
+        params: dict[str, Any],
+        *,
+        max_retries: int = 3,
+        backoff_base: float = 5.0,
+    ) -> httpx.Response:
+        """GET request with exponential backoff for transient errors."""
+        _RETRYABLE = {429, 500, 502, 503, 504}
+        last_exc: Exception | None = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                async with self._rate_limiter.slot():
+                    response = await self._client.get(self.base_url, params=params)
+                if response.status_code in _RETRYABLE and attempt < max_retries:
+                    delay = backoff_base * (2 ** attempt)
+                    log.warning(
+                        "cpe_client.retrying",
+                        status_code=response.status_code,
+                        attempt=attempt + 1,
+                        delay=delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                response.raise_for_status()
+                return response
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt < max_retries:
+                    delay = backoff_base * (2 ** attempt)
+                    log.warning(
+                        "cpe_client.retrying",
+                        error=str(exc),
+                        attempt=attempt + 1,
+                        delay=delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    log.error("cpe_client.request_failed", error=str(exc), params=params)
+                    raise
+
+        raise last_exc  # type: ignore[misc]
 
     async def close(self) -> None:
         await self._client.aclose()

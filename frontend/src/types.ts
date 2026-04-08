@@ -387,8 +387,10 @@ export interface TriggerSyncResponse {
 }
 
 export interface ResyncResponse {
-  deleted: boolean;
-  refresh: VulnerabilityRefreshResponse | null;
+  deleted: number;
+  refreshed: number;
+  resolvedIds: string[];
+  errors: string[];
   message: string;
 }
 
