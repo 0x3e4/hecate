@@ -41,6 +41,8 @@ from app.schemas.scan import (
     ScanResponse,
     ScanSummarySchema,
     ScanTargetCreateRequest,
+    ScanTargetGroupListResponse,
+    ScanTargetGroupSchema,
     ScanTargetListResponse,
     ScanTargetResponse,
     SubmitScanRequest,
@@ -173,14 +175,35 @@ async def submit_manual_scan(
 @router.get("/targets", response_model=ScanTargetListResponse)
 async def list_targets(
     type: str | None = Query(default=None, description="Filter by type: container_image or source_repo"),
+    group: str | None = Query(default=None, description="Filter by application/group name; empty string for ungrouped"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetListResponse:
-    total, items = await service.list_targets(type_filter=type, limit=limit, offset=offset)
+    total, items = await service.list_targets(
+        type_filter=type, group_filter=group, limit=limit, offset=offset,
+    )
     return ScanTargetListResponse(
         total=total,
         items=[_map_target(item) for item in items],
+    )
+
+
+@router.get("/targets/groups", response_model=ScanTargetGroupListResponse)
+async def list_target_groups(
+    service: ScanService = Depends(get_scan_service),
+) -> ScanTargetGroupListResponse:
+    """List distinct target groups (applications) with rolled-up severity totals."""
+    items = await service.list_target_groups()
+    return ScanTargetGroupListResponse(
+        items=[
+            ScanTargetGroupSchema(
+                group=item.get("group"),
+                target_count=item.get("target_count", 0),
+                latest_summary=ScanSummarySchema(**item.get("latest_summary", {})),
+            )
+            for item in items
+        ],
     )
 
 
@@ -239,6 +262,7 @@ async def create_target(
         repository_url=request.repository_url,
         description=request.description,
         tags=request.tags,
+        group=(request.group.strip() or None) if isinstance(request.group, str) else None,
     )
     await service.target_repo.upsert(target_doc)
     target = await service.get_target(target_id)
@@ -253,7 +277,7 @@ async def update_target(
     body: dict[str, Any] = None,
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Update target settings (e.g., auto_scan, scanners)."""
+    """Update target settings (e.g., auto_scan, scanners, group)."""
     if body and "autoScan" in body:
         await service.update_target_auto_scan(target_id, bool(body["autoScan"]))
     if body and "scanners" in body:
@@ -261,6 +285,8 @@ async def update_target(
             await service.update_target_scanners(target_id, body["scanners"])
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+    if body and "group" in body:
+        await service.update_target_group(target_id, body.get("group"))
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -735,6 +761,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         repository_url=doc.get("repository_url"),
         description=doc.get("description"),
         tags=doc.get("tags", []),
+        group=doc.get("group"),
         created_at=doc.get("created_at"),
         updated_at=doc.get("updated_at"),
         last_scan_at=doc.get("last_scan_at"),

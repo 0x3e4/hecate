@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  ScanTargetGroupListResponse,
   ScanTargetListResponse,
   ScanTarget,
   ScanListResponse,
@@ -18,10 +19,16 @@ import type {
 
 export const fetchScanTargets = async (params?: {
   type?: string;
+  group?: string;
   limit?: number;
   offset?: number;
 }): Promise<ScanTargetListResponse> => {
   const response = await api.get<ScanTargetListResponse>("/v1/scans/targets", { params });
+  return response.data;
+};
+
+export const fetchScanTargetGroups = async (): Promise<ScanTargetGroupListResponse> => {
+  const response = await api.get<ScanTargetGroupListResponse>("/v1/scans/targets/groups");
   return response.data;
 };
 
@@ -140,7 +147,7 @@ export const deleteScan = async (scanId: string): Promise<void> => {
 
 export const updateScanTarget = async (
   targetId: string,
-  data: { autoScan?: boolean; scanners?: string[] }
+  data: { autoScan?: boolean; scanners?: string[]; group?: string | null }
 ): Promise<ScanTarget> => {
   const response = await api.patch<ScanTarget>(
     `/v1/scans/targets/${encodeURIComponent(targetId)}`,

@@ -99,6 +99,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **CI/CD-Integration:** Container-Images und Source-Repos über API scannen (`POST /api/v1/scans`)
 - **Manueller Scan:** Scans direkt aus dem Frontend starten (Scanner-Auswahl je Scan-Typ)
 - **Auto-Scan:** Optionales automatisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbares Intervall via `SCA_AUTO_SCAN_INTERVAL_MINUTES`, Change-Detection über Image-Digest/Commit-SHA mit Staleness-Fallback)
+- **Target-Gruppierung:** Mehrere Scan-Targets (z.B. Backend-, Frontend- und Worker-Repo desselben Produkts) lassen sich zu einer Anwendung gruppieren. Targets-Tab im Frontend rendert kollabierbare Application-Sektionen mit aggregiertem Severity-Roll-up; Inline-Editor pro Target-Card mit Vorschlägen aus existierenden Gruppen.
 - **SBOM-Generierung:** CycloneDX-Format via Syft
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
 - **SBOM-Import:** Externes CycloneDX- und SPDX-SBOM-Upload (JSON oder Datei-Upload) mit automatischem Format-Erkennung und Schwachstellen-Matching gegen die Vulnerability-DB

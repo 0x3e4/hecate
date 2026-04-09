@@ -786,10 +786,13 @@ class ScanService:
     async def list_targets(
         self,
         type_filter: str | None = None,
+        group_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
-        total, items = await self.target_repo.list_targets(type_filter=type_filter, limit=limit, offset=offset)
+        total, items = await self.target_repo.list_targets(
+            type_filter=type_filter, group_filter=group_filter, limit=limit, offset=offset,
+        )
         # Enrich with latest scan summary + scan ID + running status
         for item in items:
             target_id = item.get("target_id")
@@ -1148,6 +1151,38 @@ class ScanService:
         if invalid:
             raise ValueError(f"Invalid scanners: {', '.join(sorted(invalid))}")
         return await self.target_repo.update_scanners(target_id, scanners)
+
+    async def update_target_group(self, target_id: str, group: str | None) -> bool:
+        """Set or clear the application/group name for a target."""
+        return await self.target_repo.update_group(target_id, group)
+
+    async def list_target_groups(self) -> list[dict[str, Any]]:
+        """List distinct application groups with rolled-up severity totals."""
+        # Pull every target with its enriched latest_summary in a single pass.
+        total, items = await self.list_targets(limit=10000, offset=0)
+        buckets: dict[str | None, dict[str, Any]] = {}
+        for item in items:
+            raw_group = item.get("group") or None
+            bucket = buckets.setdefault(
+                raw_group,
+                {
+                    "group": raw_group,
+                    "target_count": 0,
+                    "latest_summary": {
+                        "critical": 0, "high": 0, "medium": 0, "low": 0,
+                        "negligible": 0, "unknown": 0, "total": 0,
+                    },
+                },
+            )
+            bucket["target_count"] += 1
+            summary = item.get("latest_summary") or {}
+            for key in ("critical", "high", "medium", "low", "negligible", "unknown", "total"):
+                bucket["latest_summary"][key] += int(summary.get(key) or 0)
+        # Sort: named groups alphabetically, ungrouped (None) last
+        return sorted(
+            buckets.values(),
+            key=lambda b: (b["group"] is None, (b["group"] or "").lower()),
+        )
 
     async def list_auto_scan_targets(self) -> list[dict[str, Any]]:
         """List all targets with auto_scan enabled."""

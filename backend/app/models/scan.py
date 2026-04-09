@@ -26,6 +26,7 @@ class ScanTargetDocument(BaseModel):
     repository_url: str | None = Field(default=None, description="URL for source repos")
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
+    group: str | None = Field(default=None, description="Application/group name this target belongs to")
     scanners: list[str] = Field(default_factory=list, description="Scanners used for this target")
     auto_scan: bool = Field(default=True, description="Include in auto-scan scheduling")
     created_at: datetime = Field(default_factory=datetime.utcnow)
