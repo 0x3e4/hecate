@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -49,16 +50,23 @@ async def _notify_new_vulnerabilities(job_name: str, inserted: int) -> None:
         pass
 
 
-async def _evaluate_watch_rules_after_pipeline(source: str) -> None:
+async def _evaluate_watch_rules_after_pipeline(
+    source: str,
+    pipeline_started_at: datetime | None = None,
+) -> None:
     """Evaluate watch rules after any pipeline that may have changed vulnerability data.
 
     Unlike _notify_new_vulnerabilities, this always runs regardless of insert/update
     counts, because enrichment pipelines (CIRCL, KEV) modify existing documents in
     ways that can match watch rules.
+
+    ``pipeline_started_at`` is used as the time-filter lower bound to ensure
+    documents updated DURING a long-running pipeline are not missed when shorter
+    concurrent pipelines advance the rule's ``last_evaluated_at`` watermark.
     """
     try:
         notifier = get_notification_service()
-        await notifier.evaluate_watch_rules()
+        await notifier.evaluate_watch_rules(pipeline_started_at=pipeline_started_at)
     except Exception:
         log.warning("scheduler.watch_rule_evaluation_failed", source=source, exc_info=True)
 
@@ -310,13 +318,14 @@ async def _initial_nvd_sync() -> None:
 
 
 async def _execute_nvd_sync(*, initial_sync: bool) -> None:
+    pipeline_started_at = datetime.now(tz=UTC)
     pipeline = NVDPipeline()
     try:
         result = await pipeline.sync(initial_sync=initial_sync)
         event = "scheduler.nvd_sync_completed" if not initial_sync else "scheduler.nvd_initial_sync_completed"
         log.info(event, **result)
         await _notify_new_vulnerabilities("NVD", result.get("ingested", 0))
-        await _evaluate_watch_rules_after_pipeline("NVD")
+        await _evaluate_watch_rules_after_pipeline("NVD", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.nvd_sync_failed" if not initial_sync else "scheduler.nvd_initial_sync_failed"
         log.exception(event, error=str(exc))
@@ -349,12 +358,13 @@ async def _initial_kev_sync() -> None:
 
 
 async def _execute_kev_sync(*, initial_sync: bool) -> None:
+    pipeline_started_at = datetime.now(tz=UTC)
     pipeline = KevPipeline()
     try:
         result = await pipeline.sync(initial_sync=initial_sync)
         event = "scheduler.kev_sync_completed" if not initial_sync else "scheduler.kev_initial_sync_completed"
         log.info(event, **result)
-        await _evaluate_watch_rules_after_pipeline("KEV")
+        await _evaluate_watch_rules_after_pipeline("KEV", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.kev_sync_failed" if not initial_sync else "scheduler.kev_initial_sync_failed"
         log.exception(event, error=str(exc))
@@ -374,6 +384,7 @@ async def _initial_euvd_ingestion() -> None:
 
 
 async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> None:
+    pipeline_started_at = datetime.now(tz=UTC)
     try:
         result = await run_ingestion(limit=limit, initial_sync=initial_sync)
         event = (
@@ -383,7 +394,7 @@ async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> N
         )
         log.info(event, **result)
         await _notify_new_vulnerabilities("EUVD", result.get("ingested", 0))
-        await _evaluate_watch_rules_after_pipeline("EUVD")
+        await _evaluate_watch_rules_after_pipeline("EUVD", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         event = (
             "scheduler.euvd_ingestion_failed"
@@ -554,11 +565,12 @@ async def _scheduled_circl_sync() -> None:
 
 async def _execute_circl_sync() -> None:
     """Execute CIRCL enrichment sync."""
+    pipeline_started_at = datetime.now(tz=UTC)
     pipeline = CirclPipeline()
     try:
         result = await pipeline.sync()
         log.info("scheduler.circl_sync_completed", **result)
-        await _evaluate_watch_rules_after_pipeline("CIRCL")
+        await _evaluate_watch_rules_after_pipeline("CIRCL", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         log.exception("scheduler.circl_sync_failed", error=str(exc))
         await _notify_sync_failed("circl_sync", str(exc))
@@ -583,6 +595,7 @@ async def _initial_ghsa_sync() -> None:
 
 async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
     """Execute GHSA sync."""
+    pipeline_started_at = datetime.now(tz=UTC)
     pipeline = GhsaPipeline()
     try:
         # limit=0 for initial sync means no limit (fetch all advisories)
@@ -591,7 +604,7 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
         event = "scheduler.ghsa_sync_completed" if not initial_sync else "scheduler.ghsa_initial_sync_completed"
         log.info(event, **result)
         await _notify_new_vulnerabilities("GHSA", result.get("created", 0))
-        await _evaluate_watch_rules_after_pipeline("GHSA")
+        await _evaluate_watch_rules_after_pipeline("GHSA", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.ghsa_sync_failed" if not initial_sync else "scheduler.ghsa_initial_sync_failed"
         log.exception(event, error=str(exc))
@@ -617,6 +630,7 @@ async def _initial_osv_sync() -> None:
 
 async def _execute_osv_sync(*, initial_sync: bool) -> None:
     """Execute OSV sync."""
+    pipeline_started_at = datetime.now(tz=UTC)
     pipeline = OsvPipeline()
     try:
         limit = 0 if initial_sync else None
@@ -624,7 +638,7 @@ async def _execute_osv_sync(*, initial_sync: bool) -> None:
         event = "scheduler.osv_sync_completed" if not initial_sync else "scheduler.osv_initial_sync_completed"
         log.info(event, **result)
         await _notify_new_vulnerabilities("OSV", result.get("created", 0))
-        await _evaluate_watch_rules_after_pipeline("OSV")
+        await _evaluate_watch_rules_after_pipeline("OSV", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.osv_sync_failed" if not initial_sync else "scheduler.osv_initial_sync_failed"
         log.exception(event, error=str(exc))
