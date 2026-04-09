@@ -494,10 +494,15 @@ class NotificationService:
     # Watch-rule evaluation (saved_search, vendor, product, dql)
     # ------------------------------------------------------------------
 
-    async def evaluate_watch_rules(self) -> None:
+    async def evaluate_watch_rules(self, pipeline_started_at: datetime | None = None) -> None:
         """Evaluate all enabled watch rules and send notifications for matches.
 
         Called after ingestion pipelines insert new vulnerabilities.
+
+        ``pipeline_started_at`` is the start time of the triggering pipeline. It is
+        used as the time-filter lower bound to ensure documents updated DURING a
+        long-running pipeline are not missed when shorter pipelines concurrently
+        advance the rule's ``last_evaluated_at`` watermark.
         """
         if not self.enabled:
             return
@@ -518,7 +523,9 @@ class NotificationService:
 
         for rule in watch_rules:
             try:
-                await self._evaluate_single_watch_rule(rule, vuln_service, repo)
+                await self._evaluate_single_watch_rule(
+                    rule, vuln_service, repo, pipeline_started_at=pipeline_started_at,
+                )
             except Exception as exc:
                 log.warning(
                     "notification.rule_evaluation_failed",
@@ -532,6 +539,8 @@ class NotificationService:
         rule: dict[str, Any],
         vuln_service: Any,
         repo: NotificationRuleRepository,
+        *,
+        pipeline_started_at: datetime | None = None,
     ) -> None:
         from app.schemas.vulnerability import VulnerabilityQuery
 
@@ -543,11 +552,26 @@ class NotificationService:
         last_checked = rule.get("last_evaluated_at")
         now = datetime.now(tz=UTC)
 
-        # Build time filter for "only new since last check"
+        # Determine the effective lower bound for the time filter.
+        # We use the EARLIER of `last_evaluated_at` and `pipeline_started_at`.
+        # Reason: long-running pipelines (e.g. OSV) update documents during their
+        # run while shorter concurrent pipelines (NVD/EUVD/CIRCL) may advance
+        # `last_evaluated_at` past those documents' `ingested_at`. Using the
+        # pipeline's start time as a fallback floor guarantees we still catch
+        # those documents when the long pipeline finishes.
+        effective_since: datetime | None = last_checked
+        if pipeline_started_at is not None:
+            if effective_since is None or pipeline_started_at < effective_since:
+                effective_since = pipeline_started_at
+
+        # Build time filter for "only new since the effective lower bound".
+        # Use Lucene range bracket syntax `[ T TO * ]` — the `>=` syntax with
+        # quoted dates does NOT work in OpenSearch query_string and silently
+        # returns 0 hits.
         time_dql = ""
-        if last_checked:
-            iso = last_checked.strftime("%Y-%m-%dT%H:%M:%SZ")
-            time_dql = f'ingested_at:>="{iso}"'
+        if effective_since:
+            iso = effective_since.strftime("%Y-%m-%dT%H:%M:%SZ")
+            time_dql = f'ingested_at:[{iso} TO *]'
 
         query: VulnerabilityQuery | None = None
 
@@ -588,7 +612,16 @@ class NotificationService:
             query = await self._build_saved_search_query(rule, time_dql)
 
         if query is None:
-            await repo.update(rule_id, {"last_evaluated_at": now})
+            log.warning(
+                "notification.watch_rule_query_unbuildable",
+                rule_id=rule_id,
+                rule_name=rule_name,
+                rule_type=rule_type,
+                saved_search_id=rule.get("saved_search_id"),
+                hint="Saved search may be missing, deleted, or have no DQL/queryParams",
+            )
+            # Do NOT advance last_evaluated_at — leave the rule in stale state
+            # so the operator can see something is wrong.
             return
 
         log.debug(
@@ -679,13 +712,26 @@ class NotificationService:
         from app.repositories.saved_search_repository import SavedSearchRepository
         from app.schemas.vulnerability import VulnerabilityQuery
 
+        rule_id = str(rule.get("_id", ""))
         search_id = rule.get("saved_search_id")
         if not search_id:
+            log.warning(
+                "notification.saved_search_id_missing",
+                rule_id=rule_id,
+                rule_name=rule.get("name"),
+            )
             return None
 
         search_repo = await SavedSearchRepository.create()
         saved = await search_repo.get(search_id)
         if saved is None:
+            log.warning(
+                "notification.saved_search_not_found",
+                rule_id=rule_id,
+                rule_name=rule.get("name"),
+                saved_search_id=search_id,
+                hint="The saved search may have been deleted",
+            )
             return None
 
         # Check if saved search has a DQL query
@@ -702,7 +748,27 @@ class NotificationService:
         if params.get("mode") == "dql" and params.get("search"):
             dql = params["search"]
             combined = f"({dql}) AND {time_dql}" if time_dql else dql
+            log.info(
+                "notification.saved_search_legacy_dql_path",
+                rule_id=rule_id,
+                saved_search_id=search_id,
+                hint="Saved search has no dqlQuery field — extracted from queryParams. Re-save it in the UI to migrate.",
+            )
             return VulnerabilityQuery(search_term=None, dql_query=combined, limit=10)
+
+        # Saved search has neither dqlQuery nor a parseable DQL-mode queryParams.
+        # Surface this so the operator can fix the saved search.
+        log.warning(
+            "notification.saved_search_no_query",
+            rule_id=rule_id,
+            saved_search_id=search_id,
+            saved_search_name=saved.get("name"),
+            has_dql_query=bool(saved.get("dqlQuery")),
+            has_query_params=bool(saved.get("queryParams")),
+            query_params_sample=str(saved.get("queryParams", ""))[:200],
+            params_keys=list(params.keys()),
+            hint="Falling back to standard params parsing — may produce empty/wrong query",
+        )
 
         # Build from standard params
         def _split(key: str) -> list[str]:

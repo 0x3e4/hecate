@@ -399,7 +399,10 @@ export const SystemPage = () => {
       case "event": return rule.eventTypes.join(", ") || "-";
       case "saved_search": {
         const search = sortedSavedSearches.find((s) => s.id === rule.savedSearchId);
-        return search ? search.name : rule.savedSearchId || "-";
+        if (!search) {
+          return `\u26a0 ${t("Missing saved search", "Gespeicherte Suche fehlt")}: ${rule.savedSearchId || "(no id)"}`;
+        }
+        return search.name;
       }
       case "vendor": return rule.vendorSlug || "-";
       case "product": return rule.productSlug || "-";
