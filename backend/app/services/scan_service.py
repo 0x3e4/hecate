@@ -1193,20 +1193,25 @@ class ScanService:
     async def check_target_changed(self, target: str, target_type: str, target_doc: dict[str, Any]) -> bool:
         """Call scanner sidecar /check and compare with stored fingerprint.
 
-        Returns True if changed.  When the /check call fails or cannot determine
-        the current fingerprint, falls back to a staleness check: if the target
-        was scanned within the current auto-scan interval and a stored
-        fingerprint exists, treat as unchanged to avoid redundant scans.
+        Returns True if changed. When the /check call fails or returns no
+        current fingerprint, treats the target as unchanged whenever a
+        stored fingerprint exists — rescanning the same SHA we already
+        scanned is wasteful, and a transient /check failure is no evidence
+        of change. Only fail-open (return True) when we have neither a
+        current nor a previous fingerprint to compare against.
         """
         data: dict[str, Any] = {}
+        check_failed = False
         try:
             url = f"{settings.sca_scanner_url}/check"
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=60) as client:
                 resp = await client.post(url, json={"target": target, "type": target_type})
                 resp.raise_for_status()
                 data = resp.json()
         except Exception as exc:
-            log.warning("scan_service.change_check_failed", target=target, error=str(exc))
+            check_failed = True
+            error_msg = str(exc) or type(exc).__name__
+            log.warning("scan_service.change_check_failed", target=target, error=error_msg)
 
         # Extract current and previous fingerprints
         if target_type == "container_image":
@@ -1226,27 +1231,20 @@ class ScanService:
         if current and not previous:
             return True
 
-        # Fallback: /check failed or returned None for current fingerprint.
-        # If we have a stored fingerprint from a recent scan, skip the rescan.
-        if previous and target_doc.get("last_scan_at"):
-            from datetime import UTC, datetime, timedelta
+        # /check failed or returned None for current fingerprint.
+        # If we have a stored fingerprint from a previous scan, treat as
+        # unchanged: we have no signal that anything changed, and rescanning
+        # the same SHA is wasteful. The user can always trigger a manual scan.
+        if previous:
+            log.info(
+                "scan_service.change_check_fallback_unchanged",
+                target=target,
+                reason="check_failed_using_previous_fingerprint" if check_failed else "no_current_fingerprint",
+            )
+            return False
 
-            last_scan_at = target_doc["last_scan_at"]
-            if isinstance(last_scan_at, str):
-                last_scan_at = datetime.fromisoformat(last_scan_at)
-            if not last_scan_at.tzinfo:
-                last_scan_at = last_scan_at.replace(tzinfo=UTC)
-            interval = timedelta(minutes=settings.sca_auto_scan_interval_minutes)
-            if datetime.now(tz=UTC) - last_scan_at < interval:
-                log.info(
-                    "scan_service.change_check_fallback_unchanged",
-                    target=target,
-                    reason="recent_scan_with_fingerprint",
-                )
-                return False
-
-        # No stored fingerprint or last scan too old → fail-open
-        log.info("scan_service.change_check_fallback_changed", target=target)
+        # No previous fingerprint at all → fail-open so the first scan can run
+        log.info("scan_service.change_check_fallback_changed", target=target, reason="no_previous_fingerprint")
         return True
 
     # --- Private helpers ---
