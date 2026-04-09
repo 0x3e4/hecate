@@ -369,6 +369,7 @@ export const ScansPage = () => {
   };
 
   const handleRescan = async (target: ScanTarget) => {
+    if (target.type === "sbom-import") return;
     try {
       const fallbackScanners = target.type === "container_image"
         ? ["trivy", "grype", "syft", "dockle", "dive"]
@@ -1973,12 +1974,17 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
     }
   };
 
+  const isSbomImport = target.type === "sbom-import";
+
   return (
     <div style={{
       padding: "1rem 1.25rem",
       border: isRunning ? `1px solid ${isPending ? "rgba(240,160,48,0.3)" : "rgba(92,132,255,0.3)"}` : "1px solid rgba(255,255,255,0.08)",
       borderRadius: "8px",
       background: isRunning ? (isPending ? "rgba(240,160,48,0.04)" : "rgba(92,132,255,0.04)") : "rgba(255,255,255,0.02)",
+      display: "flex",
+      flexDirection: "column",
+      boxSizing: "border-box",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.25rem" }}>
         <div style={{ minWidth: 0, flex: "1 1 200px" }}>
@@ -2012,7 +2018,7 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
 
       {/* Scanner pills / editor */}
       <div style={{ marginTop: "0.625rem" }}>
-        {editingScanners ? (
+        {editingScanners && !isSbomImport ? (
           <div style={{ padding: "0.5rem 0" }}>
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
               {availableScanners.map(name => (
@@ -2061,22 +2067,24 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
                 {s}
               </span>
             ))}
-            <button
-              type="button"
-              onClick={startEditing}
-              title={t("Edit scanners", "Scanner bearbeiten")}
-              style={{
-                background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "rgba(255,255,255,0.35)",
-                cursor: "pointer", fontSize: "0.675rem", padding: "0.1rem 0.35rem", lineHeight: 1,
-              }}
-            >
-              ✎
-            </button>
+            {!isSbomImport && (
+              <button
+                type="button"
+                onClick={startEditing}
+                title={t("Edit scanners", "Scanner bearbeiten")}
+                style={{
+                  background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "rgba(255,255,255,0.35)",
+                  cursor: "pointer", fontSize: "0.675rem", padding: "0.1rem 0.35rem", lineHeight: 1,
+                }}
+              >
+                ✎
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
         <div style={{ display: "flex", gap: "1rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
           <span
             role="button"
@@ -2091,7 +2099,7 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
           {target.lastScanAt && <span>{t("Last", "Letzter")}: {formatDateTime(target.lastScanAt)}</span>}
         </div>
         <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", marginLeft: "auto" }}>
-          {isRunning && (target.runningScanId || target.latestScanId) && onCancelScan ? (
+          {target.type === "sbom-import" ? null : isRunning && (target.runningScanId || target.latestScanId) && onCancelScan ? (
             <button
               type="button"
               onClick={() => onCancelScan(target.runningScanId || target.latestScanId!)}
@@ -2128,7 +2136,7 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
               ↻ Scan
             </button>
           )}
-          {config.scaFeatures.autoScanEnabled && (
+          {config.scaFeatures.autoScanEnabled && target.type !== "sbom-import" && (
             <button
               type="button"
               onClick={() => onToggleAutoScan(target)}

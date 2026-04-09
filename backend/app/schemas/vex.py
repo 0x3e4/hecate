@@ -44,6 +44,35 @@ class VexBulkUpdateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class VexBulkUpdateByIdsRequest(BaseModel):
+    """Bulk-apply VEX status to a specific list of finding IDs."""
+
+    finding_ids: list[str] = Field(alias="findingIds", serialization_alias="findingIds")
+    vex_status: str = Field(
+        alias="vexStatus",
+        serialization_alias="vexStatus",
+        description="not_affected, affected, fixed, under_investigation",
+    )
+    vex_justification: str | None = Field(
+        default=None, alias="vexJustification", serialization_alias="vexJustification"
+    )
+    vex_detail: str | None = Field(
+        default=None, alias="vexDetail", serialization_alias="vexDetail"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class FindingsDismissRequest(BaseModel):
+    """Mark/unmark a list of findings as dismissed (personal-view filter)."""
+
+    finding_ids: list[str] = Field(alias="findingIds", serialization_alias="findingIds")
+    dismissed: bool = True
+    reason: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
 class VexImportRequest(BaseModel):
     """Import a CycloneDX VEX document."""
 

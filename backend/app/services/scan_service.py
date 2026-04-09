@@ -543,6 +543,10 @@ class ScanService:
                 carried = await vex_svc.carry_forward_vex(prev_scan_id, scan_id)
                 if carried:
                     log.info("scan_service.vex_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried)
+                # Carry forward dismissal flags (independent from VEX annotations)
+                carried_dismissed = await self.finding_repo.carry_forward_dismissed(prev_scan_id, scan_id)
+                if carried_dismissed:
+                    log.info("scan_service.dismissed_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried_dismissed)
         except Exception:
             log.warning("scan_service.vex_carry_forward_failed", scan_id=scan_id, exc_info=True)
 
@@ -590,12 +594,123 @@ class ScanService:
 
         try:
             notifier = get_notification_service()
+
+            # -- Classify findings by category --
+            _SEV_RANK = {"critical": 5, "high": 4, "medium": 3, "low": 2, "negligible": 1, "unknown": 0}
+            _NON_VULN = {"malicious-indicator", "compliance-check", "sast-finding", "secret-finding"}
+            vuln_findings = [f for f in all_findings if f.package_type not in _NON_VULN]
+            alert_findings = [f for f in all_findings if f.package_type == "malicious-indicator"]
+            sast_findings = [f for f in all_findings if f.package_type == "sast-finding"]
+            secret_findings = [f for f in all_findings if f.package_type == "secret-finding"]
+            compliance_findings = [f for f in all_findings if f.package_type == "compliance-check"]
+
+            def _sev_counts(findings: list) -> dict[str, int]:
+                c = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+                for f in findings:
+                    s = (f.severity or "").lower()
+                    if s in c:
+                        c[s] += 1
+                return c
+
+            # -- Top vulnerability findings (sorted by severity/CVSS, top 10) --
+            top_sorted = sorted(
+                vuln_findings,
+                key=lambda f: (-_SEV_RANK.get(f.severity, 0), -(f.cvss_score or 0)),
+            )[:10]
+            top_findings = [
+                {
+                    "id": f.vulnerability_id or "N/A",
+                    "severity": f.severity or "N/A",
+                    "cvss": str(f.cvss_score) if f.cvss_score is not None else "N/A",
+                    "package": f.package_name or "N/A",
+                    "version": f.package_version or "N/A",
+                    "fix": f.fix_version or "N/A",
+                    "title": (f.title[:120] + "\u2026") if f.title and len(f.title) > 120 else (f.title or "N/A"),
+                }
+                for f in top_sorted
+            ]
+
+            # -- Top alert / SAST / secret findings (top 5 each) --
+            _top = lambda lst: sorted(lst, key=lambda f: -_SEV_RANK.get(f.severity, 0))[:5]
+            _trunc = lambda s, n=120: (s[:n] + "\u2026") if s and len(s) > n else (s or "N/A")
+
+            top_alerts = [
+                {"severity": f.severity or "N/A", "package": f.package_name or "N/A", "title": _trunc(f.title)}
+                for f in _top(alert_findings)
+            ]
+            top_sast = [
+                {"severity": f.severity or "N/A", "title": _trunc(f.title), "file": f.package_path or f.package_name or "N/A"}
+                for f in _top(sast_findings)
+            ]
+            top_secrets = [
+                {
+                    "severity": f.severity or "N/A",
+                    "detector": f.package_name or "N/A",
+                    "file": f.package_path or "N/A",
+                    "verified": "Yes" if f.severity == "critical" else "No",
+                }
+                for f in _top(secret_findings)
+            ]
+
+            # -- License info from SBOM components --
+            license_set: set[str] = set()
+            for c in all_components:
+                if c.licenses:
+                    license_set.update(c.licenses)
+
+            # -- Fetch license compliance summary from scan document --
+            lc_sum: dict[str, int] = {}
+            try:
+                from app.db.mongo import get_database as _get_db2
+                _db2 = await _get_db2()
+                scan_doc = await _db2[settings.mongo_scans_collection].find_one(
+                    {"_id": ObjectId(scan_id)}, {"license_compliance_summary": 1}
+                )
+                if scan_doc and scan_doc.get("license_compliance_summary"):
+                    lc_sum = scan_doc["license_compliance_summary"]
+            except Exception:
+                pass
+
+            alerts_sev = _sev_counts(alert_findings)
+            sast_sev = _sev_counts(sast_findings)
+            compliance_sev = _sev_counts(compliance_findings)
+
             await notifier.notify_scan_completed(
                 scan_id=scan_id,
                 target=target,
+                target_type=target_type,
                 status=status,
-                findings_count=len(all_findings),
+                findings_count=len(vuln_findings),
                 duration_seconds=round(duration, 2),
+                summary={
+                    "critical": final_summary.critical,
+                    "high": final_summary.high,
+                    "medium": final_summary.medium,
+                    "low": final_summary.low,
+                    "negligible": final_summary.negligible,
+                    "unknown": final_summary.unknown,
+                },
+                scanners=scanners,
+                source=source,
+                branch=scan_metadata.get("branch"),
+                commit_sha=scan_metadata.get("commit_sha"),
+                image_ref=scan_metadata.get("image_digest"),
+                error=error_text,
+                sbom_component_count=len(all_components),
+                top_findings=top_findings,
+                alerts_summary={"total": len(alert_findings), **alerts_sev},
+                sast_summary={"total": len(sast_findings), **sast_sev},
+                secrets_summary={
+                    "total": len(secret_findings),
+                    "verified": sum(1 for f in secret_findings if f.severity == "critical"),
+                    "unverified": sum(1 for f in secret_findings if f.severity != "critical"),
+                },
+                compliance_summary={"total": len(compliance_findings), **compliance_sev},
+                license_summary=lc_sum,
+                licenses=", ".join(sorted(license_set)[:20]) if license_set else None,
+                top_alerts=top_alerts,
+                top_sast=top_sast,
+                top_secrets=top_secrets,
             )
         except Exception:
             pass
@@ -775,11 +890,14 @@ class ScanService:
         severity: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        include_dismissed: bool = False,
     ) -> tuple[int, list[dict[str, Any]]]:
         # Lazy severity override for scans completed before the override was added
         await self._lazy_severity_override(scan_id)
 
-        total, items = await self.finding_repo.list_by_scan(scan_id, severity=severity, limit=limit, offset=offset)
+        total, items = await self.finding_repo.list_by_scan(
+            scan_id, severity=severity, limit=limit, offset=offset, include_dismissed=include_dismissed
+        )
 
         # Lazy fix-version correction for scans completed before the correction pass was added.
         # Detect any findings with downgrade fix versions and correct them now.
@@ -807,7 +925,9 @@ class ScanService:
             ]
             await self._fix_downgrade_fix_versions(scan_id, docs)
             # Re-fetch with corrected data
-            total, items = await self.finding_repo.list_by_scan(scan_id, severity=severity, limit=limit, offset=offset)
+            total, items = await self.finding_repo.list_by_scan(
+                scan_id, severity=severity, limit=limit, offset=offset, include_dismissed=include_dismissed
+            )
 
         return total, items
 

@@ -232,8 +232,21 @@ class ScanFindingResponse(BaseModel):
     vex_justification: str | None = Field(
         default=None, alias="vexJustification", serialization_alias="vexJustification"
     )
+    vex_detail: str | None = Field(
+        default=None, alias="vexDetail", serialization_alias="vexDetail"
+    )
     vex_updated_at: datetime | None = Field(
         default=None, alias="vexUpdatedAt", serialization_alias="vexUpdatedAt"
+    )
+    dismissed: bool = False
+    dismissed_reason: str | None = Field(
+        default=None, alias="dismissedReason", serialization_alias="dismissedReason"
+    )
+    dismissed_at: datetime | None = Field(
+        default=None, alias="dismissedAt", serialization_alias="dismissedAt"
+    )
+    dismissed_by: str | None = Field(
+        default=None, alias="dismissedBy", serialization_alias="dismissedBy"
     )
 
     model_config = {"populate_by_name": True}

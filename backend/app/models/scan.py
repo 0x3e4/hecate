@@ -89,6 +89,10 @@ class ScanFindingDocument(BaseModel):
     vex_response: list[str] | None = Field(default=None, description="e.g. will_not_fix, workaround_available")
     vex_updated_at: datetime | None = None
     vex_updated_by: str | None = Field(default=None, description="user or vex-import")
+    dismissed: bool = Field(default=False, description="Hide finding from default view (personal filter, not VEX)")
+    dismissed_reason: str | None = None
+    dismissed_at: datetime | None = None
+    dismissed_by: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

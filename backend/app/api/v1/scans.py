@@ -47,6 +47,8 @@ from app.schemas.scan import (
     SubmitScanResponse,
 )
 from app.schemas.vex import (
+    FindingsDismissRequest,
+    VexBulkUpdateByIdsRequest,
     VexBulkUpdateRequest,
     VexBulkUpdateResponse,
     VexImportRequest,
@@ -507,6 +509,43 @@ async def bulk_update_vex(
     return VexBulkUpdateResponse(updated=count)
 
 
+@router.post("/vex/bulk-update-by-ids", response_model=VexBulkUpdateResponse)
+async def bulk_update_vex_by_ids(
+    request: VexBulkUpdateByIdsRequest,
+) -> VexBulkUpdateResponse:
+    """Apply VEX status to a specific list of finding IDs (for multi-select bulk edit)."""
+    valid_statuses = {"not_affected", "affected", "fixed", "under_investigation"}
+    if request.vex_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid VEX status. Must be one of: {valid_statuses}")
+    if not request.finding_ids:
+        return VexBulkUpdateResponse(updated=0)
+
+    finding_repo = await ScanFindingRepository.create()
+    count = await finding_repo.bulk_update_vex_by_ids(
+        finding_ids=request.finding_ids,
+        vex_status=request.vex_status,
+        vex_justification=request.vex_justification,
+        vex_detail=request.vex_detail,
+    )
+    return VexBulkUpdateResponse(updated=count)
+
+
+@router.post("/findings/dismiss", response_model=VexBulkUpdateResponse)
+async def dismiss_findings(
+    request: FindingsDismissRequest,
+) -> VexBulkUpdateResponse:
+    """Mark/unmark a list of findings as dismissed (personal-view filter, not VEX)."""
+    if not request.finding_ids:
+        return VexBulkUpdateResponse(updated=0)
+    finding_repo = await ScanFindingRepository.create()
+    count = await finding_repo.bulk_update_dismissed(
+        finding_ids=request.finding_ids,
+        dismissed=request.dismissed,
+        reason=request.reason,
+    )
+    return VexBulkUpdateResponse(updated=count)
+
+
 @router.post("/vex/import", response_model=VexImportResponse)
 async def import_vex(
     request: VexImportRequest,
@@ -561,10 +600,11 @@ async def get_scan_findings(
     severity: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    include_dismissed: bool = Query(default=False, alias="includeDismissed"),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanFindingListResponse:
     total, items = await service.get_scan_findings(
-        scan_id, severity=severity, limit=limit, offset=offset
+        scan_id, severity=severity, limit=limit, offset=offset, include_dismissed=include_dismissed
     )
     return ScanFindingListResponse(
         total=total,
@@ -757,7 +797,12 @@ def _map_finding(doc: dict[str, Any]) -> ScanFindingResponse:
         cvss_vector=doc.get("cvss_vector"),
         vex_status=doc.get("vex_status"),
         vex_justification=doc.get("vex_justification"),
+        vex_detail=doc.get("vex_detail"),
         vex_updated_at=doc.get("vex_updated_at"),
+        dismissed=bool(doc.get("dismissed", False)),
+        dismissed_reason=doc.get("dismissed_reason"),
+        dismissed_at=doc.get("dismissed_at"),
+        dismissed_by=doc.get("dismissed_by"),
     )
 
 

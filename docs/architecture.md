@@ -94,7 +94,7 @@ Service-Klasse je Anwendungsfall:
 - `SavedSearchService` — Gespeicherte Suchen
 - `AssetCatalogService` — Asset-Katalog aus ingestierten Daten
 - `ScanService` — SCA-Scan-Orchestrierung (Scanner-Sidecar, Ergebnisverarbeitung, SBOM-Import)
-- `VexService` — VEX-Export/Import (CycloneDX VEX), VEX Carry-Forward zwischen Scans
+- `VexService` — VEX-Export/Import (CycloneDX VEX), VEX + Dismissal Carry-Forward zwischen Scans
 - `LicenseComplianceService` — Lizenz-Policy-Auswertung, automatische Evaluierung nach Scans
 - `NotificationService` — Apprise-Anbindung, Regeln, Channels, Nachrichtenvorlagen mit Template-Engine
 
@@ -162,7 +162,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | `scan_findings` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | SBOM-Komponenten aus SCA-Scans |
 | `scan_layer_analysis` | Image-Schichtanalyse aus Dive-Scans |
-| `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL) |
+| `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL, Scan) |
 | `notification_channels` | Apprise-Channels (URL + Tag) |
 | `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
@@ -192,7 +192,9 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Scan-Vergleich:** Findings können zwischen zwei Scans verglichen werden (Added, Removed, Changed). "Changed" gruppiert Findings mit gleichem Paket aber unterschiedlicher Schwachstelle.
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export über `GET /api/v1/scans/{scan_id}/sbom/export?format=cyclonedx-json|spdx-json`. Pure-Function-Builder in `sbom_export.py` (keine externen Bibliotheken). Download mit `Content-Disposition: attachment` Header. EU Cyber Resilience Act (CRA) Compliance.
 - **SBOM-Import:** Externes CycloneDX- und SPDX-SBOM-Upload über `POST /api/v1/scans/import-sbom` (JSON) oder `/import-sbom/upload` (Multipart-Datei). Automatische Format-Erkennung. Importierte Komponenten werden gegen die Vulnerability-DB gematcht. Erstellt Targets mit `type="sbom-import"` und Scans mit `source="sbom-import"`.
-- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (`not_affected`, `affected`, `fixed`, `under_investigation`) mit Justification und Detail. Inline-Bearbeitung im Frontend, Bulk-Updates über Vulnerability-ID. CycloneDX VEX Export/Import. Automatischer VEX Carry-Forward: Nach jedem Scan werden VEX-Annotationen vom vorherigen Scan auf übereinstimmende neue Findings übertragen.
+- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (`not_affected`, `affected`, `fixed`, `under_investigation`) mit Justification und Detail. Im Frontend per Klick auf das VEX-Badge **expandierbarer Inline-Editor** (Status, Justification, Detail-Textarea). Multi-Select-Toolbar für Bulk-Updates auf beliebige Selektionen (`POST /api/v1/scans/vex/bulk-update-by-ids`). CycloneDX VEX Export/Import (Import-Button in der Findings-Toolbar). Automatischer VEX Carry-Forward nach jedem Scan auf übereinstimmende neue Findings (Match: `vulnerability_id` + `package_name`).
+- **Findings-Dismissal:** Persönlicher Anzeigefilter (separat von VEX) zum Verbergen irrelevanter Findings über `POST /api/v1/scans/findings/dismiss`. Verworfene Findings werden standardmäßig ausgeblendet und mit `?includeDismissed=true` wieder eingeblendet (UI: "Show dismissed"-Toggle, persistiert via localStorage). `dismissed*`-Flags auf `ScanFindingDocument`. Carry-Forward analog zu VEX nach jedem Scan (`carry_forward_dismissed`).
+- **SBOM-Import-Targets (UI-Beschränkungen):** Targets vom Typ `sbom-import` haben kein Auto-Scan, keinen Rescan-Button und kein Scanner-Edit-Pencil auf der Target-Card. `auto_scan=False` wird bereits beim Import gesetzt; Frontend-Hides verhindern sinnlose Aktionen.
 - **License Compliance:** Lizenz-Policy-Management über `license_policies` Collection. Policies definieren erlaubte, verbotene und Review-pflichtige Lizenzen. Eine Default-Policy kann gesetzt werden. Nach jedem Scan wird die License-Compliance automatisch evaluiert und als `license_compliance_summary` auf dem Scan-Dokument gespeichert. License-Compliance-Übersicht über alle Scans via `GET /api/v1/scans/license-overview`.
 - **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird zusammengeführt.
 - **Provenance-Verifikation:** Nach SBOM-Extraktion prüft der Hecate Analyzer die Herkunft/Attestierung jeder Komponente über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Ergebnisse werden auf SBOM-Komponenten gespeichert und im Frontend als Provenance-Spalte angezeigt.
@@ -213,9 +215,10 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 ### Benachrichtigungen (Apprise)
 - `NotificationService` kommuniziert via HTTP mit der Apprise REST-API (fire-and-forget).
 - **Channels:** Apprise-URLs mit Tags, gespeichert in MongoDB, konfigurierbar über System-Seite.
-- **Regeln:** Event-basiert (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`) und Watch-basiert (`saved_search`, `vendor`, `product`, `dql`).
-- **Nachrichtenvorlagen:** Anpassbare Titel/Body-Templates pro Event-Typ mit `{placeholder}`-Variablen und `{#each}...{/each}`-Schleifen. Auflösung: exakter Tag-Match → `all`-Fallback → hardcodierter Default.
+- **Regeln:** Event-basiert (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`), Watch-basiert (`saved_search`, `vendor`, `product`, `dql`) und Scan-basiert (`scan` mit optionalem Severity-Schwellenwert und Ziel-Filter).
+- **Nachrichtenvorlagen:** Anpassbare Titel/Body-Templates pro Event-Typ mit `{placeholder}`-Variablen und `{#each}...{/each}`-Schleifen (z.B. `{#each findings_list}` für Top-Scan-Findings, `{#each vulnerabilities}` für Watch-Rule-Matches). Auflösung: exakter Tag-Match → `all`-Fallback → hardcodierter Default.
 - **Watch-Auswertung:** Nach jeder Ingestion werden Watch-Regeln automatisch gegen neue Einträge in OpenSearch evaluiert. Zusätzlich erfolgt 30s nach Backend-Start eine einmalige Auswertung, um die Lücke bis zum ersten Scheduler-Lauf abzudecken.
+- **Scan-Benachrichtigungen:** Erweiterte Template-Variablen inkl. Severity-Aufschlüsselung (`{critical}`, `{high}`, `{medium}`, `{low}`), Scan-Metadaten (`{scanners}`, `{source}`, `{branch}`, `{commit_sha}`, `{image_ref}`, `{error}`) und Top-Findings-Loop (`{#each findings_list}`).
 - Partial Delivery (HTTP 424 von Apprise) wird als Erfolg gewertet.
 
 ### Backup & Restore
@@ -263,7 +266,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (7 Tabs: Targets, Scans, Findings, SBOM mit Summary-Cards + Spalten-Sortierung + Provenance-Filter, Licenses, New Scan, Scanner) |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Status), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (Multi-Select-Toolbar, expandierbarer VEX-Editor mit Detail-Feld, Show-Dismissed-Toggle, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |

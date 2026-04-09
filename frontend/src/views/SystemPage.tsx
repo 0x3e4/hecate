@@ -45,6 +45,7 @@ import {
   triggerOsvSync,
   resyncVulnerabilities,
 } from "../api/sync";
+import { fetchScanTargets } from "../api/scans";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -62,6 +63,7 @@ import type {
   SyncState,
   LicensePolicy,
   LicenseGroups,
+  ScanTarget,
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
@@ -191,6 +193,9 @@ export const SystemPage = () => {
   const [formVendorSlug, setFormVendorSlug] = useState("");
   const [formProductSlug, setFormProductSlug] = useState("");
   const [formDqlQuery, setFormDqlQuery] = useState("");
+  const [formScanSeverityThreshold, setFormScanSeverityThreshold] = useState("");
+  const [formScanTargetFilter, setFormScanTargetFilter] = useState("");
+  const [scanTargets, setScanTargets] = useState<ScanTarget[]>([]);
 
   // Channel management state
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
@@ -277,6 +282,8 @@ export const SystemPage = () => {
     setFormVendorSlug("");
     setFormProductSlug("");
     setFormDqlQuery("");
+    setFormScanSeverityThreshold("");
+    setFormScanTargetFilter("");
     setEditingRule(null);
   };
 
@@ -292,6 +299,8 @@ export const SystemPage = () => {
       setFormVendorSlug(rule.vendorSlug || "");
       setFormProductSlug(rule.productSlug || "");
       setFormDqlQuery(rule.dqlQuery || "");
+      setFormScanSeverityThreshold(rule.scanSeverityThreshold || "");
+      setFormScanTargetFilter(rule.scanTargetFilter || "");
     } else {
       resetRuleForm();
     }
@@ -312,6 +321,8 @@ export const SystemPage = () => {
         vendorSlug: formType === "vendor" ? formVendorSlug || null : null,
         productSlug: formType === "product" ? formProductSlug || null : null,
         dqlQuery: formType === "dql" ? formDqlQuery || null : null,
+        scanSeverityThreshold: formType === "scan" ? formScanSeverityThreshold || null : null,
+        scanTargetFilter: formType === "scan" ? formScanTargetFilter || null : null,
       };
       if (editingRule) {
         await updateNotificationRule(editingRule.id, payload);
@@ -357,6 +368,8 @@ export const SystemPage = () => {
         vendorSlug: rule.vendorSlug,
         productSlug: rule.productSlug,
         dqlQuery: rule.dqlQuery,
+        scanSeverityThreshold: rule.scanSeverityThreshold,
+        scanTargetFilter: rule.scanTargetFilter,
       });
       void loadNotifRules();
     } catch (error) {
@@ -377,6 +390,7 @@ export const SystemPage = () => {
       case "vendor": return t("Vendor", "Hersteller");
       case "product": return t("Product", "Produkt");
       case "dql": return t("DQL Query", "DQL-Abfrage");
+      case "scan": return t("SCA Scan", "SCA-Scan");
     }
   };
 
@@ -390,6 +404,12 @@ export const SystemPage = () => {
       case "vendor": return rule.vendorSlug || "-";
       case "product": return rule.productSlug || "-";
       case "dql": return rule.dqlQuery?.substring(0, 60) || "-";
+      case "scan": {
+        const parts: string[] = [];
+        if (rule.scanSeverityThreshold) parts.push(`>= ${rule.scanSeverityThreshold}`);
+        if (rule.scanTargetFilter) parts.push(rule.scanTargetFilter);
+        return parts.join(" · ") || t("All scans", "Alle Scans");
+      }
     }
   };
 
@@ -403,14 +423,29 @@ export const SystemPage = () => {
     { value: "watch_rule_match", label: "Watch Rule Match" },
   ];
 
-  const TEMPLATE_PLACEHOLDERS: Record<NotificationEventKey, { scalars: string; loop?: string }> = {
+  const TEMPLATE_PLACEHOLDERS: Record<NotificationEventKey, { scalars: string; loops?: { label: string; fields: string }[] }> = {
     new_vulnerabilities: { scalars: "{icon}, {source}, {count}, {noun}, {time}" },
-    scan_completed: { scalars: "{icon}, {target}, {status}, {findings}, {duration}, {scan_id}" },
-    scan_failed: { scalars: "{icon}, {target}, {status}, {findings}, {duration}, {scan_id}" },
+    scan_completed: {
+      scalars: "{icon}, {target}, {target_type}, {status}, {findings}, {duration}, {scan_id}, {time}, {critical}, {high}, {medium}, {low}, {negligible}, {unknown}, {alerts}, {alerts_critical}, {alerts_high}, {alerts_medium}, {alerts_low}, {sast}, {sast_critical}, {sast_high}, {sast_medium}, {sast_low}, {secrets}, {secrets_verified}, {secrets_unverified}, {compliance}, {compliance_critical}, {compliance_high}, {compliance_medium}, {compliance_low}, {licenses}, {licenses_allowed}, {licenses_denied}, {licenses_warned}, {licenses_unknown}, {scanners}, {source}, {branch}, {commit_sha}, {image_ref}, {sbom_components}",
+      loops: [
+        { label: "findings_list", fields: "{id}, {severity}, {cvss}, {package}, {version}, {fix}, {title}" },
+        { label: "alerts_list", fields: "{severity}, {package}, {title}" },
+        { label: "sast_list", fields: "{severity}, {title}, {file}" },
+        { label: "secrets_list", fields: "{severity}, {detector}, {file}, {verified}" },
+      ],
+    },
+    scan_failed: {
+      scalars: "{icon}, {target}, {target_type}, {status}, {findings}, {duration}, {scan_id}, {time}, {critical}, {high}, {medium}, {low}, {error}, {alerts}, {sast}, {secrets}, {compliance}, {scanners}, {source}, {branch}, {commit_sha}, {image_ref}",
+      loops: [
+        { label: "findings_list", fields: "{id}, {severity}, {cvss}, {package}, {version}, {fix}, {title}" },
+      ],
+    },
     sync_failed: { scalars: "{job_name}, {error}, {time}" },
     watch_rule_match: {
       scalars: "{icon}, {rule_name}, {count}, {noun}, {vulnerabilities_list}, {vendors}, {products}, {versions}, {time}",
-      loop: "{#each vulnerabilities}{id}, {severity}, {cvss}, {cwes}, {summary}, {title}, {vendors}, {products}, {versions}, {exploited}, {source}, {published}{/each}",
+      loops: [
+        { label: "vulnerabilities", fields: "{id}, {severity}, {cvss}, {cwes}, {summary}, {title}, {vendors}, {products}, {versions}, {exploited}, {source}, {published}" },
+      ],
     },
   };
 
@@ -421,11 +456,11 @@ export const SystemPage = () => {
     },
     scan_completed: {
       title: "{icon} Hecate — SCA Scan {status}",
-      body: "Target: {target}\nStatus: {status}\nFindings: {findings}\nDuration: {duration}s\nScan ID: {scan_id}",
+      body: "Target: {target}\nVulnerabilities: {findings} (C:{critical} H:{high} M:{medium} L:{low})\nAlerts: {alerts} | SAST: {sast} | Secrets: {secrets} | Compliance: {compliance}\nSBOM: {sbom_components} components | Licenses: {licenses}\nScanners: {scanners}\nDuration: {duration}s",
     },
     scan_failed: {
       title: "{icon} Hecate — SCA Scan {status}",
-      body: "Target: {target}\nStatus: {status}\nFindings: {findings}\nDuration: {duration}s\nScan ID: {scan_id}",
+      body: "Target: {target}\nError: {error}\nVulnerabilities: {findings} (C:{critical} H:{high} M:{medium} L:{low})\nAlerts: {alerts} | SAST: {sast} | Secrets: {secrets}\nScanners: {scanners}\nDuration: {duration}s",
     },
     sync_failed: {
       title: "Hecate — Sync Failed: {job_name}",
@@ -722,6 +757,7 @@ export const SystemPage = () => {
     void loadTemplates();
     void loadScannerStatus();
     void loadLicensePolicies();
+    void fetchScanTargets({ limit: 200 }).then((r) => setScanTargets(r.items)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1416,6 +1452,7 @@ export const SystemPage = () => {
                     <option value="vendor">{t("Vendor", "Hersteller")}</option>
                     <option value="product">{t("Product", "Produkt")}</option>
                     <option value="dql">{t("DQL Query", "DQL-Abfrage")}</option>
+                    <option value="scan">{t("SCA Scan", "SCA-Scan")}</option>
                   </select>
                 </div>
                 <div>
@@ -1515,6 +1552,48 @@ export const SystemPage = () => {
                     placeholder={t("e.g. severity:critical AND vendors:microsoft", "z.B. severity:critical AND vendors:microsoft")}
                     style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
                   />
+                </div>
+              )}
+
+              {formType === "scan" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                      {t("Severity Threshold", "Schweregrad-Schwelle")}
+                    </label>
+                    <select
+                      value={formScanSeverityThreshold}
+                      onChange={(e) => setFormScanSeverityThreshold(e.target.value)}
+                      style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                    >
+                      <option value="">{t("Any (all scans)", "Alle (jeder Scan)")}</option>
+                      <option value="critical">{t("Critical", "Kritisch")}</option>
+                      <option value="high">{t("High or above", "Hoch oder höher")}</option>
+                      <option value="medium">{t("Medium or above", "Mittel oder höher")}</option>
+                      <option value="low">{t("Low or above", "Niedrig oder höher")}</option>
+                    </select>
+                    <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+                      {t("Only notify when findings at this severity or above exist.", "Nur benachrichtigen wenn Findings mit diesem Schweregrad oder höher existieren.")}
+                    </p>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                      {t("Target", "Ziel")}
+                    </label>
+                    <select
+                      value={formScanTargetFilter}
+                      onChange={(e) => setFormScanTargetFilter(e.target.value)}
+                      style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                    >
+                      <option value="">{t("All targets", "Alle Ziele")}</option>
+                      {scanTargets.map((tgt) => (
+                        <option key={tgt.id} value={tgt.name}>{tgt.name}</option>
+                      ))}
+                    </select>
+                    <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+                      {t("Leave empty to match all targets.", "Leer lassen für alle Ziele.")}
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -1733,28 +1812,19 @@ export const SystemPage = () => {
                 <p className="muted" style={{ margin: 0, fontSize: "0.8rem" }}>
                   {t("Placeholders", "Platzhalter")}: <code style={{ fontSize: "0.8rem", background: "rgba(255,255,255,0.06)", padding: "0.1rem 0.3rem", borderRadius: "0.2rem" }}>{TEMPLATE_PLACEHOLDERS[tplEventKey].scalars}</code>
                 </p>
-                {TEMPLATE_PLACEHOLDERS[tplEventKey].loop && (
+                {TEMPLATE_PLACEHOLDERS[tplEventKey].loops && (
                   <div style={{ margin: 0, fontSize: "0.8rem", opacity: 0.6 }}>
                     <p style={{ margin: "0.2rem 0 0.15rem" }}>
-                      {t("Loop block", "Schleifen-Block")} ({t("iterate over each vulnerability", "über jede Schwachstelle iterieren")}):
+                      {t("Loop blocks", "Schleifen-Blöcke")}:
                     </p>
-                    <pre style={{
-                      margin: 0,
-                      padding: "0.4rem 0.6rem",
-                      background: "rgba(255,255,255,0.04)",
-                      borderRadius: "0.3rem",
-                      fontSize: "0.75rem",
-                      lineHeight: 1.5,
-                      overflowX: "auto",
-                      whiteSpace: "pre-wrap",
-                    }}>
-{`{#each vulnerabilities}
-{id} — {severity} ({cvss}) — {summary}
-{/each}`}
-                    </pre>
-                    <p style={{ margin: "0.15rem 0 0" }}>
-                      {t("Per-vulnerability fields", "Felder pro Schwachstelle")}: <code style={{ fontSize: "0.75rem", background: "rgba(255,255,255,0.06)", padding: "0.1rem 0.3rem", borderRadius: "0.2rem" }}>{"{id}, {severity}, {cvss}, {cwes}, {title}, {summary}, {vendors}, {products}, {versions}, {exploited}, {source}, {published}"}</code>
-                    </p>
+                    {TEMPLATE_PLACEHOLDERS[tplEventKey].loops!.map((lp) => (
+                      <div key={lp.label} style={{ marginBottom: "0.4rem" }}>
+                        <code style={{ fontSize: "0.75rem", background: "rgba(255,255,255,0.06)", padding: "0.1rem 0.3rem", borderRadius: "0.2rem" }}>
+                          {`{#each ${lp.label}}...{/each}`}
+                        </code>
+                        <span style={{ fontSize: "0.75rem", marginLeft: "0.4rem" }}>{lp.fields}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

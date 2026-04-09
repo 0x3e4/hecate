@@ -19,7 +19,7 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, History mit since-Filter, Findings, SBOM, SBOM-Export, SBOM-Import, Compare, VEX, License-Compliance)
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets, History mit since-Filter, Findings inkl. ?includeDismissed, SBOM, SBOM-Export, SBOM-Import, Compare, VEX inkl. bulk-update-by-ids/import, Findings-Dismiss, License-Compliance)
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
@@ -71,7 +71,7 @@ app/
 │   ├── ai.py                # AI-Analyse Schemata
 │   ├── backup.py, sync.py, audit.py, changelog.py
 │   ├── scan.py              # SCA-Scan API-Schemata (inkl. ImportSbomRequest)
-│   ├── vex.py               # VEX API-Schemata
+│   ├── vex.py               # VEX API-Schemata (VexUpdate, VexBulkUpdate, VexBulkUpdateByIds, FindingsDismiss, VexImport)
 │   ├── license_policy.py    # License-Policy API-Schemata
 │   └── saved_search.py
 ├── services/                # Business-Logik
@@ -90,7 +90,7 @@ app/
 │   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import)
 │   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV, SPDX-SBOM)
 │   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
-│   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward
+│   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward (VEX + Dismissal)
 │   ├── license_compliance_service.py  # Lizenz-Policy-Auswertung
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
 │   ├── notification_service.py    # Apprise-Benachrichtigungen
@@ -148,7 +148,7 @@ app/
 | `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans (exportierbar als CycloneDX 1.5 / SPDX 2.3) |
 | `scan_layer_analysis` | `ScanLayerAnalysisDocument` | Image-Schichtanalyse aus Dive-Scans |
-| `notification_rules` | — | Benachrichtigungsregeln (Event, Watch, DQL) |
+| `notification_rules` | — | Benachrichtigungsregeln (Event, Watch, DQL, Scan) |
 | `notification_channels` | — | Apprise-Channels (URL + Tag) |
 | `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |

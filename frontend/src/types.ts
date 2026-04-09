@@ -429,7 +429,7 @@ export interface ScanSummary {
 
 export interface ScanTarget {
   id: string;
-  type: "container_image" | "source_repo";
+  type: "container_image" | "source_repo" | "sbom-import";
   name: string;
   registry?: string | null;
   repositoryUrl?: string | null;
@@ -513,7 +513,12 @@ export interface ScanFinding {
   cvssVector?: string | null;
   vexStatus?: "not_affected" | "affected" | "fixed" | "under_investigation" | null;
   vexJustification?: string | null;
+  vexDetail?: string | null;
   vexUpdatedAt?: string | null;
+  dismissed?: boolean;
+  dismissedReason?: string | null;
+  dismissedAt?: string | null;
+  dismissedBy?: string | null;
 }
 
 export interface ScanFindingListResponse {
@@ -664,7 +669,7 @@ export interface NotificationTestResponse {
   message: string;
 }
 
-export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql";
+export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan";
 
 export interface NotificationRule {
   id: string;
@@ -677,6 +682,8 @@ export interface NotificationRule {
   vendorSlug?: string | null;
   productSlug?: string | null;
   dqlQuery?: string | null;
+  scanSeverityThreshold?: string | null;
+  scanTargetFilter?: string | null;
   createdAt: string;
   updatedAt: string;
   lastEvaluatedAt?: string | null;
@@ -698,6 +705,8 @@ export interface NotificationRuleCreate {
   vendorSlug?: string | null;
   productSlug?: string | null;
   dqlQuery?: string | null;
+  scanSeverityThreshold?: string | null;
+  scanTargetFilter?: string | null;
 }
 
 export interface NotificationChannel {

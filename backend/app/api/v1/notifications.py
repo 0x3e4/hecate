@@ -110,7 +110,7 @@ async def create_rule(
     payload: NotificationRuleCreate,
     service: NotificationService = Depends(get_notification_service),
 ) -> NotificationRuleResponse:
-    valid_types = {"event", "saved_search", "vendor", "product", "dql"}
+    valid_types = {"event", "saved_search", "vendor", "product", "dql", "scan"}
     if payload.rule_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"Invalid rule_type. Must be one of: {', '.join(sorted(valid_types))}")
     return await service.create_rule(payload)
