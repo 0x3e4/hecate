@@ -31,6 +31,7 @@ class ScanTargetCreateRequest(BaseModel):
     )
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
+    group: str | None = Field(default=None, description="Application/group name")
 
     model_config = {"populate_by_name": True}
 
@@ -94,6 +95,7 @@ class ScanTargetResponse(BaseModel):
     )
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
+    group: str | None = None
     created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt", serialization_alias="updatedAt")
     last_scan_at: datetime | None = Field(
@@ -126,6 +128,20 @@ class ScanTargetResponse(BaseModel):
 class ScanTargetListResponse(BaseModel):
     total: int
     items: list[ScanTargetResponse]
+
+
+class ScanTargetGroupSchema(BaseModel):
+    group: str | None = None
+    target_count: int = Field(alias="targetCount", serialization_alias="targetCount")
+    latest_summary: ScanSummarySchema = Field(
+        default_factory=ScanSummarySchema, alias="latestSummary", serialization_alias="latestSummary",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ScanTargetGroupListResponse(BaseModel):
+    items: list[ScanTargetGroupSchema]
 
 
 class ScanResponse(BaseModel):

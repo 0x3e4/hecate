@@ -19,6 +19,7 @@ import {
 } from "../api/scans";
 import { fetchLicenseOverview } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
+import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 import type {
@@ -45,6 +46,10 @@ export const ScansPage = () => {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("targets");
   const [targets, setTargets] = useState<ScanTarget[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<string, boolean>>(
+    "hecate.scan.groupCollapsed",
+    {},
+  );
   const [scans, setScans] = useState<Scan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -451,6 +456,16 @@ export const ScansPage = () => {
     }
   };
 
+  const handleUpdateGroup = async (targetId: string, group: string | null) => {
+    const normalized = group && group.trim() ? group.trim() : null;
+    try {
+      await updateScanTarget(targetId, { group: normalized });
+      setTargets(prev => prev.map((tt: ScanTarget) => tt.id === targetId ? { ...tt, group: normalized } : tt));
+    } catch (err) {
+      console.error("Update group failed", err);
+    }
+  };
+
   const isSubmitDisabled =
     scanning
     || scanners.length === 0
@@ -533,13 +548,124 @@ export const ScansPage = () => {
             {!loading && targets.length === 0 && (
               <p className="muted">{t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")}</p>
             )}
-            {!loading && targets.length > 0 && (
-              <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
-                {targets.map(target => (
-                  <TargetCard key={target.id} target={target} onDelete={handleDeleteTarget} onRescan={handleRescan} onToggleAutoScan={handleToggleAutoScan} onUpdateScanners={handleUpdateScanners} onCancelScan={handleCancelScan} onFilterScans={(id, name) => { setScanFilterTargetId(id); setScanFilterTargetName(name); setScanOffset(0); setTab("scans"); }} />
-                ))}
-              </div>
-            )}
+            {!loading && targets.length > 0 && (() => {
+              // Group targets by their `group` field; ungrouped targets bucket last.
+              const UNGROUPED = "__ungrouped__";
+              const buckets = new Map<string, ScanTarget[]>();
+              for (const tgt of targets) {
+                const key = (tgt.group && tgt.group.trim()) || UNGROUPED;
+                if (!buckets.has(key)) buckets.set(key, []);
+                buckets.get(key)!.push(tgt);
+              }
+              const orderedKeys = Array.from(buckets.keys()).sort((a, b) => {
+                if (a === UNGROUPED) return 1;
+                if (b === UNGROUPED) return -1;
+                return a.localeCompare(b);
+              });
+              const allGroupNames = orderedKeys.filter(k => k !== UNGROUPED);
+              const sumSummary = (items: ScanTarget[]): ScanSummary => {
+                const sum: ScanSummary = { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0, total: 0 };
+                for (const it of items) {
+                  const s = it.latestSummary;
+                  if (!s) continue;
+                  sum.critical += s.critical || 0;
+                  sum.high += s.high || 0;
+                  sum.medium += s.medium || 0;
+                  sum.low += s.low || 0;
+                  sum.negligible += s.negligible || 0;
+                  sum.unknown += s.unknown || 0;
+                  sum.total += s.total || 0;
+                }
+                return sum;
+              };
+              const onFilterScansFn = (id: string, name: string) => {
+                setScanFilterTargetId(id);
+                setScanFilterTargetName(name);
+                setScanOffset(0);
+                setTab("scans");
+              };
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                  {orderedKeys.map(key => {
+                    const items = buckets.get(key)!;
+                    const isUngrouped = key === UNGROUPED;
+                    const collapsed = !!collapsedGroups[key];
+                    const rollup = sumSummary(items);
+                    const label = isUngrouped ? t("Ungrouped", "Ohne Gruppe") : key;
+                    return (
+                      <div key={key}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setCollapsedGroups({ ...collapsedGroups, [key]: !collapsed })}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setCollapsedGroups({ ...collapsedGroups, [key]: !collapsed });
+                            }
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            padding: "0.5rem 0.75rem",
+                            marginBottom: "0.625rem",
+                            borderRadius: "6px",
+                            background: "rgba(255,255,255,0.03)",
+                            border: "1px solid rgba(255,255,255,0.06)",
+                            cursor: "pointer",
+                            userSelect: "none",
+                          }}
+                        >
+                          <span style={{
+                            display: "inline-block",
+                            width: "0.75rem",
+                            transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                            transition: "transform 0.15s",
+                            color: "rgba(255,255,255,0.5)",
+                            fontSize: "0.7rem",
+                          }}>▼</span>
+                          <span style={{
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                            color: isUngrouped ? "rgba(255,255,255,0.55)" : "#ffd43b",
+                            wordBreak: "break-word",
+                          }}>{label}</span>
+                          <span style={{
+                            fontSize: "0.7rem",
+                            color: "rgba(255,255,255,0.4)",
+                            padding: "0.0625rem 0.4rem",
+                            borderRadius: "8px",
+                            background: "rgba(255,255,255,0.05)",
+                          }}>{items.length}</span>
+                          <div style={{ marginLeft: "auto" }}>
+                            <SeverityBadges summary={rollup} />
+                          </div>
+                        </div>
+                        {!collapsed && (
+                          <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
+                            {items.map(target => (
+                              <TargetCard
+                                key={target.id}
+                                target={target}
+                                groupSuggestions={allGroupNames}
+                                onDelete={handleDeleteTarget}
+                                onRescan={handleRescan}
+                                onToggleAutoScan={handleToggleAutoScan}
+                                onUpdateScanners={handleUpdateScanners}
+                                onUpdateGroup={handleUpdateGroup}
+                                onCancelScan={handleCancelScan}
+                                onFilterScans={onFilterScansFn}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1950,13 +2076,30 @@ export const ScansPage = () => {
 
 // --- Sub-components ---
 
-const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onFilterScans, onCancelScan }: { target: ScanTarget; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
+const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onUpdateGroup, onFilterScans, onCancelScan }: { target: ScanTarget; groupSuggestions?: string[]; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onUpdateGroup?: (targetId: string, group: string | null) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
   const isRunning = !!target.hasRunningScan;
   const isPending = target.runningScanStatus === "pending";
   const autoScan = target.autoScan !== false; // default true
   const [editingScanners, setEditingScanners] = useState(false);
   const [selectedScanners, setSelectedScanners] = useState<string[]>([]);
+  const [editingGroup, setEditingGroup] = useState(false);
+  const [groupDraft, setGroupDraft] = useState<string>(target.group || "");
+  const datalistId = `group-suggestions-${target.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const isSbomImport = target.type === "sbom-import";
+
+  const startEditingGroup = () => {
+    setGroupDraft(target.group || "");
+    setEditingGroup(true);
+  };
+  const saveGroup = () => {
+    if (onUpdateGroup) onUpdateGroup(target.id, groupDraft);
+    setEditingGroup(false);
+  };
+  const cancelEditGroup = () => {
+    setGroupDraft(target.group || "");
+    setEditingGroup(false);
+  };
 
   const availableScanners = target.type === "container_image"
     ? ["trivy", "grype", "syft", "dockle", "dive"]
@@ -1973,8 +2116,6 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
       setEditingScanners(false);
     }
   };
-
-  const isSbomImport = target.type === "sbom-import";
 
   return (
     <div style={{
@@ -2011,9 +2152,85 @@ const TargetCard = ({ target, onDelete, onRescan, onToggleAutoScan, onUpdateScan
           ×
         </button>
       </div>
-      <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0 0 0.75rem", wordBreak: "break-all" }}>
+      <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0 0 0.5rem", wordBreak: "break-all" }}>
         {target.id}
       </p>
+      {!isSbomImport && onUpdateGroup && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginBottom: "0.625rem", flexWrap: "wrap" }}>
+          {editingGroup ? (
+            <>
+              <input
+                list={datalistId}
+                value={groupDraft}
+                onChange={e => setGroupDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") { e.preventDefault(); saveGroup(); }
+                  else if (e.key === "Escape") { e.preventDefault(); cancelEditGroup(); }
+                }}
+                placeholder={t("Application name", "Anwendungsname")}
+                autoFocus
+                style={{
+                  flex: "1 1 140px",
+                  padding: "0.2rem 0.5rem",
+                  borderRadius: "4px",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(0,0,0,0.2)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: "0.75rem",
+                  outline: "none",
+                  minWidth: 0,
+                }}
+              />
+              <datalist id={datalistId}>
+                {groupSuggestions.map(g => <option key={g} value={g} />)}
+              </datalist>
+              <button
+                type="button"
+                onClick={saveGroup}
+                style={{ padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: "pointer", background: "rgba(105,219,124,0.15)", border: "1px solid rgba(105,219,124,0.3)", color: "#69db7c" }}
+              >
+                {t("Save", "Speichern")}
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditGroup}
+                style={{ padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: "pointer", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}
+              >
+                {t("Cancel", "Abbrechen")}
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {t("App", "App")}:
+              </span>
+              {target.group ? (
+                <span style={{
+                  display: "inline-block",
+                  padding: "0.1rem 0.45rem",
+                  borderRadius: "4px",
+                  fontSize: "0.7rem",
+                  background: "rgba(255,193,7,0.1)",
+                  border: "1px solid rgba(255,193,7,0.25)",
+                  color: "#ffd43b",
+                }}>{target.group}</span>
+              ) : (
+                <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", fontStyle: "italic" }}>
+                  {t("none", "keine")}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={startEditingGroup}
+                title={t("Edit group", "Gruppe bearbeiten")}
+                style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: "0.65rem", padding: "0.05rem 0.3rem", lineHeight: 1 }}
+              >
+                ✎
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {target.latestSummary && <SeverityBadges summary={target.latestSummary} />}
 
       {/* Scanner pills / editor */}

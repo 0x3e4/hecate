@@ -435,6 +435,7 @@ export interface ScanTarget {
   repositoryUrl?: string | null;
   description?: string | null;
   tags?: string[];
+  group?: string | null;
   createdAt: string;
   updatedAt: string;
   lastScanAt?: string | null;
@@ -451,6 +452,16 @@ export interface ScanTarget {
 export interface ScanTargetListResponse {
   total: number;
   items: ScanTarget[];
+}
+
+export interface ScanTargetGroup {
+  group: string | null;
+  targetCount: number;
+  latestSummary: ScanSummary;
+}
+
+export interface ScanTargetGroupListResponse {
+  items: ScanTargetGroup[];
 }
 
 export interface Scan {

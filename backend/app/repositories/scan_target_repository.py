@@ -24,6 +24,7 @@ class ScanTargetRepository:
         collection = database[settings.mongo_scan_targets_collection]
         await collection.create_index("type")
         await collection.create_index("updated_at")
+        await collection.create_index("group")
         return cls(collection)
 
     async def upsert(self, target: ScanTargetDocument) -> str:
@@ -51,6 +52,9 @@ class ScanTargetRepository:
             # Preserve scanners from first scan — don't override on subsequent scans
             if existing.get("scanners"):
                 payload["scanners"] = existing["scanners"]
+            # Preserve group unless explicitly set on the new payload
+            if not payload.get("group") and existing.get("group"):
+                payload["group"] = existing["group"]
             # Preserve fingerprint data for change detection
             if "last_image_digest" in existing:
                 payload["last_image_digest"] = existing["last_image_digest"]
@@ -86,12 +90,18 @@ class ScanTargetRepository:
     async def list_targets(
         self,
         type_filter: str | None = None,
+        group_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
         query: dict[str, Any] = {}
         if type_filter:
             query["type"] = type_filter
+        if group_filter is not None:
+            if group_filter == "":
+                query["$or"] = [{"group": None}, {"group": {"$exists": False}}, {"group": ""}]
+            else:
+                query["group"] = group_filter
 
         try:
             total = await self.collection.count_documents(query)
@@ -143,6 +153,32 @@ class ScanTargetRepository:
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_auto_scan_failed", target_id=target_id, error=str(exc))
             return False
+
+    async def update_group(self, target_id: str, group: str | None) -> bool:
+        normalized = group.strip() if isinstance(group, str) else None
+        if normalized == "":
+            normalized = None
+        try:
+            result = await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {"group": normalized, "updated_at": datetime.now(tz=UTC)}},
+            )
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_group_failed", target_id=target_id, error=str(exc))
+            return False
+
+    async def list_groups(self) -> list[dict[str, Any]]:
+        """Aggregate distinct group values with target counts."""
+        try:
+            cursor = self.collection.aggregate([
+                {"$group": {"_id": "$group", "count": {"$sum": 1}}},
+                {"$sort": {"_id": 1}},
+            ])
+            return [{"group": doc.get("_id"), "target_count": int(doc.get("count", 0))} async for doc in cursor]
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.list_groups_failed", error=str(exc))
+            return []
 
     async def update_scanners(self, target_id: str, scanners: list[str]) -> bool:
         try:
