@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex } from "../api/scans";
+import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex, importVex, bulkUpdateVexByIds, dismissFindings } from "../api/scans";
 import { fetchScanLicenseCompliance } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
+import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import type {
   Scan,
@@ -269,6 +270,9 @@ interface MergedFinding {
   urls: string[];
   vexStatus: string | null;
   vexJustification: string | null;
+  vexDetail: string | null;
+  dismissed: boolean;
+  dismissedReason: string | null;
 }
 
 /** Pick the best fix version: reject downgrades (fix major < pkg major), prefer same-major */
@@ -301,6 +305,14 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
     if (!existing.vexStatus && f.vexStatus) {
       existing.vexStatus = f.vexStatus;
       existing.vexJustification = f.vexJustification ?? null;
+      existing.vexDetail = f.vexDetail ?? null;
+    }
+    // Dismissed: any sub-finding dismissed → merged row counted as dismissed
+    if (f.dismissed) {
+      existing.dismissed = true;
+      if (!existing.dismissedReason && f.dismissedReason) {
+        existing.dismissedReason = f.dismissedReason;
+      }
     }
   };
 
@@ -370,6 +382,9 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
           urls: f.urls ?? [],
           vexStatus: f.vexStatus ?? null,
           vexJustification: f.vexJustification ?? null,
+          vexDetail: f.vexDetail ?? null,
+          dismissed: f.dismissed ?? false,
+          dismissedReason: f.dismissedReason ?? null,
           _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
         });
       }
@@ -411,10 +426,22 @@ export const ScanDetailPage = () => {
   const [licenseCompliance, setLicenseCompliance] = useState<LicenseComplianceResult | null>(null);
   const [licenseComplianceLoading, setLicenseComplianceLoading] = useState(false);
 
-  // VEX editing
+  // VEX editing (single, expandable row)
   const [vexEditingId, setVexEditingId] = useState<string | null>(null);
   const [vexEditStatus, setVexEditStatus] = useState("");
   const [vexEditJustification, setVexEditJustification] = useState("");
+  const [vexEditDetail, setVexEditDetail] = useState("");
+  const [vexSaving, setVexSaving] = useState(false);
+
+  // Multi-select bulk edit + dismiss
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkVexStatus, setBulkVexStatus] = useState<string>("not_affected");
+  const [bulkVexJustification, setBulkVexJustification] = useState("");
+  const [bulkVexDetail, setBulkVexDetail] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [showDismissed, setShowDismissed] = usePersistentState<boolean>("hecate.scan.showDismissed", false);
+  const vexImportRef = useRef<HTMLInputElement | null>(null);
+  const [vexImporting, setVexImporting] = useState(false);
 
   // History chart state
   type HistoryRange = "7d" | "30d" | "90d" | "all";
@@ -649,7 +676,7 @@ export const ScanDetailPage = () => {
       // Load findings+sbom on initial load, while running (incremental results), or when just finished
       if (isInitial || isRunning || justFinished) {
         const [findingsData, sbomData] = await Promise.all([
-          fetchScanFindings(scanId, { limit: 5000 }),
+          fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed }),
           fetchScanSbom(scanId, { search: sbomSearch || undefined, limit: 500 }),
         ]);
         setFindings(findingsData.items);
@@ -663,12 +690,23 @@ export const ScanDetailPage = () => {
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [scanId, sbomSearch, t]);
+  }, [scanId, sbomSearch, showDismissed, t]);
 
   // Initial load
   useEffect(() => {
     loadScanData(true);
   }, [scanId]);
+
+  // Reload findings when toggling "show dismissed"
+  useEffect(() => {
+    if (!scanId || loading) return;
+    fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed })
+      .then(data => { setFindings(data.items); setFindingsTotal(data.total); })
+      .catch(err => console.error("Failed to reload findings", err));
+    // Drop selection on toggle to avoid stale IDs
+    setSelectedKeys(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDismissed]);
 
   // Auto-poll while scan is running (every 3s)
   useEffect(() => {
@@ -1021,6 +1059,60 @@ export const ScanDetailPage = () => {
                   {sev ? sev.charAt(0).toUpperCase() + sev.slice(1) : t("All", "Alle")}
                 </button>
               ))}
+              <label style={{
+                display: "inline-flex", alignItems: "center", gap: "0.375rem",
+                padding: "0.25rem 0.5rem", borderRadius: "4px",
+                border: "1px solid rgba(255,255,255,0.1)",
+                fontSize: "0.75rem", color: "rgba(255,255,255,0.6)", cursor: "pointer",
+              }}>
+                <input type="checkbox" checked={showDismissed} onChange={e => setShowDismissed(e.target.checked)} />
+                {t("Show dismissed", "Verworfene anzeigen")}
+              </label>
+              <input
+                ref={vexImportRef}
+                type="file"
+                accept=".json,application/json"
+                style={{ display: "none" }}
+                onChange={async e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file || !scan) return;
+                  setVexImporting(true);
+                  try {
+                    const text = await file.text();
+                    const doc = JSON.parse(text);
+                    const result = await importVex({ vexDocument: doc, targetId: scan.targetId });
+                    setToast({ type: "success", message: t(
+                      `VEX imported: ${result.applied} applied, ${result.skipped} skipped, ${result.notFound} not found`,
+                      `VEX importiert: ${result.applied} angewendet, ${result.skipped} übersprungen, ${result.notFound} nicht gefunden`,
+                    ) });
+                    if (scanId) {
+                      const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
+                      setFindings(data.items);
+                      setFindingsTotal(data.total);
+                    }
+                  } catch (err) {
+                    console.error("VEX import failed", err);
+                    setToast({ type: "error", message: t("VEX import failed. Check file format.", "VEX-Import fehlgeschlagen. Dateiformat prüfen.") });
+                  } finally {
+                    setVexImporting(false);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => vexImportRef.current?.click()}
+                disabled={vexImporting}
+                title={t("Import a CycloneDX VEX document and apply to matching findings", "CycloneDX VEX-Dokument importieren und auf passende Ergebnisse anwenden")}
+                style={{
+                  padding: "0.25rem 0.625rem", borderRadius: "4px",
+                  border: "1px solid rgba(99,230,190,0.3)",
+                  background: "rgba(99,230,190,0.08)",
+                  color: "#63e6be", cursor: vexImporting ? "wait" : "pointer", fontSize: "0.75rem", fontWeight: 500,
+                }}
+              >
+                {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
+              </button>
               {/* Open all CVEs in vulnerability list */}
               {(() => {
                 const cveIds = [...new Set(filteredMerged.map(f => f.vulnerabilityId).filter((v): v is string => !!v))];
@@ -1051,6 +1143,119 @@ export const ScanDetailPage = () => {
               })()}
             </div>
 
+            {selectedKeys.size > 0 && (() => {
+              // Collect raw finding IDs across all selected merged rows
+              const selectedRows = filteredMerged.filter(f => selectedKeys.has(f.key));
+              const allFindingIds = selectedRows.flatMap(f => f.findingIds);
+              const anyDismissed = selectedRows.some(f => f.dismissed);
+              const refetch = async () => {
+                if (!scanId) return;
+                const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
+                setFindings(data.items);
+                setFindingsTotal(data.total);
+              };
+              return (
+                <div style={{
+                  position: "sticky", top: 0, zIndex: 5,
+                  display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem",
+                  padding: "0.625rem 0.75rem", marginBottom: "0.75rem",
+                  borderRadius: "6px",
+                  background: "rgba(99,230,190,0.08)",
+                  border: "1px solid rgba(99,230,190,0.25)",
+                }}>
+                  <span style={{ fontSize: "0.75rem", color: "#63e6be", fontWeight: 600 }}>
+                    {selectedKeys.size} {t("selected", "ausgewählt")} ({allFindingIds.length} {t("findings", "Ergebnisse")})
+                  </span>
+                  <select value={bulkVexStatus} onChange={e => setBulkVexStatus(e.target.value)} disabled={bulkBusy}
+                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem" }}>
+                    <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
+                    <option value="affected">{t("Affected", "Betroffen")}</option>
+                    <option value="fixed">{t("Fixed", "Behoben")}</option>
+                    <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={bulkVexJustification}
+                    onChange={e => setBulkVexJustification(e.target.value)}
+                    placeholder={t("Justification (optional)", "Begründung (optional)")}
+                    disabled={bulkBusy}
+                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 180px", minWidth: 0 }}
+                  />
+                  <input
+                    type="text"
+                    value={bulkVexDetail}
+                    onChange={e => setBulkVexDetail(e.target.value)}
+                    placeholder={t("Detail (optional)", "Detail (optional)")}
+                    disabled={bulkBusy}
+                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 180px", minWidth: 0 }}
+                  />
+                  <button
+                    type="button"
+                    disabled={bulkBusy || allFindingIds.length === 0}
+                    onClick={async () => {
+                      setBulkBusy(true);
+                      try {
+                        const res = await bulkUpdateVexByIds({
+                          findingIds: allFindingIds,
+                          vexStatus: bulkVexStatus,
+                          vexJustification: bulkVexJustification || undefined,
+                          vexDetail: bulkVexDetail || undefined,
+                        });
+                        setToast({ type: "success", message: t(`Updated ${res.updated} findings`, `${res.updated} Ergebnisse aktualisiert`) });
+                        setSelectedKeys(new Set());
+                        setBulkVexJustification("");
+                        setBulkVexDetail("");
+                        await refetch();
+                      } catch (err) {
+                        console.error("Bulk VEX update failed", err);
+                        setToast({ type: "error", message: t("Bulk update failed", "Bulk-Update fehlgeschlagen") });
+                      } finally {
+                        setBulkBusy(false);
+                      }
+                    }}
+                    style={{ padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, cursor: bulkBusy ? "wait" : "pointer", background: "rgba(99,230,190,0.18)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.4)" }}
+                  >
+                    {t("Apply VEX", "VEX anwenden")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkBusy || allFindingIds.length === 0}
+                    onClick={async () => {
+                      setBulkBusy(true);
+                      try {
+                        const res = await dismissFindings({
+                          findingIds: allFindingIds,
+                          dismissed: !anyDismissed,
+                          reason: bulkVexJustification || undefined,
+                        });
+                        setToast({ type: "success", message: anyDismissed
+                          ? t(`Restored ${res.updated} findings`, `${res.updated} Ergebnisse wiederhergestellt`)
+                          : t(`Dismissed ${res.updated} findings`, `${res.updated} Ergebnisse verworfen`) });
+                        setSelectedKeys(new Set());
+                        await refetch();
+                      } catch (err) {
+                        console.error("Dismiss failed", err);
+                        setToast({ type: "error", message: t("Dismiss failed", "Verwerfen fehlgeschlagen") });
+                      } finally {
+                        setBulkBusy(false);
+                      }
+                    }}
+                    style={{ padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, cursor: bulkBusy ? "wait" : "pointer", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.15)" }}
+                  >
+                    {anyDismissed ? t("Restore", "Wiederherstellen") : t("Dismiss", "Verwerfen")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedKeys(new Set())}
+                    disabled={bulkBusy}
+                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", fontSize: "0.75rem", cursor: "pointer", background: "transparent", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  >
+                    {t("Clear", "Leeren")}
+                  </button>
+                </div>
+              );
+            })()}
+
             {filteredMerged.length === 0 ? (
               <p className="muted">{t("No findings.", "Keine Ergebnisse.")}</p>
             ) : (
@@ -1058,6 +1263,20 @@ export const ScanDetailPage = () => {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                      <th style={{ ...thStyle, width: "1.75rem" }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredMerged.length > 0 && filteredMerged.every(f => selectedKeys.has(f.key))}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedKeys(new Set(filteredMerged.map(f => f.key)));
+                            } else {
+                              setSelectedKeys(new Set());
+                            }
+                          }}
+                          title={t("Select all visible", "Alle sichtbaren auswählen")}
+                        />
+                      </th>
                       {([
                         ["cve", "CVE"],
                         ["package", t("Package", "Paket")],
@@ -1082,9 +1301,40 @@ export const ScanDetailPage = () => {
                     {filteredMerged.map(f => {
                       const fDepsUrl = buildDepsDevUrl(f.packageName, f.packageVersion, f.packageType);
                       const fSnykUrl = buildSnykUrl(f.packageName, f.packageVersion, f.packageType);
+                      const isSelected = selectedKeys.has(f.key);
+                      const isVexExpanded = vexEditingId === f.key;
                       return (
-                        <tr key={f.key} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                        <Fragment key={f.key}>
+                        <tr style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                          opacity: f.dismissed ? 0.45 : 1,
+                          background: isSelected ? "rgba(99,230,190,0.06)" : undefined,
+                        }}>
                           <td style={tdStyle}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={e => {
+                                setSelectedKeys(prev => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(f.key); else next.delete(f.key);
+                                  return next;
+                                });
+                              }}
+                            />
+                          </td>
+                          <td style={tdStyle}>
+                            {f.dismissed && (
+                              <span title={f.dismissedReason || t("Dismissed", "Verworfen")} style={{
+                                display: "inline-block", marginRight: "0.375rem",
+                                padding: "0 0.375rem", borderRadius: "3px",
+                                fontSize: "0.625rem", fontWeight: 600,
+                                background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                              }}>
+                                {t("dismissed", "verworfen")}
+                              </span>
+                            )}
                             {f.vulnerabilityId ? (
                               <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
                                 <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ color: "#ffd43b", textDecoration: "none" }}>
@@ -1116,59 +1366,36 @@ export const ScanDetailPage = () => {
                             <span style={{ color: "rgba(255,255,255,0.4)" }}>{f.scanners.join(", ")}</span>
                           </td>
                           <td style={tdStyle}>
-                            {vexEditingId === f.key ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: "140px" }}>
-                                <select value={vexEditStatus} onChange={e => setVexEditStatus(e.target.value)}
-                                  style={{ padding: "0.25rem 0.375rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.6875rem" }}>
-                                  <option value="">{t("— Clear —", "— Löschen —")}</option>
-                                  <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
-                                  <option value="affected">{t("Affected", "Betroffen")}</option>
-                                  <option value="fixed">{t("Fixed", "Behoben")}</option>
-                                  <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
-                                </select>
-                                <input type="text" value={vexEditJustification} onChange={e => setVexEditJustification(e.target.value)}
-                                  placeholder={t("Justification...", "Begründung...")}
-                                  style={{ padding: "0.25rem 0.375rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.6875rem" }} />
-                                <div style={{ display: "flex", gap: "0.25rem" }}>
-                                  <button type="button" onClick={async () => {
-                                    if (f.findingIds.length > 0) {
-                                      await updateFindingVex(f.findingIds[0], { vexStatus: vexEditStatus || null, vexJustification: vexEditJustification || undefined });
-                                    }
-                                    setVexEditingId(null);
-                                    if (scanId) {
-                                      const data = await fetchScanFindings(scanId, { limit: 500 });
-                                      setFindings(data.items);
-                                      setFindingsTotal(data.total);
-                                    }
-                                  }} style={{ fontSize: "0.625rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.15)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.25)", cursor: "pointer" }}>
-                                    {t("Save", "OK")}
-                                  </button>
-                                  <button type="button" onClick={() => setVexEditingId(null)}
-                                    style={{ fontSize: "0.625rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer" }}>
-                                    {t("Cancel", "X")}
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span
-                                onClick={() => { setVexEditingId(f.key); setVexEditStatus(f.vexStatus || ""); setVexEditJustification(f.vexJustification || ""); }}
-                                style={{ cursor: "pointer" }}
-                                title={f.vexJustification || t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
-                              >
-                                {f.vexStatus ? (() => {
-                                  const vexColors: Record<string, string> = { not_affected: "#69db7c", affected: "#ff6b6b", fixed: "#5c84ff", under_investigation: "#fcc419" };
-                                  const vexLabels: Record<string, string> = { not_affected: "Not Affected", affected: "Affected", fixed: "Fixed", under_investigation: "Investigating" };
-                                  const c = vexColors[f.vexStatus] || "rgba(255,255,255,0.4)";
-                                  return (
-                                    <span style={{ padding: "0.0625rem 0.375rem", borderRadius: "4px", fontSize: "0.6875rem", fontWeight: 500, background: `${c}15`, color: c, border: `1px solid ${c}30` }}>
-                                      {vexLabels[f.vexStatus] || f.vexStatus}
-                                    </span>
-                                  );
-                                })() : (
-                                  <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "0.6875rem" }}>—</span>
-                                )}
+                            <span
+                              onClick={() => {
+                                if (vexEditingId === f.key) {
+                                  setVexEditingId(null);
+                                } else {
+                                  setVexEditingId(f.key);
+                                  setVexEditStatus(f.vexStatus || "");
+                                  setVexEditJustification(f.vexJustification || "");
+                                  setVexEditDetail(f.vexDetail || "");
+                                }
+                              }}
+                              style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                              title={f.vexJustification || t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
+                            >
+                              {f.vexStatus ? (() => {
+                                const vexColors: Record<string, string> = { not_affected: "#69db7c", affected: "#ff6b6b", fixed: "#5c84ff", under_investigation: "#fcc419" };
+                                const vexLabels: Record<string, string> = { not_affected: "Not Affected", affected: "Affected", fixed: "Fixed", under_investigation: "Investigating" };
+                                const c = vexColors[f.vexStatus] || "rgba(255,255,255,0.4)";
+                                return (
+                                  <span style={{ padding: "0.0625rem 0.375rem", borderRadius: "4px", fontSize: "0.6875rem", fontWeight: 500, background: `${c}15`, color: c, border: `1px solid ${c}30` }}>
+                                    {vexLabels[f.vexStatus] || f.vexStatus}
+                                  </span>
+                                );
+                              })() : (
+                                <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "0.6875rem" }}>—</span>
+                              )}
+                              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.625rem" }}>
+                                {vexEditingId === f.key ? "▴" : "▾"}
                               </span>
-                            )}
+                            </span>
                           </td>
                           <td style={tdStyle}>
                             <div style={{ display: "flex", gap: "0.375rem" }}>
@@ -1187,6 +1414,78 @@ export const ScanDetailPage = () => {
                             </div>
                           </td>
                         </tr>
+                        {isVexExpanded && (
+                          <tr style={{ background: "rgba(99,230,190,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td colSpan={9} style={{ padding: "0.75rem 1rem" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "720px" }}>
+                                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                                  {t("Edit VEX annotation", "VEX-Annotation bearbeiten")}
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+                                  <label style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", minWidth: "70px" }}>
+                                    {t("Status", "Status")}
+                                  </label>
+                                  <select value={vexEditStatus} onChange={e => setVexEditStatus(e.target.value)}
+                                    style={{ padding: "0.3rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "0 0 200px" }}>
+                                    <option value="">{t("— Clear —", "— Löschen —")}</option>
+                                    <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
+                                    <option value="affected">{t("Affected", "Betroffen")}</option>
+                                    <option value="fixed">{t("Fixed", "Behoben")}</option>
+                                    <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
+                                  </select>
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+                                  <label style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", minWidth: "70px" }}>
+                                    {t("Justification", "Begründung")}
+                                  </label>
+                                  <input type="text" value={vexEditJustification} onChange={e => setVexEditJustification(e.target.value)}
+                                    placeholder={t("Short reason (e.g. code_not_reachable)", "Kurze Begründung (z.B. code_not_reachable)")}
+                                    style={{ padding: "0.3rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 300px", minWidth: 0 }} />
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "flex-start" }}>
+                                  <label style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", minWidth: "70px", paddingTop: "0.35rem" }}>
+                                    {t("Detail", "Detail")}
+                                  </label>
+                                  <textarea value={vexEditDetail} onChange={e => setVexEditDetail(e.target.value)}
+                                    rows={3}
+                                    placeholder={t("Longer explanation (optional)", "Längere Erläuterung (optional)")}
+                                    style={{ padding: "0.4rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 300px", minWidth: 0, resize: "vertical", fontFamily: "inherit" }} />
+                                </div>
+                                <div style={{ display: "flex", gap: "0.375rem", marginTop: "0.25rem" }}>
+                                  <button type="button" disabled={vexSaving} onClick={async () => {
+                                    setVexSaving(true);
+                                    try {
+                                      // Update every raw finding (multi-scanner duplicates) so the merged view is consistent
+                                      await Promise.all(f.findingIds.map(fid => updateFindingVex(fid, {
+                                        vexStatus: vexEditStatus || null,
+                                        vexJustification: vexEditJustification || undefined,
+                                        vexDetail: vexEditDetail || undefined,
+                                      })));
+                                      setVexEditingId(null);
+                                      if (scanId) {
+                                        const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
+                                        setFindings(data.items);
+                                        setFindingsTotal(data.total);
+                                      }
+                                    } catch (err) {
+                                      console.error("VEX save failed", err);
+                                      setToast({ type: "error", message: t("VEX save failed", "VEX-Speichern fehlgeschlagen") });
+                                    } finally {
+                                      setVexSaving(false);
+                                    }
+                                  }} style={{ padding: "0.3rem 0.75rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, cursor: vexSaving ? "wait" : "pointer", background: "rgba(99,230,190,0.18)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.4)" }}>
+                                    {vexSaving ? "..." : t("Save", "Speichern")}
+                                  </button>
+                                  <button type="button" onClick={() => setVexEditingId(null)} disabled={vexSaving}
+                                    style={{ padding: "0.3rem 0.75rem", borderRadius: "4px", fontSize: "0.75rem", cursor: "pointer", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                                    {t("Cancel", "Abbrechen")}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </tbody>

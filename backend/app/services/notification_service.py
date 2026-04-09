@@ -209,6 +209,8 @@ class NotificationService:
             "vendor_slug": payload.vendor_slug,
             "product_slug": payload.product_slug,
             "dql_query": payload.dql_query,
+            "scan_severity_threshold": payload.scan_severity_threshold,
+            "scan_target_filter": payload.scan_target_filter,
             "last_evaluated_at": None,
             "last_triggered_at": None,
         }
@@ -230,6 +232,8 @@ class NotificationService:
             "vendor_slug": payload.vendor_slug,
             "product_slug": payload.product_slug,
             "dql_query": payload.dql_query,
+            "scan_severity_threshold": payload.scan_severity_threshold,
+            "scan_target_filter": payload.scan_target_filter,
         }
         await repo.update(rule_id, updates)
         doc = await repo.get(rule_id)
@@ -273,25 +277,136 @@ class NotificationService:
         *,
         scan_id: str,
         target: str,
+        target_type: str = "",
         status: str,
         findings_count: int,
         duration_seconds: float,
+        summary: dict[str, int] | None = None,
+        scanners: list[str] | None = None,
+        source: str | None = None,
+        branch: str | None = None,
+        commit_sha: str | None = None,
+        image_ref: str | None = None,
+        error: str | None = None,
+        sbom_component_count: int | None = None,
+        top_findings: list[dict[str, str]] | None = None,
+        # Per-category summaries
+        alerts_summary: dict[str, int] | None = None,
+        sast_summary: dict[str, int] | None = None,
+        secrets_summary: dict[str, int] | None = None,
+        compliance_summary: dict[str, int] | None = None,
+        license_summary: dict[str, int] | None = None,
+        licenses: str | None = None,
+        top_alerts: list[dict[str, str]] | None = None,
+        top_sast: list[dict[str, str]] | None = None,
+        top_secrets: list[dict[str, str]] | None = None,
     ) -> None:
         icon = "\u2705" if status == "completed" else "\u274c"
         event_type = "scan_completed" if status == "completed" else "scan_failed"
         notify_type = "success" if status == "completed" else "failure"
-        variables = {
+        now_str = self._format_now()
+        summary = summary or {}
+        alerts_summary = alerts_summary or {}
+        sast_summary = sast_summary or {}
+        secrets_summary = secrets_summary or {}
+        compliance_summary = compliance_summary or {}
+        license_summary = license_summary or {}
+        variables: dict[str, Any] = {
             "icon": icon,
             "target": target,
+            "target_type": target_type,
             "status": status,
             "findings": str(findings_count),
             "duration": f"{duration_seconds:.1f}",
             "scan_id": scan_id,
+            "time": now_str,
+            # Vulnerability severity breakdown
+            "critical": str(summary.get("critical", 0)),
+            "high": str(summary.get("high", 0)),
+            "medium": str(summary.get("medium", 0)),
+            "low": str(summary.get("low", 0)),
+            "negligible": str(summary.get("negligible", 0)),
+            "unknown": str(summary.get("unknown", 0)),
+            # Security alerts (malware)
+            "alerts": str(alerts_summary.get("total", 0)),
+            "alerts_critical": str(alerts_summary.get("critical", 0)),
+            "alerts_high": str(alerts_summary.get("high", 0)),
+            "alerts_medium": str(alerts_summary.get("medium", 0)),
+            "alerts_low": str(alerts_summary.get("low", 0)),
+            # SAST
+            "sast": str(sast_summary.get("total", 0)),
+            "sast_critical": str(sast_summary.get("critical", 0)),
+            "sast_high": str(sast_summary.get("high", 0)),
+            "sast_medium": str(sast_summary.get("medium", 0)),
+            "sast_low": str(sast_summary.get("low", 0)),
+            # Secrets
+            "secrets": str(secrets_summary.get("total", 0)),
+            "secrets_verified": str(secrets_summary.get("verified", 0)),
+            "secrets_unverified": str(secrets_summary.get("unverified", 0)),
+            # Compliance (Dockle)
+            "compliance": str(compliance_summary.get("total", 0)),
+            "compliance_critical": str(compliance_summary.get("critical", 0)),
+            "compliance_high": str(compliance_summary.get("high", 0)),
+            "compliance_medium": str(compliance_summary.get("medium", 0)),
+            "compliance_low": str(compliance_summary.get("low", 0)),
+            # Licenses
+            "licenses": licenses or "N/A",
+            "licenses_allowed": str(license_summary.get("allowed", 0)),
+            "licenses_denied": str(license_summary.get("denied", 0)),
+            "licenses_warned": str(license_summary.get("warned", 0)),
+            "licenses_unknown": str(license_summary.get("unknown", 0)),
+            # Metadata
+            "scanners": ", ".join(scanners) if scanners else "N/A",
+            "source": source or "N/A",
+            "branch": branch or "N/A",
+            "commit_sha": commit_sha or "N/A",
+            "image_ref": image_ref or "N/A",
+            "error": (error[:500] if error else "N/A"),
+            "sbom_components": str(sbom_component_count) if sbom_component_count is not None else "N/A",
         }
+        if top_findings:
+            variables["findings_list"] = top_findings
+        if top_alerts:
+            variables["alerts_list"] = top_alerts
+        if top_sast:
+            variables["sast_list"] = top_sast
+        if top_secrets:
+            variables["secrets_list"] = top_secrets
+
         default_title = f"{icon} Hecate \u2014 SCA Scan {status.title()}"
-        default_body = f"Target: {target}\nStatus: {status}\nFindings: {findings_count}\nDuration: {duration_seconds:.1f}s\nScan ID: {scan_id}"
+        default_body_lines = [
+            f"Target: {target}",
+            f"Status: {status}",
+            f"Vulnerabilities: {findings_count} (C:{summary.get('critical', 0)} H:{summary.get('high', 0)} M:{summary.get('medium', 0)} L:{summary.get('low', 0)})",
+        ]
+        if alerts_summary.get("total", 0) > 0:
+            default_body_lines.append(f"Security Alerts: {alerts_summary['total']}")
+        if sast_summary.get("total", 0) > 0:
+            default_body_lines.append(f"SAST: {sast_summary['total']}")
+        if secrets_summary.get("total", 0) > 0:
+            default_body_lines.append(f"Secrets: {secrets_summary['total']}")
+        if compliance_summary.get("total", 0) > 0:
+            default_body_lines.append(f"Compliance: {compliance_summary['total']}")
+        default_body_lines.append(f"Duration: {duration_seconds:.1f}s")
+        if error:
+            default_body_lines.append(f"Error: {error[:300]}")
+        default_body = "\n".join(default_body_lines)
+
+        # Send via event-based rules (scan_completed / scan_failed)
         title, body = await self._apply_template(event_type, None, variables, default_title, default_body)
         await self.notify_event(event_type, title, body, notify_type=notify_type)
+
+        # Evaluate scan-specific rules
+        all_summaries = [summary, alerts_summary, sast_summary, secrets_summary, compliance_summary]
+        await self._evaluate_scan_rules(
+            event_type=event_type,
+            notify_type=notify_type,
+            variables=variables,
+            default_title=default_title,
+            default_body=default_body,
+            all_summaries=all_summaries,
+            target=target,
+        )
 
     async def notify_sync_failed(self, *, job_name: str, error: str) -> None:
         now_str = self._format_now()
@@ -320,6 +435,60 @@ class NotificationService:
         default_body = f"Source: {source}\nNew entries: {inserted}\nTime: {now_str}"
         title, body = await self._apply_template("new_vulnerabilities", None, variables, default_title, default_body)
         await self.notify_event("new_vulnerabilities", title, body, notify_type="info")
+
+    # ------------------------------------------------------------------
+    # Scan-rule evaluation
+    # ------------------------------------------------------------------
+
+    async def _evaluate_scan_rules(
+        self,
+        *,
+        event_type: str,
+        notify_type: str,
+        variables: dict[str, Any],
+        default_title: str,
+        default_body: str,
+        all_summaries: list[dict[str, int]],
+        target: str,
+    ) -> None:
+        """Evaluate scan-specific notification rules after a scan completes."""
+        if not self.enabled:
+            return
+
+        repo = await NotificationRuleRepository.create()
+        rules = await repo.list_enabled_by_type("scan")
+        if not rules:
+            return
+
+        now = datetime.now(tz=UTC)
+
+        for rule in rules:
+            try:
+                # Check severity threshold across ALL finding types
+                threshold = rule.get("scan_severity_threshold")
+                if threshold and not any(
+                    _meets_severity_threshold(s, threshold) for s in all_summaries if s
+                ):
+                    continue
+
+                # Check target filter
+                target_filter = rule.get("scan_target_filter")
+                if target_filter and not _matches_target_filter(target, target_filter):
+                    continue
+
+                tag = rule.get("apprise_tag", self._tags)
+                title, body = await self._apply_template(
+                    event_type, tag, variables, default_title, default_body,
+                )
+                await self.send(title=title, body=body, notify_type=notify_type, tag=tag)
+                await repo.update(str(rule["_id"]), {"last_triggered_at": now})
+            except Exception as exc:
+                log.warning(
+                    "notification.scan_rule_evaluation_failed",
+                    rule_id=str(rule["_id"]),
+                    rule_name=rule.get("name"),
+                    error=str(exc),
+                )
 
     # ------------------------------------------------------------------
     # Watch-rule evaluation (saved_search, vendor, product, dql)
@@ -422,8 +591,24 @@ class NotificationService:
             await repo.update(rule_id, {"last_evaluated_at": now})
             return
 
-        results = await vuln_service.search(query)
+        log.debug(
+            "notification.watch_rule_evaluating",
+            rule_id=rule_id,
+            rule_name=rule_name,
+            rule_type=rule_type,
+            dql_query=getattr(query, "dql_query", None),
+            time_filter=time_dql or "none",
+        )
+
+        results = await vuln_service.search(query, suppress_exceptions=False)
         await repo.update(rule_id, {"last_evaluated_at": now})
+
+        log.info(
+            "notification.watch_rule_evaluated",
+            rule_id=rule_id,
+            rule_name=rule_name,
+            result_count=len(results),
+        )
 
         if results:
             count = len(results)
@@ -716,11 +901,33 @@ class NotificationService:
             vendor_slug=doc.get("vendor_slug"),
             product_slug=doc.get("product_slug"),
             dql_query=doc.get("dql_query"),
+            scan_severity_threshold=doc.get("scan_severity_threshold"),
+            scan_target_filter=doc.get("scan_target_filter"),
             created_at=doc.get("created_at", datetime.now(tz=UTC)),
             updated_at=doc.get("updated_at", datetime.now(tz=UTC)),
             last_evaluated_at=doc.get("last_evaluated_at"),
             last_triggered_at=doc.get("last_triggered_at"),
         )
+
+
+_SEVERITY_ORDER = {"critical": 5, "high": 4, "medium": 3, "low": 2, "negligible": 1, "unknown": 0}
+
+
+def _meets_severity_threshold(summary: dict[str, int], threshold: str) -> bool:
+    """Return True if the scan has findings at or above *threshold* severity."""
+    min_rank = _SEVERITY_ORDER.get(threshold, 0)
+    return any(
+        summary.get(sev, 0) > 0
+        for sev, rank in _SEVERITY_ORDER.items()
+        if rank >= min_rank
+    )
+
+
+def _matches_target_filter(target: str, pattern: str) -> bool:
+    """Return True if *target* matches the filter *pattern* (supports ``*`` wildcards)."""
+    from fnmatch import fnmatch
+
+    return fnmatch(target.lower(), pattern.lower())
 
 
 def get_notification_service() -> NotificationService:

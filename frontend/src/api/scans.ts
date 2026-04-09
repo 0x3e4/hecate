@@ -47,7 +47,7 @@ export const fetchScan = async (scanId: string): Promise<Scan> => {
 
 export const fetchScanFindings = async (
   scanId: string,
-  params?: { severity?: string; limit?: number; offset?: number }
+  params?: { severity?: string; limit?: number; offset?: number; includeDismissed?: boolean }
 ): Promise<ScanFindingListResponse> => {
   const response = await api.get<ScanFindingListResponse>(`/v1/scans/${scanId}/findings`, { params });
   return response.data;
@@ -224,6 +224,25 @@ export const bulkUpdateVex = async (payload: {
   vexJustification?: string;
 }): Promise<{ updated: number }> => {
   const response = await api.post("/v1/scans/vex/bulk-update", payload);
+  return response.data;
+};
+
+export const bulkUpdateVexByIds = async (payload: {
+  findingIds: string[];
+  vexStatus: string;
+  vexJustification?: string;
+  vexDetail?: string;
+}): Promise<{ updated: number }> => {
+  const response = await api.post("/v1/scans/vex/bulk-update-by-ids", payload);
+  return response.data;
+};
+
+export const dismissFindings = async (payload: {
+  findingIds: string[];
+  dismissed: boolean;
+  reason?: string;
+}): Promise<{ updated: number }> => {
+  const response = await api.post("/v1/scans/findings/dismiss", payload);
   return response.data;
 };
 

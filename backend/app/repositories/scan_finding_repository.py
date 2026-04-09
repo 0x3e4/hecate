@@ -28,6 +28,7 @@ class ScanFindingRepository:
         await collection.create_index("vulnerability_id")
         await collection.create_index("severity")
         await collection.create_index("vex_status", sparse=True)
+        await collection.create_index("dismissed", sparse=True)
         return cls(collection)
 
     async def bulk_insert(self, findings: list[ScanFindingDocument]) -> int:
@@ -48,10 +49,13 @@ class ScanFindingRepository:
         severity: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        include_dismissed: bool = False,
     ) -> tuple[int, list[dict[str, Any]]]:
         query: dict[str, Any] = {"scan_id": scan_id}
         if severity:
             query["severity"] = severity
+        if not include_dismissed:
+            query["dismissed"] = {"$ne": True}
 
         try:
             total = await self.collection.count_documents(query)
@@ -305,6 +309,125 @@ class ScanFindingRepository:
             return result.modified_count
         except PyMongoError as exc:
             log.warning("scan_finding_repository.bulk_update_vex_failed", error=str(exc))
+            return 0
+
+    async def bulk_update_vex_by_ids(
+        self,
+        finding_ids: list[str],
+        vex_status: str,
+        vex_justification: str | None = None,
+        vex_detail: str | None = None,
+        vex_updated_by: str = "user",
+    ) -> int:
+        """Apply VEX status to a specific list of finding IDs (multi-select)."""
+        if not finding_ids:
+            return 0
+        try:
+            object_ids = [ObjectId(fid) for fid in finding_ids]
+        except Exception as exc:
+            log.warning("scan_finding_repository.bulk_update_vex_by_ids_invalid_id", error=str(exc))
+            return 0
+        try:
+            update: dict[str, Any] = {
+                "vex_status": vex_status,
+                "vex_justification": vex_justification,
+                "vex_detail": vex_detail,
+                "vex_updated_at": datetime.now(tz=UTC),
+                "vex_updated_by": vex_updated_by,
+            }
+            result = await self.collection.update_many(
+                {"_id": {"$in": object_ids}},
+                {"$set": update},
+            )
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.bulk_update_vex_by_ids_failed", error=str(exc))
+            return 0
+
+    async def bulk_update_dismissed(
+        self,
+        finding_ids: list[str],
+        dismissed: bool,
+        reason: str | None = None,
+        dismissed_by: str = "user",
+    ) -> int:
+        """Mark/unmark a list of findings as dismissed (personal-view filter)."""
+        if not finding_ids:
+            return 0
+        try:
+            object_ids = [ObjectId(fid) for fid in finding_ids]
+        except Exception as exc:
+            log.warning("scan_finding_repository.bulk_update_dismissed_invalid_id", error=str(exc))
+            return 0
+        try:
+            update: dict[str, Any] = {
+                "dismissed": dismissed,
+                "dismissed_reason": reason if dismissed else None,
+                "dismissed_at": datetime.now(tz=UTC) if dismissed else None,
+                "dismissed_by": dismissed_by if dismissed else None,
+            }
+            result = await self.collection.update_many(
+                {"_id": {"$in": object_ids}},
+                {"$set": update},
+            )
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.bulk_update_dismissed_failed", error=str(exc))
+            return 0
+
+    async def get_dismissed_findings_by_scan(self, scan_id: str) -> list[dict[str, Any]]:
+        """Get all findings that are dismissed for a scan."""
+        try:
+            cursor = self.collection.find({"scan_id": scan_id, "dismissed": True})
+            items: list[dict[str, Any]] = []
+            async for doc in cursor:
+                doc["_id"] = str(doc["_id"])
+                items.append(doc)
+            return items
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.get_dismissed_findings_failed", scan_id=scan_id, error=str(exc))
+            return []
+
+    async def carry_forward_dismissed(self, old_scan_id: str, new_scan_id: str) -> int:
+        """Copy dismissal flags from old scan findings to matching new scan findings."""
+        try:
+            old_dismissed = await self.get_dismissed_findings_by_scan(old_scan_id)
+            if not old_dismissed:
+                return 0
+
+            carried = 0
+            for old_finding in old_dismissed:
+                vuln_id = old_finding.get("vulnerability_id")
+                pkg_name = old_finding.get("package_name")
+                if not pkg_name:
+                    continue
+
+                # Match on vuln_id when present, else on package + title (non-CVE findings)
+                match: dict[str, Any] = {
+                    "scan_id": new_scan_id,
+                    "package_name": pkg_name,
+                    "dismissed": {"$ne": True},
+                }
+                if vuln_id:
+                    match["vulnerability_id"] = vuln_id
+                else:
+                    match["vulnerability_id"] = None
+                    if old_finding.get("title"):
+                        match["title"] = old_finding.get("title")
+
+                result = await self.collection.update_many(
+                    match,
+                    {"$set": {
+                        "dismissed": True,
+                        "dismissed_reason": old_finding.get("dismissed_reason"),
+                        "dismissed_at": old_finding.get("dismissed_at"),
+                        "dismissed_by": "carry-forward",
+                    }},
+                )
+                carried += result.modified_count
+            return carried
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.carry_forward_dismissed_failed", error=str(exc))
             return 0
 
     async def get_vex_findings_by_scan(self, scan_id: str) -> list[dict[str, Any]]:

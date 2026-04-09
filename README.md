@@ -102,7 +102,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **SBOM-Generierung:** CycloneDX-Format via Syft
 - **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export für EU Cyber Resilience Act (CRA) Compliance
 - **SBOM-Import:** Externes CycloneDX- und SPDX-SBOM-Upload (JSON oder Datei-Upload) mit automatischem Format-Erkennung und Schwachstellen-Matching gegen die Vulnerability-DB
-- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (not_affected, affected, fixed, under_investigation), Inline-Bearbeitung, Bulk-Updates, CycloneDX VEX Export/Import, automatischer VEX Carry-Forward zwischen Scans
+- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (not_affected, affected, fixed, under_investigation) mit Justification und Detail. Expandierbarer Inline-Editor, Multi-Select-Bulk-Updates aus dem Findings-Tab, CycloneDX VEX Export/Import. Automatischer VEX Carry-Forward zwischen Scans.
+- **Findings-Dismissal:** Verwerfen irrelevanter Findings als persönlicher Anzeigefilter (separat von VEX); standardmäßig ausgeblendet, "Show dismissed"-Toggle blendet sie wieder ein. Carry-Forward zwischen Scans wie bei VEX.
 - **License Compliance:** Lizenz-Policy-Management mit konfigurierbaren Regeln (erlaubt, verboten, Review-erforderlich), automatische Auswertung nach jedem Scan, License-Compliance-Übersicht über alle Scans
 - **Malware-Erkennung:** Hecate Analyzer mit 35 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads, SHA-256 Hash-Matching)
 - **Provenance-Verifikation:** Automatische Prüfung der Paketherkunft über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker)
@@ -130,7 +131,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Audit Log | Ingestion-Job-Protokolle mit Status, Dauer und Metadaten |
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (Summary-Cards, Spalten-Sortierung, Provenance-Filter), manueller Scan, SBOM-Import, Lizenzen, Scanner-Monitoring |
-| Scan-Detail | Findings (VEX-Status), SBOM (sortierbar, klickbare Filter, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
+| Scan-Detail | Findings (Multi-Select-Bulk-VEX, expandierbarer VEX-Editor, Show-Dismissed-Toggle, VEX-Import), SBOM (sortierbar, klickbare Filter, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
 | System | Single-Card-Layout. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | CI/CD | Anleitung zur CI/CD-Integration mit Pipeline-Beispielen (GitHub Actions, GitLab CI, Shell) |
 | API | Interaktive API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
@@ -142,6 +143,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Ereignisse:** SCA-Scan abgeschlossen/fehlgeschlagen, Sync-Fehler, neue Schwachstellen nach Ingestion
 - **Regelbasiert:** Konfigurierbare Regeln pro Ereignistyp mit individuellem Channel-Routing (Apprise-Tags)
 - **Watch-Regeln:** Automatische Auswertung von Saved Searches, Vendor-/Produkt-Watches und DQL-Queries nach Ingestion
+- **Scan-Regeln:** Bedingte Benachrichtigungen für SCA-Scans mit Severity-Schwellenwert (z.B. nur bei Critical/High) und Ziel-Filter (Wildcard-Pattern)
 - **Nachrichtenvorlagen:** Anpassbare Titel- und Body-Templates pro Event-Typ mit Platzhaltern (`{variable}`) und Schleifen (`{#each}...{/each}`)
 - **Test-Endpoint:** `POST /api/v1/notifications/test` mit optionalem Tag-Filter und Button in der System-Seite
 - **Fire-and-forget:** Benachrichtigungsfehler unterbrechen nie primäre Workflows
@@ -237,11 +239,14 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/scans/{scanId}/license-compliance` — License-Compliance-Auswertung eines Scans
 - `GET /api/v1/scans/license-overview` — License-Compliance-Übersicht über alle Scans
 
-### VEX (Vulnerability Exploitability Exchange)
-- `PUT /api/v1/scans/vex/findings/{findingId}` — VEX-Status eines Findings setzen
-- `POST /api/v1/scans/vex/bulk-update` — VEX-Status für mehrere Findings setzen
+### VEX (Vulnerability Exploitability Exchange) & Findings-Dismissal
+- `PUT /api/v1/scans/vex/findings/{findingId}` — VEX-Status eines Findings setzen (Status, Justification, Detail)
+- `POST /api/v1/scans/vex/bulk-update` — VEX-Status für alle Findings einer Vulnerability+Target setzen
+- `POST /api/v1/scans/vex/bulk-update-by-ids` — VEX-Status auf eine Liste von Finding-IDs anwenden (Multi-Select)
+- `POST /api/v1/scans/findings/dismiss` — Findings als verworfen/wiederhergestellt markieren
 - `POST /api/v1/scans/vex/import` — VEX-Dokument importieren (CycloneDX VEX)
 - `GET /api/v1/scans/{scanId}/vex/export` — VEX-Dokument exportieren (CycloneDX VEX)
+- `GET /api/v1/scans/{scanId}/findings?includeDismissed=true` — Verworfene Findings einbeziehen
 
 ### License Policies
 - `GET /api/v1/license-policies` — Lizenz-Policies auflisten

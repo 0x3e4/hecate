@@ -33,7 +33,7 @@ class NotificationRuleCreate(BaseModel):
     rule_type: str = Field(
         alias="ruleType",
         serialization_alias="ruleType",
-        description="event | saved_search | vendor | product | dql",
+        description="event | saved_search | vendor | product | dql | scan",
     )
     apprise_tag: str = Field(
         default="all",
@@ -77,6 +77,20 @@ class NotificationRuleCreate(BaseModel):
         serialization_alias="dqlQuery",
     )
 
+    # scan
+    scan_severity_threshold: str | None = Field(
+        default=None,
+        alias="scanSeverityThreshold",
+        serialization_alias="scanSeverityThreshold",
+        description="Minimum severity to trigger: critical, high, medium, low",
+    )
+    scan_target_filter: str | None = Field(
+        default=None,
+        alias="scanTargetFilter",
+        serialization_alias="scanTargetFilter",
+        description="Target name filter (supports * wildcards)",
+    )
+
     model_config = {"populate_by_name": True}
 
 
@@ -111,6 +125,16 @@ class NotificationRuleResponse(BaseModel):
         default=None,
         alias="dqlQuery",
         serialization_alias="dqlQuery",
+    )
+    scan_severity_threshold: str | None = Field(
+        default=None,
+        alias="scanSeverityThreshold",
+        serialization_alias="scanSeverityThreshold",
+    )
+    scan_target_filter: str | None = Field(
+        default=None,
+        alias="scanTargetFilter",
+        serialization_alias="scanTargetFilter",
     )
 
     created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
