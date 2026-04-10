@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
         import asyncio
         asyncio.create_task(_warm_stats_cache())
         asyncio.create_task(_warm_cwe_cache())
+        asyncio.create_task(_backfill_target_scan_state())
 
     async def _warm_stats_cache() -> None:  # pragma: no cover - cache warming
         """Warm up the stats cache on startup to improve first request performance."""
@@ -87,6 +88,21 @@ def create_app() -> FastAPI:
             import structlog
             log = structlog.get_logger()
             log.warning("cwe.cache_warming_failed", error=str(e))
+
+    async def _backfill_target_scan_state() -> None:  # pragma: no cover - one-time migration
+        """Populate denormalized scan state on targets that don't have it yet."""
+        try:
+            import structlog
+            log = structlog.get_logger()
+            from app.services.scan_service import get_scan_service
+            svc = await get_scan_service()
+            count = await svc.backfill_target_scan_state()
+            if count:
+                log.info("startup.backfill_target_scan_state_completed", targets_updated=count)
+        except Exception as e:
+            import structlog
+            log = structlog.get_logger()
+            log.warning("startup.backfill_target_scan_state_failed", error=str(e))
 
     @app.on_event("shutdown")
     async def _shutdown_scheduler() -> None:  # pragma: no cover - wiring code

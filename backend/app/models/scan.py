@@ -35,6 +35,12 @@ class ScanTargetDocument(BaseModel):
     scan_count: int = 0
     last_image_digest: str | None = Field(default=None, description="Image digest from most recent scan")
     last_commit_sha: str | None = Field(default=None, description="Commit SHA from most recent scan")
+    # Denormalized scan state (updated at scan lifecycle events)
+    latest_summary: dict[str, int] | None = Field(default=None)
+    latest_scan_id: str | None = Field(default=None)
+    has_running_scan: bool = Field(default=False)
+    running_scan_id: str | None = Field(default=None)
+    running_scan_status: str | None = Field(default=None)
 
 
 class ScanDocument(BaseModel):

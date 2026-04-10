@@ -92,6 +92,11 @@ export const fetchGlobalSbom = async (params?: {
   return response.data;
 };
 
+export const fetchBadgeCounts = async (): Promise<{ findings: number; sbom: number; licenses: number }> => {
+  const response = await api.get<{ findings: number; sbom: number; licenses: number }>("/v1/scans/badge-counts");
+  return response.data;
+};
+
 export const submitManualScan = async (request: SubmitScanRequest): Promise<SubmitScanResponse> => {
   const response = await api.post<SubmitScanResponse>("/v1/scans/manual", request);
   return response.data;

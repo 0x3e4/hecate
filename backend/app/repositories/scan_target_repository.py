@@ -60,6 +60,10 @@ class ScanTargetRepository:
                 payload["last_image_digest"] = existing["last_image_digest"]
             if "last_commit_sha" in existing:
                 payload["last_commit_sha"] = existing["last_commit_sha"]
+            # Preserve denormalized scan state
+            for field in ("latest_summary", "latest_scan_id", "has_running_scan", "running_scan_id", "running_scan_status"):
+                if field in existing:
+                    payload[field] = existing[field]
 
         try:
             result = await self.collection.replace_one(
@@ -204,6 +208,52 @@ class ScanTargetRepository:
             await self.collection.update_one({"_id": target_id}, {"$set": update})
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_fingerprint_failed", target_id=target_id, error=str(exc))
+
+    async def update_scan_state(
+        self,
+        target_id: str,
+        latest_summary: dict[str, int] | None,
+        latest_scan_id: str | None,
+        has_running_scan: bool = False,
+        running_scan_id: str | None = None,
+        running_scan_status: str | None = None,
+    ) -> None:
+        """Atomically update all denormalized scan state fields on a target."""
+        try:
+            await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {
+                    "latest_summary": latest_summary,
+                    "latest_scan_id": latest_scan_id,
+                    "has_running_scan": has_running_scan,
+                    "running_scan_id": running_scan_id,
+                    "running_scan_status": running_scan_status,
+                    "updated_at": datetime.now(tz=UTC),
+                }},
+            )
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_scan_state_failed", target_id=target_id, error=str(exc))
+
+    async def update_running_state(
+        self,
+        target_id: str,
+        has_running_scan: bool,
+        running_scan_id: str | None = None,
+        running_scan_status: str | None = None,
+    ) -> None:
+        """Update only the running-scan-related denormalized fields."""
+        try:
+            await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {
+                    "has_running_scan": has_running_scan,
+                    "running_scan_id": running_scan_id,
+                    "running_scan_status": running_scan_status,
+                    "updated_at": datetime.now(tz=UTC),
+                }},
+            )
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_running_state_failed", target_id=target_id, error=str(exc))
 
     async def list_auto_scan_targets(self) -> list[dict[str, Any]]:
         """List all targets where auto_scan is enabled (or not set, defaulting to True)."""

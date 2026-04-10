@@ -474,6 +474,14 @@ async def import_sbom_upload(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/badge-counts")
+async def get_badge_counts(
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, int]:
+    """Lightweight counts for tab badges (findings, SBOM, licenses)."""
+    return await service.get_badge_counts()
+
+
 @router.get("/license-overview", response_model=LicenseOverviewResponse)
 async def get_license_overview(
     service: ScanService = Depends(get_scan_service),
