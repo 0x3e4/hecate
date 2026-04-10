@@ -611,12 +611,17 @@ async def _run_semgrep(
 
         stdout, stderr, rc = await _run_command(cmd)
         # Semgrep exit codes: 0 = no findings, 1 = findings found, other = error
-        if rc not in (0, 1):
-            if not stdout.strip():
-                return ScannerResult(
-                    scanner="semgrep", format="semgrep-json", report={},
-                    error=f"Semgrep failed (exit {rc}): {_sanitize_error(stderr)}",
-                )
+        if rc not in (0, 1) and not stdout.strip():
+            return ScannerResult(
+                scanner="semgrep", format="semgrep-json", report={},
+                error=f"Semgrep failed (exit {rc}): {_sanitize_error(stderr)}",
+            )
+        if not stdout.strip():
+            err_detail = _sanitize_error(stderr) if stderr.strip() else "No output from scanner"
+            return ScannerResult(
+                scanner="semgrep", format="semgrep-json", report={},
+                error=f"Semgrep failed: {err_detail}",
+            )
         return _parse_json_output(stdout, "semgrep", "semgrep-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="semgrep", format="semgrep-json", report={}, error=str(exc))
