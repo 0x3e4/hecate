@@ -854,7 +854,7 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
           "datetime"
         );
         const epss =
-          vuln.epssScore != null ? `${vuln.epssScore.toFixed(2)}%` : "n/a";
+          vuln.epssScore != null ? `${(vuln.epssScore * 100).toFixed(2)}%` : "n/a";
         const ip = vuln.impactedProducts ?? [];
         let vendors: string;
         let products: string;
