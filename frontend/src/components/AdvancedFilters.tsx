@@ -277,8 +277,8 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
               onChange={handleInput("epssScoreMin")}
               placeholder="0.0"
               min={0}
-              max={1}
-              step={0.01}
+              max={100}
+              step={0.1}
             />
             <span className="advanced-filter-range-sep">–</span>
             <input
@@ -286,10 +286,10 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
               className="advanced-filter-input"
               value={value.epssScoreMax}
               onChange={handleInput("epssScoreMax")}
-              placeholder="1.0"
+              placeholder="100.0"
               min={0}
-              max={1}
-              step={0.01}
+              max={100}
+              step={0.1}
             />
           </div>
         </FilterGroup>
