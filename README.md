@@ -79,7 +79,8 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   ├── pyproject.toml    # Python-Abhängigkeiten (Poetry)
 │   └── Dockerfile        # Multi-Stage Build mit Scanner-Binaries
 ├── docs/                 # Architektur- und Konzeptdokumente
-├── .gitea/workflows/     # CI/CD (Build, Grype-Scan, SonarQube, Trivy)
+├── .gitea/workflows/     # CI/CD (ci.yml: Build, Hecate Scan, SonarQube)
+├── actions/              # Reusable Composite Actions (hecate-scan)
 ├── .env.example          # Umgebungsvariablen-Vorlage
 └── docker-compose.yml.example
 ```
@@ -234,6 +235,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /api/v1/scans/{scanId}/findings` — Findings eines Scans
 - `GET /api/v1/scans/{scanId}/sbom` — SBOM-Komponenten eines Scans
 - `GET /api/v1/scans/{scanId}/sbom/export` — SBOM-Export (CycloneDX 1.5 oder SPDX 2.3 JSON)
+- `GET /api/v1/scans/{scanId}/findings/export` — Findings-Export (SonarQube External Issues)
 - `GET /api/v1/scans/{scanId}/layers` — Layer-Analyse eines Scans (Dive)
 - `POST /api/v1/scans/import-sbom` — Externes SBOM importieren (JSON)
 - `POST /api/v1/scans/import-sbom/upload` — Externes SBOM importieren (Datei-Upload)
@@ -323,9 +325,9 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 
 ## CI/CD
 
-Gitea-Workflows in `.gitea/workflows/`:
-- **build.yml:** Docker-Image Build & Push (Backend + Frontend), Grype-Vulnerability-Scan (SARIF), optionaler Hecate SCA-Scan nach Image-Push
-- **scan.yml:** SonarQube Code-Analyse, Trivy Dependency-Scan mit SonarQube-Upload
+Gitea-Workflow `.gitea/workflows/ci.yml` + Composite Action `actions/hecate-scan/`:
+- **ci.yml:** SonarQube Code-Analyse, Docker-Image Build & Push, Hecate Security Scan (Images auf `main`, Source-Repos für PRs), SonarQube Findings-Upload
+- **Hecate Scan Action:** Wiederverwendbare Composite Action für GitHub/Gitea Actions — Scan-Übermittlung, Polling, Quality Gates, SonarQube-Export
 
 ## Technologie-Stack
 
@@ -341,7 +343,7 @@ Gitea-Workflows in `.gitea/workflows/`:
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | MCP Server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
-| CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
+| CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |
 
 ## Weiterführende Dokumentation
 

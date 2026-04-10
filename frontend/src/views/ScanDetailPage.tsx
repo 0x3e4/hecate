@@ -428,6 +428,7 @@ export const ScanDetailPage = () => {
 
   // VEX editing (single, expandable row)
   const [vexEditingId, setVexEditingId] = useState<string | null>(null);
+  const [detailExpandedId, setDetailExpandedId] = useState<string | null>(null);
   const [vexEditStatus, setVexEditStatus] = useState("");
   const [vexEditJustification, setVexEditJustification] = useState("");
   const [vexEditDetail, setVexEditDetail] = useState("");
@@ -1303,6 +1304,7 @@ export const ScanDetailPage = () => {
                       const fSnykUrl = buildSnykUrl(f.packageName, f.packageVersion, f.packageType);
                       const isSelected = selectedKeys.has(f.key);
                       const isVexExpanded = vexEditingId === f.key;
+                      const isDetailExpanded = detailExpandedId === f.key;
                       return (
                         <Fragment key={f.key}>
                         <tr style={{
@@ -1350,7 +1352,15 @@ export const ScanDetailPage = () => {
                               <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>
                             )}
                           </td>
-                          <td style={tdStyle}>{f.packageName}</td>
+                          <td style={tdStyle}>
+                            <span
+                              onClick={() => setDetailExpandedId(prev => prev === f.key ? null : f.key)}
+                              style={{ cursor: "pointer", color: "#74c0fc", borderBottom: "1px dashed rgba(116,192,252,0.3)" }}
+                              title={t("Click to show details", "Klicken für Details")}
+                            >
+                              {f.packageName}
+                            </span>
+                          </td>
                           <td style={tdStyle}>{f.packageVersion || "—"}</td>
                           <td style={tdStyle}><SeverityChip severity={f.severity} /></td>
                           <td style={tdStyle}>
@@ -1414,6 +1424,60 @@ export const ScanDetailPage = () => {
                             </div>
                           </td>
                         </tr>
+                        {isDetailExpanded && (
+                          <tr style={{ background: "rgba(116,192,252,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td colSpan={9} style={{ padding: "0.625rem 1rem" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.75rem", maxWidth: "800px" }}>
+                                {f.packagePath && (
+                                  <>
+                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Source", "Quelle")}</span>
+                                    <span style={{ color: "#74c0fc", fontFamily: "monospace", fontSize: "0.7rem" }}>{stripScanPath(f.packagePath)}</span>
+                                  </>
+                                )}
+                                {f.packageType && (
+                                  <>
+                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Type", "Typ")}</span>
+                                    <span style={{ color: "rgba(255,255,255,0.7)" }}>{TYPE_ALIASES[f.packageType] || f.packageType}</span>
+                                  </>
+                                )}
+                                {f.cvssScore != null && (
+                                  <>
+                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>CVSS</span>
+                                    <span style={{ color: f.cvssScore >= 9 ? "#ff6b6b" : f.cvssScore >= 7 ? "#ffa94d" : f.cvssScore >= 4 ? "#fcc419" : "#69db7c" }}>{f.cvssScore.toFixed(1)}</span>
+                                  </>
+                                )}
+                                {f.dataSource && (
+                                  <>
+                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Data Source", "Datenquelle")}</span>
+                                    <span style={{ color: "rgba(255,255,255,0.7)" }}>{f.dataSource}</span>
+                                  </>
+                                )}
+                                {f.title && (
+                                  <>
+                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Title", "Titel")}</span>
+                                    <span style={{ color: "rgba(255,255,255,0.7)" }}>{f.title}</span>
+                                  </>
+                                )}
+                                {f.urls.length > 0 && (
+                                  <>
+                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("References", "Referenzen")}</span>
+                                    <span style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+                                      {f.urls.slice(0, 5).map((url, i) => (
+                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                                          style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem" }}>
+                                          {urlDomain(url)}
+                                        </a>
+                                      ))}
+                                      {f.urls.length > 5 && (
+                                        <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6875rem" }}>+{f.urls.length - 5}</span>
+                                      )}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                         {isVexExpanded && (
                           <tr style={{ background: "rgba(99,230,190,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                             <td colSpan={9} style={{ padding: "0.75rem 1rem" }}>

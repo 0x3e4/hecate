@@ -174,7 +174,13 @@ if [ "\${CRITICAL}" -gt 0 ]; then
   exit 1
 fi`}</code></pre>
 
-        <h3 style={{ marginTop: "1.5rem" }}>GitHub Actions</h3>
+        <h3 style={{ marginTop: "1.5rem" }}>GitHub / Gitea Actions</h3>
+        <p className="muted" style={{ marginBottom: "0.5rem" }}>
+          {t(
+            "Use the Hecate Scan Action for a streamlined integration — it handles scan submission, polling, quality gates, and optional SonarQube export in a single step.",
+            "Verwenden Sie die Hecate Scan Action für eine vereinfachte Integration — sie übernimmt Scan-Übermittlung, Polling, Quality Gates und optionalen SonarQube-Export in einem Schritt."
+          )}
+        </p>
         <pre><code>{`name: Security Scan
 on:
   push:
@@ -185,43 +191,30 @@ jobs:
   hecate-scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Submit scan to Hecate
+      - uses: actions/checkout@v4
+
+      - name: Scan image via Hecate
         id: scan
-        run: |
-          RESPONSE=$(curl -sS -X POST "\${{ secrets.HECATE_URL }}/api/v1/scans" \\
-            -H "X-API-Key: \${{ secrets.HECATE_API_KEY }}" \\
-            -H "Content-Type: application/json" \\
-            -d '{
-              "target": "ghcr.io/\${{ github.repository }}:\${{ github.sha }}",
-              "type": "container_image",
-              "scanners": ["trivy", "grype", "syft", "hecate"],
-              "commitSha": "\${{ github.sha }}",
-              "branch": "\${{ github.ref_name }}",
-              "pipelineUrl": "\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}",
-              "source": "ci_cd"
-            }')
-          echo "scan_id=$(echo \$RESPONSE | jq -r '.scanId')" >> \$GITHUB_OUTPUT
-
-      - name: Wait for scan completion
-        id: result
-        run: |
-          SCAN_ID="\${{ steps.scan.outputs.scan_id }}"
-          while true; do
-            STATUS=$(curl -sS "\${{ secrets.HECATE_URL }}/api/v1/scans/\${SCAN_ID}" \\
-              -H "X-API-Key: \${{ secrets.HECATE_API_KEY }}" | jq -r '.status')
-            [ "\${STATUS}" != "running" ] && break
-            sleep 5
-          done
-          RESULT=$(curl -sS "\${{ secrets.HECATE_URL }}/api/v1/scans/\${SCAN_ID}" \\
-            -H "X-API-Key: \${{ secrets.HECATE_API_KEY }}")
-          echo "critical=$(echo \$RESULT | jq '.summary.critical')" >> \$GITHUB_OUTPUT
-          echo "high=$(echo \$RESULT | jq '.summary.high')" >> \$GITHUB_OUTPUT
-
-      - name: Fail on critical findings
-        if: steps.result.outputs.critical > 0
-        run: |
-          echo "::error::Critical vulnerabilities detected!"
-          exit 1`}</code></pre>
+        uses: rk/hecate/actions/hecate-scan@main
+        with:
+          hecate-url: \${{ secrets.HECATE_URL }}
+          api-key: \${{ secrets.SCA_API_KEY }}
+          target: "ghcr.io/\${{ github.repository }}:latest"
+          scanners: trivy,grype,syft,hecate
+          fail-on: critical
+          sonarqube-export: true`}</code></pre>
+        <p className="muted" style={{ marginTop: "0.5rem" }}>
+          {t(
+            "Action inputs: hecate-url, api-key, target, type (container_image / source_repo), scanners, fail-on (critical / high / medium / low), sonarqube-export, source-archive (base64 ZIP for private repos), timeout, poll-interval.",
+            "Action-Inputs: hecate-url, api-key, target, type (container_image / source_repo), scanners, fail-on (critical / high / medium / low), sonarqube-export, source-archive (Base64-ZIP für private Repos), timeout, poll-interval."
+          )}
+        </p>
+        <p className="muted" style={{ marginTop: "0.25rem" }}>
+          {t(
+            "Outputs: scan-id, status, findings-total, findings-critical, findings-high, sonarqube-report-file.",
+            "Outputs: scan-id, status, findings-total, findings-critical, findings-high, sonarqube-report-file."
+          )}
+        </p>
 
         <h3 style={{ marginTop: "1.5rem" }}>GitLab CI</h3>
         <pre><code>{`hecate-scan:

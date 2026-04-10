@@ -50,7 +50,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 
 - Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch, apprise
 - Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend}:latest`
-- CI/CD: Gitea Actions (`build.yml` Docker Build + Grype-Scan, `scan.yml` SonarQube + Trivy)
+- CI/CD: Gitea Actions (`ci.yml` Build + Hecate Scan + SonarQube), Composite Action (`actions/hecate-scan/`)
 
 ## Backend-Architektur
 
@@ -375,4 +375,4 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | MCP Server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
-| CI/CD | Gitea Actions, Grype, Trivy, SonarQube |
+| CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |
