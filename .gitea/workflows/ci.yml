@@ -139,7 +139,6 @@ jobs:
           type: container_image
           scanners: trivy,grype,syft,dockle,dive
           sonarqube-export: true
-          sonarqube-export: true
           sonarqube-output-file: hecate-backend-sonar.json
           file-path-prefix: backend
           commit-sha: ${{ github.sha }}
