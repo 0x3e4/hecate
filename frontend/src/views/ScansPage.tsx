@@ -8,6 +8,7 @@ import {
   fetchScans,
   fetchGlobalFindings,
   fetchGlobalSbom,
+  fetchBadgeCounts,
   submitManualScan,
   submitManualSourceArchiveScan,
   deleteScanTarget,
@@ -144,18 +145,16 @@ export const ScansPage = () => {
     setError(null);
     try {
       if (tab === "targets") {
-        const [targetsRes, scansRes, findingsRes, sbomRes, licenseRes] = await Promise.all([
+        const [targetsRes, scansRes, badgeCounts] = await Promise.all([
           fetchScanTargets({ limit: 100 }),
           fetchScans({ limit: 1 }),
-          fetchGlobalFindings({ limit: 1 }).catch(() => ({ total: 0, items: [] })),
-          fetchGlobalSbom({ limit: 1 }).catch(() => ({ total: 0, items: [] })),
-          fetchLicenseOverview().catch(() => ({ total: 0, items: [] })),
+          fetchBadgeCounts().catch(() => ({ findings: 0, sbom: 0, licenses: 0 })),
         ]);
         setTargets(targetsRes.items);
         setScanTotal(scansRes.total);
-        setGlobalFindingsTotal(findingsRes.total);
-        setSbomTotal(sbomRes.total);
-        setLicenseOverviewTotal(licenseRes.total);
+        setGlobalFindingsTotal(badgeCounts.findings);
+        setSbomTotal(badgeCounts.sbom);
+        setLicenseOverviewTotal(badgeCounts.licenses);
       } else if (tab === "scans") {
         // Load targets for filter dropdown if not yet loaded
         if (targets.length === 0) {

@@ -140,6 +140,39 @@ class ScanSbomRepository:
             log.warning("scan_sbom_repository.list_across_scans_consolidated_failed", error=str(exc))
             return 0, []
 
+    async def count_consolidated(self, scan_ids: list[str]) -> int:
+        """Count consolidated SBOM components (grouped by name+version) across scans."""
+        if not scan_ids:
+            return 0
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"scan_id": {"$in": scan_ids}}},
+            {"$group": {"_id": {"name": "$name", "version": "$version"}}},
+            {"$count": "total"},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            return result[0]["total"] if result else 0
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.count_consolidated_failed", error=str(exc))
+            return 0
+
+    async def count_distinct_licenses(self, scan_ids: list[str]) -> int:
+        """Count distinct license identifiers across scans."""
+        if not scan_ids:
+            return 0
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"scan_id": {"$in": scan_ids}}},
+            {"$unwind": "$licenses"},
+            {"$group": {"_id": "$licenses"}},
+            {"$count": "total"},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            return result[0]["total"] if result else 0
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.count_distinct_licenses_failed", error=str(exc))
+            return 0
+
     async def delete_by_scan(self, scan_id: str) -> int:
         try:
             result = await self.collection.delete_many({"scan_id": scan_id})

@@ -71,6 +71,46 @@ class ScanService:
         self.layer_repo = layer_repo
         self.audit_service = audit_service
 
+    async def backfill_target_scan_state(self) -> int:
+        """One-time migration: populate denormalized scan state on all targets."""
+        total, targets = await self.target_repo.list_targets(limit=10000)
+        count = 0
+        for target in targets:
+            tid = target.get("target_id")
+            if not tid:
+                continue
+            # Skip already-migrated targets
+            if target.get("latest_scan_id") is not None:
+                continue
+            latest = await self.scan_repo.get_latest_by_target(tid)
+            summary = None
+            scan_id = None
+            if latest:
+                summary = await self._get_deduped_summary(latest)
+                scan_id = str(latest.get("_id", ""))
+            running = await self.scan_repo.get_running_scan_id(tid)
+            await self.target_repo.update_scan_state(
+                tid,
+                latest_summary=summary,
+                latest_scan_id=scan_id,
+                has_running_scan=running is not None,
+                running_scan_id=running[0] if running else None,
+                running_scan_status=running[1] if running else None,
+            )
+            count += 1
+        return count
+
+    async def _clear_running_state(self, target_id: str, completed_scan_id: str) -> None:
+        """Clear running state on target, or point to another running scan if one exists."""
+        try:
+            other = await self.scan_repo.get_running_scan_id(target_id)
+            if other and other[0] != completed_scan_id:
+                await self.target_repo.update_running_state(target_id, True, other[0], other[1])
+            else:
+                await self.target_repo.update_running_state(target_id, False, None, None)
+        except Exception:
+            log.warning("scan_service.clear_running_state_failed", target_id=target_id)
+
     async def submit_scan(
         self,
         target: str,
@@ -130,6 +170,7 @@ class ScanService:
             started_at=submitted_at,
         )
         scan_id = await self.scan_repo.insert(scan_doc)
+        await self.target_repo.update_running_state(target_id, True, scan_id, "pending")
 
         # 3. Fire off background task and return immediately
         task = asyncio.create_task(
@@ -182,6 +223,7 @@ class ScanService:
                 started_at = datetime.now(tz=UTC)
                 await self.scan_repo.update_status(scan_id, "running")
                 await self.scan_repo.update_fields(scan_id, {"started_at": started_at})
+                await self.target_repo.update_running_state(target_id, True, scan_id, "running")
                 publish_job_started(f"sca_scan_{scan_id}", started_at, target=target, scan_id=scan_id)
 
                 # Wait for scanner sidecar to have sufficient resources
@@ -199,10 +241,15 @@ class ScanService:
                                                duration_seconds=(finished_at - submitted_at).total_seconds())
             await self.finding_repo.delete_by_scan(scan_id)
             await self.sbom_repo.delete_by_scan(scan_id)
+            await self._clear_running_state(target_id, scan_id)
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error="cancelled")
         except Exception as exc:
             log.exception("scan_service.scan_background_error", scan_id=scan_id, error=str(exc))
             finished_at = datetime.now(tz=UTC)
+            await self.scan_repo.update_status(scan_id, "failed", finished_at=finished_at,
+                                               duration_seconds=(finished_at - submitted_at).total_seconds(),
+                                               error=str(exc)[:300])
+            await self._clear_running_state(target_id, scan_id)
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
     async def import_sbom(
@@ -316,6 +363,12 @@ class ScanService:
         )
 
         await self.target_repo.update_last_scan(target_id, started_at)
+        await self.target_repo.update_scan_state(
+            target_id,
+            latest_summary=summary.model_dump(),
+            latest_scan_id=scan_id_val,
+            has_running_scan=False,
+        )
 
         return {
             "scan_id": scan_id_val,
@@ -521,6 +574,16 @@ class ScanService:
         except Exception:
             pass
         await self.target_repo.update_last_scan(target_id, finished_at)
+        # Update denormalized scan state on target
+        if status == "completed":
+            await self.target_repo.update_scan_state(
+                target_id,
+                latest_summary=final_summary.model_dump(),
+                latest_scan_id=scan_id,
+                has_running_scan=False,
+            )
+        else:
+            await self._clear_running_state(target_id, scan_id)
 
         # Persist fingerprint for change detection on future auto-scans
         if scan_metadata.get("image_digest"):
@@ -793,19 +856,13 @@ class ScanService:
         total, items = await self.target_repo.list_targets(
             type_filter=type_filter, group_filter=group_filter, limit=limit, offset=offset,
         )
-        # Enrich with latest scan summary + scan ID + running status
+        # Denormalized fields are on the target documents; fill defaults for un-migrated ones
         for item in items:
-            target_id = item.get("target_id")
-            if target_id:
-                latest = await self.scan_repo.get_latest_by_target(target_id)
-                if latest:
-                    item["latest_summary"] = await self._get_deduped_summary(latest)
-                    item["latest_scan_id"] = str(latest.get("_id", ""))
-                item["has_running_scan"] = await self.scan_repo.has_running_scan(target_id)
-                if item["has_running_scan"]:
-                    result = await self.scan_repo.get_running_scan_id(target_id)
-                    if result:
-                        item["running_scan_id"], item["running_scan_status"] = result
+            item.setdefault("latest_summary", None)
+            item.setdefault("latest_scan_id", None)
+            item.setdefault("has_running_scan", False)
+            item.setdefault("running_scan_id", None)
+            item.setdefault("running_scan_status", None)
         return total, items
 
     async def get_target(self, target_id: str) -> dict[str, Any] | None:
@@ -839,9 +896,19 @@ class ScanService:
         await self.sbom_repo.delete_by_scan(scan_id)
         deleted = await self.scan_repo.delete(scan_id)
 
-        # Decrement the target's scan count
+        # Decrement the target's scan count and refresh denormalized state
         if deleted and target_id:
             await self.target_repo.decrement_scan_count(target_id)
+            # Re-derive latest scan state after deletion
+            latest = await self.scan_repo.get_latest_by_target(target_id)
+            if latest:
+                summary = await self._get_deduped_summary(latest)
+                await self.target_repo.update_scan_state(
+                    target_id, latest_summary=summary,
+                    latest_scan_id=str(latest.get("_id", "")),
+                )
+            else:
+                await self.target_repo.update_scan_state(target_id, None, None)
 
         return deleted
 
@@ -998,6 +1065,18 @@ class ScanService:
     ) -> list[str]:
         """Get the latest completed scan ID for each target."""
         return await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
+
+    async def get_badge_counts(self) -> dict[str, int]:
+        """Return lightweight counts for tab badges (findings, SBOM, licenses)."""
+        scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
+        if not scan_ids:
+            return {"findings": 0, "sbom": 0, "licenses": 0}
+        findings_count, sbom_count, license_count = await asyncio.gather(
+            self.finding_repo.count_consolidated(scan_ids),
+            self.sbom_repo.count_consolidated(scan_ids),
+            self.sbom_repo.count_distinct_licenses(scan_ids),
+        )
+        return {"findings": findings_count, "sbom": sbom_count, "licenses": license_count}
 
     async def get_global_sbom(
         self,
@@ -1206,6 +1285,9 @@ class ScanService:
                                            duration_seconds=(finished_at - started).total_seconds())
         await self.finding_repo.delete_by_scan(scan_id)
         await self.sbom_repo.delete_by_scan(scan_id)
+        target_id = scan.get("target_id")
+        if target_id:
+            await self._clear_running_state(target_id, scan_id)
         return True
 
     async def get_scanner_stats(self) -> dict[str, Any]:
