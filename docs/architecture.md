@@ -49,7 +49,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 ```
 
 - Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch, apprise
-- Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend}:latest`
+- Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend,scanner}:latest`
 - CI/CD: Gitea Actions (`ci.yml` Build + Hecate Scan + SonarQube), Composite Action (`actions/hecate-scan/`)
 
 ## Backend-Architektur

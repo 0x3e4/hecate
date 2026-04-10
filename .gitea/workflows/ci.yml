@@ -21,6 +21,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^version' backend/pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
         env:
@@ -28,8 +34,8 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST }}
         with:
           args: >
-            -Dsonar.projectVersion=0.1.0
-            -Dsonar.projectKey=msc-app
+            -Dsonar.projectVersion=${{ steps.version.outputs.value }}
+            -Dsonar.projectKey=hecate
 
   # ── Build and push Docker images (main only) ───────────────────────
   BuildAndPushImages:
@@ -54,7 +60,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.CONTAINER_REGISTRY }}/${{ github.repository }}/backend
+          images: ${{ env.CONTAINER_REGISTRY }}/rk/hecate-backend
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -74,7 +80,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.CONTAINER_REGISTRY }}/${{ github.repository }}/frontend
+          images: ${{ env.CONTAINER_REGISTRY }}/rk/hecate-frontend
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -88,6 +94,26 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for scanner
+        id: meta-scanner
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.CONTAINER_REGISTRY }}/rk/hecate-scanner
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push scanner image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scanner
+          push: true
+          tags: ${{ steps.meta-scanner.outputs.tags }}
+          labels: ${{ steps.meta-scanner.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -109,11 +135,13 @@ jobs:
         with:
           hecate-url: ${{ secrets.HECATE_URL }}
           api-key: ${{ secrets.SCA_API_KEY }}
-          target: ${{ env.CONTAINER_REGISTRY }}/${{ github.repository }}/backend:latest
+          target: ${{ env.CONTAINER_REGISTRY }}/rk/hecate-backend:latest
           type: container_image
-          scanners: trivy,grype,syft,hecate
+          scanners: trivy,grype,syft,dockle,dive
+          sonarqube-export: true
           sonarqube-export: true
           sonarqube-output-file: hecate-backend-sonar.json
+          file-path-prefix: backend
           commit-sha: ${{ github.sha }}
           branch: ${{ github.ref_name }}
 
@@ -123,20 +151,38 @@ jobs:
         with:
           hecate-url: ${{ secrets.HECATE_URL }}
           api-key: ${{ secrets.SCA_API_KEY }}
-          target: ${{ env.CONTAINER_REGISTRY }}/${{ github.repository }}/frontend:latest
+          target: ${{ env.CONTAINER_REGISTRY }}/rk/hecate-frontend:latest
           type: container_image
-          scanners: trivy,grype,syft,hecate
+          scanners: trivy,grype,syft,dockle,dive
           sonarqube-export: true
           sonarqube-output-file: hecate-frontend-sonar.json
+          file-path-prefix: frontend
+          commit-sha: ${{ github.sha }}
+          branch: ${{ github.ref_name }}
+
+      - name: Scan scanner image via Hecate
+        id: scan-scanner
+        uses: ./actions/hecate-scan
+        with:
+          hecate-url: ${{ secrets.HECATE_URL }}
+          api-key: ${{ secrets.SCA_API_KEY }}
+          target: ${{ env.CONTAINER_REGISTRY }}/rk/hecate-scanner:latest
+          type: container_image
+          scanners: trivy,grype,syft,dockle,dive
+          sonarqube-export: true
+          sonarqube-output-file: hecate-scanner-sonar.json
+          file-path-prefix: scanner
           commit-sha: ${{ github.sha }}
           branch: ${{ github.ref_name }}
 
       - name: Merge SonarQube reports
         run: |
-          jq -s '{ issues: map(.issues) | add }' \
-            hecate-backend-sonar.json hecate-frontend-sonar.json \
+          jq -s '{
+            rules: (map(.rules) | add | unique_by(.id)),
+            issues: (map(.issues) | add)
+          }' hecate-backend-sonar.json hecate-frontend-sonar.json hecate-scanner-sonar.json \
             > hecate-sonar-combined.json
-          echo "Merged $(jq '.issues | length' hecate-sonar-combined.json) issues"
+          echo "Merged $(jq '.issues | length' hecate-sonar-combined.json) issues, $(jq '.rules | length' hecate-sonar-combined.json) rules"
 
       - name: Upload findings to SonarQube
         env:
@@ -149,7 +195,7 @@ jobs:
           "$SCANNER_BIN" \
             -Dsonar.host.url="$SONAR_HOST_URL" \
             -Dsonar.token="$SONAR_TOKEN" \
-            -Dsonar.projectKey=msc-app \
+            -Dsonar.projectKey=hecate \
             -Dsonar.sources=. \
             -Dsonar.externalIssuesReportPaths="hecate-sonar-combined.json"
 
@@ -180,7 +226,7 @@ jobs:
           api-key: ${{ secrets.SCA_API_KEY }}
           target: ${{ github.server_url }}/${{ github.repository }}
           type: source_repo
-          scanners: trivy,grype,syft,hecate,semgrep,trufflehog
+          scanners: trivy,grype,syft,osv-scanner,hecate,semgrep,trufflehog
           source-archive: ${{ steps.archive.outputs.archive }}
           sonarqube-export: true
           sonarqube-output-file: hecate-sonar-issues.json
@@ -199,7 +245,7 @@ jobs:
           "$SCANNER_BIN" \
             -Dsonar.host.url="$SONAR_HOST_URL" \
             -Dsonar.token="$SONAR_TOKEN" \
-            -Dsonar.projectKey=msc-app \
+            -Dsonar.projectKey=hecate \
             -Dsonar.sources=. \
             -Dsonar.externalIssuesReportPaths="hecate-sonar-issues.json" \
             -Dsonar.pullrequest.key=${{ github.event.pull_request.number }} \

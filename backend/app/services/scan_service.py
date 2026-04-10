@@ -1127,21 +1127,29 @@ class ScanService:
 
         return doc, filename
 
-    async def export_findings_sonarqube(self, scan_id: str) -> tuple[dict[str, Any], str]:
-        """Export scan findings as SonarQube external issues JSON. Returns (document, filename)."""
+    async def export_findings_sonarqube(
+        self, scan_id: str, file_path_prefix: str = "",
+    ) -> tuple[dict[str, Any], str]:
+        """Export scan findings as SonarQube external issues JSON. Returns (document, filename).
+
+        ``file_path_prefix`` is prepended to every generated file path so that
+        paths like ``Dockerfile`` become ``backend/Dockerfile`` and match the
+        files SonarQube has actually indexed.
+        """
         scan = await self.scan_repo.get(scan_id)
         if not scan:
             raise ValueError(f"Scan {scan_id} not found")
 
         _, findings = await self.finding_repo.list_by_scan(scan_id, limit=5000, include_dismissed=False)
 
-        severity_map = {
-            "critical": "CRITICAL",
-            "high": "MAJOR",
-            "medium": "MINOR",
-            "low": "INFO",
-            "negligible": "INFO",
-            "unknown": "INFO",
+        # SonarQube impact severity (new format)
+        impact_map = {
+            "critical": "HIGH",
+            "high": "HIGH",
+            "medium": "MEDIUM",
+            "low": "LOW",
+            "negligible": "LOW",
+            "unknown": "LOW",
         }
 
         # Fallback file paths by package type when package_path is absent
@@ -1167,10 +1175,14 @@ class ScanService:
             "swift": "Package.resolved",
         }
 
+        prefix = file_path_prefix.strip("/")
+
+        rules: dict[str, dict[str, Any]] = {}
         issues: list[dict[str, Any]] = []
         for f in findings:
             vuln_id = f.get("vulnerability_id") or f.get("title") or "unknown"
-            sev = severity_map.get(f.get("severity", "unknown"), "INFO")
+            raw_sev = f.get("severity", "unknown")
+            impact_sev = impact_map.get(raw_sev, "LOW")
             pkg_name = f.get("package_name", "unknown")
             pkg_version = f.get("package_version", "")
             title = f.get("title") or vuln_id
@@ -1185,22 +1197,34 @@ class ScanService:
                 parts.append(f"(fix: {fix})")
             message = " ".join(parts)
 
-            # Determine file path
+            # Determine file path — must be repo-relative for SonarQube to index
             file_path = f.get("package_path") or ""
             if not file_path or file_path.startswith("/"):
                 pkg_type = (f.get("package_type") or "").lower()
                 file_path = package_type_files.get(pkg_type, "Dockerfile")
+            if prefix and not file_path.startswith(prefix):
+                file_path = f"{prefix}/{file_path}"
+
+            # Collect unique rules (deduplicated by vuln_id)
+            if vuln_id not in rules:
+                rules[vuln_id] = {
+                    "id": vuln_id,
+                    "name": title,
+                    "description": f.get("description") or title,
+                    "engineId": "hecate",
+                    "cleanCodeAttribute": "TRUSTWORTHY",
+                    "impacts": [
+                        {"softwareQuality": "SECURITY", "severity": impact_sev},
+                    ],
+                }
 
             issues.append({
-                "engineId": "hecate",
                 "ruleId": vuln_id,
-                "severity": sev,
-                "type": "VULNERABILITY",
+                "effortMinutes": 30 if impact_sev == "HIGH" else 15,
                 "primaryLocation": {
                     "message": message,
                     "filePath": file_path,
                 },
-                "effortMinutes": 30 if sev in ("CRITICAL", "MAJOR") else 15,
             })
 
         target = await self.target_repo.get(scan.get("target_id", ""))
@@ -1209,7 +1233,7 @@ class ScanService:
         date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
         filename = f"{safe_name}-sonarqube-{date_str}.json"
 
-        return {"issues": issues}, filename
+        return {"rules": list(rules.values()), "issues": issues}, filename
 
     async def find_by_cve(
         self, cve_id: str, limit: int = 50, offset: int = 0

@@ -58,6 +58,10 @@ inputs:
     description: "Branch name to attach to the scan"
     required: false
     default: "${{ github.ref_name }}"
+  file-path-prefix:
+    description: "Prefix for SonarQube file paths (e.g. 'backend' so Dockerfile becomes backend/Dockerfile)"
+    required: false
+    default: ""
 
 outputs:
   scan-id:
@@ -233,7 +237,13 @@ runs:
         SCAN_ID="${{ steps.submit.outputs.scan_id }}"
         OUTPUT="${{ inputs.sonarqube-output-file }}"
 
-        curl -sS -f "${{ inputs.hecate-url }}/api/v1/scans/${SCAN_ID}/findings/export?format=sonarqube" \
+        PREFIX="${{ inputs.file-path-prefix }}"
+        URL="${{ inputs.hecate-url }}/api/v1/scans/${SCAN_ID}/findings/export?format=sonarqube"
+        if [ -n "$PREFIX" ]; then
+          URL="${URL}&filePathPrefix=${PREFIX}"
+        fi
+
+        curl -sS -f "$URL" \
           -H "X-API-Key: ${{ inputs.api-key }}" \
           -o "$OUTPUT"
 
