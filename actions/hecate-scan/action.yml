@@ -1,0 +1,242 @@
+name: "Hecate Security Scan"
+description: "Submit a vulnerability scan to Hecate, poll for results, and optionally export findings for SonarQube."
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  hecate-url:
+    description: "Hecate instance base URL (e.g. https://hecate.example.com)"
+    required: true
+  api-key:
+    description: "SCA API key for authenticating with Hecate"
+    required: true
+  target:
+    description: "Container image reference or source repository URL"
+    required: true
+  type:
+    description: "Scan target type: container_image or source_repo"
+    required: false
+    default: "container_image"
+  scanners:
+    description: "Comma-separated list of scanners (e.g. trivy,grype,syft,hecate). Uses server defaults if empty."
+    required: false
+    default: ""
+  source-archive:
+    description: "Base64-encoded ZIP archive of source code (for private repos / source_repo scans)"
+    required: false
+    default: ""
+  wait:
+    description: "Wait for scan to complete before returning"
+    required: false
+    default: "true"
+  poll-interval:
+    description: "Seconds between status polls"
+    required: false
+    default: "10"
+  timeout:
+    description: "Maximum seconds to wait for scan completion"
+    required: false
+    default: "600"
+  fail-on:
+    description: "Fail the step if findings at this severity or above exist (critical, high, medium, low). Empty = never fail."
+    required: false
+    default: ""
+  sonarqube-export:
+    description: "Download findings in SonarQube external issues format"
+    required: false
+    default: "false"
+  sonarqube-output-file:
+    description: "Output filename for the SonarQube report"
+    required: false
+    default: "hecate-sonar-issues.json"
+  commit-sha:
+    description: "Commit SHA to attach to the scan"
+    required: false
+    default: "${{ github.sha }}"
+  branch:
+    description: "Branch name to attach to the scan"
+    required: false
+    default: "${{ github.ref_name }}"
+
+outputs:
+  scan-id:
+    description: "The Hecate scan ID"
+    value: ${{ steps.submit.outputs.scan_id }}
+  status:
+    description: "Final scan status (completed, failed, timeout)"
+    value: ${{ steps.poll.outputs.status }}
+  findings-total:
+    description: "Total number of findings"
+    value: ${{ steps.poll.outputs.findings_total }}
+  findings-critical:
+    description: "Number of critical findings"
+    value: ${{ steps.poll.outputs.findings_critical }}
+  findings-high:
+    description: "Number of high findings"
+    value: ${{ steps.poll.outputs.findings_high }}
+  sonarqube-report-file:
+    description: "Path to the SonarQube external issues JSON file"
+    value: ${{ steps.sonarqube.outputs.report_file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Submit scan to Hecate
+      id: submit
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Build scanners array
+        SCANNERS_JSON="null"
+        if [ -n "${{ inputs.scanners }}" ]; then
+          SCANNERS_JSON=$(echo '${{ inputs.scanners }}' | tr ',' '\n' | jq -R . | jq -s .)
+        fi
+
+        # Build request body
+        BODY=$(jq -n \
+          --arg target "${{ inputs.target }}" \
+          --arg type "${{ inputs.type }}" \
+          --argjson scanners "$SCANNERS_JSON" \
+          --arg commitSha "${{ inputs.commit-sha }}" \
+          --arg branch "${{ inputs.branch }}" \
+          --arg pipelineUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          --arg source "ci_cd" \
+          --arg archive "${{ inputs.source-archive }}" \
+          '{
+            target: $target,
+            type: $type,
+            commitSha: $commitSha,
+            branch: $branch,
+            pipelineUrl: $pipelineUrl,
+            source: $source
+          }
+          | if $scanners != null then . + {scanners: $scanners} else . end
+          | if $archive != "" then . + {sourceArchiveBase64: $archive} else . end')
+
+        RESPONSE=$(curl -sS -f -X POST "${{ inputs.hecate-url }}/api/v1/scans" \
+          -H "X-API-Key: ${{ inputs.api-key }}" \
+          -H "Content-Type: application/json" \
+          -d "$BODY")
+
+        SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+        if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
+          echo "::error::Failed to submit scan. Response: $RESPONSE"
+          exit 1
+        fi
+
+        echo "scan_id=$SCAN_ID" >> "$GITHUB_OUTPUT"
+        echo "Scan submitted: $SCAN_ID"
+
+    - name: Wait for scan completion
+      id: poll
+      if: inputs.wait == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SCAN_ID="${{ steps.submit.outputs.scan_id }}"
+        ELAPSED=0
+        TIMEOUT=${{ inputs.timeout }}
+        INTERVAL=${{ inputs.poll-interval }}
+
+        while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
+          RESULT=$(curl -sS -f "${{ inputs.hecate-url }}/api/v1/scans/${SCAN_ID}" \
+            -H "X-API-Key: ${{ inputs.api-key }}")
+
+          STATUS=$(echo "$RESULT" | jq -r '.status')
+          echo "Status: $STATUS (${ELAPSED}s / ${TIMEOUT}s)"
+
+          if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
+            CRITICAL=$(echo "$RESULT" | jq '.summary.critical // 0')
+            HIGH=$(echo "$RESULT" | jq '.summary.high // 0')
+            MEDIUM=$(echo "$RESULT" | jq '.summary.medium // 0')
+            LOW=$(echo "$RESULT" | jq '.summary.low // 0')
+            TOTAL=$(echo "$RESULT" | jq '.summary.total // 0')
+
+            echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+            echo "findings_total=$TOTAL" >> "$GITHUB_OUTPUT"
+            echo "findings_critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+            echo "findings_high=$HIGH" >> "$GITHUB_OUTPUT"
+
+            echo "Scan $STATUS — Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM, Low: $LOW, Total: $TOTAL"
+
+            if [ "$STATUS" = "failed" ]; then
+              echo "::warning::Hecate scan failed"
+            fi
+            break
+          fi
+
+          sleep "$INTERVAL"
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done
+
+        if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+          echo "status=timeout" >> "$GITHUB_OUTPUT"
+          echo "findings_total=0" >> "$GITHUB_OUTPUT"
+          echo "findings_critical=0" >> "$GITHUB_OUTPUT"
+          echo "findings_high=0" >> "$GITHUB_OUTPUT"
+          echo "::warning::Hecate scan timed out after ${TIMEOUT}s"
+        fi
+
+    - name: Check severity threshold
+      if: inputs.wait == 'true' && inputs.fail-on != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        FAIL_ON="${{ inputs.fail-on }}"
+        CRITICAL=${{ steps.poll.outputs.findings_critical }}
+        HIGH=${{ steps.poll.outputs.findings_high }}
+
+        case "$FAIL_ON" in
+          critical)
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "::error::$CRITICAL critical vulnerability/ies found"
+              exit 1
+            fi
+            ;;
+          high)
+            TOTAL=$((CRITICAL + HIGH))
+            if [ "$TOTAL" -gt 0 ]; then
+              echo "::error::$TOTAL critical+high vulnerability/ies found"
+              exit 1
+            fi
+            ;;
+          medium)
+            MEDIUM=${{ steps.poll.outputs.findings_total }}
+            # Total includes everything; for medium+ we subtract low
+            if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+              echo "::error::Critical/high vulnerability/ies found"
+              exit 1
+            fi
+            ;;
+          low)
+            TOTAL=${{ steps.poll.outputs.findings_total }}
+            if [ "$TOTAL" -gt 0 ]; then
+              echo "::error::$TOTAL vulnerability/ies found"
+              exit 1
+            fi
+            ;;
+        esac
+
+        echo "Severity threshold '$FAIL_ON' passed"
+
+    - name: Export SonarQube report
+      id: sonarqube
+      if: inputs.wait == 'true' && inputs.sonarqube-export == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SCAN_ID="${{ steps.submit.outputs.scan_id }}"
+        OUTPUT="${{ inputs.sonarqube-output-file }}"
+
+        curl -sS -f "${{ inputs.hecate-url }}/api/v1/scans/${SCAN_ID}/findings/export?format=sonarqube" \
+          -H "X-API-Key: ${{ inputs.api-key }}" \
+          -o "$OUTPUT"
+
+        ISSUE_COUNT=$(jq '.issues | length' "$OUTPUT")
+        echo "Exported $ISSUE_COUNT issues to $OUTPUT"
+        echo "report_file=$OUTPUT" >> "$GITHUB_OUTPUT"

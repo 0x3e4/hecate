@@ -1127,6 +1127,90 @@ class ScanService:
 
         return doc, filename
 
+    async def export_findings_sonarqube(self, scan_id: str) -> tuple[dict[str, Any], str]:
+        """Export scan findings as SonarQube external issues JSON. Returns (document, filename)."""
+        scan = await self.scan_repo.get(scan_id)
+        if not scan:
+            raise ValueError(f"Scan {scan_id} not found")
+
+        _, findings = await self.finding_repo.list_by_scan(scan_id, limit=5000, include_dismissed=False)
+
+        severity_map = {
+            "critical": "CRITICAL",
+            "high": "MAJOR",
+            "medium": "MINOR",
+            "low": "INFO",
+            "negligible": "INFO",
+            "unknown": "INFO",
+        }
+
+        # Fallback file paths by package type when package_path is absent
+        package_type_files: dict[str, str] = {
+            "npm": "package.json",
+            "yarn": "yarn.lock",
+            "pnpm": "pnpm-lock.yaml",
+            "pip": "requirements.txt",
+            "pipenv": "Pipfile.lock",
+            "poetry": "pyproject.toml",
+            "go-module": "go.sum",
+            "gomod": "go.sum",
+            "cargo": "Cargo.lock",
+            "gem": "Gemfile.lock",
+            "bundler": "Gemfile.lock",
+            "composer": "composer.lock",
+            "nuget": "packages.config",
+            "maven": "pom.xml",
+            "gradle": "build.gradle",
+            "pub": "pubspec.lock",
+            "hex": "mix.lock",
+            "cocoapods": "Podfile.lock",
+            "swift": "Package.resolved",
+        }
+
+        issues: list[dict[str, Any]] = []
+        for f in findings:
+            vuln_id = f.get("vulnerability_id") or f.get("title") or "unknown"
+            sev = severity_map.get(f.get("severity", "unknown"), "INFO")
+            pkg_name = f.get("package_name", "unknown")
+            pkg_version = f.get("package_version", "")
+            title = f.get("title") or vuln_id
+
+            # Build descriptive message
+            parts = [title]
+            if pkg_name != "unknown":
+                version_str = f" {pkg_version}" if pkg_version else ""
+                parts.append(f"in {pkg_name}{version_str}")
+            fix = f.get("fix_version")
+            if fix:
+                parts.append(f"(fix: {fix})")
+            message = " ".join(parts)
+
+            # Determine file path
+            file_path = f.get("package_path") or ""
+            if not file_path or file_path.startswith("/"):
+                pkg_type = (f.get("package_type") or "").lower()
+                file_path = package_type_files.get(pkg_type, "Dockerfile")
+
+            issues.append({
+                "engineId": "hecate",
+                "ruleId": vuln_id,
+                "severity": sev,
+                "type": "VULNERABILITY",
+                "primaryLocation": {
+                    "message": message,
+                    "filePath": file_path,
+                },
+                "effortMinutes": 30 if sev in ("CRITICAL", "MAJOR") else 15,
+            })
+
+        target = await self.target_repo.get(scan.get("target_id", ""))
+        target_name = (target.get("name", "") if target else scan.get("target_name", "unknown"))
+        safe_name = target_name.replace("/", "-").replace(":", "-").replace(" ", "-")
+        date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
+        filename = f"{safe_name}-sonarqube-{date_str}.json"
+
+        return {"issues": issues}, filename
+
     async def find_by_cve(
         self, cve_id: str, limit: int = 50, offset: int = 0
     ) -> tuple[int, list[dict[str, Any]]]:

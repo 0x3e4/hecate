@@ -31,7 +31,7 @@ src/
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen)
-│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit VEX-Status, SBOM, History mit Zeitbereichs-Filter, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit klickbarem Paketnamen → Detail-Expansion + VEX-Status, SBOM, History mit Zeitbereichs-Filter, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export)
 │   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
 │   └── SystemPage.tsx           # System (Single-Card-Layout, 4 Tabs: General, Notifications, Data, Policies)

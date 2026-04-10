@@ -756,6 +756,29 @@ async def export_vex(
     )
 
 
+@router.get("/{scan_id}/findings/export")
+async def export_scan_findings(
+    scan_id: str,
+    format: str = Query(
+        default="sonarqube",
+        alias="format",
+        pattern=r"^(sonarqube)$",
+        description="Export format: sonarqube",
+    ),
+    service: ScanService = Depends(get_scan_service),
+) -> Response:
+    """Export scan findings in external tool formats (SonarQube external issues)."""
+    try:
+        doc, filename = await service.export_findings_sonarqube(scan_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return Response(
+        content=json.dumps(doc, indent=2, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # --- Mapping helpers ---
 
 
