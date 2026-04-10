@@ -35,6 +35,9 @@ RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all
 
+# Disable Semgrep telemetry to reduce log noise and disk usage
+ENV SEMGREP_SEND_METRICS=off
+
 WORKDIR /scanner
 
 # Install Python dependencies via Poetry

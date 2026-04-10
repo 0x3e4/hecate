@@ -329,6 +329,7 @@ scanner:
   read_only: true
   tmpfs:
     - /tmp:size=10G
+    - /root:size=50M
   cap_drop:
     - ALL
   deploy:
