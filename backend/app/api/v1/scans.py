@@ -765,11 +765,16 @@ async def export_scan_findings(
         pattern=r"^(sonarqube)$",
         description="Export format: sonarqube",
     ),
+    file_path_prefix: str = Query(
+        default="",
+        alias="filePathPrefix",
+        description="Prefix prepended to file paths (e.g. 'backend' so Dockerfile becomes backend/Dockerfile)",
+    ),
     service: ScanService = Depends(get_scan_service),
 ) -> Response:
     """Export scan findings in external tool formats (SonarQube external issues)."""
     try:
-        doc, filename = await service.export_findings_sonarqube(scan_id)
+        doc, filename = await service.export_findings_sonarqube(scan_id, file_path_prefix=file_path_prefix)
     except ValueError:
         raise HTTPException(status_code=404, detail="Scan not found")
     return Response(
