@@ -18,6 +18,8 @@ mcp_client_id: ContextVar[str] = ContextVar("mcp_client_id", default="anonymous"
 mcp_client_ip: ContextVar[str] = ContextVar("mcp_client_ip", default="")
 mcp_token_scope: ContextVar[str] = ContextVar("mcp_token_scope", default="")
 mcp_token_email: ContextVar[str] = ContextVar("mcp_token_email", default="")
+mcp_token_issued_ip: ContextVar[str] = ContextVar("mcp_token_issued_ip", default="")
+mcp_dcr_client_id: ContextVar[str] = ContextVar("mcp_dcr_client_id", default="")
 
 
 class MCPAuthMiddleware:
@@ -78,10 +80,14 @@ class MCPAuthMiddleware:
                 mcp_client_ip.set(client_ip),
                 mcp_token_scope.set(info.scope or ""),
                 mcp_token_email.set(info.email or ""),
+                mcp_token_issued_ip.set(info.issued_at_ip or ""),
+                mcp_dcr_client_id.set(info.client_id or ""),
             ]
             try:
                 await self._app(scope, receive, send)
             finally:
+                mcp_dcr_client_id.reset(tokens[5])
+                mcp_token_issued_ip.reset(tokens[4])
                 mcp_token_email.reset(tokens[3])
                 mcp_token_scope.reset(tokens[2])
                 mcp_client_ip.reset(tokens[1])

@@ -188,17 +188,6 @@ export const AuditLogPage = () => {
         const metaLabel =
           typeof metadata.label === "string" && metadata.label.trim().length > 0 ? (metadata.label as string) : undefined;
         const isMcpJob = entry.jobName === "mcp" || entry.jobName === "mcp_oauth";
-        const mcpKind = typeof metadata.kind === "string" ? (metadata.kind as string) : undefined;
-        const mcpTool = typeof metadata.tool === "string" ? (metadata.tool as string) : undefined;
-        const mcpIdentity = typeof metadata.identity === "string" ? (metadata.identity as string) : undefined;
-        const mcpEmail = typeof metadata.email === "string" ? (metadata.email as string) : undefined;
-        const mcpScope = typeof metadata.scope === "string" ? (metadata.scope as string) : undefined;
-        const mcpProvider = typeof metadata.provider === "string" ? (metadata.provider as string) : undefined;
-        const mcpOauthEvent = typeof metadata.oauthEvent === "string" ? (metadata.oauthEvent as string) : undefined;
-        const mcpDurationMs = typeof metadata.durationMs === "number" ? (metadata.durationMs as number) : undefined;
-        const mcpInputs = metadata.inputs;
-        const mcpReason = typeof metadata.reason === "string" ? (metadata.reason as string) : undefined;
-        const mcpClient = typeof metadata.mcpClient === "string" ? (metadata.mcpClient as string) : undefined;
 
         const isAiJob = entry.jobName === "ai_investigation" || entry.jobName === "ai_batch_investigation";
         const tokenUsage =
@@ -215,74 +204,21 @@ export const AuditLogPage = () => {
 
         const detailElements: ReactNode[] = [];
         if (isMcpJob) {
-          // Build a single summary line plus a "Show details" expander containing
-          // identity, IP, scope, tool, inputs, etc. Nothing sensitive in the main row.
-          const kindLabel =
-            mcpKind === "tool_invocation" && mcpTool
-              ? mcpTool
-              : mcpOauthEvent
-                ? `OAuth ${mcpOauthEvent}`
-                : mcpKind ?? "MCP";
-          const whoLabel = mcpIdentity ?? mcpEmail ?? mcpClient ?? t("anonymous", "anonym");
-          detailElements.push(
-            <span key="mcp-summary" style={{ fontSize: "0.85rem" }}>
-              <code>{kindLabel}</code> · {whoLabel}
-            </span>,
-          );
-
-          const mcpRows: { label: string; value: ReactNode }[] = [];
-          if (mcpKind) mcpRows.push({ label: t("Kind", "Art"), value: mcpKind });
-          if (mcpTool) mcpRows.push({ label: "Tool", value: <code>{mcpTool}</code> });
-          if (mcpOauthEvent) mcpRows.push({ label: "OAuth Event", value: mcpOauthEvent });
-          if (mcpProvider) mcpRows.push({ label: t("Provider", "Provider"), value: mcpProvider });
-          if (mcpIdentity) mcpRows.push({ label: t("Identity", "Identität"), value: mcpIdentity });
-          if (mcpEmail) mcpRows.push({ label: "Email", value: mcpEmail });
-          if (mcpScope) mcpRows.push({ label: "Scope", value: <code>{mcpScope}</code> });
-          if (metaClientIp) mcpRows.push({ label: "Client IP", value: <code>{metaClientIp}</code> });
-          if (mcpClient) mcpRows.push({ label: "MCP Client", value: <code>{mcpClient}</code> });
-          if (mcpDurationMs !== undefined) {
-            mcpRows.push({ label: t("Duration", "Dauer"), value: `${mcpDurationMs} ms` });
-          }
-          if (mcpReason) mcpRows.push({ label: t("Reason", "Grund"), value: mcpReason });
-          if (mcpInputs != null) {
-            mcpRows.push({
-              label: t("Inputs", "Eingaben"),
-              value: (
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
-                  {JSON.stringify(mcpInputs, null, 2)}
-                </pre>
-              ),
-            });
-          }
+          // Render MCP rows like every other audit job: a single JSON blob
+          // under a "Show details" expander. Merges metadata and result so
+          // both tool inputs and the returned shape are visible.
+          const mcpBlob: Record<string, unknown> = { ...metadata };
           if (entry.result != null) {
-            mcpRows.push({
-              label: t("Result", "Ergebnis"),
-              value: (
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
-                  {JSON.stringify(entry.result, null, 2)}
-                </pre>
-              ),
-            });
+            mcpBlob.result = entry.result;
           }
-          if (mcpRows.length > 0) {
-            detailElements.push(
-              <details key="mcp-details">
-                <summary style={{ cursor: "pointer" }}>{t("Show details", "Details anzeigen")}</summary>
-                <table style={{ marginTop: "0.35rem", fontSize: "0.8rem", borderCollapse: "collapse" }}>
-                  <tbody>
-                    {mcpRows.map((row, i) => (
-                      <tr key={`mcp-row-${entry.id}-${i}`}>
-                        <td style={{ verticalAlign: "top", padding: "0.15rem 0.75rem 0.15rem 0", color: "rgba(255,255,255,0.55)" }}>
-                          {row.label}
-                        </td>
-                        <td style={{ verticalAlign: "top", padding: "0.15rem 0" }}>{row.value}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </details>,
-            );
-          }
+          detailElements.push(
+            <details key="mcp-details">
+              <summary style={{ cursor: "pointer" }}>{t("Show details", "Details anzeigen")}</summary>
+              <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
+                {JSON.stringify(mcpBlob, null, 2)}
+              </pre>
+            </details>,
+          );
         } else if (metaClientIp) {
           detailElements.push(<span key="ip">Client IP: {metaClientIp}</span>);
         }
