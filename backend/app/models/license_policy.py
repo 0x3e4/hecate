@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -19,5 +19,5 @@ class LicensePolicyDocument(BaseModel):
         default="warn", description="Action for unlisted licenses: allow | warn | deny"
     )
     is_default: bool = Field(default=False, description="Whether this is the system default policy")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

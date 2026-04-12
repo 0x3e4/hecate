@@ -10,7 +10,10 @@ log = structlog.get_logger()
 async def get_client() -> AsyncIOMotorClient:
     global _mongo_client
     if _mongo_client is None:
-        kwargs: dict = {}
+        # tz_aware=True makes Motor/PyMongo return UTC-aware datetimes on read.
+        # Without this, naive UTC datetimes serialize to JSON without a `Z` suffix
+        # and the frontend parses them as local time, shifting by the user's offset.
+        kwargs: dict = {"tz_aware": True}
 
         if settings.mongo_username and settings.mongo_password:
             kwargs["username"] = settings.mongo_username

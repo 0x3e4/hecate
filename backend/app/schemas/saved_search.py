@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas._utc import UtcDatetime
+
 
 class SavedSearchBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -63,8 +65,8 @@ class SavedSearchUpdate(BaseModel):
 
 class SavedSearch(SavedSearchBase):
     id: str = Field(serialization_alias="id")
-    created_at: datetime = Field(serialization_alias="createdAt")
-    updated_at: datetime = Field(serialization_alias="updatedAt")
+    created_at: UtcDatetime = Field(serialization_alias="createdAt")
+    updated_at: UtcDatetime = Field(serialization_alias="updatedAt")
     dql_query: str | None = Field(
         default=None,
         alias="dqlQuery",

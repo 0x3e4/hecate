@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -29,8 +29,8 @@ class ScanTargetDocument(BaseModel):
     group: str | None = Field(default=None, description="Application/group name this target belongs to")
     scanners: list[str] = Field(default_factory=list, description="Scanners used for this target")
     auto_scan: bool = Field(default=True, description="Include in auto-scan scheduling")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_scan_at: datetime | None = None
     scan_count: int = 0
     last_image_digest: str | None = Field(default=None, description="Image digest from most recent scan")
@@ -55,7 +55,7 @@ class ScanDocument(BaseModel):
     commit_sha: str | None = None
     branch: str | None = None
     pipeline_url: str | None = None
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
     duration_seconds: float | None = None
     summary: ScanSummary = Field(default_factory=ScanSummary)
@@ -100,7 +100,7 @@ class ScanFindingDocument(BaseModel):
     dismissed_reason: str | None = None
     dismissed_at: datetime | None = None
     dismissed_by: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ScanLayerDetail(BaseModel):
@@ -123,7 +123,7 @@ class ScanLayerAnalysisDocument(BaseModel):
     total_image_size: int = 0
     layers: list[ScanLayerDetail] = Field(default_factory=list)
     pass_threshold: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ScanSbomComponentDocument(BaseModel):

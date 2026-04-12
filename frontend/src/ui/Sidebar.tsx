@@ -3,11 +3,12 @@ import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChar
 import { useEffect, useMemo, useState } from "react";
 
 import { version } from "../../package.json";
-import { config } from "../config";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useRecentlyVisited } from "../hooks/useRecentlyVisited";
 import { useI18n } from "../i18n/context";
 import { useSSE } from "../hooks/useSSE";
+import { useServerConfig } from "../server-config/context";
+import { api } from "../api/client";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -19,7 +20,7 @@ type SidebarProps = {
 type NavItem = { to: string; label: string; icon: typeof LuLayoutDashboard };
 type NavSection = { titleEn: string; titleDe: string; items: NavItem[] };
 
-const navSections: NavSection[] = [
+const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[] => [
   {
     titleEn: "", titleDe: "",
     items: [{ to: "/", label: "Dashboard", icon: LuLayoutDashboard }],
@@ -29,11 +30,11 @@ const navSections: NavSection[] = [
     items: [
       { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
       { to: "/query-builder", label: "Query Builder", icon: LuWrench },
-      ...(config.aiFeatures.enabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
+      ...(aiEnabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
       { to: "/changelog", label: "Changelog", icon: LuHistory },
     ],
   },
-  ...(config.scaFeatures.enabled ? [{
+  ...(scaEnabled ? [{
     titleEn: "Security", titleDe: "Sicherheit",
     items: [
       { to: "/scans", label: "SCA Scans", icon: LuScanLine },
@@ -50,7 +51,7 @@ const navSections: NavSection[] = [
     titleEn: "Administration", titleDe: "Verwaltung",
     items: [{ to: "/system", label: "System", icon: LuSettings }],
   },
-  ...(config.scaFeatures.enabled ? [{
+  ...(scaEnabled ? [{
     titleEn: "Info", titleDe: "Info",
     items: [
       { to: "/cicd", label: "CI/CD", icon: LuBookOpen },
@@ -67,6 +68,11 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
   const { jobs } = useSSE();
+  const { aiEnabled, scaEnabled } = useServerConfig();
+  const navSections = useMemo(
+    () => buildNavSections(aiEnabled, scaEnabled),
+    [aiEnabled, scaEnabled]
+  );
 
   const aiRunning = useMemo(() => {
     for (const [name, job] of jobs) {
@@ -89,21 +95,20 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   // Also poll for running scans to catch scans started before SSE connected
   const [scaRunningPoll, setScaRunningPoll] = useState(false);
   useEffect(() => {
-    if (!config.scaFeatures.enabled) return;
+    if (!scaEnabled) return;
     let cancelled = false;
     const check = async () => {
       try {
-        const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "/api"}/v1/scans?status=running&limit=1`);
-        if (!cancelled && resp.ok) {
-          const data = await resp.json();
-          setScaRunningPoll(data.total > 0);
+        const resp = await api.get<{ total: number }>("/v1/scans", { params: { status: "running", limit: 1 } });
+        if (!cancelled) {
+          setScaRunningPoll(resp.data.total > 0);
         }
       } catch { /* ignore */ }
     };
     check();
     const interval = setInterval(check, 10000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+  }, [scaEnabled]);
 
   const scaRunning = scaRunningSSE || scaRunningPoll;
   const germanLabels: Record<string, string> = {

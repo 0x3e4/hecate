@@ -5,10 +5,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 class BackupMetadata(BaseModel):
     dataset: Literal["vulnerabilities", "saved_searches"]
-    exported_at: datetime = Field(alias="exportedAt")
+    exported_at: UtcDatetime = Field(alias="exportedAt")
     item_count: int = Field(alias="itemCount")
 
     model_config = {"populate_by_name": True}

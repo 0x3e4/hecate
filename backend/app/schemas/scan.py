@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 class ScanSummarySchema(BaseModel):
     critical: int = 0
@@ -96,9 +98,9 @@ class ScanTargetResponse(BaseModel):
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
     group: str | None = None
-    created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
-    updated_at: datetime = Field(alias="updatedAt", serialization_alias="updatedAt")
-    last_scan_at: datetime | None = Field(
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+    updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
+    last_scan_at: UtcDatetime | None = Field(
         default=None, alias="lastScanAt", serialization_alias="lastScanAt"
     )
     scan_count: int = Field(default=0, alias="scanCount", serialization_alias="scanCount")
@@ -168,8 +170,8 @@ class ScanResponse(BaseModel):
     pipeline_url: str | None = Field(
         default=None, alias="pipelineUrl", serialization_alias="pipelineUrl"
     )
-    started_at: datetime = Field(alias="startedAt", serialization_alias="startedAt")
-    finished_at: datetime | None = Field(
+    started_at: UtcDatetime = Field(alias="startedAt", serialization_alias="startedAt")
+    finished_at: UtcDatetime | None = Field(
         default=None, alias="finishedAt", serialization_alias="finishedAt"
     )
     duration_seconds: float | None = Field(
@@ -251,14 +253,14 @@ class ScanFindingResponse(BaseModel):
     vex_detail: str | None = Field(
         default=None, alias="vexDetail", serialization_alias="vexDetail"
     )
-    vex_updated_at: datetime | None = Field(
+    vex_updated_at: UtcDatetime | None = Field(
         default=None, alias="vexUpdatedAt", serialization_alias="vexUpdatedAt"
     )
     dismissed: bool = False
     dismissed_reason: str | None = Field(
         default=None, alias="dismissedReason", serialization_alias="dismissedReason"
     )
-    dismissed_at: datetime | None = Field(
+    dismissed_at: UtcDatetime | None = Field(
         default=None, alias="dismissedAt", serialization_alias="dismissedAt"
     )
     dismissed_by: str | None = Field(
@@ -396,7 +398,7 @@ class SubmitScanResponse(BaseModel):
 
 class ScanHistoryEntrySchema(BaseModel):
     scan_id: str = Field(alias="scanId", serialization_alias="scanId")
-    started_at: datetime = Field(alias="startedAt", serialization_alias="startedAt")
+    started_at: UtcDatetime = Field(alias="startedAt", serialization_alias="startedAt")
     status: str
     summary: ScanSummarySchema = Field(default_factory=ScanSummarySchema)
     duration_seconds: float | None = Field(

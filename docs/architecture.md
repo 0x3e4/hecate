@@ -56,8 +56,9 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 
 ### API-Schicht
 
-16 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+17 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
 - `status.py` — Health Check / Liveness Probe, Scanner-Health
+- `config.py` — Public Runtime-Config (`GET /api/v1/config`): leitet `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` aus den Backend-Settings ab und ersetzt die früheren `VITE_*`-Feature-Flags
 - `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse
 - `cwe.py` — CWE-Abfragen (einzeln & bulk)
 - `capec.py` — CAPEC-Abfragen, CWE→CAPEC Mapping
@@ -76,7 +77,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 
 Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit 11 Tools, Rate-Limiting und Audit-Logging. Die Authentifizierung erfolgt via delegated OAuth: Hecate agiert als Authorization Server gegenüber dem MCP-Client (Dynamic Client Registration + Auth Code + PKCE/S256) und delegiert die User-Authentifizierung an einen Upstream-IdP (GitHub OAuth App, Microsoft Entra ID oder generischen OIDC-Provider wie Authentik/Keycloak/Auth0/Zitadel). Statische API-Keys gibt es nicht mehr. Write-Tools (`trigger_scan`, `trigger_sync`) sind zusätzlich IP-basiert geschützt via `MCP_WRITE_IP_SAFELIST` — nur Anfragen von Safelist-IPs erhalten den `mcp:write` Scope (bei Token-Ausstellung und bei jedem Tool-Call erneut geprüft). Provider-Abstraktion in `app/mcp/oauth_providers.py`.
 
-Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
+Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`). Datetime-Felder verwenden den gemeinsamen `UtcDatetime`-Alias aus `app/schemas/_utc.py` (`Annotated[datetime, BeforeValidator(_coerce_utc)]`), der naive Werte (OpenSearch `_source`-Reads, Legacy-Dokumente) auf UTC-aware normalisiert, sodass die JSON-Ausgabe immer ein `+00:00`-Suffix trägt und der Frontend sie nicht als Browser-Local-Time fehlinterpretiert. Der Motor-Client in `app/db/mongo.py` läuft mit `tz_aware=True`, damit auch MongoDB-Reads UTC-aware zurückkommen.
 
 ### Services & Domain
 
@@ -261,7 +262,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
-| `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via `VITE_AI_FEATURES_ENABLED`) |
+| `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (Sichtbarkeit aus `GET /api/v1/config`, aktiv wenn mindestens ein AI-Provider-Key gesetzt ist) |
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
@@ -290,7 +291,7 @@ poetry run python -m app.cli reindex-opensearch
 - Sprache: Deutsch und Englisch (einfaches i18n via Context API mit `t(english, german)` Pattern, Browser-Spracherkennung, localStorage-Persistenz).
 - Kein externes i18n-Framework (kein i18next o. ä.).
 - Datumsformat: `DD.MM.YYYY HH:mm` (de-DE) bzw. `MM/DD/YYYY` (en-US).
-- Zeitzone: Konfigurierbar via `VITE_TIMEZONE` (Default: `UTC`).
+- Zeitzone: Benutzer-Einstellung auf der System-Seite (`/system` → General → Timezone); persistiert in `localStorage` (`hecate.ui_timezone`), Standard ist die Browser-Zeitzone (`Intl.DateTimeFormat().resolvedOptions().timeZone`). Implementierung in `frontend/src/timezone/`.
 
 ### Code-Splitting
 - Manuelle Chunk-Aufteilung in `vite/chunk-split.ts`:

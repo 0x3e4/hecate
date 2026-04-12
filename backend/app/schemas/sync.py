@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 class SyncState(BaseModel):
     """Current state of a sync job."""
@@ -11,10 +13,10 @@ class SyncState(BaseModel):
     job_name: str = Field(alias="jobName", serialization_alias="jobName")
     label: str
     status: str  # running, completed, failed, cancelled, idle
-    started_at: datetime | None = Field(default=None, alias="startedAt", serialization_alias="startedAt")
-    finished_at: datetime | None = Field(default=None, alias="finishedAt", serialization_alias="finishedAt")
+    started_at: UtcDatetime | None = Field(default=None, alias="startedAt", serialization_alias="startedAt")
+    finished_at: UtcDatetime | None = Field(default=None, alias="finishedAt", serialization_alias="finishedAt")
     duration_seconds: float | None = Field(default=None, alias="durationSeconds", serialization_alias="durationSeconds")
-    next_run: datetime | None = Field(default=None, alias="nextRun", serialization_alias="nextRun")
+    next_run: UtcDatetime | None = Field(default=None, alias="nextRun", serialization_alias="nextRun")
     last_result: dict | None = Field(default=None, alias="lastResult", serialization_alias="lastResult")
     error: str | None = None
 

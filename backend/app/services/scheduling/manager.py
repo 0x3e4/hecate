@@ -101,7 +101,7 @@ class SchedulerManager:
                 )
 
         # Bootstrap auto-scan after a short delay so services are ready
-        if settings.sca_enabled and settings.vite_sca_auto_scan_enabled:
+        if settings.sca_enabled and settings.sca_auto_scan_enabled:
             asyncio.create_task(
                 _delayed_auto_scan_bootstrap(),
                 name="bootstrap-auto-scan",
@@ -194,7 +194,7 @@ class SchedulerManager:
             )
 
         # SCA auto-scan
-        if settings.sca_enabled and settings.vite_sca_auto_scan_enabled:
+        if settings.sca_enabled and settings.sca_auto_scan_enabled:
             self.scheduler.add_job(
                 _scheduled_auto_scans,
                 trigger=IntervalTrigger(minutes=settings.sca_auto_scan_interval_minutes),

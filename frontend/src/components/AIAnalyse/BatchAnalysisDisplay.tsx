@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import { AIBatchInvestigationResponse, VulnerabilityPreview } from "../../types";
 import { useI18n } from "../../i18n/context";
 import { AILoadingIndicator } from "../AILoadingIndicator";
+import { formatDateTime } from "../../utils/dateFormat";
 
 interface BatchAnalysisDisplayProps {
   response: AIBatchInvestigationResponse | null;
@@ -139,7 +140,7 @@ export const BatchAnalysisDisplay = ({
             </span>
             {" · "}
             <span className="muted">
-              {t("Generated", "Erstellt")}: <strong>{new Date(response.generatedAt).toLocaleString(locale)}</strong>
+              {t("Generated", "Erstellt")}: <strong>{formatDateTime(response.generatedAt)}</strong>
             </span>
             {response.tokenUsage && (
               <>

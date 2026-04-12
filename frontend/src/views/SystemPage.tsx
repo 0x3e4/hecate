@@ -50,6 +50,8 @@ import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import type { AppLanguage } from "../i18n/language";
+import { useTimezone } from "../timezone/context";
+import { listSupportedTimezones } from "../timezone/storage";
 import type {
   NotificationChannel,
   NotificationEventKey,
@@ -94,6 +96,12 @@ const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
 
 export const SystemPage = () => {
   const { language, locale, setLanguage, t } = useI18n();
+  const { timezone, isBrowserDefault, setTimezone } = useTimezone();
+  const supportedTimezones = useMemo(() => listSupportedTimezones(), []);
+  const [timezoneDraft, setTimezoneDraft] = useState<string>(isBrowserDefault ? "" : timezone);
+  useEffect(() => {
+    setTimezoneDraft(isBrowserDefault ? "" : timezone);
+  }, [timezone, isBrowserDefault]);
   const navigate = useNavigate();
 
   // --- System password gate ---
@@ -1156,6 +1164,71 @@ export const SystemPage = () => {
             <option value="de">🇩🇪 Deutsch</option>
           </select>
         </div>
+      </div>
+
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("Timezone", "Zeitzone")}</h2>
+        <p className="muted">
+          {t(
+            "All dates in the UI are rendered in this timezone. Defaults to your browser's timezone.",
+            "Alle Datumsangaben werden in dieser Zeitzone dargestellt. Standard ist die Zeitzone deines Browsers."
+          )}
+        </p>
+        <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <label htmlFor="system-timezone-input" style={{ fontWeight: 600 }}>
+            {t("Display timezone", "Anzeige-Zeitzone")}
+          </label>
+          <input
+            id="system-timezone-input"
+            list="system-timezone-options"
+            value={timezoneDraft}
+            placeholder={t(`Browser default (${timezone})`, `Browser-Standard (${timezone})`)}
+            onChange={(event) => {
+              const next = event.target.value;
+              setTimezoneDraft(next);
+              const trimmed = next.trim();
+              if (!trimmed) {
+                setTimezone(null);
+                return;
+              }
+              if (supportedTimezones.includes(trimmed)) {
+                setTimezone(trimmed);
+              }
+            }}
+            onBlur={() => {
+              const trimmed = timezoneDraft.trim();
+              if (!trimmed) {
+                setTimezone(null);
+                return;
+              }
+              if (!supportedTimezones.includes(trimmed)) {
+                // invalid entry — snap back to committed value
+                setTimezoneDraft(isBrowserDefault ? "" : timezone);
+              }
+            }}
+            style={{ minWidth: "280px", padding: "0.5rem 0.75rem" }}
+          />
+          <datalist id="system-timezone-options">
+            {supportedTimezones.map((tz) => (
+              <option key={tz} value={tz} />
+            ))}
+          </datalist>
+          {!isBrowserDefault && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setTimezone(null)}
+            >
+              {t("Reset to browser default", "Auf Browser-Standard zurücksetzen")}
+            </button>
+          )}
+        </div>
+        <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85em" }}>
+          {t(
+            `Active timezone: ${timezone}${isBrowserDefault ? " (browser default)" : ""}`,
+            `Aktive Zeitzone: ${timezone}${isBrowserDefault ? " (Browser-Standard)" : ""}`
+          )}
+        </p>
       </div>
 
       <div style={subsectionStyle}>

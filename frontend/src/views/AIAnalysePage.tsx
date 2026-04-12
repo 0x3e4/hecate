@@ -21,6 +21,7 @@ import {
 import { VulnerabilitySelector } from "../components/AIAnalyse/VulnerabilitySelector";
 import { BatchAnalysisDisplay } from "../components/AIAnalyse/BatchAnalysisDisplay";
 import { useI18n } from "../i18n/context";
+import { formatDateTime } from "../utils/dateFormat";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useSSE } from "../hooks/useSSE";
 
@@ -524,7 +525,7 @@ export const AIAnalysePage = () => {
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
                           {batch.language && <span> · {t("Language", "Sprache")}: {batch.language.toUpperCase()}</span>}
-                          {batch.generatedAt && <span> · {new Date(batch.generatedAt).toLocaleString(locale)}</span>}
+                          {batch.generatedAt && <span> · {formatDateTime(batch.generatedAt)}</span>}
                           {batch.tokenUsage && (
                             <span> · {t("Tokens", "Tokens")}: {batch.tokenUsage.inputTokens.toLocaleString(locale)} in / {batch.tokenUsage.outputTokens.toLocaleString(locale)} out</span>
                           )}
@@ -572,7 +573,7 @@ export const AIAnalysePage = () => {
                         <div className="ai-analysis__meta">
                           {providerLabel && <span>{providerLabel}</span>}
                           {single.language && <span> · {t("Language", "Sprache")}: {single.language.toUpperCase()}</span>}
-                          {single.timestamp && <span> · {new Date(single.timestamp).toLocaleString(locale)}</span>}
+                          {single.timestamp && <span> · {formatDateTime(single.timestamp)}</span>}
                           {single.token_usage && (
                             <span> · {t("Tokens", "Tokens")}: {single.token_usage.inputTokens.toLocaleString(locale)} in / {single.token_usage.outputTokens.toLocaleString(locale)} out</span>
                           )}

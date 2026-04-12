@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 class ChangeHistoryField(BaseModel):
     """Field change in a changelog entry."""
@@ -17,7 +19,7 @@ class ChangeHistoryField(BaseModel):
 class LatestChange(BaseModel):
     """Latest change details for a vulnerability."""
 
-    changed_at: str = Field(serialization_alias="changedAt")
+    changed_at: UtcDatetime = Field(serialization_alias="changedAt")
     change_type: str = Field(serialization_alias="changeType")
     job_name: str = Field(serialization_alias="jobName")
     job_label: str | None = Field(default=None, serialization_alias="jobLabel")
@@ -38,7 +40,7 @@ class ChangelogEntry(BaseModel):
         serialization_alias="changeType",
         description="Type of change: 'created' or 'updated'",
     )
-    timestamp: datetime
+    timestamp: UtcDatetime
     cvss_score: float | None = Field(default=None, serialization_alias="cvssScore")
     severity: str | None = None
     latest_change: LatestChange | None = Field(

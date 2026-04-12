@@ -5,10 +5,12 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { SavedSearchesProvider } from "../hooks/useSavedSearches";
 import { ScrollToTop } from "../components/ScrollToTop";
+import { useTimezone } from "../timezone/context";
 
 export const AppLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { timezone } = useTimezone();
 
   // Close mobile menu when clicking outside or on overlay
   useEffect(() => {
@@ -37,7 +39,7 @@ export const AppLayout = () => {
             isMobileMenuOpen={mobileMenuOpen}
           />
           <main className="app-content">
-            <Outlet />
+            <Outlet key={timezone} />
           </main>
         </div>
         {mobileMenuOpen && (

@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 class NotificationStatusResponse(BaseModel):
     enabled: bool = Field(alias="enabled", serialization_alias="enabled")
@@ -137,14 +139,14 @@ class NotificationRuleResponse(BaseModel):
         serialization_alias="scanTargetFilter",
     )
 
-    created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
-    updated_at: datetime = Field(alias="updatedAt", serialization_alias="updatedAt")
-    last_evaluated_at: datetime | None = Field(
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+    updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
+    last_evaluated_at: UtcDatetime | None = Field(
         default=None,
         alias="lastEvaluatedAt",
         serialization_alias="lastEvaluatedAt",
     )
-    last_triggered_at: datetime | None = Field(
+    last_triggered_at: UtcDatetime | None = Field(
         default=None,
         alias="lastTriggeredAt",
         serialization_alias="lastTriggeredAt",
@@ -167,7 +169,7 @@ class NotificationChannelResponse(BaseModel):
     id: str = Field(alias="id", serialization_alias="id")
     url: str = Field(alias="url", serialization_alias="url")
     tag: str = Field(default="all", alias="tag", serialization_alias="tag")
-    created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
 
     model_config = {"populate_by_name": True}
 
@@ -228,8 +230,8 @@ class NotificationTemplateResponse(BaseModel):
     tag: str = Field(default="all", alias="tag", serialization_alias="tag")
     title_template: str = Field(alias="titleTemplate", serialization_alias="titleTemplate")
     body_template: str = Field(alias="bodyTemplate", serialization_alias="bodyTemplate")
-    created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
-    updated_at: datetime = Field(alias="updatedAt", serialization_alias="updatedAt")
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+    updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
 
     model_config = {"populate_by_name": True}
 

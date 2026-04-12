@@ -72,7 +72,11 @@ src/
 ├── i18n/
 │   ├── context.tsx              # I18nProvider & useI18n Hook
 │   └── language.ts              # Spracherkennung, localStorage-Persistenz
-├── config.ts                    # Umgebungs-Konfiguration (Vite Env)
+├── timezone/
+│   ├── context.tsx              # TimezoneProvider & useTimezone Hook
+│   └── storage.ts               # localStorage-Persistenz (Key `hecate.ui_timezone`), Browser-TZ-Fallback, `getCurrentTimezone()` Helper für Nicht-Hook-Aufrufer
+├── server-config/
+│   └── context.tsx              # ServerConfigProvider (fetcht `GET /api/v1/config` einmalig beim Mount) & useServerConfig Hook für Feature-Flags (aiEnabled/scaEnabled/scaAutoScanEnabled)
 ├── router.tsx                   # React Router v7 Routen
 ├── types.ts                     # TypeScript-Interfaces
 ├── styles.css                   # Globales Dark-Theme CSS
@@ -98,8 +102,7 @@ src/
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/mcp-info` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools, Beispiel-Prompts, Konfiguration). Route ist `/mcp-info`, nicht `/mcp`, weil `/mcp` vom Backend als MCP-Protokoll-Endpoint belegt ist. |
 
-Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
-Die SCA-Scans-, CI/CD-, API- und MCP-Seiten werden nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.
+Feature-Sichtbarkeit (KI-Analyse, SCA-Scans, CI/CD, API, MCP) wird zur Laufzeit über `GET /api/v1/config` vom Backend bestimmt und in `ServerConfigProvider` ([src/server-config/context.tsx](src/server-config/context.tsx)) bereitgestellt. Das Backend leitet die Flags aus den eigenen Settings ab (AI = mindestens ein Provider-Key gesetzt, SCA = `sca_enabled`, Auto-Scan = `sca_auto_scan_enabled`). Kein Image-Rebuild nötig wenn man diese ändert — nur Backend neu starten.
 
 ## State-Management
 
@@ -135,20 +138,22 @@ Skeleton-Platzhalter während des Ladens.
 - **Spracherkennung:** Automatisch über Browser-Sprache, umschaltbar, gespeichert in localStorage
 - **Kein externes i18n-Framework** (kein i18next o. ä.)
 - **Datumsformat:** `DD.MM.YYYY HH:mm` (de-DE) bzw. `MM/DD/YYYY` (en-US)
-- **Zeitzone:** Konfigurierbar via `VITE_TIMEZONE` (Default: `UTC`)
+- **Zeitzone:** Benutzer-Einstellung auf der System-Seite (`/system` → General → Timezone); persistiert in `localStorage` (`hecate.ui_timezone`), Standard ist die Browser-Zeitzone. Siehe `src/timezone/`. `formatDate()` in [utils/dateFormat.ts](src/utils/dateFormat.ts) liest den aktuellen Wert pro Aufruf via `getCurrentTimezone()`; [ui/AppLayout.tsx](src/ui/AppLayout.tsx) keyt den React-Router-`<Outlet>` auf den Timezone-Wert, sodass bei Änderungen die gesamte aktive Seite neu gerendert wird und alle Datumsangaben den neuen Wert übernehmen. Das Backend serialisiert alle Datetime-Felder UTC-aware (`+00:00`-Suffix), damit `new Date()` im Browser sie korrekt parst — siehe `backend/app/schemas/_utc.py`.
 
 ## Konfiguration
 
-Umgebungsvariablen (in `.env` oder Build-Zeit via Vite):
+Build-Zeit-Variablen (gebacken in `dist/` beim `pnpm run build`):
 
 | Variable | Default | Beschreibung |
 |----------|---------|-------------|
-| `VITE_API_BASE_URL` | `/api` | API-Basis-Pfad |
-| `VITE_TIMEZONE` | `UTC` | Zeitzone für Datumsanzeige |
-| `VITE_AI_FEATURES_ENABLED` | `true` | KI-Analyse aktivieren/deaktivieren |
-| `VITE_DOMAIN` | `hecate.pw` | Domain für Share-URLs |
-| `VITE_SCA_FEATURES_ENABLED` | `true` | SCA-Scans aktivieren/deaktivieren |
-| `VITE_SCA_AUTO_SCAN_ENABLED` | `false` | Auto-Scan-Toggle in der UI anzeigen (Backend: `SCA_AUTO_SCAN_INTERVAL_MINUTES` für Intervall) |
+| `VITE_API_BASE_URL` | `/api` | API-Basis-Pfad (wird vor dem ersten Backend-Call gebraucht, deshalb nicht runtime-konfigurierbar) |
+
+Alle anderen Feature-Flags kommen zur Laufzeit vom Backend über `GET /api/v1/config`:
+- **KI-Features**: aktiv wenn mindestens ein AI-Provider-Key gesetzt ist (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` oder `GOOGLE_GEMINI_API_KEY`)
+- **SCA-Features**: `SCA_ENABLED` (Backend)
+- **Auto-Scan-Toggle**: `SCA_AUTO_SCAN_ENABLED` (Backend)
+
+Share-URLs werden aus `globalThis.location.origin` abgeleitet — kein `VITE_DOMAIN` mehr.
 
 ## Entwicklung
 
