@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 import copy
 import json
 from typing import Any, Mapping
 
 from dateutil import parser
+
+_EUVD_TZ = ZoneInfo("Europe/Brussels")
 import re
 import structlog
 
@@ -262,6 +265,35 @@ def _parse_datetime(
     return datetime.now(tz=UTC)
 
 
+def _parse_euvd_datetime(
+    value: Any,
+    *,
+    fallback: datetime | None = None,
+    allow_none: bool = False,
+) -> datetime | None:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=_EUVD_TZ).astimezone(UTC)
+        return value.astimezone(UTC)
+    if isinstance(value, str) and value:
+        for attempt in (parser.isoparse, parser.parse):
+            try:
+                dt = attempt(value)
+            except (ValueError, TypeError):
+                continue
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=_EUVD_TZ).astimezone(UTC)
+            return dt.astimezone(UTC)
+        log.debug("normalizer.invalid_euvd_datetime", value=value)
+    if fallback is not None:
+        if fallback.tzinfo is None:
+            return fallback.replace(tzinfo=UTC)
+        return fallback.astimezone(UTC)
+    if allow_none:
+        return None
+    return datetime.now(tz=UTC)
+
+
 def _extract_cvss(data: dict[str, Any]) -> CvssScore:
     cvss_data = (
         data.get("cvss")
@@ -507,14 +539,14 @@ def build_document(
     products = list(product_version_map.keys())
     product_versions = sorted({version for versions in product_version_map.values() for version in versions})
 
-    published = _parse_datetime(
+    published = _parse_euvd_datetime(
         euvd_record.get("published")
         or euvd_record.get("published_at")
         or euvd_record.get("publicationDate")
         or euvd_record.get("datePublished"),
         allow_none=True,
     )
-    modified = _parse_datetime(
+    modified = _parse_euvd_datetime(
         euvd_record.get("modified")
         or euvd_record.get("last_modified")
         or euvd_record.get("lastModified")
