@@ -80,7 +80,6 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   └── Dockerfile        # Multi-Stage Build mit Scanner-Binaries
 ├── docs/                 # Architektur- und Konzeptdokumente
 ├── .gitea/workflows/     # CI/CD (ci.yml: Build, Hecate Scan, SonarQube)
-├── actions/              # Reusable Composite Actions (hecate-scan)
 ├── .env.example          # Umgebungsvariablen-Vorlage
 └── docker-compose.yml.example
 ```
@@ -325,9 +324,9 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 
 ## CI/CD
 
-Gitea-Workflow `.gitea/workflows/ci.yml` + Composite Action `actions/hecate-scan/`:
+Gitea-Workflow `.gitea/workflows/ci.yml` nutzt die öffentliche [Hecate Scan Action](https://github.com/0x3e4/hecate-scan-action) (`0x3e4/hecate-scan-action@v1`):
 - **ci.yml:** SonarQube Code-Analyse, Docker-Image Build & Push, Hecate Security Scan (Images auf `main`, Source-Repos für PRs), SonarQube Findings-Upload
-- **Hecate Scan Action:** Wiederverwendbare Composite Action für GitHub/Gitea Actions — Scan-Übermittlung, Polling, Quality Gates, SonarQube-Export
+- **Hecate Scan Action:** Wiederverwendbare Composite Action für GitHub/Gitea Actions — Scan-Übermittlung, Polling, Quality Gates, SonarQube-Export. Quellen liegen im separaten Repo [`0x3e4/hecate-scan-action`](https://github.com/0x3e4/hecate-scan-action).
 
 ## Technologie-Stack
 

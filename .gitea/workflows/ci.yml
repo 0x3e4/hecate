@@ -132,7 +132,7 @@ jobs:
 
       - name: Scan backend image via Hecate
         id: scan-backend
-        uses: ./actions/hecate-scan
+        uses: 0x3e4/hecate-scan-action@v1
         with:
           hecate-url: ${{ secrets.HECATE_URL }}
           api-key: ${{ secrets.SCA_API_KEY }}
@@ -147,7 +147,7 @@ jobs:
 
       - name: Scan frontend image via Hecate
         id: scan-frontend
-        uses: ./actions/hecate-scan
+        uses: 0x3e4/hecate-scan-action@v1
         with:
           hecate-url: ${{ secrets.HECATE_URL }}
           api-key: ${{ secrets.SCA_API_KEY }}
@@ -162,7 +162,7 @@ jobs:
 
       - name: Scan scanner image via Hecate
         id: scan-scanner
-        uses: ./actions/hecate-scan
+        uses: 0x3e4/hecate-scan-action@v1
         with:
           hecate-url: ${{ secrets.HECATE_URL }}
           api-key: ${{ secrets.SCA_API_KEY }}
@@ -220,7 +220,7 @@ jobs:
 
       - name: Scan source via Hecate
         id: scan-source
-        uses: ./actions/hecate-scan
+        uses: 0x3e4/hecate-scan-action@v1
         with:
           hecate-url: ${{ secrets.HECATE_URL }}
           api-key: ${{ secrets.SCA_API_KEY }}
