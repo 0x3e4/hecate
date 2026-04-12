@@ -12,7 +12,14 @@ from typing import Any
 
 import structlog
 
-from app.mcp.auth import mcp_client_id, mcp_client_ip, mcp_token_email, mcp_token_scope
+from app.mcp.auth import (
+    mcp_client_id,
+    mcp_client_ip,
+    mcp_dcr_client_id,
+    mcp_token_email,
+    mcp_token_issued_ip,
+    mcp_token_scope,
+)
 
 log = structlog.get_logger()
 
@@ -32,16 +39,20 @@ async def log_tool_invocation(
     finished_at = datetime.now(tz=UTC)
     duration_ms = round((finished_at - started_at).total_seconds() * 1000, 1)
     identity = mcp_client_id.get()
-    client_ip = mcp_client_ip.get()
+    request_ip = mcp_client_ip.get()
     email = mcp_token_email.get()
     scope = mcp_token_scope.get()
+    authorized_from_ip = mcp_token_issued_ip.get()
+    dcr_client = mcp_dcr_client_id.get()
 
     log.info(
         "mcp.tool_invocation",
         tool=tool_name,
         identity=identity,
         email=email or None,
-        client_ip=client_ip or None,
+        request_ip=request_ip or None,
+        authorized_from_ip=authorized_from_ip or None,
+        dcr_client=dcr_client or None,
         scope=scope or None,
         duration_ms=duration_ms,
         success=success,
@@ -62,8 +73,12 @@ async def log_tool_invocation(
         }
         if email:
             metadata["email"] = email
-        if client_ip:
-            metadata["clientIp"] = client_ip
+        if request_ip:
+            metadata["requestIp"] = request_ip
+        if authorized_from_ip:
+            metadata["authorizedFromIp"] = authorized_from_ip
+        if dcr_client:
+            metadata["mcpClient"] = dcr_client
         if scope:
             metadata["scope"] = scope
         result_payload: dict[str, Any] | None = None
@@ -125,7 +140,10 @@ async def log_oauth_event(
         if email:
             metadata["email"] = email
         if client_ip:
-            metadata["clientIp"] = client_ip
+            metadata["requestIp"] = client_ip
+            # During OAuth authorize the request IP is the user's browser — also
+            # stamp it as authorizedFromIp so all MCP rows share the same schema.
+            metadata["authorizedFromIp"] = client_ip
         if granted_scope:
             metadata["scope"] = granted_scope
         if reason:
