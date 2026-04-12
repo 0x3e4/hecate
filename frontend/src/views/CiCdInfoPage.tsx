@@ -195,7 +195,7 @@ jobs:
 
       - name: Scan image via Hecate
         id: scan
-        uses: rk/hecate/actions/hecate-scan@main
+        uses: 0x3e4/hecate-scan-action@v1
         with:
           hecate-url: \${{ secrets.HECATE_URL }}
           api-key: \${{ secrets.SCA_API_KEY }}
