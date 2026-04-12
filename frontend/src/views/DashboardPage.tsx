@@ -7,6 +7,7 @@ import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { useI18n, type TranslateFn } from "../i18n/context";
+import { getCurrentTimezone } from "../timezone/storage";
 import { useSSE } from "../hooks/useSSE";
 import { getPublishedDisplay } from "../utils/published";
 import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
@@ -455,7 +456,7 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
     const d = new Date();
     d.setDate(d.getDate() - offset);
     return d.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", {
-      weekday: "short", day: "2-digit", month: "2-digit", year: "numeric",
+      weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone: getCurrentTimezone(),
     });
   };
 

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { config } from "../config";
+import { useServerConfig } from "../server-config/context";
+import { getCurrentTimezone } from "../timezone/storage";
 
 import {
   fetchScanTargets,
@@ -2077,6 +2078,7 @@ export const ScansPage = () => {
 
 const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onUpdateGroup, onFilterScans, onCancelScan }: { target: ScanTarget; groupSuggestions?: string[]; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onUpdateGroup?: (targetId: string, group: string | null) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
+  const { scaAutoScanEnabled } = useServerConfig();
   const isRunning = !!target.hasRunningScan;
   const isPending = target.runningScanStatus === "pending";
   const autoScan = target.autoScan !== false; // default true
@@ -2352,7 +2354,7 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
               ↻ Scan
             </button>
           )}
-          {config.scaFeatures.autoScanEnabled && target.type !== "sbom-import" && (
+          {scaAutoScanEnabled && target.type !== "sbom-import" && (
             <button
               type="button"
               onClick={() => onToggleAutoScan(target)}
@@ -2627,8 +2629,10 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
   };
 
   const fmtTime = (ts: number) => {
-    const d = new Date(ts);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+    return new Date(ts).toLocaleTimeString("en-GB", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+      timeZone: getCurrentTimezone(),
+    });
   };
 
   return (

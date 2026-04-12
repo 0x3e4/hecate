@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 class CPEEntry(BaseModel):
     cpe_name: str = Field(alias="cpeName", serialization_alias="cpeName")
@@ -14,7 +16,7 @@ class CPEEntry(BaseModel):
     version: str | None = None
     deprecated: bool = False
     cpe_name_id: dict[str, Any] | None = Field(default=None, alias="cpeNameId", serialization_alias="cpeNameId")
-    last_modified: datetime | None = Field(default=None, alias="lastModified", serialization_alias="lastModified")
+    last_modified: UtcDatetime | None = Field(default=None, alias="lastModified", serialization_alias="lastModified")
 
     model_config = {"populate_by_name": True}
 

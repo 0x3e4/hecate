@@ -3,8 +3,8 @@ import { useI18n } from "../i18n/context";
 
 export const McpInfoPage = () => {
   const { t } = useI18n();
-  const domain = import.meta.env.VITE_DOMAIN ?? window.location.hostname;
-  const mcpUrl = `https://${domain}/mcp`;
+  const domain = globalThis.location.hostname;
+  const mcpUrl = `${globalThis.location.origin}/mcp`;
 
   useEffect(() => {
     document.title = "Hecate Cyber Defense - MCP";

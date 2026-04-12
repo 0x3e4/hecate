@@ -141,7 +141,7 @@ class Settings(BaseSettings):
     sca_scanner_url: str = "http://scanner:8080"
     sca_scanner_timeout_seconds: int = 600
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
-    vite_sca_auto_scan_enabled: bool = False
+    sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
     sca_max_concurrent_scans: int = 2
     sca_min_free_memory_mb: int = 1024

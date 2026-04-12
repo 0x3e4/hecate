@@ -7,7 +7,7 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 ```
 app/
 ├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung (16 Module)
+│   ├── routes.py            # Router-Registrierung (17 Module)
 │   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
@@ -23,6 +23,7 @@ app/
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
+│   ├── config.py            # Public Runtime-Config (Feature-Flags aus Backend-Settings für das Frontend)
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
 │   ├── server.py                # ASGI Sub-App Factory (FastMCP)
@@ -67,6 +68,7 @@ app/
 │   ├── scan_sbom_repository.py
 │   └── license_policy_repository.py
 ├── schemas/                 # API Request/Response Schemata
+│   ├── _utc.py              # Shared `UtcDatetime` Annotated-Type (BeforeValidator) — normalisiert alle ausgehenden datetime-Felder auf UTC-aware, damit der Frontend sie nicht als local time parst
 │   ├── vulnerability.py     # VulnerabilityQuery (inkl. Advanced Filters: Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum), VulnerabilityDetail
 │   ├── cwe.py, capec.py, cpe.py, assets.py
 │   ├── ai.py                # AI-Analyse Schemata
@@ -209,6 +211,9 @@ Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. Job
 field_name: str = Field(alias="fieldName", serialization_alias="fieldName")
 ```
 Snake-Case in Python, camelCase auf dem Wire.
+
+### UTC-aware Datetime-Serialisierung
+Alle nach außen exponierten `datetime`-Felder verwenden den `UtcDatetime`-Alias aus `app/schemas/_utc.py` (ein `Annotated[datetime, BeforeValidator(_coerce_utc)]`). Der Validator hängt an jedes eingehende naive datetime / ISO-String ein `tzinfo=UTC` an, sodass die JSON-Ausgabe immer ein `+00:00`-Suffix enthält. Hintergrund: OpenSearch `_source`-Reads von als naive String indizierten Date-Feldern liefern Werte ohne Zeitzone; der Frontend würde sie via `new Date()` als local time parsen und um den Offset des Benutzers verschoben anzeigen. Zusätzlich öffnet `app/db/mongo.py` den Motor-Client mit `tz_aware=True`, damit auch MongoDB-Reads UTC-aware zurückkommen. Alle Writes nutzen `datetime.now(UTC)`.
 
 ## CLI
 

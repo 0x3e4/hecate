@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas._utc import UtcDatetime
+
 
 # --- Request schemas ---
 
@@ -66,8 +68,8 @@ class LicensePolicyResponse(BaseModel):
     reviewed: list[str] = Field(default_factory=list)
     default_action: str = Field(alias="defaultAction", serialization_alias="defaultAction")
     is_default: bool = Field(alias="isDefault", serialization_alias="isDefault")
-    created_at: datetime = Field(alias="createdAt", serialization_alias="createdAt")
-    updated_at: datetime = Field(alias="updatedAt", serialization_alias="updatedAt")
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+    updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
 
     model_config = {"populate_by_name": True}
 

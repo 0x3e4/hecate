@@ -7,6 +7,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
+import { getCurrentTimezone } from "../timezone/storage";
 import type {
   Scan,
   ScanFinding,
@@ -3157,8 +3158,9 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
           const x = getX(i);
           const step = Math.max(1, Math.floor(history.length / 8));
           if (i % step !== 0 && i !== history.length - 1) return null;
-          const d = new Date(h.startedAt);
-          const label = `${d.getDate()}.${d.getMonth() + 1}`;
+          const label = new Date(h.startedAt).toLocaleDateString("de-DE", {
+            day: "numeric", month: "numeric", timeZone: getCurrentTimezone(),
+          });
           return (
             <text key={i} x={x} y={height - 5} fill={hoveredIndex === i ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)"} fontSize="10" textAnchor="middle">{label}</text>
           );
@@ -3189,8 +3191,13 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
         const x = getX(hoveredIndex);
         const xPct = (x - padding.left) / chartW;
         const d = new Date(h.startedAt);
-        const dateStr = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
-        const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        const tz = getCurrentTimezone();
+        const dateStr = d.toLocaleDateString("de-DE", {
+          day: "2-digit", month: "2-digit", year: "numeric", timeZone: tz,
+        });
+        const timeStr = d.toLocaleTimeString("de-DE", {
+          hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz,
+        });
         return (
           <div
             style={{

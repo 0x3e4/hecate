@@ -9,6 +9,7 @@ import {
 } from "../api/stats";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
+import { getCurrentTimezone } from "../timezone/storage";
 
 export const StatsPage = () => {
   const { t } = useI18n();
@@ -602,7 +603,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   // Format timestamp to readable date
   const formatDateTime = (timestamp: number) => {
     const date = new Date(timestamp);
-    const day = date.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    const day = date.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: getCurrentTimezone() });
     return { day };
   };
 
@@ -800,7 +801,7 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
 
         {/* Time axis labels */}
         {timeLabels.map(({ x, date }, i) => {
-          const dayLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+          const dayLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: getCurrentTimezone() });
           const yearLabel = date.getFullYear().toString();
 
           return (
@@ -944,7 +945,7 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   const lastPoint = cumulativeData[cumulativeData.length - 1];
   const formatMonth = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleDateString(locale, { month: "short", year: "numeric" });
+    return date.toLocaleDateString(locale, { month: "short", year: "numeric", timeZone: getCurrentTimezone() });
   };
 
   const hoveredPoint = hoveredIndex !== null ? chartPoints[hoveredIndex] : null;

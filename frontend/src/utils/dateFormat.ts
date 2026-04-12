@@ -5,8 +5,8 @@
  * This utility formats them according to the configured timezone.
  */
 
-import { config } from '../config';
 import { getCurrentLanguage, getCurrentLocale } from "../i18n/language";
+import { getCurrentTimezone } from "../timezone/storage";
 
 export type DateFormatStyle = 'short' | 'medium' | 'long' | 'full';
 
@@ -19,7 +19,7 @@ interface DateFormatOptions {
   dateStyle?: DateFormatStyle;
   /** Time format style (default: 'short') */
   timeStyle?: DateFormatStyle;
-  /** Override timezone (default: uses config.timezone) */
+  /** Override timezone (default: uses user preference from localStorage, fallback to browser) */
   timezone?: string;
 }
 
@@ -56,7 +56,7 @@ export function formatDate(
       includeSeconds = false,
       dateStyle = 'medium',
       timeStyle = 'short',
-      timezone = config.timezone,
+      timezone = getCurrentTimezone(),
     } = options;
 
     if (includeTime) {

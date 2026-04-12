@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import Depends
@@ -103,7 +103,7 @@ class ChangelogService:
 
                     # Use last_change_at (matches the date filter), fall back to ingested_at
                     last_change_at = doc.get("last_change_at")
-                    timestamp = last_change_at if isinstance(last_change_at, datetime) else (ingested_at if ingested_at else datetime.now())
+                    timestamp = last_change_at if isinstance(last_change_at, datetime) else (ingested_at if ingested_at else datetime.now(UTC))
 
                     if latest_ch:
                         ch_type = latest_ch.get("change_type", "")
@@ -119,7 +119,7 @@ class ChangelogService:
                     # Ensure timestamp is a datetime object
                     if not isinstance(timestamp, datetime):
                         log.warning(f"Timestamp is not datetime: {type(timestamp)}, converting")
-                        timestamp = datetime.now()
+                        timestamp = datetime.now(UTC)
 
                     # Build latest_change from the entry we already resolved above
                     latest_change = None
