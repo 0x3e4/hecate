@@ -1,9 +1,8 @@
-"""ASGI middleware for MCP API key authentication and connection limiting."""
+"""ASGI middleware for MCP OAuth authentication and connection limiting."""
 
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 from contextvars import ContextVar
 from typing import Any
@@ -17,22 +16,22 @@ log = structlog.get_logger()
 # Contextvars set by auth middleware, readable by tool handlers and audit.
 mcp_client_id: ContextVar[str] = ContextVar("mcp_client_id", default="anonymous")
 mcp_client_ip: ContextVar[str] = ContextVar("mcp_client_ip", default="")
+mcp_token_scope: ContextVar[str] = ContextVar("mcp_token_scope", default="")
+mcp_token_email: ContextVar[str] = ContextVar("mcp_token_email", default="")
 
 
 class MCPAuthMiddleware:
-    """ASGI middleware that validates Bearer token (API key or OAuth) before forwarding to MCP server."""
+    """ASGI middleware that validates an OAuth Bearer token before forwarding to MCP server."""
 
     def __init__(self, app: Any) -> None:
         self._app = app
         self._semaphore = asyncio.Semaphore(settings.mcp_max_concurrent_connections)
-        self._api_key = (settings.mcp_api_key or "").encode()
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope["type"] not in ("http", "websocket"):
             await self._app(scope, receive, send)
             return
 
-        # Build the resource_metadata URL for WWW-Authenticate header
         headers_list = scope.get("headers", [])
         headers = dict(headers_list)
         proto = "https"
@@ -44,7 +43,7 @@ class MCPAuthMiddleware:
                 host = v.decode()
         if not host:
             host = headers.get(b"host", b"localhost").decode()
-        resource_metadata_url = f"{proto}://{host}/.well-known/oauth-protected-resource"
+        resource_metadata_url = f"{proto}://{host}/.well-known/oauth-protected-resource/mcp"
 
         auth_header = headers.get(b"authorization", b"").decode()
 
@@ -55,44 +54,41 @@ class MCPAuthMiddleware:
 
         token = auth_header[7:]
 
-        # Check 1: Direct API key match (timing-safe)
-        is_api_key = hmac.compare_digest(token.encode(), self._api_key)
+        from app.mcp.oauth import get_oauth_token_info
 
-        # Check 2: OAuth access token
-        is_oauth = False
-        if not is_api_key:
-            from app.mcp.oauth import validate_oauth_token
-            is_oauth = validate_oauth_token(token)
-
-        if not is_api_key and not is_oauth:
+        info = get_oauth_token_info(token)
+        if info is None:
             await self._send_401(send, resource_metadata_url)
             log.warning(
                 "mcp.auth_failed",
-                reason="invalid_key",
-                client_ip=self._get_client_ip(scope),
+                reason="invalid_token",
+                client_ip=self._get_client_ip(scope, headers_list),
             )
             return
 
-        # Connection limiting
         if self._semaphore.locked():
             await self._send_error(send, 503, "Too many concurrent connections")
             log.warning("mcp.connection_limit_reached")
             return
 
         async with self._semaphore:
-            client_label = "mcp-oauth-client" if is_oauth else "mcp-apikey-client"
-            client_ip = self._get_client_ip(scope) or ""
-            token_client = mcp_client_id.set(client_label)
-            token_ip = mcp_client_ip.set(client_ip)
+            client_ip = self._get_client_ip(scope, headers_list) or ""
+            tokens = [
+                mcp_client_id.set(info.identity or "mcp-oauth-client"),
+                mcp_client_ip.set(client_ip),
+                mcp_token_scope.set(info.scope or ""),
+                mcp_token_email.set(info.email or ""),
+            ]
             try:
                 await self._app(scope, receive, send)
             finally:
-                mcp_client_id.reset(token_client)
-                mcp_client_ip.reset(token_ip)
+                mcp_token_email.reset(tokens[3])
+                mcp_token_scope.reset(tokens[2])
+                mcp_client_ip.reset(tokens[1])
+                mcp_client_id.reset(tokens[0])
 
     @staticmethod
     async def _send_401(send: Any, resource_metadata_url: str) -> None:
-        """Send 401 with WWW-Authenticate header pointing to OAuth metadata (MCP spec)."""
         body = json.dumps({"error": "Unauthorized"}).encode()
         await send(
             {
@@ -123,15 +119,31 @@ class MCPAuthMiddleware:
         await send({"type": "http.response.body", "body": body})
 
     @staticmethod
-    def _get_client_ip(scope: dict) -> str | None:
+    def _get_client_ip(scope: dict, headers_list: list) -> str | None:
+        for k, v in headers_list:
+            if k == b"x-forwarded-for":
+                return v.decode().split(",")[0].strip()
         client = scope.get("client")
         return client[0] if client else None
 
 
-def require_write_key() -> bool:
-    """Check if the write API key is configured and valid.
+def require_write_scope() -> tuple[bool, str | None]:
+    """Check if the current MCP request is allowed to call write tools.
 
-    Call this inside write-gated tool handlers.  Returns True when
-    write access is allowed, False otherwise.
+    Both checks must pass:
+      1. The OAuth token must carry the `mcp:write` scope (granted at authorize
+         time when the user's IP was in MCP_WRITE_IP_SAFELIST).
+      2. The CURRENT request's source IP must still be in MCP_WRITE_IP_SAFELIST
+         (defence-in-depth in case the user's IP changed after token issue).
+
+    Returns (allowed, deny_reason).
     """
-    return bool(settings.mcp_write_api_key)
+    scope = mcp_token_scope.get("")
+    if "mcp:write" not in scope.split():
+        return False, "Token was not issued with mcp:write scope (source IP was not in MCP_WRITE_IP_SAFELIST at authorization time)."
+    ip_str = mcp_client_ip.get()
+    from app.mcp.oauth import _ip_in_safelist
+
+    if not ip_str or not _ip_in_safelist(ip_str, settings.mcp_write_ip_safelist):
+        return False, "Current source IP is not in MCP_WRITE_IP_SAFELIST."
+    return True, None

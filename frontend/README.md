@@ -96,7 +96,7 @@ src/
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Multi-Select-Toolbar mit Bulk-Apply/Dismiss/Restore, Show-Dismissed-Toggle, Inline-VEX-Editor als expandierbare Zeile mit Status/Justification/Detail, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards zum Filtern, Provenance-Filter), History (Zeitbereichs-Filter 7d/30d/90d/All, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
-| `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |
+| `/mcp-info` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools, Beispiel-Prompts, Konfiguration). Route ist `/mcp-info`, nicht `/mcp`, weil `/mcp` vom Backend als MCP-Protokoll-Endpoint belegt ist. |
 
 Die KI-Analyse-Seite wird nur angezeigt wenn `VITE_AI_FEATURES_ENABLED=true`.
 Die SCA-Scans-, CI/CD-, API- und MCP-Seiten werden nur angezeigt wenn `VITE_SCA_FEATURES_ENABLED=true`.

@@ -74,7 +74,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 - `events.py` — Server-Sent Events (SSE) Stream
 - `license_policies.py` — Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
 
-Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit 11 Tools, OAuth 2.0 (PKCE), Rate-Limiting und Audit-Logging.
+Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit 11 Tools, Rate-Limiting und Audit-Logging. Die Authentifizierung erfolgt via delegated OAuth: Hecate agiert als Authorization Server gegenüber dem MCP-Client (Dynamic Client Registration + Auth Code + PKCE/S256) und delegiert die User-Authentifizierung an einen Upstream-IdP (GitHub OAuth App, Microsoft Entra ID oder generischen OIDC-Provider wie Authentik/Keycloak/Auth0/Zitadel). Statische API-Keys gibt es nicht mehr. Write-Tools (`trigger_scan`, `trigger_sync`) sind zusätzlich IP-basiert geschützt via `MCP_WRITE_IP_SAFELIST` — nur Anfragen von Safelist-IPs erhalten den `mcp:write` Scope (bei Token-Ausstellung und bei jedem Tool-Call erneut geprüft). Provider-Abstraktion in `app/mcp/oauth_providers.py`.
 
 Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`).
 
@@ -270,7 +270,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (Multi-Select-Toolbar, expandierbarer VEX-Editor mit Detail-Feld, Show-Dismissed-Toggle, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
 | `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
-| `/mcp` | `McpInfoPage` | MCP-Server-Info (Setup-Anleitung, Tools, Beispiel-Prompts, Konfiguration) |
+| `/mcp-info` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools, Beispiel-Prompts, Konfiguration). Route heißt `/mcp-info`, nicht `/mcp`, weil `/mcp` der MCP-Protokoll-Endpoint des Backends ist. |
 
 ### State-Management
 - Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
@@ -374,5 +374,5 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
 | KI | OpenAI, Anthropic, Google Gemini |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
-| MCP Server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
+| MCP Server | mcp SDK, OAuth 2.0 (DCR + PKCE/S256), delegated auth via GitHub/Microsoft Entra/OIDC, Streamable HTTP |
 | CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |

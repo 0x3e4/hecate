@@ -39,7 +39,7 @@ export const router = createBrowserRouter([
       ...(config.scaFeatures.enabled ? [
         { path: "cicd", element: <CiCdInfoPage /> },
         { path: "api-docs", element: <ApiInfoPage /> },
-        { path: "mcp", element: <McpInfoPage /> },
+        { path: "mcp-info", element: <McpInfoPage /> },
       ] : []),
       { path: "*", element: <Navigate to="/" replace /> }
     ]

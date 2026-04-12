@@ -34,9 +34,14 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix=settings.api_prefix)
 
-    # Mount MCP server (fail-closed: only if enabled AND API key configured)
+    # Mount MCP server (fail-closed: only if enabled AND OAuth IdP fully configured)
     _mcp_server = None
-    if settings.mcp_enabled and settings.mcp_api_key:
+    if (
+        settings.mcp_enabled
+        and settings.mcp_oauth_provider
+        and settings.mcp_oauth_client_id
+        and settings.mcp_oauth_client_secret
+    ):
         from app.mcp.server import create_mcp_app
         from app.mcp.oauth import router as oauth_router
 
