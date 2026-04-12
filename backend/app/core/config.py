@@ -155,8 +155,13 @@ class Settings(BaseSettings):
 
     # MCP Server
     mcp_enabled: bool = False
-    mcp_api_key: str | None = None
-    mcp_write_api_key: str | None = None
+    mcp_oauth_provider: str | None = None  # "github" | "microsoft" | "oidc"
+    mcp_oauth_client_id: str = ""
+    mcp_oauth_client_secret: str = ""
+    mcp_oauth_issuer: str = ""  # OIDC discovery URL; for microsoft tenant URL
+    mcp_oauth_scopes: str = ""  # space-separated; empty = provider default
+    mcp_write_ip_safelist: str = ""  # CSV of IPs/CIDRs
+    mcp_allowed_users: str = ""  # CSV of identities/emails; empty = any IdP-authenticated
     mcp_rate_limit_per_minute: int = 60
     mcp_max_results: int = 50
     mcp_max_concurrent_connections: int = 20

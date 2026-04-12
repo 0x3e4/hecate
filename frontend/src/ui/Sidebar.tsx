@@ -55,7 +55,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/cicd", label: "CI/CD", icon: LuBookOpen },
       { to: "/api-docs", label: "API", icon: LuBookOpen },
-      { to: "/mcp", label: "MCP", icon: LuBookOpen },
+      { to: "/mcp-info", label: "MCP", icon: LuBookOpen },
     ],
   }] : []),
 ];
@@ -118,7 +118,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/system": "System",
     "/api-docs": "API",
     "/cicd": "CI/CD",
-    "/mcp": "MCP",
+    "/mcp-info": "MCP",
   };
 
   const localizedSections = useMemo(

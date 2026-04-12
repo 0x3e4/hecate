@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from app.core.config import settings
 from app.mcp.audit import log_tool_invocation
-from app.mcp.auth import mcp_client_id, require_write_key
+from app.mcp.auth import mcp_client_id, require_write_scope
 from app.mcp.security import sanitize_search_input
 from app.mcp.server import get_rate_limiter
 
@@ -79,7 +79,8 @@ def register(mcp: FastMCP) -> None:
     ) -> dict[str, Any]:
         """Submit an SCA scan for a container image or source repository.
 
-        Requires write API key. Supported target types: 'container_image', 'source_repo'.
+        Requires write scope (caller's source IP must be in MCP_WRITE_IP_SAFELIST).
+        Supported target types: 'container_image', 'source_repo'.
         Default scanners: trivy, grype, syft, osv-scanner, hecate.
         Examples:
         - trigger_scan(target="nginx:latest") — scan nginx container image
@@ -96,13 +97,14 @@ def register(mcp: FastMCP) -> None:
             )
             return {"error": "Rate limit exceeded."}
 
-        # Write operation — require write API key
-        if not require_write_key():
+        # Write operation — require write scope (token scope + IP safelist)
+        allowed, deny_reason = require_write_scope()
+        if not allowed:
             await log_tool_invocation(
                 tool_name="trigger_scan", inputs=tool_inputs,
-                success=False, error="Write access denied", started_at=started_at,
+                success=False, error=f"Write denied: {deny_reason}", started_at=started_at,
             )
-            return {"error": "Write operations require MCP_WRITE_API_KEY to be configured."}
+            return {"error": f"Write access denied. {deny_reason}"}
 
         try:
             # Validate target_type
@@ -157,7 +159,8 @@ def register(mcp: FastMCP) -> None:
     ) -> dict[str, Any]:
         """Trigger a vulnerability data sync from a specific upstream source.
 
-        Requires write API key. Sources: nvd, euvd, kev, cpe, cwe, capec, circl, ghsa, osv.
+        Requires write scope (caller's source IP must be in MCP_WRITE_IP_SAFELIST).
+        Sources: nvd, euvd, kev, cpe, cwe, capec, circl, ghsa, osv.
         Set initial=True for a full initial sync (much slower, fetches all data).
         Examples:
         - trigger_sync(source="nvd") — incremental NVD sync
@@ -174,12 +177,13 @@ def register(mcp: FastMCP) -> None:
             )
             return {"error": "Rate limit exceeded."}
 
-        if not require_write_key():
+        allowed, deny_reason = require_write_scope()
+        if not allowed:
             await log_tool_invocation(
                 tool_name="trigger_sync", inputs=tool_inputs,
-                success=False, error="Write access denied", started_at=started_at,
+                success=False, error=f"Write denied: {deny_reason}", started_at=started_at,
             )
-            return {"error": "Write operations require MCP_WRITE_API_KEY to be configured."}
+            return {"error": f"Write access denied. {deny_reason}"}
 
         try:
             valid_sources = {"nvd", "euvd", "kev", "cpe", "cwe", "capec", "circl", "ghsa", "osv"}

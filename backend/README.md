@@ -26,10 +26,11 @@ app/
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
 │   ├── server.py                # ASGI Sub-App Factory (FastMCP)
-│   ├── auth.py                  # Bearer Token + OAuth 2.0 Auth Middleware (API-Key + OAuth-Token)
-│   ├── oauth.py                 # OAuth 2.0 Endpoints (Metadata, Authorize, Token, Register, PKCE)
+│   ├── auth.py                  # OAuth-Token-Validierung, Scope- und IP-basierte Write-Gatung
+│   ├── oauth.py                 # OAuth 2.0 AS-Endpoints (Metadata inkl. RFC 9728 Path-Suffix, DCR, Authorize, IdP-Callback, Token mit PKCE)
+│   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
-│   ├── audit.py                 # Dual Audit (structlog + MongoDB)
+│   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events
 │   └── tools/                   # 11 MCP-Tools (6 Module)
 │       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability
 │       ├── cpe.py               # search_cpe
