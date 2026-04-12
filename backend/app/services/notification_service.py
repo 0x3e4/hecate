@@ -556,7 +556,7 @@ class NotificationService:
         # We use the EARLIER of `last_evaluated_at` and `pipeline_started_at`.
         # Reason: long-running pipelines (e.g. OSV) update documents during their
         # run while shorter concurrent pipelines (NVD/EUVD/CIRCL) may advance
-        # `last_evaluated_at` past those documents' `ingested_at`. Using the
+        # `last_evaluated_at` past those documents' `first_seen_at`. Using the
         # pipeline's start time as a fallback floor guarantees we still catch
         # those documents when the long pipeline finishes.
         effective_since: datetime | None = last_checked
@@ -564,14 +564,16 @@ class NotificationService:
             if effective_since is None or pipeline_started_at < effective_since:
                 effective_since = pipeline_started_at
 
-        # Build time filter for "only new since the effective lower bound".
-        # Use Lucene range bracket syntax `[ T TO * ]` — the `>=` syntax with
-        # quoted dates does NOT work in OpenSearch query_string and silently
-        # returns 0 hits.
+        # Build time filter for "only NEW vulnerabilities since the effective lower bound".
+        # We filter on `first_seen_at` (set once on insert, never updated by enrichment)
+        # so re-ingests / CIRCL/KEV/GHSA/OSV enrichment passes do NOT retrigger
+        # notifications for already-known CVEs. Lucene range bracket syntax
+        # `[ T TO * ]` is required — the `>=` syntax with quoted dates does NOT
+        # work in OpenSearch query_string and silently returns 0 hits.
         time_dql = ""
         if effective_since:
             iso = effective_since.strftime("%Y-%m-%dT%H:%M:%SZ")
-            time_dql = f'ingested_at:[{iso} TO *]'
+            time_dql = f'first_seen_at:[{iso} TO *]'
 
         query: VulnerabilityQuery | None = None
 
