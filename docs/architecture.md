@@ -321,6 +321,9 @@ Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
 ### Normalizer
 Alle Quellen werden über `normalizer.py` in ein einheitliches `VulnerabilityDocument`-Schema überführt. CVSS-Metriken normalisiert über v2.0, v3.0, v3.1 und v4.0. EUVD-Aliases werden sanitisiert: fremde CVE-IDs und GHSA-IDs werden entfernt (EUVD hat Prefix-Kollisionen bei Aliases). GHSA-zu-CVE-Zuordnung erfolgt ausschließlich über die GHSA-Pipeline.
 
+### Priority-gated `published`/`modified` (NVD ↔ EUVD)
+Die Timestamp-Felder `published` und `modified` auf Vulnerability-Dokumenten werden durch die Env-Variable `INGESTION_PRIORITY_VULN_DB` (Default `NVD`, Alternative `EUVD`) gesteuert. Die Prioritätsquelle überschreibt beide Felder bei jedem Upsert; die Nicht-Prioritätsquelle füllt sie nur, wenn beide aktuell leer sind (first-writer-wins-Fallback). Der Helper `_should_write_priority_timestamps()` in `backend/app/repositories/vulnerability_repository.py` wird sowohl von `upsert_from_nvd` als auch `upsert_from_euvd` aufgerufen. Hintergrund: ohne dieses Gate überschrieb EUVD immer die NVD-Timestamps, weil `upsert_from_euvd` sie unkonditional schrieb und `upsert_from_nvd` sie nie explizit setzte — unabhängig vom konfigurierten Priority-Wert.
+
 ## Datenfluss
 
 ```
