@@ -414,6 +414,19 @@ async def get_global_sbom(
     )
 
 
+@router.get("/sbom/facets")
+async def get_global_sbom_facets(
+    target_id: str | None = Query(default=None, alias="targetId"),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, list[dict[str, Any]]]:
+    """Aggregated ecosystem/license/type counts across all SBOM components."""
+    facets = await service.get_sbom_facets(target_id=target_id)
+    return {
+        key: [{"name": name, "count": count} for name, count in items]
+        for key, items in facets.items()
+    }
+
+
 @router.post("/import-sbom", response_model=SubmitScanResponse, status_code=201)
 async def import_sbom(
     request: ImportSbomRequest,

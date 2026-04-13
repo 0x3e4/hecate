@@ -97,6 +97,16 @@ export const fetchBadgeCounts = async (): Promise<{ findings: number; sbom: numb
   return response.data;
 };
 
+export type SbomFacet = { name: string; count: number };
+export type SbomFacets = { ecosystems: SbomFacet[]; licenses: SbomFacet[]; types: SbomFacet[] };
+
+export const fetchSbomFacets = async (targetId?: string): Promise<SbomFacets> => {
+  const response = await api.get<SbomFacets>("/v1/scans/sbom/facets", {
+    params: targetId ? { targetId } : undefined,
+  });
+  return response.data;
+};
+
 export const submitManualScan = async (request: SubmitScanRequest): Promise<SubmitScanResponse> => {
   const response = await api.post<SubmitScanResponse>("/v1/scans/manual", request);
   return response.data;
