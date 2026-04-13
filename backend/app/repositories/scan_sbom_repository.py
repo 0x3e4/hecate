@@ -140,6 +140,70 @@ class ScanSbomRepository:
             log.warning("scan_sbom_repository.list_across_scans_consolidated_failed", error=str(exc))
             return 0, []
 
+    async def get_consolidated_facets(
+        self, scan_ids: list[str]
+    ) -> dict[str, list[tuple[str, int]]]:
+        """Return ecosystem/license/type counts over consolidated (name+version) components."""
+        if not scan_ids:
+            return {"ecosystems": [], "licenses": [], "types": []}
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"scan_id": {"$in": scan_ids}}},
+            {"$group": {
+                "_id": {"name": "$name", "version": "$version"},
+                "type": {"$first": "$type"},
+                "purl": {"$first": "$purl"},
+                "licenses": {"$first": "$licenses"},
+            }},
+            {"$facet": {
+                "ecosystems": [
+                    {"$project": {
+                        "eco": {
+                            "$cond": [
+                                {"$and": [
+                                    {"$ne": ["$purl", None]},
+                                    {"$regexMatch": {"input": "$purl", "regex": r"^pkg:[^/]+/"}},
+                                ]},
+                                {"$arrayElemAt": [
+                                    {"$split": [{"$substrCP": ["$purl", 4, 1000]}, "/"]},
+                                    0,
+                                ]},
+                                "unknown",
+                            ],
+                        },
+                    }},
+                    {"$group": {"_id": "$eco", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                ],
+                "licenses": [
+                    {"$unwind": {"path": "$licenses", "preserveNullAndEmptyArrays": False}},
+                    {"$group": {"_id": "$licenses", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                ],
+                "types": [
+                    {"$group": {
+                        "_id": {"$ifNull": ["$type", "unknown"]},
+                        "count": {"$sum": 1},
+                    }},
+                    {"$sort": {"count": -1}},
+                ],
+            }},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            if not result:
+                return {"ecosystems": [], "licenses": [], "types": []}
+            doc = result[0]
+            def _unpack(bucket: list[dict[str, Any]]) -> list[tuple[str, int]]:
+                return [(str(b["_id"] or "unknown"), int(b["count"])) for b in bucket]
+            return {
+                "ecosystems": _unpack(doc.get("ecosystems", [])),
+                "licenses": _unpack(doc.get("licenses", [])),
+                "types": _unpack(doc.get("types", [])),
+            }
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.get_consolidated_facets_failed", error=str(exc))
+            return {"ecosystems": [], "licenses": [], "types": []}
+
     async def count_consolidated(self, scan_ids: list[str]) -> int:
         """Count consolidated SBOM components (grouped by name+version) across scans."""
         if not scan_ids:

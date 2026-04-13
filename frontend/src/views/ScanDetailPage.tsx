@@ -1063,11 +1063,17 @@ export const ScanDetailPage = () => {
               ))}
               <label style={{
                 display: "inline-flex", alignItems: "center", gap: "0.375rem",
-                padding: "0.25rem 0.5rem", borderRadius: "4px",
+                padding: "0.25rem 0.625rem", borderRadius: "4px",
                 border: "1px solid rgba(255,255,255,0.1)",
-                fontSize: "0.75rem", color: "rgba(255,255,255,0.6)", cursor: "pointer",
+                fontSize: "0.75rem", lineHeight: 1, color: "rgba(255,255,255,0.6)", cursor: "pointer",
+                boxSizing: "border-box",
               }}>
-                <input type="checkbox" checked={showDismissed} onChange={e => setShowDismissed(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={showDismissed}
+                  onChange={e => setShowDismissed(e.target.checked)}
+                  style={{ width: "12px", height: "12px", margin: 0, flexShrink: 0 }}
+                />
                 {t("Show dismissed", "Verworfene anzeigen")}
               </label>
               <input
@@ -1427,8 +1433,8 @@ export const ScanDetailPage = () => {
                         </tr>
                         {isDetailExpanded && (
                           <tr style={{ background: "rgba(116,192,252,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <td colSpan={9} style={{ padding: "0.625rem 1rem" }}>
-                              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.75rem", maxWidth: "800px" }}>
+                            <td colSpan={9} className="finding-detail-cell" style={{ padding: "0.625rem 1rem" }}>
+                              <div className="finding-detail-grid" style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.75rem", maxWidth: "800px" }}>
                                 {f.packagePath && (
                                   <>
                                     <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Source", "Quelle")}</span>

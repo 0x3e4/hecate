@@ -10,6 +10,8 @@ import {
   fetchGlobalFindings,
   fetchGlobalSbom,
   fetchBadgeCounts,
+  fetchSbomFacets,
+  type SbomFacets,
   submitManualScan,
   submitManualSourceArchiveScan,
   deleteScanTarget,
@@ -35,7 +37,7 @@ import type {
   LicenseOverviewItem,
 } from "../types";
 
-type Tab = "targets" | "scans" | "findings" | "sbom" | "licenses" | "manual" | "scanner";
+type Tab = "targets" | "scans" | "findings" | "sbom" | "licenses" | "scanner";
 type SourceRepoInputMode = "url" | "zip";
 
 interface ConfirmModal {
@@ -56,6 +58,7 @@ export const ScansPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<ConfirmModal | null>(null);
+  const [newScanModalOpen, setNewScanModalOpen] = useState(false);
 
   // Scan filter (from target card click or dropdown)
   const [scanFilterTargetId, setScanFilterTargetId] = useState<string | null>(null);
@@ -83,6 +86,10 @@ export const ScansPage = () => {
   const [sbomImportResult, setSbomImportResult] = useState<SubmitScanResponse | null>(null);
   const [sbomImportError, setSbomImportError] = useState<string | null>(null);
 
+  // Badge counts (unfiltered, for tab labels)
+  const [findingsBadgeTotal, setFindingsBadgeTotal] = useState(0);
+  const [sbomBadgeTotal, setSbomBadgeTotal] = useState(0);
+
   // Global findings tab
   const [globalFindings, setGlobalFindings] = useState<ConsolidatedFinding[]>([]);
   const [globalFindingsTotal, setGlobalFindingsTotal] = useState(0);
@@ -109,6 +116,7 @@ export const ScansPage = () => {
   const [expandedSboms, setExpandedSboms] = useState<Set<string>>(new Set());
   const [sbomSort, setSbomSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "name", dir: "asc" });
   const [sbomFilterProvenance, setSbomFilterProvenance] = useState<string | null>(null);
+  const [sbomFacets, setSbomFacets] = useState<SbomFacets | null>(null);
   const sbomLimit = 50;
   const sbomSearchRef = useRef(sbomSearch);
   sbomSearchRef.current = sbomSearch;
@@ -127,7 +135,6 @@ export const ScansPage = () => {
   const [scanType, setScanType] = useState<"container_image" | "source_repo">("container_image");
   const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "dockle", "dive"]);
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<SubmitScanResponse | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,6 +148,26 @@ export const ScansPage = () => {
     loadData();
   }, [tab, scanFilterTargetId, scanOffset]);
 
+  // Load unfiltered badge counts once on mount so tab labels are correct
+  // regardless of which tab the user lands on.
+  useEffect(() => {
+    fetchBadgeCounts()
+      .then(counts => {
+        setFindingsBadgeTotal(counts.findings);
+        setSbomBadgeTotal(counts.sbom);
+        setLicenseOverviewTotal(counts.licenses);
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  // Load global SBOM facets when the SBOM tab is first opened.
+  useEffect(() => {
+    if (tab !== "sbom" || sbomFacets) return;
+    fetchSbomFacets()
+      .then(setSbomFacets)
+      .catch(() => setSbomFacets({ ecosystems: [], licenses: [], types: [] }));
+  }, [tab, sbomFacets]);
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -153,8 +180,8 @@ export const ScansPage = () => {
         ]);
         setTargets(targetsRes.items);
         setScanTotal(scansRes.total);
-        setGlobalFindingsTotal(badgeCounts.findings);
-        setSbomTotal(badgeCounts.sbom);
+        setFindingsBadgeTotal(badgeCounts.findings);
+        setSbomBadgeTotal(badgeCounts.sbom);
         setLicenseOverviewTotal(badgeCounts.licenses);
       } else if (tab === "scans") {
         // Load targets for filter dropdown if not yet loaded
@@ -248,26 +275,6 @@ export const ScansPage = () => {
     return () => clearTimeout(timer);
   }, [tab, sbomSearch, sbomType, sbomTargetId, sbomOffset]);
 
-  // SBOM summary stats (computed from loaded page)
-  const sbomStats = useMemo(() => {
-    const ecosystems: Record<string, number> = {};
-    const licenses: Record<string, number> = {};
-    const types: Record<string, number> = {};
-    for (const c of sbomComponents) {
-      const ecoMatch = c.purl?.match(/^pkg:([^/]+)\//);
-      const eco = ecoMatch ? ecoMatch[1] : "unknown";
-      ecosystems[eco] = (ecosystems[eco] || 0) + 1;
-      for (const lic of c.licenses) {
-        licenses[lic] = (licenses[lic] || 0) + 1;
-      }
-      const tp = c.type || "unknown";
-      types[tp] = (types[tp] || 0) + 1;
-    }
-    const sortDesc = (obj: Record<string, number>) =>
-      Object.entries(obj).sort((a, b) => b[1] - a[1]);
-    return { ecosystems: sortDesc(ecosystems), licenses: sortDesc(licenses), types: sortDesc(types) };
-  }, [sbomComponents]);
-
   // Client-side sort + provenance filter for loaded SBOM page
   const filteredSortedSbom = useMemo(() => {
     let items = sbomComponents;
@@ -340,7 +347,6 @@ export const ScansPage = () => {
     const needsTextTarget = scanType === "container_image" || (scanType === "source_repo" && sourceRepoInputMode === "url");
     if ((needsTextTarget && !scanTarget.trim()) || (!needsTextTarget && !sourceArchiveFile) || scanners.length === 0) return;
     setScanning(true);
-    setScanResult(null);
     setScanError(null);
     try {
       const effectiveScanners = scanType === "container_image"
@@ -362,7 +368,8 @@ export const ScansPage = () => {
           type: scanType,
           scanners: effectiveScanners,
         });
-      setScanResult(result);
+      void result;
+      setNewScanModalOpen(false);
       // Switch to scans tab to show the running scan
       setTab("scans");
     } catch (err: any) {
@@ -491,10 +498,9 @@ export const ScansPage = () => {
           {([
             { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
             { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
-            { key: "findings" as Tab, label: t("Findings", "Funde"), count: globalFindingsTotal || undefined },
-            { key: "sbom" as Tab, label: "SBOM", count: sbomTotal || undefined },
+            { key: "findings" as Tab, label: t("Findings", "Funde"), count: findingsBadgeTotal || undefined },
+            { key: "sbom" as Tab, label: "SBOM", count: sbomBadgeTotal || undefined },
             { key: "licenses" as Tab, label: t("Licenses", "Lizenzen"), count: licenseOverviewTotal || undefined },
-            { key: "manual" as Tab, label: t("New Scan", "Neuer Scan") },
             { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
           ]).map(({ key, label, count }) => (
             <button
@@ -538,6 +544,28 @@ export const ScansPage = () => {
         {/* Targets tab */}
         {tab === "targets" && (
           <div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+              <button
+                type="button"
+                onClick={() => setNewScanModalOpen(true)}
+                title={t("New Scan", "Neuer Scan")}
+                aria-label={t("New Scan", "Neuer Scan")}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "0.5rem",
+                  padding: "0.5rem 0.875rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,193,7,0.5)",
+                  background: "rgba(255,193,7,0.15)",
+                  color: "#ffd43b",
+                  cursor: "pointer",
+                  fontSize: "0.8125rem",
+                  fontWeight: 600,
+                }}
+              >
+                <span style={{ fontSize: "1rem", lineHeight: 1 }}>+</span>
+                {t("New Scan", "Neuer Scan")}
+              </button>
+            </div>
             {loading && (
               <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -1349,22 +1377,22 @@ export const ScansPage = () => {
               </div>
             )}
 
-            {/* Summary cards */}
-            {sbomComponents.length > 0 && (
+            {/* Summary cards — global facets across all components, not just the loaded page */}
+            {sbomFacets && (sbomFacets.ecosystems.length > 0 || sbomFacets.licenses.length > 0 || sbomFacets.types.length > 0) && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
                 {[
-                  { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b" },
-                  { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, color: "#69db7c" },
-                  { title: t("Types", "Typen"), data: sbomStats.types, color: "#8b94fc" },
+                  { title: t("Ecosystems", "Ökosysteme"), data: sbomFacets.ecosystems, color: "#ffd43b" },
+                  { title: t("Licenses", "Lizenzen"), data: sbomFacets.licenses, color: "#69db7c" },
+                  { title: t("Types", "Typen"), data: sbomFacets.types, color: "#8b94fc" },
                 ].map(card => (
                   <div key={card.title} style={{ padding: "0.75rem", borderRadius: "8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       {card.title}
                     </div>
-                    {card.data.slice(0, 5).map(([name, count]) => (
-                      <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0", fontSize: "0.75rem" }}>
-                        <span style={{ color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{name}</span>
-                        <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{count}</span>
+                    {card.data.slice(0, 5).map(entry => (
+                      <div key={entry.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0", fontSize: "0.75rem" }}>
+                        <span style={{ color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{entry.name}</span>
+                        <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{entry.count}</span>
                       </div>
                     ))}
                     {card.data.length > 5 && (
@@ -1645,8 +1673,39 @@ export const ScansPage = () => {
         )}
 
         {/* Manual scan tab */}
-        {tab === "manual" && (
-          <div>
+        {newScanModalOpen && (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 9998,
+              display: "flex", alignItems: "flex-start", justifyContent: "center",
+              padding: "2rem 1rem", overflowY: "auto",
+              background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+            }}
+            onClick={() => setNewScanModalOpen(false)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: "#1a1d23", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "10px", padding: "1.5rem",
+                width: "100%", maxWidth: "640px",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>{t("New Scan", "Neuer Scan")}</h3>
+                <button
+                  type="button"
+                  onClick={() => setNewScanModalOpen(false)}
+                  aria-label={t("Close", "Schließen")}
+                  style={{
+                    background: "transparent", border: "none", color: "rgba(255,255,255,0.5)",
+                    fontSize: "1.25rem", cursor: "pointer", lineHeight: 1, padding: "0 0.25rem",
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             <form onSubmit={handleSubmitScan} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div>
                 <label style={labelStyle}>{t("Type", "Typ")}</label>
@@ -1808,27 +1867,7 @@ export const ScansPage = () => {
               </div>
             )}
 
-            {scanResult && (
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ marginBottom: "0.75rem" }}>{t("Scan Result", "Scan-Ergebnis")}</h3>
-                <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-                  <StatBox label="Status" value={scanResult.status} />
-                  <StatBox label={t("Findings", "Ergebnisse")} value={(scanResult.summary.total || scanResult.findingsCount).toString()} />
-                  <StatBox label={t("SBOM Components", "SBOM-Komponenten")} value={scanResult.sbomComponentCount.toString()} />
-                </div>
-                <SeverityBadges summary={scanResult.summary} style={{ marginTop: "0.75rem" }} />
-                {scanResult.error && (
-                  <p style={{ marginTop: "0.5rem", color: "#ff922b", fontSize: "0.8125rem" }}>{scanResult.error}</p>
-                )}
-                <Link
-                  to={`/scans/${scanResult.scanId}`}
-                  style={{ display: "inline-block", marginTop: "0.75rem", color: "#ffd43b", textDecoration: "none", fontSize: "0.875rem" }}
-                >
-                  {t("View scan details", "Scan-Details anzeigen")} →
-                </Link>
-              </div>
-            )}
-
+            </div>
           </div>
         )}
         {/* Scanner tab */}
@@ -1874,9 +1913,9 @@ export const ScansPage = () => {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                      <th style={thStyle}>{t("License", "Lizenz")}</th>
-                      <th style={thStyle}>{t("Components", "Komponenten")}</th>
-                      <th style={thStyle}>{t("Used By", "Verwendet von")}</th>
+                      <th style={thStyle} className="license-col-name">{t("License", "Lizenz")}</th>
+                      <th style={thStyle} className="license-col-count">{t("Components", "Komponenten")}</th>
+                      <th style={thStyle} className="license-col-usedby">{t("Used By", "Verwendet von")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1884,10 +1923,10 @@ export const ScansPage = () => {
                       .filter(item => !licenseSearch || item.licenseId.toLowerCase().includes(licenseSearch.toLowerCase()))
                       .map(item => (
                         <tr key={item.licenseId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                          <td style={tdStyle}>
-                            <span style={{ fontWeight: 500, color: "#fff", fontSize: "0.8125rem" }}>{item.licenseId}</span>
+                          <td style={tdStyle} className="license-col-name">
+                            <span className="license-name" style={{ fontWeight: 500, color: "#fff", fontSize: "0.8125rem" }}>{item.licenseId}</span>
                           </td>
-                          <td style={tdStyle}>
+                          <td style={tdStyle} className="license-col-count">
                             <span style={{
                               padding: "0.125rem 0.5rem",
                               borderRadius: "4px",
@@ -1899,7 +1938,7 @@ export const ScansPage = () => {
                               {item.componentCount}
                             </span>
                           </td>
-                          <td style={{ ...tdStyle, maxWidth: "500px" }}>
+                          <td style={{ ...tdStyle, maxWidth: "500px" }} className="license-col-usedby">
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
                               {item.components.slice(0, 8).map((c, i) => (
                                 <span key={i} style={{
@@ -2744,18 +2783,6 @@ const StatusBadge = ({ status }: { status: string }) => {
     </span>
   );
 };
-
-const StatBox = ({ label, value }: { label: string; value: string }) => (
-  <div style={{
-    padding: "0.75rem",
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: "6px",
-  }}>
-    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.25rem" }}>{label}</div>
-    <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>{value}</div>
-  </div>
-);
 
 // Styles
 const thStyle: React.CSSProperties = {

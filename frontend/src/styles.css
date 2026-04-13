@@ -34,6 +34,11 @@
     color: #fff;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   overflow-x: hidden;
@@ -4111,5 +4116,39 @@ table thead th {
 .api-info-page th {
   color: rgba(255, 255, 255, 0.7);
   font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .finding-detail-cell {
+    padding: 0.5rem 0.625rem !important;
+  }
+  .finding-detail-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.125rem 0 !important;
+    font-size: 0.7rem !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .finding-detail-grid > span:nth-child(odd) {
+    margin-top: 0.375rem;
+    font-size: 0.625rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .finding-detail-grid > span:first-child {
+    margin-top: 0;
+  }
+
+  .license-overview-table .license-col-usedby {
+    display: none !important;
+  }
+  .license-overview-table .license-name {
+    font-size: 0.75rem !important;
+  }
+  .license-overview-table th,
+  .license-overview-table td {
+    padding: 0.375rem 0.5rem !important;
+  }
 }
 

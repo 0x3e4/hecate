@@ -1094,6 +1094,15 @@ class ScanService:
             scan_ids, search=search, type_filter=type_filter, limit=limit, offset=offset
         )
 
+    async def get_sbom_facets(
+        self, target_id: str | None = None
+    ) -> dict[str, list[tuple[str, int]]]:
+        """Return ecosystem/license/type facet counts across all latest-completed-scan components."""
+        scan_ids = await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
+        if not scan_ids:
+            return {"ecosystems": [], "licenses": [], "types": []}
+        return await self.sbom_repo.get_consolidated_facets(scan_ids)
+
     async def get_scan_sbom(
         self,
         scan_id: str,
