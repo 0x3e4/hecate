@@ -33,9 +33,12 @@ export const router = createBrowserRouter([
       { path: "stats", element: <StatsPage /> },
       { path: "changelog", element: <ChangelogPage /> },
       { path: "system", element: <SystemPage /> },
-      { path: "cicd", element: <CiCdInfoPage /> },
-      { path: "api-docs", element: <ApiInfoPage /> },
-      { path: "mcp-info", element: <McpInfoPage /> },
+      { path: "info/cicd", element: <CiCdInfoPage /> },
+      { path: "info/api", element: <ApiInfoPage /> },
+      { path: "info/mcp", element: <McpInfoPage /> },
+      { path: "cicd", element: <Navigate to="/info/cicd" replace /> },
+      { path: "api-docs", element: <Navigate to="/info/api" replace /> },
+      { path: "mcp-info", element: <Navigate to="/info/mcp" replace /> },
       { path: "*", element: <Navigate to="/" replace /> }
     ]
   }

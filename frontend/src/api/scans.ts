@@ -294,6 +294,50 @@ export const importSbom = async (payload: {
   return response.data;
 };
 
+export const triggerScanAiAnalysis = async (
+  scanId: string,
+  payload: { provider: string; language?: string; additionalContext?: string },
+  password?: string,
+): Promise<{ status: string; scanId: string }> => {
+  const response = await api.post<{ status: string; scanId: string }>(
+    `/v1/scans/${encodeURIComponent(scanId)}/ai-analysis`,
+    payload,
+    password ? { headers: { "X-AI-Analysis-Password": password } } : undefined,
+  );
+  return response.data;
+};
+
+export interface ScanAiAnalysisHistoryItem {
+  type: "scan";
+  scan_id: string;
+  target_id?: string | null;
+  target_name?: string | null;
+  commit_sha?: string | null;
+  image_ref?: string | null;
+  provider?: string;
+  language?: string;
+  summary: string;
+  timestamp?: string;
+  triggeredBy?: string | null;
+  tokenUsage?: { inputTokens: number; outputTokens: number } | null;
+  analysisCount?: number;
+}
+
+export const listScanAiAnalyses = async (params: { limit?: number; offset?: number } = {}): Promise<{
+  items: ScanAiAnalysisHistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}> => {
+  const response = await api.get<{
+    items: ScanAiAnalysisHistoryItem[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>("/v1/scans/ai-analyses", { params });
+  return response.data;
+};
+
 export const importSbomFile = async (
   file: File,
   targetName?: string,

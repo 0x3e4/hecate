@@ -333,6 +333,7 @@ async def create_ai_investigation(
             provider=payload.provider,
             language=payload.language,
             additional_context=payload.additional_context,
+            triggered_by=payload.triggered_by,
             client_ip=client_ip,
             ai_client=ai_client,
             service=service,
@@ -350,6 +351,7 @@ async def _run_ai_investigation_background(
     provider: str,
     language: str | None,
     additional_context: str | None,
+    triggered_by: str | None,
     client_ip: str | None,
     ai_client: AIClient,
     service: VulnerabilityService,
@@ -365,6 +367,7 @@ async def _run_ai_investigation_background(
             vulnerability,
             language=language,
             additional_context=additional_context,
+            triggered_by=triggered_by,
         )
 
         assessment_payload = result.model_dump(by_alias=True)
@@ -434,6 +437,7 @@ async def create_batch_ai_investigation(
             provider=payload.provider,
             language=payload.language,
             additional_context=payload.additional_context,
+            triggered_by=payload.triggered_by,
             client_ip=client_ip,
             ai_client=ai_client,
             service=service,
@@ -453,6 +457,7 @@ async def _run_batch_ai_investigation_background(
     provider: str,
     language: str | None,
     additional_context: str | None,
+    triggered_by: str | None,
     client_ip: str | None,
     ai_client: AIClient,
     service: VulnerabilityService,
@@ -468,6 +473,7 @@ async def _run_batch_ai_investigation_background(
             vulnerabilities,
             language=language,
             additional_context=additional_context,
+            triggered_by=triggered_by,
         )
 
         batch_id = await service.save_batch_analysis(
@@ -478,6 +484,7 @@ async def _run_batch_ai_investigation_background(
             individual_summaries=result.individual_summaries,
             additional_context=additional_context,
             token_usage=result.token_usage,
+            triggered_by=triggered_by,
         )
 
         metadata: dict[str, Any] = {

@@ -490,3 +490,14 @@ def get_oauth_token_info(token: str) -> TokenInfo | None:
         client_id=data["client_id"],
         issued_at_ip=data["ip"],
     )
+
+
+def get_dcr_client_name(client_id: str | None) -> str | None:
+    """Return the registered `client_name` for a DCR client, or None."""
+    if not client_id:
+        return None
+    record = _registered_clients.get(client_id)
+    if not record:
+        return None
+    name = record.get("client_name")
+    return str(name) if name else None

@@ -58,9 +58,18 @@ from app.schemas.vex import (
     VexUpdateRequest,
     VexUpdateResponse,
 )
+from app.api.v1.vulnerabilities import _require_ai_analysis_password
+from app.schemas.ai import AIScanAnalysisRequest, AIScanAnalysisSubmitResponse
+from app.services.ai_service import AIClient, get_ai_client
 from app.services.license_compliance_service import LicenseComplianceService
 from app.services.scan_service import ScanService, get_scan_service
 from app.services.vex_service import VexService
+
+import asyncio
+
+import structlog
+
+_ai_scan_logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -630,6 +639,16 @@ async def delete_scan(
         raise HTTPException(status_code=404, detail="Scan not found")
 
 
+@router.get("/ai-analyses")
+async def list_scan_ai_analyses(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, Any]:
+    """List scans that have at least one AI analysis, newest first."""
+    return await service.list_scan_ai_analyses(limit=limit, offset=offset)
+
+
 @router.get("/{scan_id}", response_model=ScanResponse)
 async def get_scan(
     scan_id: str,
@@ -639,6 +658,81 @@ async def get_scan(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return _map_scan(scan)
+
+
+@router.post(
+    "/{scan_id}/ai-analysis",
+    response_model=AIScanAnalysisSubmitResponse,
+    status_code=202,
+)
+async def create_scan_ai_analysis(
+    scan_id: str,
+    payload: AIScanAnalysisRequest,
+    _: None = Depends(_require_ai_analysis_password),
+    service: ScanService = Depends(get_scan_service),
+    ai_client: AIClient = Depends(get_ai_client),
+) -> AIScanAnalysisSubmitResponse:
+    """Run an AI risk-triage analysis against a completed scan. Runs in the background."""
+    scan = await service.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    if payload.provider == "openai" and not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="OpenAI provider is not configured.")
+    if payload.provider == "anthropic" and not settings.anthropic_api_key:
+        raise HTTPException(status_code=400, detail="Anthropic provider is not configured.")
+    if payload.provider == "gemini" and not settings.google_gemini_api_key:
+        raise HTTPException(status_code=400, detail="Gemini provider is not configured.")
+
+    _, findings = await service.finding_repo.list_by_scan(scan_id, limit=500, include_dismissed=False)
+
+    task = asyncio.create_task(
+        _run_scan_ai_analysis_background(
+            scan_id=scan_id,
+            scan=scan,
+            findings=findings,
+            provider=payload.provider,
+            language=payload.language,
+            additional_context=payload.additional_context,
+            triggered_by=payload.triggered_by,
+            ai_client=ai_client,
+            service=service,
+        )
+    )
+    # Keep a reference on the task set to prevent GC
+    _scan_ai_tasks.add(task)
+    task.add_done_callback(_scan_ai_tasks.discard)
+
+    return AIScanAnalysisSubmitResponse(status="running", scanId=scan_id)
+
+
+_scan_ai_tasks: set[asyncio.Task[Any]] = set()
+
+
+async def _run_scan_ai_analysis_background(
+    *,
+    scan_id: str,
+    scan: dict[str, Any],
+    findings: list[dict[str, Any]],
+    provider: str,
+    language: str | None,
+    additional_context: str | None,
+    triggered_by: str | None,
+    ai_client: AIClient,
+    service: ScanService,
+) -> None:
+    try:
+        result = await ai_client.analyze_scan(
+            provider,  # type: ignore[arg-type]
+            {**scan, "_id": scan_id},
+            findings,
+            language=language,
+            additional_context=additional_context,
+            triggered_by=triggered_by,
+        )
+        await service.save_scan_ai_analysis(scan_id, result.model_dump(by_alias=True))
+    except Exception as exc:
+        _ai_scan_logger.error("scan_ai_analysis_failed", scan_id=scan_id, error=str(exc))
 
 
 @router.get("/{scan_id}/findings", response_model=ScanFindingListResponse)
@@ -847,6 +941,8 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         compliance_summary=doc.get("compliance_summary"),
         license_compliance_summary=doc.get("license_compliance_summary"),
         layer_analysis_available=doc.get("layer_analysis_available", False),
+        ai_analysis=doc.get("ai_analysis"),
+        ai_analyses=doc.get("ai_analyses"),
     )
 
 
