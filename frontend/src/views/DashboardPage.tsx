@@ -1093,17 +1093,19 @@ const DashboardVulnCard = ({
                       🌐
                     </span>
                     CIRCL
-                  </a> 
-                  <a
-                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.vulnId)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span role="img" aria-label="Wazuh">
-                      🔮
-                    </span>
-                    Wazuh
-                  </a> 
+                  </a>
+                  {vuln.published && (Date.now() - new Date(vuln.published).getTime()) >= 7 * 24 * 60 * 60 * 1000 && (
+                    <a
+                      href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.vulnId)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span role="img" aria-label="Wazuh">
+                        🔮
+                      </span>
+                      Wazuh
+                    </a>
+                  )}
                 </>
               )}
               {(vuln.sourceId?.startsWith("EUVD-") || vuln.vulnId?.startsWith("CVE-")) && (
