@@ -761,11 +761,14 @@ textarea:focus {
 .tag {
   display: inline-flex;
   align-items: center;
-  padding: 0.2rem 0.6rem;
+  height: 1.75rem;
+  padding: 0 0.6rem;
   border-radius: 6px;
   font-size: 0.8rem;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  box-sizing: border-box;
 }
 
 .tag.low {

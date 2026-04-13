@@ -26,12 +26,12 @@ src/
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern (inkl. erweiterte Filter)
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
 │   ├── QueryBuilderPage.tsx     # Interaktiver DQL-Editor
-│   ├── AIAnalysePage.tsx        # KI-Analyse (einzeln & Batch)
+│   ├── AIAnalysePage.tsx        # KI-Analyse-Historie: kombinierte Timeline aus Single-, Batch- und Scan-AI-Analysen (listScanAiAnalyses); Trigger-Form für neue Batch-Analysen
 │   ├── StatsPage.tsx            # Statistik-Dashboard
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen)
-│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit klickbarem Paketnamen → Detail-Expansion + VEX-Status, SBOM, History mit Zeitbereichs-Filter, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit klickbarem Paketnamen → Detail-Expansion + VEX-Status, SBOM, History mit Zeitbereichs-Filter, AI Analysis mit Inline-Trigger-Form + Commit/Digest-Referenz je Eintrag, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance (nur sichtbar wenn mindestens eine Policy konfiguriert ist), VEX-Export)
 │   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
 │   └── SystemPage.tsx           # System (Single-Card-Layout, 4 Tabs: General, Notifications, Data, Policies)
@@ -58,11 +58,14 @@ src/
 │   ├── usePersistentState.ts    # localStorage-gestützter State
 │   ├── useSSE.ts                # Server-Sent Events (Singleton EventSource, Auto-Reconnect)
 │   └── useSavedSearches.tsx     # Context-Provider für gespeicherte Suchen
-├── ui/                          # Layout-Komponenten
+├── ui/                          # Layout- und shared UI-Komponenten
 │   ├── AppLayout.tsx            # Root-Layout (Sidebar + Header + Content)
 │   ├── Header.tsx               # Top-Navigation
-│   └── Sidebar.tsx              # Seitennavigation mit gespeicherten Suchen
+│   ├── Sidebar.tsx              # Seitennavigation mit gespeicherten Suchen
+│   ├── TabPill.tsx              # Geteilte Pill-Tab-Button-Style (`tabPillStyle()`) + `TabBadge` (weiße Zahl-Badge neben dem Tab-Label); von Scan- und Vulnerability-Detail-Seite benutzt
+│   └── TriggeredByBadge.tsx     # Kleine Pille, die den `triggeredBy`-Wert einer AI-Analyse anzeigt (z.B. `Claude - MCP`); rendert nichts wenn leer
 ├── utils/
+│   ├── aiSummary.ts             # `stripAiSummaryFooter()` — entfernt Legacy `---\n_Added via ..._` Attribution-Footer aus gespeicherten AI-Summaries vor dem Markdown-Rendering
 │   ├── cvss.ts                  # CVSS-Metrik-Parsing & Sortierung
 │   ├── cvssExplanations.ts      # CVSS-Metrik-Erklärungen
 │   ├── dateFormat.ts            # Zeitzonen-bewusste Formatierung (de-DE)
@@ -91,16 +94,18 @@ src/
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History, Refresh-Dropdown (inkl. OSV) |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
-| `/ai-analyse` | `AIAnalysePage` | Einzel- und Batch-KI-Analyse (bedingt, via Feature-Flag) |
+| `/ai-analyse` | `AIAnalysePage` | KI-Analyse-Historie als kombinierte Timeline aus Single-CVE-, Batch- und Scan-AI-Analysen (neueste zuerst; Scan-Einträge linken zu `/scans/{id}` und tragen einen Commit/Image-Chip); Trigger-Form für neue Batch-Analysen. Origin-Chips (`API - Single`/`MCP - Single`/`API - Batch`/`MCP - Batch`/`API - Scan`/`MCP - Scan`) unterscheiden, ob eine Analyse über die HTTP-API oder über ein MCP-`save_*`-Tool gespeichert wurde. Bedingt via `aiEnabled`. |
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter (inkl. OSV im Job-Dropdown) |
 | `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM mit Summary-Cards + Sortierung + Provenance-Filter, SBOM-Import, Lizenzen). Targets-Tab gruppiert Karten in **kollabierbare Application-Sektionen** mit Severity-Roll-up (Collapse-Zustand persistiert via `usePersistentState('hecate.scan.groupCollapsed')`). Target-Cards: Action-Reihe unten gepinnt (flex-column), inline editierbare **App/Group**-Zeile mit `<datalist>`-Vorschlägen aus existierenden Gruppen; SBOM-Import-Targets ohne Auto-Scan-, Rescan-, Scanner-Edit- und Group-Edit-Affordances. |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Multi-Select-Toolbar mit Bulk-Apply/Dismiss/Restore, Show-Dismissed-Toggle, Inline-VEX-Editor als expandierbare Zeile mit Status/Justification/Detail, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards zum Filtern, Provenance-Filter), History (Zeitbereichs-Filter 7d/30d/90d/All, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export |
-| `/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
-| `/api-docs` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
-| `/mcp-info` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools, Beispiel-Prompts, Konfiguration). Route ist `/mcp-info`, nicht `/mcp`, weil `/mcp` vom Backend als MCP-Protokoll-Endpoint belegt ist. |
+| `/info/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
+| `/info/api` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
+| `/info/mcp` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools inkl. `prepare_*`/`save_*`-Paare und `get_sca_scan`, Beispiel-Prompts, Konfiguration) |
+
+Die Info-Seiten liegen bewusst unter `/info/*`, damit ihre Pfade nicht mit den Backend-Präfixen `/api*` bzw. `/mcp*` kollidieren, wenn ein Reverse-Proxy diese Präfixe präfix-basiert ans Backend weiterleitet. Die alten Pfade `/cicd`, `/api-docs` und `/mcp-info` existieren weiterhin als client-seitige React-Router-Redirects (`<Navigate replace>`), damit bestehende Bookmarks funktionieren — sie greifen allerdings nur, sobald der SPA-Entry geladen wurde. Hard-Refresh auf den alten Pfaden kann je nach Proxy-Regel weiterhin fehlschlagen.
 
 Feature-Sichtbarkeit (KI-Analyse, SCA-Scans, CI/CD, API, MCP) wird zur Laufzeit über `GET /api/v1/config` vom Backend bestimmt und in `ServerConfigProvider` ([src/server-config/context.tsx](src/server-config/context.tsx)) bereitgestellt. Das Backend leitet die Flags aus den eigenen Settings ab (AI = mindestens ein Provider-Key gesetzt, SCA = `sca_enabled`, Auto-Scan = `sca_auto_scan_enabled`). Kein Image-Rebuild nötig wenn man diese ändert — nur Backend neu starten.
 

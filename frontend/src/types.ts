@@ -42,6 +42,7 @@ export interface AIInvestigationResponse {
   language: string;
   summary: string;
   generatedAt: string;
+  triggeredBy?: string | null;
 }
 
 export interface AIInvestigationSubmitResponse {
@@ -60,6 +61,7 @@ export interface AIAssessment {
   language?: string;
   generatedAt?: string;
   tokenUsage?: { inputTokens: number; outputTokens: number } | null;
+  triggeredBy?: string | null;
   [key: string]: unknown;
 }
 
@@ -78,6 +80,7 @@ export interface AIBatchInvestigationResponse {
   generatedAt: string;
   vulnerabilityCount: number;
   tokenUsage?: { inputTokens: number; outputTokens: number } | null;
+  triggeredBy?: string | null;
 }
 
 export interface BatchAnalysisItem {
@@ -91,6 +94,7 @@ export interface BatchAnalysisItem {
   vulnerabilityCount: number;
   generatedAt: string;
   tokenUsage?: { inputTokens: number; outputTokens: number } | null;
+  triggeredBy?: string | null;
 }
 
 export interface BatchAnalysisListResponse {
@@ -107,6 +111,7 @@ export interface BatchAnalysisReference {
   summaryExcerpt: string;
   summary?: string;
   language?: string;
+  triggeredBy?: string | null;
 }
 
 export interface KnownExploitation {
@@ -464,6 +469,16 @@ export interface ScanTargetGroupListResponse {
   items: ScanTargetGroup[];
 }
 
+export interface ScanAiAnalysis {
+  scanId?: string;
+  provider?: string;
+  language?: string;
+  summary: string;
+  generatedAt: string;
+  tokenUsage?: Record<string, number> | null;
+  triggeredBy?: string | null;
+}
+
 export interface Scan {
   id: string;
   targetId: string;
@@ -485,6 +500,8 @@ export interface Scan {
   complianceSummary?: Record<string, number> | null;
   licenseComplianceSummary?: Record<string, number> | null;
   layerAnalysisAvailable?: boolean;
+  aiAnalysis?: ScanAiAnalysis | null;
+  aiAnalyses?: ScanAiAnalysis[] | null;
 }
 
 export interface ScanListResponse {

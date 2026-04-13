@@ -54,9 +54,9 @@ const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[]
   ...(scaEnabled ? [{
     titleEn: "Info", titleDe: "Info",
     items: [
-      { to: "/cicd", label: "CI/CD", icon: LuBookOpen },
-      { to: "/api-docs", label: "API", icon: LuBookOpen },
-      { to: "/mcp-info", label: "MCP", icon: LuBookOpen },
+      { to: "/info/cicd", label: "CI/CD", icon: LuBookOpen },
+      { to: "/info/api", label: "API", icon: LuBookOpen },
+      { to: "/info/mcp", label: "MCP", icon: LuBookOpen },
     ],
   }] : []),
 ];
@@ -121,9 +121,9 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/audit": "Audit-Log",
     "/scans": "SCA-Scans",
     "/system": "System",
-    "/api-docs": "API",
-    "/cicd": "CI/CD",
-    "/mcp-info": "MCP",
+    "/info/api": "API",
+    "/info/cicd": "CI/CD",
+    "/info/mcp": "MCP",
   };
 
   const localizedSections = useMemo(

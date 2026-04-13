@@ -193,6 +193,12 @@ class ScanResponse(BaseModel):
     layer_analysis_available: bool = Field(
         default=False, alias="layerAnalysisAvailable", serialization_alias="layerAnalysisAvailable"
     )
+    ai_analysis: dict[str, Any] | None = Field(
+        default=None, alias="aiAnalysis", serialization_alias="aiAnalysis"
+    )
+    ai_analyses: list[dict[str, Any]] | None = Field(
+        default=None, alias="aiAnalyses", serialization_alias="aiAnalyses"
+    )
 
     model_config = {"populate_by_name": True}
 

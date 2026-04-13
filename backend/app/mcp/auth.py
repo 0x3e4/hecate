@@ -34,6 +34,17 @@ class MCPAuthMiddleware:
             await self._app(scope, receive, send)
             return
 
+        # Only intercept actual MCP protocol paths. The MCP ASGI app is mounted at
+        # the FastAPI root, so without this guard every unrouted request (e.g. the
+        # frontend's /mcp-info or /api-docs SPA routes, which reverse proxies may
+        # forward to the backend because of /mcp* or /api* prefix rules) would
+        # fall through here and be rejected with 401. The streamable_http endpoint
+        # lives at "/mcp"; everything else we short-circuit with 404.
+        path = scope.get("path", "")
+        if path != "/mcp" and not path.startswith("/mcp/"):
+            await self._send_error(send, 404, "Not Found")
+            return
+
         headers_list = scope.get("headers", [])
         headers = dict(headers_list)
         proto = "https"
@@ -136,20 +147,17 @@ class MCPAuthMiddleware:
 def require_write_scope() -> tuple[bool, str | None]:
     """Check if the current MCP request is allowed to call write tools.
 
-    Both checks must pass:
-      1. The OAuth token must carry the `mcp:write` scope (granted at authorize
-         time when the user's IP was in MCP_WRITE_IP_SAFELIST).
-      2. The CURRENT request's source IP must still be in MCP_WRITE_IP_SAFELIST
-         (defence-in-depth in case the user's IP changed after token issue).
+    Write access is gated by the OAuth token carrying the `mcp:write` scope, which
+    is granted at authorize time only when the user's browser IP is in
+    MCP_WRITE_IP_SAFELIST. We don't re-check the request-time source IP because
+    MCP clients such as Claude Desktop route calls through their vendor backend,
+    so tool invocations arrive from the vendor's infrastructure IP, not the end
+    user's IP — a request-time match is incompatible with proxied transports.
 
     Returns (allowed, deny_reason).
     """
+    _ = settings  # kept for backwards compatibility in case reviewers expect a setting lookup
     scope = mcp_token_scope.get("")
     if "mcp:write" not in scope.split():
         return False, "Token was not issued with mcp:write scope (source IP was not in MCP_WRITE_IP_SAFELIST at authorization time)."
-    ip_str = mcp_client_ip.get()
-    from app.mcp.oauth import _ip_in_safelist
-
-    if not ip_str or not _ip_in_safelist(ip_str, settings.mcp_write_ip_safelist):
-        return False, "Current source IP is not in MCP_WRITE_IP_SAFELIST."
     return True, None

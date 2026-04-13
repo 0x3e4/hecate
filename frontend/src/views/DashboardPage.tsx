@@ -1038,13 +1038,16 @@ const DashboardVulnCard = ({
                     background: copyFeedback ? "rgba(105, 219, 124, 0.2)" : "rgba(255,255,255,0.06)",
                     border: copyFeedback ? "1px solid rgba(105, 219, 124, 0.4)" : "1px solid rgba(255,255,255,0.12)",
                     borderRadius: "6px",
-                    padding: "0.2rem 0.6rem",
+                    height: "1.75rem",
+                    padding: "0 0.6rem",
                     cursor: "pointer",
                     color: copyFeedback ? "#69db7c" : "rgba(255,255,255,0.55)",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: "0.8rem",
+                    lineHeight: 1,
+                    boxSizing: "border-box",
                     transition: "all 0.2s ease",
                   }}
                 >

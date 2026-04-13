@@ -18,6 +18,11 @@ class AIInvestigationRequest(BaseModel):
         alias="additionalContext",
         description="Optional additional context or information to consider in the analysis",
     )
+    triggered_by: str | None = Field(
+        default=None,
+        alias="triggeredBy",
+        description="Attribution label stored with the analysis (e.g. 'Claude Code - MCP')",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -29,6 +34,9 @@ class AIInvestigationResponse(BaseModel):
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
     token_usage: dict[str, int] | None = Field(
         default=None, alias="tokenUsage", serialization_alias="tokenUsage"
+    )
+    triggered_by: str | None = Field(
+        default=None, alias="triggeredBy", serialization_alias="triggeredBy"
     )
 
     model_config = {"populate_by_name": True}
@@ -62,6 +70,11 @@ class AIBatchInvestigationRequest(BaseModel):
         alias="additionalContext",
         description="Optional additional context or information to consider in the analysis",
     )
+    triggered_by: str | None = Field(
+        default=None,
+        alias="triggeredBy",
+        description="Attribution label stored with the analysis (e.g. 'Claude Code - MCP')",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -80,6 +93,49 @@ class AIBatchInvestigationResponse(BaseModel):
     token_usage: dict[str, int] | None = Field(
         default=None, alias="tokenUsage", serialization_alias="tokenUsage"
     )
+    triggered_by: str | None = Field(
+        default=None, alias="triggeredBy", serialization_alias="triggeredBy"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class AIScanAnalysisRequest(BaseModel):
+    provider: AIProviderLiteral
+    language: str | None = None
+    additional_context: str | None = Field(
+        default=None,
+        alias="additionalContext",
+        description="Optional additional context to steer the analysis",
+    )
+    triggered_by: str | None = Field(
+        default=None,
+        alias="triggeredBy",
+        description="Attribution label stored with the analysis",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class AIScanAnalysisResponse(BaseModel):
+    scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+    provider: AIProviderLiteral
+    language: str
+    summary: str
+    generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
+    token_usage: dict[str, int] | None = Field(
+        default=None, alias="tokenUsage", serialization_alias="tokenUsage"
+    )
+    triggered_by: str | None = Field(
+        default=None, alias="triggeredBy", serialization_alias="triggeredBy"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class AIScanAnalysisSubmitResponse(BaseModel):
+    status: str
+    scan_id: str = Field(alias="scanId", serialization_alias="scanId")
 
     model_config = {"populate_by_name": True}
 

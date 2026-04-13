@@ -81,13 +81,15 @@ services:
       TZ: ${TZ:-UTC}
       discovery.type: single-node
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS}
     ulimits:
       memlock:
         soft: -1
         hard: -1
     healthcheck:
-      test: ["CMD-SHELL", "curl -sk https://localhost:9200 -o /dev/null"]
+      test: ["CMD-SHELL", "curl -skf -u $${OPENSEARCH_USERNAME}:$${OPENSEARCH_PASSWORD} https://localhost:9200/_cluster/health -o /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10

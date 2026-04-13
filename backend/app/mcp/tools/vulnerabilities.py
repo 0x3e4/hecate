@@ -10,7 +10,8 @@ from mcp.server.fastmcp import FastMCP
 
 from app.core.config import settings
 from app.mcp.audit import log_tool_invocation
-from app.mcp.auth import mcp_client_id
+from app.mcp.auth import mcp_client_id, mcp_dcr_client_id, require_write_scope
+from app.mcp.oauth import get_dcr_client_name
 from app.mcp.security import sanitize_search_input
 from app.mcp.server import get_rate_limiter
 
@@ -145,6 +146,341 @@ def register(mcp: FastMCP) -> None:
             )
             return {"error": f"Lookup failed: {str(exc)[:200]}"}
 
+    @mcp.tool()
+    async def prepare_vulnerability_ai_analysis(
+        vulnerability_id: str,
+        language: str | None = None,
+        additional_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Return the Hecate system prompt + context for analyzing a single CVE/GHSA/EUVD.
+
+        The calling AI assistant should read `systemPrompt` and `userPrompt`, produce the analysis
+        using its own model (no server-side API call, no extra cost), and then save the result by
+        calling `save_vulnerability_ai_analysis(vulnerability_id, summary)`. Read-only — does not
+        require write scope. Use the paired save tool to persist the analysis.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {
+            "vulnerability_id": vulnerability_id,
+            "language": language,
+        }
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="prepare_vulnerability_ai_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        try:
+            vuln_id = vulnerability_id.strip()
+            if not vuln_id or len(vuln_id) > 100 or not _VULN_ID_PATTERN.match(vuln_id):
+                return {"error": "Invalid vulnerability ID format."}
+
+            from app.services.ai_service import build_vulnerability_prompts
+            from app.services.vulnerability_service import VulnerabilityService
+
+            service = VulnerabilityService()
+            vulnerability = await service.get_by_id(vuln_id)
+            if vulnerability is None:
+                return {"error": f"Vulnerability '{vuln_id}' not found."}
+
+            system_prompt, user_prompt = await build_vulnerability_prompts(
+                vulnerability,
+                language=language,
+                additional_context=additional_context,
+            )
+
+            output = {
+                "vulnerabilityId": vuln_id,
+                "systemPrompt": system_prompt,
+                "userPrompt": user_prompt,
+                "instructions": (
+                    "Read the systemPrompt and userPrompt, generate the analysis using your own model, "
+                    "then call save_vulnerability_ai_analysis(vulnerability_id, summary) to persist it. "
+                    "The server will append an attribution footer identifying your client."
+                ),
+                "saveTool": "save_vulnerability_ai_analysis",
+            }
+            await log_tool_invocation(
+                tool_name="prepare_vulnerability_ai_analysis", inputs=tool_inputs,
+                result_count=1, started_at=started_at,
+            )
+            return output
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="prepare_vulnerability_ai_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Prepare failed: {str(exc)[:200]}"}
+
+    @mcp.tool()
+    async def save_vulnerability_ai_analysis(
+        vulnerability_id: str,
+        summary: str,
+        language: str | None = None,
+        client_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist an AI analysis produced by the calling assistant onto a vulnerability document.
+
+        Use this after `prepare_vulnerability_ai_analysis`. The server stamps the stored record with a
+        triggeredBy attribution like "Claude Code - MCP" and appends it as a footer in the summary.
+        Requires write scope. `client_name` overrides the DCR-detected client label.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {
+            "vulnerability_id": vulnerability_id,
+            "language": language, "client_name": client_name,
+        }
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="save_vulnerability_ai_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        allowed, deny_reason = require_write_scope()
+        if not allowed:
+            await log_tool_invocation(
+                tool_name="save_vulnerability_ai_analysis", inputs=tool_inputs,
+                success=False, error=f"Write denied: {deny_reason}", started_at=started_at,
+            )
+            return {"error": f"Write access denied. {deny_reason}"}
+
+        try:
+            vuln_id = vulnerability_id.strip()
+            if not vuln_id or len(vuln_id) > 100 or not _VULN_ID_PATTERN.match(vuln_id):
+                return {"error": "Invalid vulnerability ID format."}
+            if not summary or not summary.strip():
+                return {"error": "summary must not be empty."}
+            if len(summary) > 200_000:
+                return {"error": "summary too large (200k char limit)."}
+
+            from app.services.ai_service import _append_attribution_footer, _normalize_language
+            from app.services.vulnerability_service import VulnerabilityService
+
+            triggered_by = _mcp_triggered_by(client_name)
+            stored_summary = _append_attribution_footer(summary.strip(), triggered_by)
+
+            assessment = {
+                "provider": "mcp-client",
+                "language": _normalize_language(language),
+                "summary": stored_summary,
+                "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
+                "triggeredBy": triggered_by,
+            }
+            service = VulnerabilityService()
+            ok = await service.save_ai_assessment(vuln_id, assessment)
+            if not ok:
+                return {"error": f"Vulnerability '{vuln_id}' not found or save failed."}
+
+            await log_tool_invocation(
+                tool_name="save_vulnerability_ai_analysis", inputs=tool_inputs,
+                result_count=1, started_at=started_at,
+            )
+            return {
+                "vulnerabilityId": vuln_id,
+                "triggeredBy": triggered_by,
+                "generatedAt": assessment["generatedAt"],
+                "status": "saved",
+            }
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="save_vulnerability_ai_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Save failed: {str(exc)[:200]}"}
+
+    @mcp.tool()
+    async def prepare_vulnerabilities_ai_batch_analysis(
+        vulnerability_ids: list[str],
+        language: str | None = None,
+        additional_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Return the Hecate batch system/user prompts for 1-10 vulnerabilities.
+
+        The calling assistant should produce the combined analysis locally and then persist it with
+        `save_vulnerabilities_ai_batch_analysis`. Read-only — no write scope needed.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {"vulnerability_ids": vulnerability_ids, "language": language}
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="prepare_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        try:
+            if not vulnerability_ids:
+                return {"error": "Provide 1-10 vulnerability IDs."}
+            if len(vulnerability_ids) > 10:
+                return {"error": "Maximum 10 vulnerability IDs per batch."}
+
+            clean_ids: list[str] = []
+            for raw in vulnerability_ids:
+                vid = raw.strip()
+                if not vid or len(vid) > 100 or not _VULN_ID_PATTERN.match(vid):
+                    return {"error": f"Invalid vulnerability ID: {raw!r}"}
+                clean_ids.append(vid)
+
+            from app.services.ai_service import build_vulnerability_batch_prompts
+            from app.services.vulnerability_service import VulnerabilityService
+
+            service = VulnerabilityService()
+            vulnerabilities = []
+            for vid in clean_ids:
+                detail = await service.get_by_id(vid)
+                if detail is None:
+                    return {"error": f"Vulnerability '{vid}' not found."}
+                vulnerabilities.append(detail)
+
+            system_prompt, user_prompt = await build_vulnerability_batch_prompts(
+                vulnerabilities,
+                language=language,
+                additional_context=additional_context,
+            )
+
+            output = {
+                "vulnerabilityIds": clean_ids,
+                "systemPrompt": system_prompt,
+                "userPrompt": user_prompt,
+                "instructions": (
+                    "Produce the analysis using your own model. Structure your response so that after "
+                    "the executive summary, each vulnerability gets its own labeled section "
+                    "(e.g. 'CVE-2024-1234:'). Then call "
+                    "save_vulnerabilities_ai_batch_analysis(vulnerability_ids, summary, individual_summaries)."
+                ),
+                "saveTool": "save_vulnerabilities_ai_batch_analysis",
+            }
+            await log_tool_invocation(
+                tool_name="prepare_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                result_count=len(clean_ids), started_at=started_at,
+            )
+            return output
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="prepare_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Prepare failed: {str(exc)[:200]}"}
+
+    @mcp.tool()
+    async def save_vulnerabilities_ai_batch_analysis(
+        vulnerability_ids: list[str],
+        summary: str,
+        individual_summaries: dict[str, str] | None = None,
+        language: str | None = None,
+        additional_context: str | None = None,
+        client_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist a batch AI analysis produced by the calling assistant.
+
+        Provide the executive summary and (optionally) a `individual_summaries` dict keyed by
+        vulnerability ID with per-vuln text. Requires write scope.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {
+            "vulnerability_ids": vulnerability_ids,
+            "language": language, "client_name": client_name,
+        }
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="save_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        allowed, deny_reason = require_write_scope()
+        if not allowed:
+            await log_tool_invocation(
+                tool_name="save_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                success=False, error=f"Write denied: {deny_reason}", started_at=started_at,
+            )
+            return {"error": f"Write access denied. {deny_reason}"}
+
+        try:
+            if not vulnerability_ids:
+                return {"error": "Provide 1-10 vulnerability IDs."}
+            if len(vulnerability_ids) > 10:
+                return {"error": "Maximum 10 vulnerability IDs per batch."}
+            if not summary or not summary.strip():
+                return {"error": "summary must not be empty."}
+            if len(summary) > 200_000:
+                return {"error": "summary too large (200k char limit)."}
+
+            clean_ids: list[str] = []
+            for raw in vulnerability_ids:
+                vid = raw.strip()
+                if not vid or len(vid) > 100 or not _VULN_ID_PATTERN.match(vid):
+                    return {"error": f"Invalid vulnerability ID: {raw!r}"}
+                clean_ids.append(vid)
+
+            from app.services.ai_service import _append_attribution_footer, _normalize_language
+            from app.services.vulnerability_service import VulnerabilityService
+
+            triggered_by = _mcp_triggered_by(client_name)
+            final_summary = _append_attribution_footer(summary.strip(), triggered_by)
+
+            cleaned_individual: dict[str, str] = {}
+            if individual_summaries:
+                for vid, text in individual_summaries.items():
+                    if vid in clean_ids and text and text.strip():
+                        cleaned_individual[vid] = _append_attribution_footer(text.strip(), triggered_by)
+            # Fill missing entries with an empty string so the schema stays consistent
+            for vid in clean_ids:
+                cleaned_individual.setdefault(vid, "")
+
+            service = VulnerabilityService()
+            batch_id = await service.save_batch_analysis(
+                vulnerability_ids=clean_ids,
+                provider="mcp-client",
+                language=_normalize_language(language),
+                summary=final_summary,
+                individual_summaries=cleaned_individual,
+                additional_context=additional_context,
+                token_usage=None,
+                triggered_by=triggered_by,
+            )
+
+            await log_tool_invocation(
+                tool_name="save_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                result_count=len(clean_ids), started_at=started_at,
+            )
+            return {
+                "batchId": batch_id,
+                "vulnerabilityIds": clean_ids,
+                "triggeredBy": triggered_by,
+                "status": "saved",
+            }
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="save_vulnerabilities_ai_batch_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Save failed: {str(exc)[:200]}"}
+
+
+def _mcp_triggered_by(client_name: str | None) -> str:
+    """Build the triggered_by attribution string for an MCP tool invocation."""
+    name = (client_name or "").strip()
+    if not name:
+        name = get_dcr_client_name(mcp_dcr_client_id.get()) or ""
+    if not name:
+        name = "MCP Client"
+    return f"{name} - MCP"
+
 
 def _serialize_preview(preview: Any) -> dict[str, Any]:
     """Serialize a VulnerabilityPreview to a compact dict for MCP output."""
@@ -226,5 +562,50 @@ def _serialize_detail(detail: Any) -> dict[str, Any]:
             "dueDate": exploitation.get("dueDate"),
             "knownRansomwareCampaignUse": exploitation.get("knownRansomwareCampaignUse"),
         }
+
+    # All CVSS metric versions (not just the primary)
+    cvss_metrics = data.get("cvssMetrics")
+    if cvss_metrics:
+        result["cvssMetrics"] = cvss_metrics
+
+    # CPE strings (top 20)
+    cpes = data.get("cpes")
+    if cpes:
+        result["cpes"] = cpes[:20]
+
+    # Latest AI assessment (if any)
+    ai_assessment = data.get("aiAssessment")
+    if ai_assessment:
+        result["aiAssessment"] = {
+            "provider": ai_assessment.get("provider"),
+            "language": ai_assessment.get("language"),
+            "summary": (ai_assessment.get("summary") or "")[:2000],
+            "generatedAt": ai_assessment.get("generatedAt"),
+            "triggeredBy": ai_assessment.get("triggeredBy"),
+        }
+
+    # Batch analyses references (compact)
+    batch_analyses = data.get("batchAnalyses") or []
+    if batch_analyses:
+        result["batchAnalyses"] = [
+            {
+                "batchId": b.get("batchId"),
+                "provider": b.get("provider"),
+                "timestamp": b.get("timestamp"),
+                "summaryExcerpt": (b.get("summaryExcerpt") or "")[:300],
+                "triggeredBy": b.get("triggeredBy"),
+            }
+            for b in batch_analyses[:10]
+        ]
+
+    # Recent change history (last 10)
+    change_history = data.get("changeHistory") or []
+    if change_history:
+        result["changeHistory"] = change_history[-10:]
+
+    # Timestamps useful for freshness judgments
+    for key in ("firstSeenAt", "lastChangeAt", "ingestedAt"):
+        if data.get(key):
+            result[key] = str(data[key])
 
     return result

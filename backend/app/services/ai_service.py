@@ -22,6 +22,7 @@ from app.schemas.ai import (
     AIInvestigationResponse,
     AIProviderInfo,
     AIProviderLiteral,
+    AIScanAnalysisResponse,
 )
 from app.schemas.vulnerability import VulnerabilityDetail
 from app.services.cwe_service import get_cwe_service
@@ -65,6 +66,7 @@ class AIClient:
         *,
         language: str | None = None,
         additional_context: str | None = None,
+        triggered_by: str | None = None,
     ) -> AIInvestigationResponse:
         """
         Submit a vulnerability context to the requested provider and return the summarised response.
@@ -95,9 +97,10 @@ class AIClient:
         return AIInvestigationResponse(
             provider=provider,
             language=normalized_language,
-            summary=summary,
+            summary=_append_attribution_footer(summary, triggered_by),
             generatedAt=_isoformat_utc_now(),
             tokenUsage=token_usage,
+            triggeredBy=triggered_by,
         )
 
     async def analyze_vulnerabilities_batch(
@@ -107,6 +110,7 @@ class AIClient:
         *,
         language: str | None = None,
         additional_context: str | None = None,
+        triggered_by: str | None = None,
     ) -> AIBatchInvestigationResponse:
         """
         Analyze multiple vulnerabilities together for combined insights.
@@ -138,6 +142,13 @@ class AIClient:
         # Parse response into executive summary and individual sections
         summary, individual_summaries = _parse_batch_response(combined_response, vulnerabilities)
 
+        if triggered_by:
+            summary = _append_attribution_footer(summary, triggered_by)
+            individual_summaries = {
+                vid: _append_attribution_footer(text, triggered_by)
+                for vid, text in individual_summaries.items()
+            }
+
         return AIBatchInvestigationResponse(
             provider=provider,
             language=normalized_language,
@@ -146,6 +157,48 @@ class AIClient:
             generatedAt=_isoformat_utc_now(),
             vulnerabilityCount=len(vulnerabilities),
             tokenUsage=token_usage,
+            triggeredBy=triggered_by,
+        )
+
+    async def analyze_scan(
+        self,
+        provider: AIProviderLiteral,
+        scan: dict[str, Any],
+        findings: list[dict[str, Any]],
+        *,
+        language: str | None = None,
+        additional_context: str | None = None,
+        triggered_by: str | None = None,
+    ) -> AIScanAnalysisResponse:
+        """Produce an AI risk-triage summary for an SCA scan result."""
+        normalized_language = _normalize_language(language)
+        system_prompt, user_prompt = _build_scan_prompts(
+            scan, findings, normalized_language, additional_context, provider
+        )
+
+        if provider == "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OpenAI provider is not configured.")
+            summary, token_usage = await self._call_openai(system_prompt, user_prompt)
+        elif provider == "anthropic":
+            if not settings.anthropic_api_key:
+                raise ValueError("Anthropic provider is not configured.")
+            summary, token_usage = await self._call_anthropic(system_prompt, user_prompt)
+        elif provider == "gemini":
+            if not settings.google_gemini_api_key:
+                raise ValueError("Google Gemini provider is not configured.")
+            summary, token_usage = await self._call_gemini(system_prompt, user_prompt)
+        else:  # pragma: no cover
+            raise ValueError(f"Unsupported provider '{provider}'.")
+
+        return AIScanAnalysisResponse(
+            scanId=str(scan.get("_id") or scan.get("scan_id") or ""),
+            provider=provider,
+            language=normalized_language,
+            summary=_append_attribution_footer(summary, triggered_by),
+            generatedAt=_isoformat_utc_now(),
+            tokenUsage=token_usage,
+            triggeredBy=triggered_by,
         )
 
     @asynccontextmanager
@@ -553,6 +606,63 @@ async def _get_cwe_description(cwe_id: str) -> str:
 
 def _isoformat_utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+async def build_vulnerability_prompts(
+    vulnerability: VulnerabilityDetail,
+    *,
+    language: str | None = None,
+    additional_context: str | None = None,
+) -> tuple[str, str]:
+    """Public wrapper that returns the (system, user) prompt pair for a single vulnerability."""
+    return await _build_prompts(
+        vulnerability,
+        _normalize_language(language),
+        additional_context,
+        "openai",
+    )
+
+
+async def build_vulnerability_batch_prompts(
+    vulnerabilities: list[VulnerabilityDetail],
+    *,
+    language: str | None = None,
+    additional_context: str | None = None,
+) -> tuple[str, str]:
+    """Public wrapper that returns the (system, user) prompt pair for a batch analysis."""
+    return await _build_batch_prompts(
+        vulnerabilities,
+        _normalize_language(language),
+        additional_context,
+        "openai",
+    )
+
+
+def build_scan_prompts(
+    scan: dict[str, Any],
+    findings: list[dict[str, Any]],
+    *,
+    language: str | None = None,
+    additional_context: str | None = None,
+) -> tuple[str, str]:
+    """Public wrapper that returns the (system, user) prompt pair for an SCA scan analysis."""
+    return _build_scan_prompts(
+        scan,
+        findings,
+        _normalize_language(language),
+        additional_context,
+        "openai",
+    )
+
+
+def _append_attribution_footer(summary: str, triggered_by: str | None) -> str:
+    """Historically this helper appended an `_Added via ..._` markdown footer to the
+    stored summary. The attribution is now rendered as structured metadata by the
+    frontend (see the `triggeredBy` field on stored AI records), so we return the
+    summary unchanged and keep the function as a no-op for call-site compatibility.
+    """
+    _ = triggered_by
+    return summary
 
 
 async def _build_prompts(
@@ -1037,6 +1147,102 @@ async def _build_batch_prompts(
         f"{context_section}"
     )
 
+    return system_prompt, user_prompt
+
+
+def _build_scan_prompts(
+    scan: dict[str, Any],
+    findings: list[dict[str, Any]],
+    language: str,
+    additional_context: str | None,
+    provider: str,
+) -> tuple[str, str]:
+    """Build system+user prompts for an SCA scan AI analysis."""
+
+    language_instruction = (
+        f"Respond in the language identified by the ISO code '{language}'. "
+        "If you are unsure which language that is, default to English."
+    )
+
+    system_prompt = (
+        "You are a senior application-security engineer triaging the results of a software composition "
+        "analysis (SCA) scan. Your job is to give the engineering team a clear, prioritized remediation "
+        "plan based on the findings below.\n\n"
+        f"{language_instruction}\n\n"
+        "Structure your response with these sections (use markdown headings):\n"
+        "1. **Executive Summary** — 2-3 sentences on overall risk posture for this target.\n"
+        "2. **Top Risks** — a ranked list of the most critical findings. For each: the CVE/package, "
+        "why it matters here (exploitability, exposure, dependency path), and the suggested fix "
+        "(upgrade to version X, pin, remove dependency, apply workaround).\n"
+        "3. **Patch Sequencing** — which fixes should ship first and which can be batched. Call out "
+        "any findings that share a single dependency upgrade.\n"
+        "4. **Lower-Priority Findings** — one-line summary of the rest (grouped if possible).\n\n"
+        "This is a one-shot analysis — do not include open questions, follow-up requests, or "
+        "clarifying questions. Commit to your conclusions based on the findings provided.\n\n"
+        "Ground every recommendation in the findings provided. Do not invent packages, versions, or "
+        "CVEs that are not in the input. Be concise but specific — a fix recommendation must name the "
+        "package and the target version."
+    )
+
+    scan_meta = {
+        "target": scan.get("target_name") or scan.get("target_id"),
+        "targetType": scan.get("target_type") or scan.get("type"),
+        "status": scan.get("status"),
+        "scanners": scan.get("scanners"),
+        "duration_seconds": scan.get("duration_seconds"),
+        "commit_sha": scan.get("commit_sha"),
+        "image_ref": scan.get("image_ref"),
+        "branch": scan.get("branch"),
+        "summary": scan.get("summary"),
+        "sbom_component_count": scan.get("sbom_component_count"),
+    }
+    scan_meta = {k: v for k, v in scan_meta.items() if v not in (None, "")}
+
+    severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "negligible": 4, "unknown": 5}
+    sorted_findings = sorted(
+        findings,
+        key=lambda f: (
+            severity_rank.get(str(f.get("severity", "unknown")).lower(), 5),
+            -(f.get("cvss_score") or 0),
+        ),
+    )
+    capped = sorted_findings[:50]
+
+    lines: list[str] = []
+    for f in capped:
+        entry = {
+            "id": f.get("vulnerability_id") or f.get("title"),
+            "severity": f.get("severity"),
+            "cvss": f.get("cvss_score"),
+            "package": f.get("package_name"),
+            "version": f.get("package_version"),
+            "fix": f.get("fix_version"),
+            "scanner": f.get("scanner"),
+            "title": (f.get("title") or "")[:200],
+        }
+        entry = {k: v for k, v in entry.items() if v not in (None, "")}
+        lines.append("- " + ", ".join(f"{k}={v}" for k, v in entry.items()))
+
+    context_section = ""
+    if additional_context and additional_context.strip():
+        context_section = f"\n\nADDITIONAL CONTEXT FROM THE REQUESTOR:\n{additional_context.strip()}\n"
+
+    truncation_note = ""
+    if len(findings) > len(capped):
+        truncation_note = f"\n\n(Showing top {len(capped)} of {len(findings)} findings, ordered by severity.)"
+
+    user_prompt = (
+        "SCAN METADATA:\n"
+        + "\n".join(f"{k}: {v}" for k, v in scan_meta.items())
+        + "\n\nFINDINGS:\n"
+        + ("\n".join(lines) if lines else "(no findings)")
+        + truncation_note
+        + context_section
+    )
+
+    # web search is handled by the provider call itself via settings.ai_web_search_enabled;
+    # scan prompts don't need the CVE-specific web-search instructions.
+    _ = provider
     return system_prompt, user_prompt
 
 

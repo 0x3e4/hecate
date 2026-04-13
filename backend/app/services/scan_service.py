@@ -954,6 +954,67 @@ class ScanService:
         """Get Dive layer analysis for a scan."""
         return await self.layer_repo.get_by_scan(scan_id)
 
+    async def list_scan_ai_analyses(self, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+        """List scans that have at least one AI analysis, newest analysis first."""
+        from app.db.mongo import get_database
+        db = await get_database()
+        coll = db[settings.mongo_scans_collection]
+        query = {"ai_analysis": {"$ne": None}}
+        try:
+            total = await coll.count_documents(query)
+            cursor = (
+                coll.find(query, {
+                    "_id": 1,
+                    "target_id": 1,
+                    "target_name": 1,
+                    "commit_sha": 1,
+                    "image_ref": 1,
+                    "ai_analysis": 1,
+                    "ai_analyses": 1,
+                })
+                .sort("ai_analysis.generatedAt", -1)
+                .skip(offset)
+                .limit(limit)
+            )
+            items: list[dict[str, Any]] = []
+            async for doc in cursor:
+                ai = doc.get("ai_analysis") or {}
+                items.append({
+                    "type": "scan",
+                    "scan_id": str(doc.get("_id", "")),
+                    "target_id": doc.get("target_id"),
+                    "target_name": doc.get("target_name"),
+                    "commit_sha": doc.get("commit_sha"),
+                    "image_ref": doc.get("image_ref"),
+                    "provider": ai.get("provider"),
+                    "language": ai.get("language"),
+                    "summary": ai.get("summary", ""),
+                    "timestamp": ai.get("generatedAt"),
+                    "triggeredBy": ai.get("triggeredBy"),
+                    "tokenUsage": ai.get("tokenUsage"),
+                    "analysisCount": len(doc.get("ai_analyses") or []),
+                })
+            return {"items": items, "total": total, "limit": limit, "offset": offset}
+        except Exception:
+            return {"items": [], "total": 0, "limit": limit, "offset": offset}
+
+    async def save_scan_ai_analysis(self, scan_id: str, assessment: dict[str, Any]) -> bool:
+        """Append an AI analysis to the scan's ai_analyses array and mirror into ai_analysis."""
+        from app.db.mongo import get_database
+        db = await get_database()
+        try:
+            oid = ObjectId(scan_id)
+        except Exception:
+            return False
+        result = await db[settings.mongo_scans_collection].update_one(
+            {"_id": oid},
+            {
+                "$push": {"ai_analyses": assessment},
+                "$set": {"ai_analysis": assessment},
+            },
+        )
+        return result.modified_count > 0
+
     async def get_scan_findings(
         self,
         scan_id: str,

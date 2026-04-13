@@ -214,10 +214,16 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `POST /api/v1/vulnerabilities/lookup` — Lookup mit Auto-Sync
 - `POST /api/v1/vulnerabilities/refresh` — Manueller Refresh einzelner IDs
 
-### KI-Analyse (asynchron)
+### KI-Analyse (asynchron, Web-UI)
 - `POST /api/v1/vulnerabilities/{id}/ai-investigation` — Einzelanalyse (HTTP 202, Ergebnis via SSE)
 - `POST /api/v1/vulnerabilities/ai-investigation/batch` — Batch-Analyse (HTTP 202, Ergebnis via SSE)
-- `GET /api/v1/vulnerabilities/ai-investigation/batch/{id}` — Batch-Ergebnis abrufen
+- `GET /api/v1/vulnerabilities/ai-investigation/batch` — Paginierte Batch-Historie für die AI-Analyse-Seite
+- `GET /api/v1/vulnerabilities/ai-investigation/batch/{id}` — Einzelne Batch-Analyse abrufen
+- `GET /api/v1/vulnerabilities/ai-investigation/single` — Paginierte Einzel-Analysen-Historie
+- `POST /api/v1/scans/{scan_id}/ai-analysis` — SCA-Scan-Triage (HTTP 202, Ergebnis wird als `ai_analysis` / `ai_analyses[]` auf dem Scan-Dokument persistiert)
+- `GET /api/v1/scans/ai-analyses` — Liste aller Scans mit mindestens einer gespeicherten AI-Analyse (neueste zuerst). Wird von der AI-Analyse-Seite in die kombinierte Timeline integriert.
+
+Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI setzt es nicht, MCP-`save_*`-Tools setzen es auf `{client_name} - MCP` und der Server hängt das Label zusätzlich als Markdown-Fußzeile an die gespeicherte Zusammenfassung an. Die in `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_GEMINI_API_KEY` konfigurierten Provider werden ausschließlich von diesen HTTP-Endpunkten genutzt — MCP-AI-Flows rufen keinen serverseitigen Provider auf.
 
 ### Kataloge
 - `GET /api/v1/cwe/{id}` & `POST /api/v1/cwe/bulk` — CWE-Daten
@@ -276,7 +282,10 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `GET /mcp/oauth/authorize` — Leitet zum konfigurierten Upstream IdP weiter (GitHub / Microsoft / OIDC)
 - `GET /mcp/oauth/idp/callback` — IdP-Callback (interner Redirect-Endpunkt)
 - `POST /mcp/oauth/token` — Token-Austausch mit PKCE (S256)
-- 11 Tools: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `trigger_scan`, `trigger_sync`
+- **18 Tools** (Server-Name: `hecate`):
+  - Read-Only: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_sca_scan`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`
+  - Write (Quell-IP bei Authorize in `MCP_WRITE_IP_SAFELIST`): `trigger_scan`, `trigger_sync`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`
+  - AI-Analyse über MCP erfolgt als **Prepare/Save-Paare** — die `prepare_*`-Tools liefern Hecates vordefinierte Prompts + Kontext, der aufrufende Assistent (Claude Desktop, Cursor, Codex) erzeugt die Analyse mit seinem eigenen Modell und speichert sie über das passende `save_*`-Tool. Die in `AI_API` konfigurierten Provider-Keys werden nur von den Web-UI-Flows genutzt.
 
 ### Echtzeit-Events (SSE)
 - `GET /api/v1/events` — Server-Sent Events Stream (Job-Status, neue Schwachstellen, AI-Analyse-Ergebnisse)

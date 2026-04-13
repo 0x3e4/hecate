@@ -30,7 +30,7 @@ def create_mcp_server() -> FastMCP:
     # and the server runs behind a reverse proxy with varying Host headers.
     transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
     mcp = FastMCP(
-        "hecate-vuln-db",
+        "hecate",
         stateless_http=True,
         streamable_http_path="/mcp",
         transport_security=transport_security,

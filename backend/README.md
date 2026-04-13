@@ -27,18 +27,18 @@ app/
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
 │   ├── server.py                # ASGI Sub-App Factory (FastMCP)
-│   ├── auth.py                  # OAuth-Token-Validierung, Scope- und IP-basierte Write-Gatung
-│   ├── oauth.py                 # OAuth 2.0 AS-Endpoints (Metadata inkl. RFC 9728 Path-Suffix, DCR, Authorize, IdP-Callback, Token mit PKCE)
+│   ├── auth.py                  # Pfad-bewusste MCPAuthMiddleware (nur /mcp + /mcp/*), OAuth-Token-Validierung, Scope-basierte Write-Gatung
+│   ├── oauth.py                 # OAuth 2.0 AS-Endpoints (Metadata inkl. RFC 9728 Path-Suffix, DCR, Authorize, IdP-Callback, Token mit PKCE); get_dcr_client_name() für MCP-Attribution
 │   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
 │   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events
-│   └── tools/                   # 11 MCP-Tools (6 Module)
-│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability
+│   └── tools/                   # 18 MCP-Tools (6 Module)
+│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis
 │       ├── cpe.py               # search_cpe
 │       ├── assets.py            # search_vendors, search_products
 │       ├── stats.py             # get_vulnerability_stats
 │       ├── cwe_capec.py         # get_cwe, get_capec
-│       └── scans.py             # get_scan_findings, trigger_scan, trigger_sync
+│       └── scans.py             # get_scan_findings, get_sca_scan, trigger_scan, trigger_sync, prepare_scan_ai_analysis, save_scan_ai_analysis
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
 │   └── logging_config.py    # structlog-Konfiguration
@@ -90,7 +90,7 @@ app/
 │   ├── saved_search_service.py    # Gespeicherte Suchen
 │   ├── cpe_service.py             # CPE-Katalog
 │   ├── asset_catalog_service.py   # Asset-Katalog
-│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import)
+│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import, AI-Analyse: save_scan_ai_analysis + list_scan_ai_analyses)
 │   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV, SPDX-SBOM)
 │   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
 │   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward (VEX + Dismissal)

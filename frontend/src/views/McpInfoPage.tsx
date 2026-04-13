@@ -23,7 +23,7 @@ export const McpInfoPage = () => {
         </p>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <span style={{ ...badgeStyle, background: "rgba(255,212,59,0.1)", color: "#ffd43b", border: "1px solid rgba(255,212,59,0.2)" }}>
-            11 Tools
+            18 Tools
           </span>
           <span style={{ ...badgeStyle, background: "rgba(139,250,167,0.1)", color: "#8bfaa7", border: "1px solid rgba(139,250,167,0.2)" }}>
             OAuth 2.0 + PKCE
@@ -92,7 +92,7 @@ export const McpInfoPage = () => {
         <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.7, fontSize: "0.9rem" }}>
           <li>{t("Read tools (search, get_vulnerability, etc.) are available to anyone who successfully authenticates with the configured IdP.", "Lese-Tools (search, get_vulnerability usw.) stehen jedem zur Verfügung, der sich erfolgreich beim konfigurierten IdP authentifiziert.")}</li>
           <li>{t("Optionally narrow read access with ", "Optional kann der Lesezugriff über ")}<code>MCP_ALLOWED_USERS</code>{t(" (CSV of usernames/emails).", " (CSV von Benutzernamen/E-Mails) eingegrenzt werden.")}</li>
-          <li>{t("Write tools (trigger_scan, trigger_sync) require the caller's source IP to be in ", "Schreib-Tools (trigger_scan, trigger_sync) erfordern, dass die Quell-IP in ")}<code>MCP_WRITE_IP_SAFELIST</code>{t(" (CSV of IPs or CIDR blocks) — only then is the mcp:write scope granted and re-validated at request time.", " (CSV von IPs oder CIDR-Blöcken) enthalten ist — nur dann wird der mcp:write Scope erteilt und zur Aufrufzeit erneut geprüft.")}</li>
+          <li>{t("Write tools (trigger_scan, trigger_sync, and all save_*_ai_analysis tools) require the caller's source IP to be in ", "Schreib-Tools (trigger_scan, trigger_sync und alle save_*_ai_analysis Tools) erfordern, dass die Quell-IP in ")}<code>MCP_WRITE_IP_SAFELIST</code>{t(" (CSV of IPs or CIDR blocks) — only then is the mcp:write scope granted and re-validated at request time.", " (CSV von IPs oder CIDR-Blöcken) enthalten ist — nur dann wird der mcp:write Scope erteilt und zur Aufrufzeit erneut geprüft.")}</li>
           <li>{t("All OAuth events and tool invocations are recorded in the ", "Alle OAuth-Events und Tool-Aufrufe werden im ")}<a href="/audit">{t("audit log", "Audit-Log")}</a>{t(" with identity, email, source IP, and granted scope.", " mit Identität, E-Mail, Quell-IP und erteiltem Scope protokolliert.")}</li>
         </ul>
       </section>
@@ -141,6 +141,31 @@ export const McpInfoPage = () => {
         </p>
       </section>
 
+      {/* AI analysis via your assistant */}
+      <section className="card">
+        <h2>{t("AI analysis via your assistant", "KI-Analyse über deinen Assistenten")}</h2>
+        <p className="muted">
+          {t(
+            "Ask your assistant to analyze a vulnerability or scan — it uses Hecate's predefined prompts and its own reasoning, then writes the result back to Hecate. The analysis is stored on the vulnerability or scan document with an attribution tag like ",
+            "Bitte deinen Assistenten, eine Schwachstelle oder einen Scan zu analysieren — er verwendet die vordefinierten Prompts von Hecate und sein eigenes Reasoning und schreibt das Ergebnis anschließend zurück. Die Analyse wird am Schwachstellen- oder Scan-Dokument mit einer Attribution wie "
+          )}
+          <code>Claude - MCP</code>
+          {t(" so you can see later who produced it.", " gespeichert, damit später nachvollziehbar ist, von wem sie stammt.")}
+        </p>
+        <h3 style={{ marginTop: "1rem", fontSize: "1rem" }}>{t("Tool pairs", "Tool-Paare")}</h3>
+        <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.7, fontSize: "0.9rem" }}>
+          <li><code>prepare_vulnerability_ai_analysis</code> → <code>save_vulnerability_ai_analysis</code> — {t("single CVE/GHSA/EUVD", "einzelne CVE/GHSA/EUVD")}</li>
+          <li><code>prepare_vulnerabilities_ai_batch_analysis</code> → <code>save_vulnerabilities_ai_batch_analysis</code> — {t("up to 10 vulnerabilities combined", "bis zu 10 Schwachstellen kombiniert")}</li>
+          <li><code>prepare_scan_ai_analysis</code> → <code>save_scan_ai_analysis</code> — {t("SCA scan risk triage", "SCA-Scan-Risiko-Triage")}</li>
+        </ul>
+        <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+          {t(
+            "Saving results requires write scope (source IP must be in MCP_WRITE_IP_SAFELIST).",
+            "Das Speichern der Ergebnisse erfordert Schreibzugriff (Quell-IP muss in MCP_WRITE_IP_SAFELIST enthalten sein)."
+          )}
+        </p>
+      </section>
+
       {/* Available Tools */}
       <section className="card">
         <h2>{t("Available Tools", "Verfügbare Tools")}</h2>
@@ -169,6 +194,13 @@ export const McpInfoPage = () => {
             <tr><td><code>get_scan_findings</code></td><td>{t("Query SCA scan findings", "SCA-Scan-Findings abfragen")}</td></tr>
             <tr><td><code>trigger_scan</code></td><td>{t("Submit an SCA scan (write scope: source IP must be in MCP_WRITE_IP_SAFELIST)", "SCA-Scan starten (Schreib-Scope: Quell-IP muss in MCP_WRITE_IP_SAFELIST sein)")}</td></tr>
             <tr><td><code>trigger_sync</code></td><td>{t("Trigger data sync from upstream source (write scope: source IP must be in MCP_WRITE_IP_SAFELIST)", "Daten-Sync von Upstream-Quelle auslösen (Schreib-Scope: Quell-IP muss in MCP_WRITE_IP_SAFELIST sein)")}</td></tr>
+            <tr><td><code>get_sca_scan</code></td><td>{t("Look up SCA scans by scan_id, target name, or group", "SCA-Scans per scan_id, Target-Name oder Gruppe abrufen")}</td></tr>
+            <tr><td><code>prepare_vulnerability_ai_analysis</code></td><td>{t("Return the prompt + context for analyzing a single CVE", "Liefert Prompt + Kontext zur Analyse einer einzelnen CVE")}</td></tr>
+            <tr><td><code>save_vulnerability_ai_analysis</code></td><td>{t("Save an assistant-generated analysis onto the vulnerability (write scope)", "Speichert eine vom Assistenten erzeugte Analyse an der Schwachstelle (Schreib-Scope)")}</td></tr>
+            <tr><td><code>prepare_vulnerabilities_ai_batch_analysis</code></td><td>{t("Return the prompt + context for analyzing up to 10 vulnerabilities together", "Liefert Prompt + Kontext für die gemeinsame Analyse von bis zu 10 Schwachstellen")}</td></tr>
+            <tr><td><code>save_vulnerabilities_ai_batch_analysis</code></td><td>{t("Save an assistant-generated batch analysis (write scope)", "Speichert eine vom Assistenten erzeugte Batch-Analyse (Schreib-Scope)")}</td></tr>
+            <tr><td><code>prepare_scan_ai_analysis</code></td><td>{t("Return the prompt + context for triaging an SCA scan", "Liefert Prompt + Kontext zur Triage eines SCA-Scans")}</td></tr>
+            <tr><td><code>save_scan_ai_analysis</code></td><td>{t("Save an assistant-generated scan triage onto the scan (write scope)", "Speichert eine vom Assistenten erzeugte Scan-Triage am Scan (Schreib-Scope)")}</td></tr>
           </tbody>
         </table>
       </section>
@@ -191,6 +223,10 @@ export const McpInfoPage = () => {
             { en: "Explain CWE-79 and its attack patterns", de: "Erkläre CWE-79 und die zugehörigen Angriffsmuster" },
             { en: "How many vulnerabilities are in the database?", de: "Wie viele Schwachstellen sind in der Datenbank?" },
             { en: "Search for log4j vulnerabilities with CRITICAL severity", de: "Suche nach log4j Schwachstellen mit Schweregrad CRITICAL" },
+            { en: "Show me the latest SCA scan for target hecate-backend", de: "Zeig mir den neuesten SCA-Scan für das Target hecate-backend" },
+            { en: "Summarize all scans in the group 'production'", de: "Fasse alle Scans der Gruppe 'production' zusammen" },
+            { en: "Analyze CVE-2024-1234 with your own reasoning and save the result to Hecate", de: "Analysiere CVE-2024-1234 mit deinem eigenen Reasoning und speichere das Ergebnis in Hecate" },
+            { en: "Triage the latest scan of target frontend and write the summary back to the scan", de: "Mache eine Triage des neuesten Scans von Target frontend und schreibe die Zusammenfassung zurück an den Scan" },
           ].map((prompt, i) => (
             <div key={i} style={{ padding: "0.6rem 1rem", background: "rgba(255,255,255,0.03)", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)", fontSize: "0.9rem" }}>
               {t(prompt.en, prompt.de)}

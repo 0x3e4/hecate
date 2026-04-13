@@ -1,8 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import Markdown from "react-markdown";
 
-import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex, importVex, bulkUpdateVexByIds, dismissFindings } from "../api/scans";
-import { fetchScanLicenseCompliance } from "../api/licensePolicy";
+import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex, importVex, bulkUpdateVexByIds, dismissFindings, triggerScanAiAnalysis } from "../api/scans";
+import { getAiProviders } from "../api/vulnerabilities";
+import type { AIProviderInfo } from "../types";
+import { TriggeredByBadge } from "../ui/TriggeredByBadge";
+import { TabBadge } from "../ui/TabPill";
+import { stripAiSummaryFooter } from "../utils/aiSummary";
+import { fetchScanLicenseCompliance, fetchLicensePolicies } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
@@ -10,6 +16,7 @@ import { formatDateTime } from "../utils/dateFormat";
 import { getCurrentTimezone } from "../timezone/storage";
 import type {
   Scan,
+  ScanAiAnalysis,
   ScanFinding,
   ScanSummary,
   ScanHistoryEntry,
@@ -19,7 +26,7 @@ import type {
   LicenseComplianceResult,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance";
+type Tab = "findings" | "sbom" | "history" | "ai-analysis" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance";
 
 /** Format bytes to human-readable string */
 function formatBytes(bytes: number): string {
@@ -426,6 +433,19 @@ export const ScanDetailPage = () => {
   // License compliance
   const [licenseCompliance, setLicenseCompliance] = useState<LicenseComplianceResult | null>(null);
   const [licenseComplianceLoading, setLicenseComplianceLoading] = useState(false);
+  const [hasLicensePolicy, setHasLicensePolicy] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchLicensePolicies()
+      .then(res => {
+        if (!cancelled) setHasLicensePolicy((res.items?.length ?? 0) > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setHasLicensePolicy(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // VEX editing (single, expandable row)
   const [vexEditingId, setVexEditingId] = useState<string | null>(null);
@@ -887,14 +907,16 @@ export const ScanDetailPage = () => {
             onClick={() => setTab("findings")}
             style={tabStyle(tab === "findings")}
           >
-            {t("Findings", "Ergebnisse")} ({findings.length > 0 ? vulnFindings.length : (scan.findingsCount || findingsTotal)})
+            {t("Findings", "Ergebnisse")}
+            <TabBadge count={findings.length > 0 ? vulnFindings.length : (scan.findingsCount || findingsTotal)} />
           </button>
           <button
             type="button"
             onClick={() => setTab("sbom")}
             style={tabStyle(tab === "sbom")}
           >
-            SBOM ({dedupedSbom.length || scan.sbomComponentCount || sbomTotal})
+            SBOM
+            <TabBadge count={dedupedSbom.length || scan.sbomComponentCount || sbomTotal || 0} />
           </button>
           <button
             type="button"
@@ -907,6 +929,14 @@ export const ScanDetailPage = () => {
             style={tabStyle(tab === "history")}
           >
             {t("History", "Verlauf")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("ai-analysis")}
+            style={tabStyle(tab === "ai-analysis")}
+          >
+            {t("AI Analysis", "KI-Analyse")}
+            {scan.aiAnalyses && scan.aiAnalyses.length > 0 && <TabBadge count={scan.aiAnalyses.length} />}
           </button>
           <button
             type="button"
@@ -935,7 +965,8 @@ export const ScanDetailPage = () => {
               } : {}),
             }}
           >
-            {t("Security Alerts", "Sicherheitswarnungen")} ({alertFindings.length})
+            {t("Security Alerts", "Sicherheitswarnungen")}
+            <TabBadge count={alertFindings.length} />
           </button>
           {isContainerImage && (
             <>
@@ -951,7 +982,8 @@ export const ScanDetailPage = () => {
                   } : {}),
                 }}
               >
-                {t("Best Practices", "Best Practices")} ({complianceFindings.length})
+                {t("Best Practices", "Best Practices")}
+                <TabBadge count={complianceFindings.length} />
               </button>
               <button
                 type="button"
@@ -982,7 +1014,8 @@ export const ScanDetailPage = () => {
                 color: tab === "sast" ? "#a78bfa" : "#c4b5fd",
               }}
             >
-              SAST ({sastFindings.length})
+              SAST
+              <TabBadge count={sastFindings.length} />
             </button>
           )}
           {secretFindings.length > 0 && (
@@ -996,10 +1029,11 @@ export const ScanDetailPage = () => {
                 color: tab === "secrets" ? "#38bdf8" : "#7dd3fc",
               }}
             >
-              {t("Secrets", "Secrets")} ({secretFindings.length})
+              {t("Secrets", "Secrets")}
+              <TabBadge count={secretFindings.length} />
             </button>
           )}
-          {sbomTotal > 0 && (
+          {sbomTotal > 0 && hasLicensePolicy && (
             <button
               type="button"
               onClick={() => setTab("license-compliance")}
@@ -1049,13 +1083,16 @@ export const ScanDetailPage = () => {
                   type="button"
                   onClick={() => setSeverityFilter(sev)}
                   style={{
-                    padding: "0.25rem 0.625rem",
+                    height: "1.75rem",
+                    padding: "0 0.625rem",
                     borderRadius: "4px",
                     border: severityFilter === sev ? "1px solid rgba(255,193,7,0.5)" : "1px solid rgba(255,255,255,0.1)",
                     background: severityFilter === sev ? "rgba(255,193,7,0.1)" : "transparent",
                     color: severityFilter === sev ? "#ffd43b" : "rgba(255,255,255,0.5)",
                     cursor: "pointer",
                     fontSize: "0.75rem",
+                    lineHeight: 1,
+                    boxSizing: "border-box",
                   }}
                 >
                   {sev ? sev.charAt(0).toUpperCase() + sev.slice(1) : t("All", "Alle")}
@@ -1063,7 +1100,8 @@ export const ScanDetailPage = () => {
               ))}
               <label style={{
                 display: "inline-flex", alignItems: "center", gap: "0.375rem",
-                padding: "0.25rem 0.625rem", borderRadius: "4px",
+                height: "1.75rem",
+                padding: "0 0.625rem", borderRadius: "4px",
                 border: "1px solid rgba(255,255,255,0.1)",
                 fontSize: "0.75rem", lineHeight: 1, color: "rgba(255,255,255,0.6)", cursor: "pointer",
                 boxSizing: "border-box",
@@ -1113,10 +1151,12 @@ export const ScanDetailPage = () => {
                 disabled={vexImporting}
                 title={t("Import a CycloneDX VEX document and apply to matching findings", "CycloneDX VEX-Dokument importieren und auf passende Ergebnisse anwenden")}
                 style={{
-                  padding: "0.25rem 0.625rem", borderRadius: "4px",
+                  height: "1.75rem",
+                  padding: "0 0.625rem", borderRadius: "4px",
                   border: "1px solid rgba(99,230,190,0.3)",
                   background: "rgba(99,230,190,0.08)",
                   color: "#63e6be", cursor: vexImporting ? "wait" : "pointer", fontSize: "0.75rem", fontWeight: 500,
+                  lineHeight: 1, boxSizing: "border-box",
                 }}
               >
                 {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
@@ -1131,17 +1171,20 @@ export const ScanDetailPage = () => {
                     to={`/vulnerabilities?search=${encodeURIComponent(dql)}&mode=dql`}
                     style={{
                       marginLeft: "auto",
-                      padding: "0.25rem 0.625rem",
+                      height: "1.75rem",
+                      padding: "0 0.625rem",
                       borderRadius: "4px",
                       border: "1px solid rgba(255,193,7,0.3)",
                       background: "rgba(255,193,7,0.08)",
                       color: "#ffd43b",
                       textDecoration: "none",
                       fontSize: "0.75rem",
+                      lineHeight: 1,
                       fontWeight: 500,
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "0.25rem",
+                      boxSizing: "border-box",
                     }}
                     title={t("Open all CVEs in vulnerability list", "Alle CVEs in Schwachstellenliste öffnen")}
                   >
@@ -1889,6 +1932,14 @@ export const ScanDetailPage = () => {
               </>
             )}
           </>
+        )}
+
+        {/* AI Analysis tab */}
+        {tab === "ai-analysis" && (
+          <ScanAiAnalysisTab scan={scan} onRefresh={() => {
+            if (!scanId) return;
+            fetchScan(scanId).then(setScan).catch(() => {});
+          }} />
         )}
 
         {/* Compare tab */}
@@ -3087,6 +3138,207 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
   );
 };
 
+const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => void }) => {
+  const { t } = useI18n();
+  const [providers, setProviders] = useState<AIProviderInfo[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [additionalContext, setAdditionalContext] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAiProviders()
+      .then(list => {
+        if (cancelled) return;
+        setProviders(list);
+        if (list.length > 0) setSelectedProvider(prev => prev || list[0].id);
+      })
+      .catch(() => { if (!cancelled) setProviders([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleStart = async () => {
+    if (!selectedProvider) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      await triggerScanAiAnalysis(scan.id, {
+        provider: selectedProvider,
+        additionalContext: additionalContext.trim() || undefined,
+      });
+      // Background task — poll the scan a couple times to catch the result
+      const poll = async (attempt: number) => {
+        if (attempt > 30) { setAiLoading(false); return; }
+        await new Promise(r => setTimeout(r, 4000));
+        try {
+          const fresh = await fetchScan(scan.id);
+          const before = scan.aiAnalyses?.length ?? 0;
+          const after = fresh.aiAnalyses?.length ?? 0;
+          if (after > before) {
+            setAiLoading(false);
+            onRefresh();
+            return;
+          }
+        } catch { /* ignore */ }
+        poll(attempt + 1);
+      };
+      void poll(0);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : String(err));
+      setAiLoading(false);
+    }
+  };
+
+  const analyses = useMemo<ScanAiAnalysis[]>(() => {
+    const arr: ScanAiAnalysis[] = Array.isArray(scan.aiAnalyses) ? [...scan.aiAnalyses] : [];
+    // Ensure the latest-mirror field is included if legacy scans stored only `ai_analysis`
+    if (scan.aiAnalysis) {
+      const hasMatch = arr.some(a => a.generatedAt === scan.aiAnalysis?.generatedAt);
+      if (!hasMatch) arr.unshift(scan.aiAnalysis);
+    }
+    // Newest first
+    arr.sort((a, b) => (b.generatedAt || "").localeCompare(a.generatedAt || ""));
+    return arr;
+  }, [scan.aiAnalyses, scan.aiAnalysis]);
+
+  const scanRef: { label: string; value: string } | null = useMemo(() => {
+    if (scan.commitSha) {
+      return { label: t("Commit", "Commit"), value: scan.commitSha.slice(0, 12) };
+    }
+    if (scan.imageRef) {
+      // Container images may expose a digest suffix `@sha256:...`
+      const atIdx = scan.imageRef.indexOf("@sha256:");
+      if (atIdx >= 0) {
+        return { label: t("Digest", "Digest"), value: scan.imageRef.slice(atIdx + 8, atIdx + 20) };
+      }
+      return { label: t("Image", "Image"), value: scan.imageRef };
+    }
+    return null;
+  }, [scan, t]);
+
+  const triggerForm = (
+    <div className="ai-analysis" style={{ marginBottom: analyses.length > 0 ? "1rem" : 0 }}>
+      {providers.length === 0 ? (
+        <div className="muted">{t("No AI providers configured.", "Keine AI-Provider konfiguriert.")}</div>
+      ) : (
+        <>
+          <div className="ai-analysis__controls">
+            <label htmlFor="scan-ai-provider" className="muted" style={{ fontSize: "0.9rem" }}>
+              {t("Provider", "Anbieter")}
+            </label>
+            <select
+              id="scan-ai-provider"
+              value={selectedProvider}
+              onChange={(e) => setSelectedProvider(e.target.value)}
+              disabled={aiLoading}
+            >
+              {providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={() => void handleStart()}
+              disabled={aiLoading || !selectedProvider}
+            >
+              {aiLoading ? t("Analysis running...", "Analyse läuft...") : t("Start AI analysis", "AI-Analyse starten")}
+            </button>
+          </div>
+          <div style={{ marginTop: "1rem" }}>
+            <label htmlFor="scan-ai-context" className="muted" style={{ fontSize: "0.9rem", display: "block", marginBottom: "0.5rem" }}>
+              {t("Additional information (optional)", "Zusätzliche Informationen (optional)")}
+            </label>
+            <textarea
+              id="scan-ai-context"
+              value={additionalContext}
+              onChange={(e) => setAdditionalContext(e.target.value)}
+              disabled={aiLoading}
+              placeholder={t(
+                "Enter additional information to include in the AI analysis...",
+                "Geben Sie zusätzliche Informationen ein, die bei der AI-Analyse berücksichtigt werden sollen..."
+              )}
+              style={{
+                width: "100%",
+                minHeight: "80px",
+                padding: "0.6rem 0.75rem",
+                background: "rgba(15, 18, 30, 0.85)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                borderRadius: "8px",
+                color: "#f5f7fa",
+                fontSize: "0.95rem",
+                resize: "vertical",
+                fontFamily: "inherit",
+                lineHeight: 1.5,
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          {aiError && <div className="ai-analysis__error">{aiError}</div>}
+        </>
+      )}
+    </div>
+  );
+
+  if (analyses.length === 0) {
+    return triggerForm;
+  }
+
+  return (
+    <div>
+      {triggerForm}
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      {analyses.map((analysis, idx) => {
+        const originChipLabel = analysis.triggeredBy ? "MCP - Scan" : "API - Scan";
+        const cleanedSummary = stripAiSummaryFooter(analysis.summary);
+        return (
+          <div
+            key={`${analysis.generatedAt}-${idx}`}
+            className="ai-analysis__batch-card"
+          >
+            <div className="ai-analysis__batch-header">
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                {scanRef && (
+                  <code style={{
+                    fontSize: "0.72rem",
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "4px",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "rgba(255,255,255,0.7)",
+                  }}>
+                    {scanRef.label}: {scanRef.value}
+                  </code>
+                )}
+                <TriggeredByBadge triggeredBy={analysis.triggeredBy} />
+              </span>
+              <span className={`chip ${analysis.triggeredBy ? "chip-batch" : "chip-single"}`}>
+                {originChipLabel}
+              </span>
+            </div>
+            {cleanedSummary ? (
+              <div className="ai-analysis__text">
+                <Markdown>{cleanedSummary}</Markdown>
+              </div>
+            ) : (
+              <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
+            )}
+            {(analysis.provider || analysis.language || analysis.generatedAt || analysis.tokenUsage) && (
+              <div className="ai-analysis__meta">
+                {analysis.provider && <span>{analysis.provider}</span>}
+                {analysis.language && <span> · {t("Language", "Sprache")}: {analysis.language.toUpperCase()}</span>}
+                {analysis.generatedAt && <span> · {formatDateTime(analysis.generatedAt)}</span>}
+                {analysis.tokenUsage && analysis.tokenUsage.inputTokens !== undefined && (
+                  <span> · {t("Tokens", "Tokens")}: {analysis.tokenUsage.inputTokens.toLocaleString()} in / {(analysis.tokenUsage.outputTokens ?? 0).toLocaleString()} out</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      </div>
+    </div>
+  );
+};
+
 const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
@@ -3623,4 +3875,7 @@ const tabStyle = (active: boolean): React.CSSProperties => ({
   cursor: "pointer",
   fontSize: "0.8125rem",
   fontWeight: 500,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
 });

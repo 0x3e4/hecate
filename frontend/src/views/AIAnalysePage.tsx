@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
+import { TriggeredByBadge } from "../ui/TriggeredByBadge";
+import { stripAiSummaryFooter } from "../utils/aiSummary";
 import {
   getAiProviders,
   getBatchAnalysis,
@@ -10,6 +12,7 @@ import {
   triggerVulnerabilityRefresh,
   type SingleAnalysisItem,
 } from "../api/vulnerabilities";
+import { listScanAiAnalyses, type ScanAiAnalysisHistoryItem } from "../api/scans";
 import { api } from "../api/client";
 import {
   AIBatchInvestigationResponse,
@@ -76,11 +79,13 @@ export const AIAnalysePage = () => {
   const [displayText, setDisplayText] = useState<string>("");
   const [batchHistory, setBatchHistory] = useState<BatchAnalysisItem[]>([]);
   const [singleHistory, setSingleHistory] = useState<SingleAnalysisItem[]>([]);
+  const [scanHistory, setScanHistory] = useState<ScanAiAnalysisHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState<number>(0);
   const [batchTotal, setBatchTotal] = useState<number>(0);
   const [singleTotal, setSingleTotal] = useState<number>(0);
+  const [scanTotal, setScanTotal] = useState<number>(0);
 
   const HISTORY_PAGE_SIZE = 20;
 
@@ -118,14 +123,17 @@ export const AIAnalysePage = () => {
     setHistoryError(null);
     try {
       const offset = page * HISTORY_PAGE_SIZE;
-      const [batchData, singleData] = await Promise.all([
+      const [batchData, singleData, scanData] = await Promise.all([
         listBatchAnalyses({ limit: HISTORY_PAGE_SIZE, offset }, aiAnalysisPassword),
         listSingleAiAnalyses({ limit: HISTORY_PAGE_SIZE, offset }, aiAnalysisPassword),
+        listScanAiAnalyses({ limit: HISTORY_PAGE_SIZE, offset }).catch(() => ({ items: [], total: 0, limit: HISTORY_PAGE_SIZE, offset })),
       ]);
       setBatchHistory(batchData.items || []);
       setSingleHistory(singleData.items || []);
+      setScanHistory(scanData.items || []);
       setBatchTotal(batchData.total);
       setSingleTotal(singleData.total);
+      setScanTotal(scanData.total);
     } catch (err) {
       console.error("Failed to load AI analyses history:", err);
       const status = (err as any)?.response?.status;
@@ -282,8 +290,8 @@ export const AIAnalysePage = () => {
   const providerLabelMap = new Map(aiProviders.map((provider) => [provider.id, provider.label]));
 
   // Pagination calculations for history (batch + single combined)
-  const historyTotalCombined = batchTotal + singleTotal;
-  const historyMaxTotal = Math.max(batchTotal, singleTotal);
+  const historyTotalCombined = batchTotal + singleTotal + scanTotal;
+  const historyMaxTotal = Math.max(batchTotal, singleTotal, scanTotal);
   const hasPreviousHistoryPage = historyPage > 0;
   const hasNextHistoryPage = (historyPage + 1) * HISTORY_PAGE_SIZE < historyMaxTotal;
 
@@ -474,15 +482,16 @@ export const AIAnalysePage = () => {
             {historyError}
           </div>
         )}
-        {!historyLoading && !historyError && batchHistory.length === 0 && singleHistory.length === 0 && (
+        {!historyLoading && !historyError && batchHistory.length === 0 && singleHistory.length === 0 && scanHistory.length === 0 && (
           <div className="muted">{t("No AI analyses available.", "Keine AI-Analysen vorhanden.")}</div>
         )}
-        {!historyLoading && !historyError && (batchHistory.length > 0 || singleHistory.length > 0) && (
+        {!historyLoading && !historyError && (batchHistory.length > 0 || singleHistory.length > 0 || scanHistory.length > 0) && (
           <div className="ai-analysis__batch-list">
             {/* Combine and sort by timestamp */}
             {[
               ...batchHistory.map((b) => ({ ...b, type: "batch" as const })),
               ...singleHistory,
+              ...scanHistory,
             ]
               .sort((a, b) => {
                 const timeA = new Date(("generatedAt" in a ? a.generatedAt : a.timestamp) || 0).getTime();
@@ -490,16 +499,77 @@ export const AIAnalysePage = () => {
                 return timeB - timeA;
               })
               .map((item) => {
-                const providerLabel = providerLabelMap.get(item.provider) ?? item.provider;
+                const providerLabel = providerLabelMap.get(item.provider as AIProviderId) ?? item.provider;
+
+                if (item.type === "scan") {
+                  const scan = item as ScanAiAnalysisHistoryItem;
+                  const summary = stripAiSummaryFooter((scan.summary || "").trim());
+                  const originLabel = scan.triggeredBy ? "MCP - Scan" : "API - Scan";
+                  const ref = scan.commit_sha
+                    ? { label: t("Commit", "Commit"), value: scan.commit_sha.slice(0, 12) }
+                    : scan.image_ref
+                    ? { label: t("Image", "Image"), value: scan.image_ref }
+                    : null;
+                  return (
+                    <div key={`scan-${scan.scan_id}-${scan.timestamp ?? ""}`} className="ai-analysis__batch-card">
+                      <div className="ai-analysis__batch-header">
+                        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <Link
+                            to={`/scans/${encodeURIComponent(scan.scan_id)}`}
+                            className="ai-analysis__batch-id"
+                            style={{ textDecoration: "none" }}
+                          >
+                            {scan.target_name || scan.target_id || scan.scan_id}
+                          </Link>
+                          {ref && (
+                            <code style={{
+                              fontSize: "0.72rem",
+                              padding: "0.15rem 0.5rem",
+                              borderRadius: "4px",
+                              background: "rgba(255,255,255,0.05)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              color: "rgba(255,255,255,0.7)",
+                            }}>
+                              {ref.label}: {ref.value}
+                            </code>
+                          )}
+                          <TriggeredByBadge triggeredBy={scan.triggeredBy} />
+                        </span>
+                        <span className="chip chip-single">{originLabel}</span>
+                      </div>
+                      {summary ? (
+                        <div className="ai-analysis__text markdown-content">
+                          <Markdown>{summary}</Markdown>
+                        </div>
+                      ) : (
+                        <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
+                      )}
+                      {(providerLabel || scan.language || scan.timestamp || scan.tokenUsage) && (
+                        <div className="ai-analysis__meta">
+                          {providerLabel && <span>{providerLabel}</span>}
+                          {scan.language && <span> · {t("Language", "Sprache")}: {scan.language.toUpperCase()}</span>}
+                          {scan.timestamp && <span> · {formatDateTime(scan.timestamp)}</span>}
+                          {scan.tokenUsage && (
+                            <span> · {t("Tokens", "Tokens")}: {scan.tokenUsage.inputTokens.toLocaleString(locale)} in / {scan.tokenUsage.outputTokens.toLocaleString(locale)} out</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 if (item.type === "batch") {
                   const batch = item as BatchAnalysisItem & { type: "batch" };
-                  const summary = (batch.summary || "").trim();
+                  const summary = stripAiSummaryFooter((batch.summary || "").trim());
+                  const originLabel = batch.triggeredBy ? "MCP - Batch" : "API - Batch";
                   return (
                     <div key={batch.batchId} className="ai-analysis__batch-card">
                       <div className="ai-analysis__batch-header">
-                        <span className="ai-analysis__batch-id">{batch.batchId}</span>
-                        <span className="chip chip-batch">Batch</span>
+                        <span className="ai-analysis__batch-id" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          {batch.batchId}
+                          <TriggeredByBadge triggeredBy={batch.triggeredBy} />
+                        </span>
+                        <span className="chip chip-batch">{originLabel}</span>
                       </div>
                       {batch.vulnerabilityIds?.length > 0 && (
                         <div className="vuln-aliases" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
@@ -535,18 +605,22 @@ export const AIAnalysePage = () => {
                   );
                 } else {
                   const single = item as SingleAnalysisItem;
-                  const summary = (single.summary || "").trim();
+                  const summary = stripAiSummaryFooter((single.summary || "").trim());
+                  const originLabel = single.triggeredBy ? "MCP - Single" : "API - Single";
                   return (
                     <div key={`single-${single.vulnerability_id}`} className="ai-analysis__batch-card">
                       <div className="ai-analysis__batch-header">
-                        <Link
-                          to={`/vulnerability/${encodeURIComponent(single.vulnerability_id)}`}
-                          className="ai-analysis__batch-id"
-                          style={{ textDecoration: "none" }}
-                        >
-                          {single.vulnerability_id}
-                        </Link>
-                        <span className="chip chip-single">{t("Single", "Einzel")}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <Link
+                            to={`/vulnerability/${encodeURIComponent(single.vulnerability_id)}`}
+                            className="ai-analysis__batch-id"
+                            style={{ textDecoration: "none" }}
+                          >
+                            {single.vulnerability_id}
+                          </Link>
+                          <TriggeredByBadge triggeredBy={single.triggeredBy} />
+                        </span>
+                        <span className="chip chip-single">{originLabel}</span>
                       </div>
                       <div style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
                         <Link

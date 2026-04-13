@@ -145,6 +145,7 @@ export interface SingleAnalysisItem {
   summary: string;
   timestamp: string;
   token_usage?: { inputTokens: number; outputTokens: number } | null;
+  triggeredBy?: string | null;
 }
 
 export interface SingleAnalysisListResponse {
