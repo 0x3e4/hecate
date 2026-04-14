@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pymongo import ASCENDING
+from pymongo import ASCENDING, ReturnDocument
 
 from app.core.config import settings
 from app.db.mongo import get_database
@@ -68,3 +68,20 @@ class NotificationRuleRepository:
     async def delete(self, rule_id: str) -> bool:
         result = await self.collection.delete_one({"_id": rule_id})
         return result.deleted_count > 0
+
+    async def claim_evaluation(
+        self, rule_id: str, prev: datetime | None, now: datetime
+    ) -> bool:
+        """Atomically advance ``last_evaluated_at`` from ``prev`` to ``now``.
+
+        Returns True if this caller won the claim, False if another concurrent
+        evaluator already advanced the watermark. Under ``$eq`` semantics a
+        filter of ``{"last_evaluated_at": None}`` matches both missing and
+        explicitly-null fields, so first-ever evaluations work without seeding.
+        """
+        result = await self.collection.find_one_and_update(
+            {"_id": rule_id, "last_evaluated_at": prev},
+            {"$set": {"last_evaluated_at": now, "updated_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return result is not None
