@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.relativedelta import relativedelta
 import structlog
@@ -740,23 +741,44 @@ class StatsService:
             month_cursor = month_cursor + relativedelta(months=1)
         return timeline
 
-    async def get_today_summary(self, *, date: str | None = None) -> dict[str, Any]:
+    async def get_today_summary(
+        self,
+        *,
+        date: str | None = None,
+        tz: str | None = None,
+    ) -> dict[str, Any]:
         """Return vulnerability stats for a given date (default: today).
 
         Args:
-            date: Optional date string in YYYY-MM-DD format. Defaults to today (UTC).
+            date: Optional date string in YYYY-MM-DD format. Defaults to today.
+            tz: Optional IANA timezone (e.g. "Europe/Vienna"). When provided,
+                "today" and the day boundaries are computed in that zone.
         """
+        zone: ZoneInfo | None = None
+        if tz:
+            try:
+                zone = ZoneInfo(tz)
+            except (ZoneInfoNotFoundError, ValueError):
+                zone = None
+
+        def _now_date() -> str:
+            return datetime.now(zone or UTC).strftime("%Y-%m-%d")
+
         if date and len(date) == 10:
             # Validate format
             try:
                 datetime.strptime(date, "%Y-%m-%d")
                 target_date = date
             except ValueError:
-                target_date = datetime.now(UTC).strftime("%Y-%m-%d")
+                target_date = _now_date()
         else:
-            target_date = datetime.now(UTC).strftime("%Y-%m-%d")
+            target_date = _now_date()
 
         next_day = (datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        published_range: dict[str, Any] = {"gte": target_date, "lt": next_day}
+        if zone is not None:
+            published_range["time_zone"] = tz
 
         body: dict[str, Any] = {
             "size": 200,
@@ -764,7 +786,7 @@ class StatsService:
             "query": {
                 "bool": {
                     "filter": [
-                        {"range": {"published": {"gte": target_date, "lt": next_day}}},
+                        {"range": {"published": published_range}},
                     ]
                 }
             },

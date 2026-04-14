@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { getCurrentTimezone } from "../timezone/storage";
 import {
   AIBatchInvestigationRequest,
   AIBatchInvestigationResponse,
@@ -30,7 +31,9 @@ const getAiAnalysisHeaders = (
 export const searchVulnerabilities = async (
   query: VulnerabilityQuery
 ): Promise<VulnerabilityPreview[]> => {
-  const response = await api.post<VulnerabilityPreview[]>("/v1/vulnerabilities/search", query);
+  const response = await api.post<VulnerabilityPreview[]>("/v1/vulnerabilities/search", query, {
+    params: { tz: getCurrentTimezone() },
+  });
   return response.data;
 };
 
@@ -70,6 +73,10 @@ export const listVulnerabilities = async (
     const paramKey = key === "searchTerm" ? "search" : key;
     searchParams.set(paramKey, String(value));
   });
+
+  if (!searchParams.has("tz")) {
+    searchParams.set("tz", getCurrentTimezone());
+  }
 
   const response = await api.get<PagedVulnerabilityResponse>("/v1/vulnerabilities", { params: searchParams });
   return response.data;
