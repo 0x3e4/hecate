@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+import asyncio
+
 import httpx
 import structlog
 
@@ -44,8 +46,21 @@ class CirclClient:
     async def fetch_cve(self, cve_id: str) -> dict[str, Any] | None:
         """
         Fetch details for a specific CVE from CIRCL.
-        Returns None if the CVE is not found or request fails.
+        Also fetches the current EPSS probability from CIRCL's /api/epss endpoint
+        and stitches it onto the record as `_epss_probability` (float, 0..1).
+        Returns None if the CVE record itself is not found.
         """
+        record, epss = await asyncio.gather(
+            self._fetch_cve_record(cve_id),
+            self._fetch_epss_probability(cve_id),
+        )
+        if record is None:
+            return None
+        if epss is not None:
+            record["_epss_probability"] = epss
+        return record
+
+    async def _fetch_cve_record(self, cve_id: str) -> dict[str, Any] | None:
         url = f"{self.base_url}/cve/{cve_id}"
         try:
             async with self._rate_limiter.slot():
@@ -60,6 +75,41 @@ class CirclClient:
         except httpx.HTTPError as exc:
             log.warning("circl_client.fetch_failed", cve_id=cve_id, error=str(exc))
             return None
+
+    async def _fetch_epss_probability(self, cve_id: str) -> float | None:
+        """
+        Fetch the current EPSS probability from CIRCL's /api/epss/{cve} endpoint.
+        Response shape: {"data": [{"cve": "...", "epss": "0.88314", "percentile": "..."}]}
+        Returns None on any failure — EPSS is best-effort enrichment.
+        """
+        url = f"{self.base_url}/epss/{cve_id}"
+        try:
+            async with self._rate_limiter.slot():
+                response = await self._client.get(url)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPError as exc:
+            log.debug("circl_client.epss_fetch_failed", cve_id=cve_id, error=str(exc))
+            return None
+
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list) or not data:
+            return None
+        entry = data[0]
+        if not isinstance(entry, dict):
+            return None
+        raw = entry.get("epss")
+        if raw is None:
+            return None
+        try:
+            score = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if score < 0 or score > 1:
+            return None
+        return round(score, 4)
 
     async def iter_cve_records(
         self,
