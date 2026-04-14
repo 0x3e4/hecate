@@ -152,6 +152,7 @@ class Settings(BaseSettings):
     notifications_apprise_url: str = "http://apprise:8000"
     notifications_apprise_tags: str = "all"
     notifications_apprise_timeout: int = 10
+    notifications_watch_rule_limit: int = 100
 
     # MCP Server
     mcp_enabled: bool = False

@@ -47,6 +47,19 @@ class NotificationService:
         tz = ZoneInfo(os.environ.get("TZ", "UTC"))
         return datetime.now(tz=tz).strftime("%Y-%m-%d %H:%M:%S %Z")
 
+    def _format_date(self, dt: datetime) -> str:
+        """Format a UTC-aware datetime as YYYY-MM-DD in the container ``TZ``.
+
+        Relies on the ``UtcDatetime`` BeforeValidator in schemas/_utc.py, which
+        guarantees schema-loaded datetimes are tz-aware. Naive datetimes (should
+        not reach here) are treated as UTC to stay fail-open.
+        """
+        import os
+        tz = ZoneInfo(os.environ.get("TZ", "UTC"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(tz).strftime("%Y-%m-%d")
+
     # ------------------------------------------------------------------
     # Low-level send
     # ------------------------------------------------------------------
@@ -521,11 +534,13 @@ class NotificationService:
 
         vuln_service = VulnerabilityService()
 
+        # ``pipeline_started_at`` is retained for caller compat but no longer
+        # used — concurrency is now handled by an atomic CAS on
+        # ``last_evaluated_at`` inside ``_evaluate_single_watch_rule``.
+        _ = pipeline_started_at
         for rule in watch_rules:
             try:
-                await self._evaluate_single_watch_rule(
-                    rule, vuln_service, repo, pipeline_started_at=pipeline_started_at,
-                )
+                await self._evaluate_single_watch_rule(rule, vuln_service, repo)
             except Exception as exc:
                 log.warning(
                     "notification.rule_evaluation_failed",
@@ -539,8 +554,6 @@ class NotificationService:
         rule: dict[str, Any],
         vuln_service: Any,
         repo: NotificationRuleRepository,
-        *,
-        pipeline_started_at: datetime | None = None,
     ) -> None:
         from app.schemas.vulnerability import VulnerabilityQuery
 
@@ -549,32 +562,41 @@ class NotificationService:
         rule_name = rule.get("name", "Unnamed Rule")
         tag = rule.get("apprise_tag", self._tags)
 
-        last_checked = rule.get("last_evaluated_at")
+        prev: datetime | None = rule.get("last_evaluated_at")
         now = datetime.now(tz=UTC)
 
-        # Determine the effective lower bound for the time filter.
-        # We use the EARLIER of `last_evaluated_at` and `pipeline_started_at`.
-        # Reason: long-running pipelines (e.g. OSV) update documents during their
-        # run while shorter concurrent pipelines (NVD/EUVD/CIRCL) may advance
-        # `last_evaluated_at` past those documents' `first_seen_at`. Using the
-        # pipeline's start time as a fallback floor guarantees we still catch
-        # those documents when the long pipeline finishes.
-        effective_since: datetime | None = last_checked
-        if pipeline_started_at is not None:
-            if effective_since is None or pipeline_started_at < effective_since:
-                effective_since = pipeline_started_at
+        # Atomic compare-and-set on `last_evaluated_at`. If a concurrent pipeline
+        # already advanced the watermark, bail out — we'd otherwise re-notify
+        # CVEs the winning evaluator just sent.
+        claimed = await repo.claim_evaluation(rule_id, prev, now)
+        if not claimed:
+            log.debug(
+                "notification.watch_rule_claim_lost",
+                rule_id=rule_id,
+                rule_name=rule_name,
+            )
+            return
 
-        # Build time filter for "only NEW vulnerabilities since the effective lower bound".
-        # We filter on `first_seen_at` (set once on insert, never updated by enrichment)
-        # so re-ingests / CIRCL/KEV/GHSA/OSV enrichment passes do NOT retrigger
-        # notifications for already-known CVEs. Lucene range bracket syntax
-        # `[ T TO * ]` is required — the `>=` syntax with quoted dates does NOT
-        # work in OpenSearch query_string and silently returns 0 hits.
-        time_dql = ""
-        if effective_since:
-            iso = effective_since.strftime("%Y-%m-%dT%H:%M:%SZ")
-            time_dql = f'first_seen_at:[{iso} TO *]'
+        # Bootstrap: first-ever evaluation of this rule. Seed `last_evaluated_at`
+        # silently — do not blast historical matches.
+        if prev is None:
+            log.info(
+                "notification.watch_rule_bootstrapped",
+                rule_id=rule_id,
+                rule_name=rule_name,
+                seeded_at=now.isoformat(),
+            )
+            return
 
+        # Filter by upstream `published` (not `first_seen_at`): a CVE re-published
+        # by NVD/EUVD after enrichment should retrigger even if Hecate has had
+        # the local record for months. `published` is priority-gated (see
+        # vulnerability_repository._should_write_priority_timestamps), so it
+        # won't flap between NVD and EUVD on every enrichment.
+        iso = prev.strftime("%Y-%m-%dT%H:%M:%SZ")
+        time_dql = f'published:[{iso} TO *]'
+
+        limit = settings.notifications_watch_rule_limit
         query: VulnerabilityQuery | None = None
 
         if rule_type == "vendor":
@@ -583,9 +605,9 @@ class NotificationService:
                 return
             query = VulnerabilityQuery(
                 search_term=None,
-                dql_query=time_dql or None,
+                dql_query=time_dql,
                 vendor_slugs=[vendor_slug],
-                limit=10,
+                limit=limit,
             )
 
         elif rule_type == "product":
@@ -594,24 +616,25 @@ class NotificationService:
                 return
             query = VulnerabilityQuery(
                 search_term=None,
-                dql_query=time_dql or None,
+                dql_query=time_dql,
                 product_slugs=[product_slug],
-                limit=10,
+                limit=limit,
             )
 
         elif rule_type == "dql":
             dql = rule.get("dql_query")
             if not dql:
                 return
-            combined_dql = f"({dql}) AND {time_dql}" if time_dql else dql
             query = VulnerabilityQuery(
                 search_term=None,
-                dql_query=combined_dql,
-                limit=10,
+                dql_query=f"({dql}) AND {time_dql}",
+                limit=limit,
             )
 
         elif rule_type == "saved_search":
             query = await self._build_saved_search_query(rule, time_dql)
+            if query is not None:
+                query.limit = limit
 
         if query is None:
             log.warning(
@@ -622,8 +645,8 @@ class NotificationService:
                 saved_search_id=rule.get("saved_search_id"),
                 hint="Saved search may be missing, deleted, or have no DQL/queryParams",
             )
-            # Do NOT advance last_evaluated_at — leave the rule in stale state
-            # so the operator can see something is wrong.
+            # Roll back the claim so the rule tries again next pipeline run.
+            await repo.update(rule_id, {"last_evaluated_at": prev})
             return
 
         log.debug(
@@ -632,11 +655,16 @@ class NotificationService:
             rule_name=rule_name,
             rule_type=rule_type,
             dql_query=getattr(query, "dql_query", None),
-            time_filter=time_dql or "none",
+            time_filter=time_dql,
         )
 
-        results = await vuln_service.search(query, suppress_exceptions=False)
-        await repo.update(rule_id, {"last_evaluated_at": now})
+        try:
+            results = await vuln_service.search(query, suppress_exceptions=False)
+        except Exception:
+            # Compensate: roll back the watermark so the next pipeline retries
+            # this window instead of losing it to a transient OpenSearch error.
+            await repo.update(rule_id, {"last_evaluated_at": prev})
+            raise
 
         log.info(
             "notification.watch_rule_evaluated",
@@ -670,7 +698,7 @@ class NotificationService:
                     "versions": ", ".join(r.product_versions[:5]) if r.product_versions else "N/A",
                     "exploited": "Yes" if r.exploited else "No",
                     "source": r.source or "N/A",
-                    "published": r.published.strftime("%Y-%m-%d") if r.published else "N/A",
+                    "published": self._format_date(r.published) if r.published else "N/A",
                 })
 
             vuln_ids_str = ", ".join(r.vuln_id for r in results[:10])
