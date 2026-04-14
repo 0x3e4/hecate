@@ -429,19 +429,24 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
   const [dayOffset, setDayOffset] = useState(0);
 
   const getDateForOffset = (offset: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - offset);
-    return d.toISOString().split("T")[0];
+    const tz = getCurrentTimezone();
+    const now = new Date(Date.now() - offset * 86_400_000);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
   };
 
-  const selectedDate = dayOffset > 0 ? getDateForOffset(dayOffset) : "";
+  const selectedDate = getDateForOffset(dayOffset);
   const isToday = dayOffset === 0;
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const result = await fetchTodaySummary(selectedDate || undefined);
+        const result = await fetchTodaySummary(selectedDate, getCurrentTimezone());
         setData(result);
       } catch (err) {
         console.error("Failed to load today stats", err);

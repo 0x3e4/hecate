@@ -52,8 +52,11 @@ def _require_ai_analysis_password(
 @router.post("/search", response_model=list[VulnerabilityPreview])
 async def search_vulnerabilities(
     query: VulnerabilityQuery,
+    tz: str | None = Query(default=None),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> list[VulnerabilityPreview]:
+    if tz and not query.tz:
+        query = query.model_copy(update={"tz": tz})
     return await service.search(query)
 
 
@@ -213,6 +216,10 @@ async def list_vulnerabilities(
     availability_impact: list[str] = Query(default_factory=list, alias="availabilityImpact"),
     published_from: str | None = Query(default=None, alias="publishedFrom"),
     published_to: str | None = Query(default=None, alias="publishedTo"),
+    tz: str | None = Query(
+        default=None,
+        description="IANA timezone applied to date-range clauses in DQL (e.g. 'Europe/Vienna').",
+    ),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: VulnerabilityService = Depends(get_vulnerability_service),
@@ -254,6 +261,7 @@ async def list_vulnerabilities(
         availabilityImpact=availability_impact,
         publishedFrom=published_from,
         publishedTo=published_to,
+        tz=tz,
     )
     result = await service.search_paginated(query, limit=limit, offset=offset)
     result.max_offset = max_offset

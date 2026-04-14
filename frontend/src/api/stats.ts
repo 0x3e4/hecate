@@ -73,8 +73,10 @@ export interface TodaySummaryResponse {
   cves: TodayCve[];
 }
 
-export const fetchTodaySummary = async (date?: string): Promise<TodaySummaryResponse> => {
-  const params = date ? { date } : undefined;
+export const fetchTodaySummary = async (date?: string, tz?: string): Promise<TodaySummaryResponse> => {
+  const params: Record<string, string> = {};
+  if (date) params.date = date;
+  if (tz) params.tz = tz;
   const response = await api.get<TodaySummaryResponse>("/v1/stats/today", { params });
   return response.data;
 };
