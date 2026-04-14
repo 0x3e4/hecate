@@ -706,8 +706,15 @@ def _parse_epss(value: Any) -> float | None:
     if raw is None:
         return None
 
-    # EPSS scores are typically in range 0-1 (e.g., 0.8 = 80%)
-    # Store as-is without conversion
+    # Canonical storage is 0..1 (FIRST probability). EUVD's API returns the
+    # value in 0..100 percentage form (e.g. 88.66), so rescale when we see a
+    # value out of the 0..1 band. Clamp to [0,1] to stay robust against junk.
+    if raw > 1:
+        raw = raw / 100
+    if raw < 0:
+        raw = 0.0
+    if raw > 1:
+        raw = 1.0
     return round(raw, 4)
 
 

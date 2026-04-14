@@ -734,6 +734,10 @@ textarea:focus {
   border:1px solid rgb(255, 212, 59, 0.7) !important;
 }
 
+textarea.vuln-search-input:focus {
+  border: none !important;
+}
+
 .page {
   width: 100%;
   max-width: 100%;

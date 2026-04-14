@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from collections.abc import Mapping
 from typing import Any
 
 import structlog
@@ -165,6 +166,10 @@ class CirclPipeline:
                                 "versions": {"$elemMatch": {"$regex": "[<>]"}},
                             }}},
                         },
+                        # EPSS out-of-range (legacy 0..100 values written before
+                        # CIRCL became the source of truth) — pulls them back in
+                        # for re-enrichment so CIRCL overwrites with the 0..1 value.
+                        {"epss_score": {"$gt": 1}},
                     ],
                 }
             },
@@ -196,8 +201,9 @@ class CirclPipeline:
         """
         # Extract vendor/product/version data from CIRCL record
         vendors, products, versions, product_version_map, cpes = _extract_product_info(circl_record)
+        epss_score = _extract_epss(circl_record)
 
-        if not vendors and not products and not versions:
+        if not vendors and not products and not versions and epss_score is None:
             log.debug("circl_pipeline.no_product_info", cve_id=cve_id)
             return "skipped"
 
@@ -240,6 +246,7 @@ class CirclPipeline:
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
             impacted_products=impacted_products,
+            epss_score=epss_score,
             circl_raw=circl_record,
             change_context=change_context,
         )
@@ -273,6 +280,36 @@ class CirclPipeline:
         if explicit_limit <= 0:
             return None
         return explicit_limit
+
+
+def _extract_epss(record: dict[str, Any]) -> float | None:
+    """Extract the FIRST EPSS probability (0..1) from a CIRCL record.
+
+    CirclClient stitches the value onto the record as `_epss_probability`
+    (fetched from CIRCL's /api/epss endpoint, which is separate from the
+    CVE record endpoint). Older call-sites may pass records where the epss
+    lives under `epss.percentage` or similar; we fall back to that shape
+    to stay tolerant.
+    """
+    stitched = record.get("_epss_probability")
+    if isinstance(stitched, (int, float)):
+        score = float(stitched)
+        if 0 <= score <= 1:
+            return round(score, 4)
+
+    epss = record.get("epss")
+    if isinstance(epss, Mapping):
+        raw = epss.get("percentage")
+        if raw is None:
+            raw = epss.get("epss")
+        if raw is not None:
+            try:
+                score = float(raw)
+            except (TypeError, ValueError):
+                return None
+            if 0 <= score <= 1:
+                return round(score, 4)
+    return None
 
 
 def _extract_product_info(

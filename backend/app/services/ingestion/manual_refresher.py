@@ -16,7 +16,7 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.vulnerability import VulnerabilityRefreshStatus
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.circl_client import CirclClient
-from app.services.ingestion.circl_pipeline import _build_impacted_products_from_affected
+from app.services.ingestion.circl_pipeline import _build_impacted_products_from_affected, _extract_epss
 from app.services.ingestion.euvd_client import EUVDClient
 from app.services.ingestion.ghsa_client import GhsaClient
 from app.services.ingestion.nvd_client import NVDClient
@@ -874,13 +874,14 @@ class ManualRefresher:
             )
 
         vendors, products, versions, product_version_map, cpes = _extract_circl_product_info(circl_record)
+        epss_score = _extract_epss(circl_record)
 
-        if not vendors and not products and not versions:
+        if not vendors and not products and not versions and epss_score is None:
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="CIRCL",
                 status="skipped",
-                message="CIRCL record has no vendor/product/version data.",
+                message="CIRCL record has no vendor/product/version/EPSS data.",
             )
 
         catalog_result = None
@@ -912,6 +913,7 @@ class ManualRefresher:
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
             impacted_products=impacted_products,
+            epss_score=epss_score,
             circl_raw=circl_record,
             change_context=change_context,
         )
@@ -1146,8 +1148,9 @@ class ManualRefresher:
 
             # Extract vendor/product/version from CIRCL
             vendors, products, versions, product_version_map, cpes = _extract_circl_product_info(circl_record)
+            epss_score = _extract_epss(circl_record)
 
-            if not vendors and not products and not versions:
+            if not vendors and not products and not versions and epss_score is None:
                 return False
 
             # Update asset catalog
@@ -1188,6 +1191,7 @@ class ManualRefresher:
                 product_version_ids=catalog_result.version_ids if catalog_result else [],
                 cpes=cpes,
                 impacted_products=impacted_products,
+                epss_score=epss_score,
                 circl_raw=circl_record,
                 change_context=change_context,
             )
