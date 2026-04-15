@@ -179,6 +179,7 @@ def register(mcp: FastMCP) -> None:
                 return {"error": "Invalid vulnerability ID format."}
 
             from app.services.ai_service import build_vulnerability_prompts
+            from app.services.inventory_service import get_inventory_service
             from app.services.vulnerability_service import VulnerabilityService
 
             service = VulnerabilityService()
@@ -186,16 +187,25 @@ def register(mcp: FastMCP) -> None:
             if vulnerability is None:
                 return {"error": f"Vulnerability '{vuln_id}' not found."}
 
+            inventory_service = await get_inventory_service()
+            try:
+                affected_items = await inventory_service.affected_inventory_for_vuln(vulnerability)
+            except Exception:
+                affected_items = []
+            affected_inventory = [a.model_dump(by_alias=True) for a in affected_items]
+
             system_prompt, user_prompt = await build_vulnerability_prompts(
                 vulnerability,
                 language=language,
                 additional_context=additional_context,
+                affected_inventory=affected_inventory,
             )
 
             output = {
                 "vulnerabilityId": vuln_id,
                 "systemPrompt": system_prompt,
                 "userPrompt": user_prompt,
+                "affectedInventory": affected_inventory,
                 "instructions": (
                     "Read the systemPrompt and userPrompt, generate the analysis using your own model, "
                     "then call save_vulnerability_ai_analysis(vulnerability_id, summary) to persist it. "
@@ -332,6 +342,7 @@ def register(mcp: FastMCP) -> None:
                 clean_ids.append(vid)
 
             from app.services.ai_service import build_vulnerability_batch_prompts
+            from app.services.inventory_service import get_inventory_service
             from app.services.vulnerability_service import VulnerabilityService
 
             service = VulnerabilityService()
@@ -342,16 +353,30 @@ def register(mcp: FastMCP) -> None:
                     return {"error": f"Vulnerability '{vid}' not found."}
                 vulnerabilities.append(detail)
 
+            inventory_service = await get_inventory_service()
+            affected_inventory_map: dict[str, list[dict[str, Any]]] = {}
+            try:
+                for detail in vulnerabilities:
+                    affected_items = await inventory_service.affected_inventory_for_vuln(detail)
+                    if affected_items:
+                        affected_inventory_map[detail.vuln_id] = [
+                            a.model_dump(by_alias=True) for a in affected_items
+                        ]
+            except Exception:
+                affected_inventory_map = {}
+
             system_prompt, user_prompt = await build_vulnerability_batch_prompts(
                 vulnerabilities,
                 language=language,
                 additional_context=additional_context,
+                affected_inventory_map=affected_inventory_map,
             )
 
             output = {
                 "vulnerabilityIds": clean_ids,
                 "systemPrompt": system_prompt,
                 "userPrompt": user_prompt,
+                "affectedInventory": affected_inventory_map,
                 "instructions": (
                     "Produce the analysis using your own model. Structure your response so that after "
                     "the executive summary, each vulnerability gets its own labeled section "

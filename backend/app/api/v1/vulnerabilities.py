@@ -30,6 +30,7 @@ from app.schemas.vulnerability import (
 )
 from app.services.ai_service import AIClient, AIProviderError, get_ai_client
 from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
+from app.services.inventory_service import InventoryService, get_inventory_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
 from app.utils.request import get_client_ip
@@ -293,6 +294,7 @@ async def list_ai_providers(
 async def get_vulnerability(
     identifier: str,
     service: VulnerabilityService = Depends(get_vulnerability_service),
+    inventory_service: InventoryService = Depends(get_inventory_service),
 ) -> VulnerabilityDetail:
     """
     Retrieve a single vulnerability by its canonical identifier (CVE or source ID).
@@ -300,6 +302,17 @@ async def get_vulnerability(
     result = await service.get_by_id(identifier)
     if result is None:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
+    try:
+        affected = await inventory_service.affected_inventory_for_vuln(result)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "inventory.affected_lookup_failed",
+            vuln_id=identifier,
+            error=str(exc),
+        )
+        affected = []
+    if affected:
+        result.affected_inventory = [a.model_dump(by_alias=True) for a in affected]
     return result
 
 
@@ -316,10 +329,22 @@ async def create_ai_investigation(
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
+    inventory_service: InventoryService = Depends(get_inventory_service),
 ) -> AIInvestigationSubmitResponse:
     vulnerability = await service.get_by_id(identifier)
     if vulnerability is None:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+    try:
+        affected = await inventory_service.affected_inventory_for_vuln(vulnerability)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "inventory.ai_lookup_failed",
+            vuln_id=identifier,
+            error=str(exc),
+        )
+        affected = []
+    affected_inventory_payload = [a.model_dump(by_alias=True) for a in affected]
 
     # Validate provider before launching background task
     try:
@@ -346,6 +371,7 @@ async def create_ai_investigation(
             ai_client=ai_client,
             service=service,
             audit_service=audit_service,
+            affected_inventory=affected_inventory_payload,
         )
     )
 
@@ -364,6 +390,7 @@ async def _run_ai_investigation_background(
     ai_client: AIClient,
     service: VulnerabilityService,
     audit_service: AuditService,
+    affected_inventory: list[dict[str, Any]] | None = None,
 ) -> None:
     job_name = f"ai_investigation_{identifier}"
     started_at = datetime.now(tz=UTC)
@@ -376,6 +403,7 @@ async def _run_ai_investigation_background(
             language=language,
             additional_context=additional_context,
             triggered_by=triggered_by,
+            affected_inventory=affected_inventory,
         )
 
         assessment_payload = result.model_dump(by_alias=True)
@@ -420,6 +448,7 @@ async def create_batch_ai_investigation(
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
+    inventory_service: InventoryService = Depends(get_inventory_service),
 ) -> AIBatchInvestigationSubmitResponse:
     """
     Analyze multiple vulnerabilities together for combined insights.
@@ -438,6 +467,19 @@ async def create_batch_ai_investigation(
 
     client_ip = get_client_ip(request)
 
+    inventory_map: dict[str, list[dict[str, Any]]] = {}
+    try:
+        for vuln in vulnerabilities:
+            affected = await inventory_service.affected_inventory_for_vuln(vuln)
+            if affected:
+                inventory_map[vuln.vuln_id] = [a.model_dump(by_alias=True) for a in affected]
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "inventory.batch_lookup_failed",
+            error=str(exc),
+        )
+        inventory_map = {}
+
     asyncio.create_task(
         _run_batch_ai_investigation_background(
             vulnerability_ids=payload.vulnerability_ids,
@@ -450,6 +492,7 @@ async def create_batch_ai_investigation(
             ai_client=ai_client,
             service=service,
             audit_service=audit_service,
+            affected_inventory_map=inventory_map,
         )
     )
 
@@ -470,6 +513,7 @@ async def _run_batch_ai_investigation_background(
     ai_client: AIClient,
     service: VulnerabilityService,
     audit_service: AuditService,
+    affected_inventory_map: dict[str, list[dict[str, Any]]] | None = None,
 ) -> None:
     job_name = "ai_batch_investigation"
     started_at = datetime.now(tz=UTC)
@@ -482,6 +526,7 @@ async def _run_batch_ai_investigation_background(
             language=language,
             additional_context=additional_context,
             triggered_by=triggered_by,
+            affected_inventory_map=affected_inventory_map,
         )
 
         batch_id = await service.save_batch_analysis(

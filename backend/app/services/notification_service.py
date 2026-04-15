@@ -523,7 +523,9 @@ class NotificationService:
         repo = await NotificationRuleRepository.create()
         rules = await repo.list_enabled()
         watch_rules = [
-            r for r in rules if r.get("rule_type") in ("saved_search", "vendor", "product", "dql")
+            r
+            for r in rules
+            if r.get("rule_type") in ("saved_search", "vendor", "product", "dql", "inventory")
         ]
 
         if not watch_rules:
@@ -598,6 +600,27 @@ class NotificationService:
 
         limit = settings.notifications_watch_rule_limit
         query: VulnerabilityQuery | None = None
+
+        if rule_type == "inventory":
+            # Inventory rules don't use OpenSearch DQL — the matcher reads
+            # MongoDB directly with the compound (vendor_slugs, product_slugs)
+            # index plus a `published >= prev` filter, then runs the CPE
+            # version-range matcher against the cached inventory list.
+            try:
+                await self._evaluate_inventory_rule(
+                    rule=rule,
+                    rule_id=rule_id,
+                    rule_name=rule_name,
+                    tag=tag,
+                    prev=prev,
+                    now=now,
+                    limit=limit,
+                    repo=repo,
+                )
+            except Exception:
+                await repo.update(rule_id, {"last_evaluated_at": prev})
+                raise
+            return
 
         if rule_type == "vendor":
             vendor_slug = rule.get("vendor_slug")
@@ -730,6 +753,151 @@ class NotificationService:
                 tag=tag,
             )
             await repo.update(rule_id, {"last_triggered_at": now})
+
+    async def _evaluate_inventory_rule(
+        self,
+        *,
+        rule: dict[str, Any],
+        rule_id: str,
+        rule_name: str,
+        tag: str,
+        prev: datetime,
+        now: datetime,
+        limit: int,
+        repo: NotificationRuleRepository,
+    ) -> None:
+        """Evaluate an ``inventory`` notification rule.
+
+        Finds CVEs newly published since ``prev`` that intersect with any
+        item in the user's inventory, then fires a notification that lists
+        both the CVEs and which inventory items are affected.
+        """
+        from app.services.inventory_service import get_inventory_service
+
+        inventory_service = await get_inventory_service()
+        try:
+            hits = await inventory_service.new_vulns_for_watch_rule(
+                since=prev, limit=limit
+            )
+        except Exception as exc:
+            log.warning(
+                "notification.inventory_rule_query_failed",
+                rule_id=rule_id,
+                rule_name=rule_name,
+                error=str(exc),
+            )
+            raise
+
+        log.info(
+            "notification.inventory_rule_evaluated",
+            rule_id=rule_id,
+            rule_name=rule_name,
+            result_count=len(hits),
+        )
+
+        if not hits:
+            return
+
+        count = len(hits)
+        now_str = self._format_now()
+
+        vuln_details: list[dict[str, Any]] = []
+        all_vuln_ids: list[str] = []
+        affected_item_set: dict[str, dict[str, Any]] = {}
+        total_instances = 0
+
+        for vuln_doc, items in hits:
+            vid = str(vuln_doc.get("vuln_id") or vuln_doc.get("_id") or "")
+            all_vuln_ids.append(vid)
+            cvss = vuln_doc.get("cvss") or {}
+            if not isinstance(cvss, dict):
+                cvss = {}
+            severity = cvss.get("severity") or "N/A"
+            cvss_score = cvss.get("base_score")
+            published_dt = vuln_doc.get("published")
+            published_str = (
+                self._format_date(published_dt)
+                if isinstance(published_dt, datetime)
+                else "N/A"
+            )
+
+            per_vuln_items = []
+            for item in items:
+                item_id = item.id
+                if item_id not in affected_item_set:
+                    affected_item_set[item_id] = {
+                        "id": item_id,
+                        "name": item.name,
+                        "version": item.version,
+                        "deployment": item.deployment,
+                        "environment": item.environment,
+                        "instanceCount": item.instance_count,
+                        "owner": item.owner or "",
+                    }
+                    total_instances += item.instance_count
+                per_vuln_items.append(
+                    f"{item.name} {item.version} ({item.deployment}/{item.environment}, "
+                    f"{item.instance_count} inst)"
+                )
+
+            vuln_details.append(
+                {
+                    "id": vid,
+                    "severity": severity,
+                    "cvss": str(cvss_score) if cvss_score is not None else "N/A",
+                    "title": (str(vuln_doc.get("title") or ""))[:200],
+                    "published": published_str,
+                    "affectedItems": ", ".join(per_vuln_items) if per_vuln_items else "N/A",
+                }
+            )
+
+        affected_items_list = list(affected_item_set.values())
+
+        vuln_ids_str = ", ".join(all_vuln_ids[:10])
+        variables: dict[str, Any] = {
+            "icon": "\U0001f6a8",
+            "rule_name": rule_name,
+            "count": str(count),
+            "noun": "Vulnerability" if count == 1 else "Vulnerabilities",
+            "vulnerabilities_list": vuln_ids_str,
+            "vulnerabilities": vuln_details,
+            "affected_items": affected_items_list,
+            "affected_item_count": str(len(affected_items_list)),
+            "total_instances": str(total_instances),
+            "time": now_str,
+        }
+
+        default_title = (
+            f"\U0001f6a8 Hecate — {count} inventory-affecting "
+            f"{variables['noun']}: {rule_name}"
+        )
+        default_body_lines = [
+            f"Rule: {rule_name}",
+            f"New vulnerabilities affecting your inventory: {count}",
+            f"Inventory items impacted: {len(affected_items_list)} "
+            f"({total_instances} instances)",
+            f"Vulnerabilities: {vuln_ids_str}",
+            "",
+            "Affected items:",
+        ]
+        for ai in affected_items_list[:15]:
+            default_body_lines.append(
+                f"  • {ai['name']} {ai['version']} "
+                f"({ai['deployment']}/{ai['environment']}, {ai['instanceCount']} inst)"
+            )
+        default_body_lines.append(f"\nTime: {now_str}")
+        default_body = "\n".join(default_body_lines)
+
+        title, body = await self._apply_template(
+            "inventory_match", tag, variables, default_title, default_body
+        )
+        await self.send(
+            title=title,
+            body=body,
+            notify_type="warning",
+            tag=tag,
+        )
+        await repo.update(rule_id, {"last_triggered_at": now})
 
     async def _build_saved_search_query(
         self,

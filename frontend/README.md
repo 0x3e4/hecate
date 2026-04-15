@@ -15,13 +15,14 @@ src/
 │   ├── audit.ts                 # Ingestion-Logs
 │   ├── changelog.ts             # Letzte Änderungen (Pagination, Datum-/Source-Filter)
 │   ├── sync.ts                  # Sync-Trigger & Status (inkl. OSV)
-│   ├── backup.ts                # Export/Import (10 min Timeout)
+│   ├── backup.ts                # Export/Import (10 min Timeout): Vulnerabilities, Saved Searches, Environment Inventory
 │   ├── assets.ts                # Vendor/Produkt/Version-Katalog
 │   ├── scans.ts                 # SCA-Scan-Verwaltung (Targets, Scans, Findings, SBOM, SBOM-Export, SBOM-Import, VEX, License-Compliance)
 │   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
 │   ├── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
-│   └── licensePolicy.ts        # Lizenz-Policy-Verwaltung (CRUD, Default, Gruppen)
-├── views/                       # Seitenkomponenten (14 Ansichten)
+│   ├── licensePolicy.ts        # Lizenz-Policy-Verwaltung (CRUD, Default, Gruppen)
+│   └── inventory.ts            # Environment-Inventory (CRUD + affected-vulnerabilities)
+├── views/                       # Seitenkomponenten (15 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern (inkl. erweiterte Filter)
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
@@ -34,6 +35,8 @@ src/
 │   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit klickbarem Paketnamen → Detail-Expansion + VEX-Status, SBOM, History mit Zeitbereichs-Filter, AI Analysis mit Inline-Trigger-Form + Commit/Digest-Referenz je Eintrag, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance (nur sichtbar wenn mindestens eine Policy konfiguriert ist), VEX-Export)
 │   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
+│   ├── McpInfoPage.tsx          # MCP-Server-Info
+│   ├── InventoryPage.tsx        # Environment-Inventory (CRUD + betroffene CVEs pro Eintrag)
 │   └── SystemPage.tsx           # System (Single-Card-Layout, 4 Tabs: General, Notifications, Data, Policies)
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
@@ -98,7 +101,8 @@ src/
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter (inkl. OSV im Job-Dropdown) |
-| `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
+| `/inventory` | `InventoryPage` | Environment-Inventory: drei `.card`-Sektionen (Intro+Chips-Summary, Add/Edit-Form, Items-Grid). Vendor/Product via `AsyncSelect<Option, false>` (gleicher Look wie AdvancedFilters). Deployment als Chip-Button-Gruppe, Environment als freies Textfeld mit `<datalist>`-Vorschlägen (prod/staging/dev/test/dr + bereits verwendete Werte). Item-Karten als `.vuln-card` mit Severity-Border gefärbt nach der höchsten betroffenen CVE, expandierbare "Show CVEs"-Liste per Eintrag. |
+| `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln inkl. `inventory`-Typ, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM mit Summary-Cards + Sortierung + Provenance-Filter, SBOM-Import, Lizenzen). Targets-Tab gruppiert Karten in **kollabierbare Application-Sektionen** mit Severity-Roll-up (Collapse-Zustand persistiert via `usePersistentState('hecate.scan.groupCollapsed')`). Target-Cards: Action-Reihe unten gepinnt (flex-column), inline editierbare **App/Group**-Zeile mit `<datalist>`-Vorschlägen aus existierenden Gruppen; SBOM-Import-Targets ohne Auto-Scan-, Rescan-, Scanner-Edit- und Group-Edit-Affordances. |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Multi-Select-Toolbar mit Bulk-Apply/Dismiss/Restore, Show-Dismissed-Toggle, Inline-VEX-Editor als expandierbare Zeile mit Status/Justification/Detail, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards zum Filtern, Provenance-Filter), History (Zeitbereichs-Filter 7d/30d/90d/All, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |

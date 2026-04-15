@@ -56,7 +56,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 
 ### API-Schicht
 
-17 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+18 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
 - `status.py` — Health Check / Liveness Probe, Scanner-Health
 - `config.py` — Public Runtime-Config (`GET /api/v1/config`): leitet `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` aus den Backend-Settings ab und ersetzt die früheren `VITE_*`-Feature-Flags
 - `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse
@@ -74,6 +74,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 - `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
 - `events.py` — Server-Sent Events (SSE) Stream
 - `license_policies.py` — Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
+- `inventory.py` — Environment-Inventory (CRUD + `/affected-vulnerabilities` pro Eintrag)
 
 Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit **18 Tools**, Rate-Limiting und Audit-Logging. Der Server wird als `FastMCP("hecate", ...)` initialisiert; die `MCPAuthMiddleware` ist pfad-bewusst und verarbeitet nur Pfade unter `/mcp` bzw. `/mcp/*` — alles andere wird mit 404 abgewiesen, damit fehlgeleitete SPA-Routen wie `/info/mcp` keine 401-Responses erzeugen. Die Authentifizierung erfolgt via delegated OAuth: Hecate agiert als Authorization Server gegenüber dem MCP-Client (Dynamic Client Registration + Auth Code + PKCE/S256) und delegiert die User-Authentifizierung an einen Upstream-IdP (GitHub OAuth App, Microsoft Entra ID oder generischen OIDC-Provider wie Authentik/Keycloak/Auth0/Zitadel). Statische API-Keys gibt es nicht mehr. Write-Tools (`trigger_scan`, `trigger_sync`, alle `save_*_ai_analysis`) sind scope-gated: nur Sessions, deren Browser-IP zur Authorize-Zeit in `MCP_WRITE_IP_SAFELIST` liegt, erhalten den `mcp:write`-Scope. Beim Tool-Call wird ausschließlich der Token-Scope verifiziert (keine zweite IP-Prüfung), weil proxied Transports wie Claude Desktop Tool-Calls aus der Vendor-Infrastruktur zustellen — der Token-Scope ist autoritativ. Provider-Abstraktion in `app/mcp/oauth_providers.py`.
 
@@ -145,7 +146,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 
 ### Persistenz
 
-#### MongoDB (20 Collections)
+#### MongoDB (21 Collections)
 
 | Collection | Beschreibung |
 |-----------|-------------|
@@ -165,10 +166,11 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | `scan_findings` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | SBOM-Komponenten aus SCA-Scans |
 | `scan_layer_analysis` | Image-Schichtanalyse aus Dive-Scans |
-| `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL, Scan) |
+| `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL, Scan, Inventory) |
 | `notification_channels` | Apprise-Channels (URL + Tag) |
 | `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
+| `environment_inventory` | Benutzerdeklariertes Produkt/Version-Inventory mit Deployment/Environment/Instance-Count |
 
 - Repositories auf Basis von Motor (async) kapseln Abfragen und Updates.
 - Repository-Pattern: `create()` Classmethod erstellt Indexes, `_id` = Entity-ID, `upsert()` gibt `"inserted"` / `"updated"` / `"unchanged"` zurück.
@@ -200,6 +202,13 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **SBOM-Import-Targets (UI-Beschränkungen):** Targets vom Typ `sbom-import` haben kein Auto-Scan, keinen Rescan-Button und kein Scanner-Edit-Pencil auf der Target-Card. `auto_scan=False` wird bereits beim Import gesetzt; Frontend-Hides verhindern sinnlose Aktionen.
 - **Target-Gruppierung (Applications):** Mehrere Scan-Targets können über das optionale `group`-Feld auf `ScanTargetDocument` zu einer Anwendung zusammengefasst werden. Keine eigenständige `applications`-Collection — Gruppen werden zur Laufzeit per distinct-Aggregation abgeleitet. `GET /api/v1/scans/targets/groups` liefert die Gruppen mit aggregierten Severity-Roll-ups (Summe der `latest_summary`-Werte aller Targets); `GET /api/v1/scans/targets?group=<name>` filtert; `PATCH /api/v1/scans/targets/{id}` setzt/löscht das Feld. Frontend rendert den Targets-Tab als kollabierbare Sektionen pro Gruppe; jede Target-Card hat einen Inline-Editor mit `<datalist>`-Vorschlägen aus existierenden Gruppen.
 - **License Compliance:** Lizenz-Policy-Management über `license_policies` Collection. Policies definieren erlaubte, verbotene und Review-pflichtige Lizenzen. Eine Default-Policy kann gesetzt werden. Nach jedem Scan wird die License-Compliance automatisch evaluiert und als `license_compliance_summary` auf dem Scan-Dokument gespeichert. License-Compliance-Übersicht über alle Scans via `GET /api/v1/scans/license-overview`.
+- **Environment Inventory:** Benutzerdeklarierte Produkte und Versionen (`environment_inventory` Collection) mit Deployment (onprem/cloud/hybrid), Environment (frei-form, mit Datalist-Vorschlägen prod/staging/dev/test/dr), Instance-Count und Owner. Der pure-function Matcher `inventory_matcher.py` führt **zwei Lookup-Richtungen** aus und evaluiert Treffer in einer **3-Stufen-Priorität** (`impacted_products` → `cpe_configurations` → flache `cpes` als Last-Resort-Fallback). Jede Stufe terminiert die Suche sofort, wenn sie das Vendor/Product-Slug-Paar findet — auch dann, wenn keine Version matcht ("kein Match" ist eine autoritative Antwort). Das verhindert zwei Regressionsklassen: Graylog 7.0.6 wurde vom alten 2-Stufen-Matcher fälschlich als betroffen von CVE-2023-41041 markiert, weil `cpe_configurations` die Ranges korrekt ablehnte, die Fallback-Schleife dann aber blind eine Wildcard-CPE (`cpe:2.3:a:graylog:graylog:*`) traf; .NET 8.0.25 wurde fälschlich als **nicht** betroffen von CVE-2026-33116 markiert, weil die autoritativen Ranges dort nur als `">= 8.0.0, < 8.0.26"`-Strings unter dem **camelCase** `impactedProducts`-Feld liegen (nicht unter snake_case `impacted_products`), das der alte Matcher nie las.
+  - **Inventar → CVE** (Inventory-Detail, Notification-Watch-Rule): MongoDB-Query `{$and: [{$or: [vendor_slugs, vendors]}, {$or: [product_slugs, products]}]}` + Python-seitige 3-Stufen-Auswertung. Einzelfeld-Indexe auf `vendor_slugs` und `product_slugs` (kein Compound-Index — MongoDB lehnt parallele Multikey-Indexe ab: "cannot index parallel arrays"). Die `$or`-Erweiterung auf die Rohwert-Arrays (`vendors`, `products`) fängt historische CPE-Tags ab, deren Slug vom Asset-Katalog abweicht (z. B. `graylog2`/`graylog2-server` vs. `graylog`/`graylog`). Die Projection enthält `impacted_products` **und** `impactedProducts`. Keine `$or`-Klauseln auf Nested-Pfade wie `impacted_products.vendor.slug` — dafür gibt es keinen Index, und eine einzige unindizierte `$or`-Klausel zwingt MongoDBs Query-Planner in einen Full-Scan (gemessen: 70 s auf 770k Dokumenten statt ~50 ms).
+  - **CVE → Inventar** (Vulnerability-Detail, AI-Analyse-Prompts): `items_for_vuln(vuln, inventory)` baut eine Union-Set-Membership aus `vendor_slugs ∪ vendors ∪ impacted_products[*].vendor.{slug,name}` (und analog für Product), filtert das Inventar vor und läuft dann den vollen 3-Stufen-Matcher auf den Überlebenden. Der Microsoft/.NET-Fall ergänzt Graylog: dort hat die CVE leere `cpe_configurations` und keine snake_case `impacted_products`, sodass der `impactedProducts`-Read im Pre-Filter-Set unverzichtbar ist, um den Eintrag überhaupt in die Kandidatenliste zu ziehen.
+  - **Versionsvergleich:** selbst-enthaltener `parse_version()`/`_compare_versions()` ohne `packaging`-Dependency. Dotted-numeric-Releases, Pre-Release-Suffixe (`8.0.25-preview.1 < 8.0.25`), `v`-Prefix-Strip, Längen-Padding (`8.0` == `8.0.0`), Wildcards (`8.0.*` → halboffene Range `[8.0, 8.1)`). Nicht-parsbare Strings fallen fail-closed auf case-insensitive Equality zurück. Die Slug-Normalisierung (`_slug()`) delegiert an `app.utils.strings.slugify()` — dieselbe Funktion, die der Asset-Katalog verwendet —, damit CPE-Tokens wie `.net_8.0` und Katalog-Slugs wie `net-8-0` übereinstimmen (reine `str.lower()`-Normalisierung würde .NET-Matches still droppen, weil `_` und `-` anders behandelt werden).
+  - **Range-String-Parser:** `_version_in_range_string()` parst die EUVD-Format-Strings aus `impacted_products[].versions`: exakte Versionen (`1.2.3`), AND-verkettete Bounds (`>= 8.0.0, < 8.0.26`), einseitige Bounds (`< 5.0.9`). Unconstrained-Werte (`*`, `-`, `ANY`, `""`) liefern **False** (fail-closed). Unterstützt `>=`, `>`, `<=`, `<`, `=`/`==`; `!=` wird ignoriert.
+  - **Notifications:** Neuer Rule-Typ `inventory` in `notification_service.py`. `_evaluate_inventory_rule` ruft `InventoryService.new_vulns_for_watch_rule(since=prev)` auf, das Mongo direkt mit `published >= prev` filtert und CPE-Matches post-validiert. Wiederverwendet die CAS-`claim_evaluation`-Watermark und Bootstrap-Semantik.
+  - **AI-Prompts:** `_format_inventory_block()` in `ai_service.py` fügt einen `## YOUR ENVIRONMENT IMPACT`-Block in Single- und Batch-Prompts (und MCP `prepare_*`-Tools) ein. Der Vulnerability-Detail-Endpoint hängt `affectedInventory` an die Response und die `POST .../ai-investigation{,/batch}`-Endpoints resolven Inventory-Impact vor dem Hintergrund-Task.
 - **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird zusammengeführt.
 - **Provenance-Verifikation:** Nach SBOM-Extraktion prüft der Hecate Analyzer die Herkunft/Attestierung jeder Komponente über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Ergebnisse werden auf SBOM-Komponenten gespeichert und im Frontend als Provenance-Spalte angezeigt.
 - **Scan-Concurrency:** Gleichzeitige Scans werden über `SCA_MAX_CONCURRENT_SCANS` (Default: 2) begrenzt. Überschüssige Scans bleiben als `pending` in der Warteschlange. Vor dem Start wird die Ressourcenverfügbarkeit des Scanner-Sidecars geprüft (`SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`); bei unzureichenden Ressourcen wird gewartet, bei keinem anderen aktiven Scan trotzdem gestartet.
@@ -226,10 +235,11 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - Partial Delivery (HTTP 424 von Apprise) wird als Erfolg gewertet.
 
 ### Backup & Restore
-- Backup-Service exportiert JSON-Snapshots für Schwachstellen (quellenweise: EUVD/NVD/Alle), CPE-Katalog und gespeicherte Suchen.
-- Streaming Export/Import mit Metadaten (Dataset, Source, Item-Count, Timestamp).
-- Restore validiert Metadaten, schreibt Dokumente in Mongo + OpenSearch und gibt eine Zusammenfassung zurück (inserted/updated/skipped).
-- Frontend-Systemseite nutzt diese Endpunkte für Self-Service-Backups.
+- Backup-Service exportiert JSON-Snapshots für drei Datasets: **Schwachstellen** (quellenweise: EUVD/NVD/Alle — gestreamt, um Timeouts auf großen Datenmengen zu vermeiden), **gespeicherte Suchen**, und **Environment-Inventory** (inkl. `_id`, Timestamps, Deployment-Metadaten).
+- Metadaten pro Snapshot: `dataset`, `exportedAt`, `itemCount` (+ `source` für Vulnerabilities). Das Restore-Endpoint validiert das Dataset-Feld und bricht bei Typ-Mismatch mit 400 ab.
+- Inventory-Restore ist Upsert per `_id`: Items mit bekannter ID werden in-place aktualisiert, unbekannte IDs werden unter genau dieser ID neu angelegt, und Items ohne `id`-Feld bekommen eine frische UUID. Das erlaubt einen idempotenten Round-Trip (Export → Mutate → Restore setzt den Original-Zustand ohne Duplikate wiederher).
+- Schwachstellen-Restore geht über `VulnerabilityRepository.upsert` mit `change_context={"job_name": "backup_restore_<source>"}`, sodass die Change-History den Backup-Import als Job ausweist.
+- Frontend-Systemseite (General-Tab) nutzt diese Endpunkte für Self-Service-Backups; der Datensatz-Picker zeigt alle drei Zeilen mit Export-Button + Datei-Upload-Restore.
 
 ### Observability
 - `structlog` für strukturierte Logs, konsistent in Pipelines und Services verwendet.
@@ -268,7 +278,8 @@ poetry run python -m app.cli reindex-opensearch
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
 | `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
-| `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
+| `/inventory` | `InventoryPage` | Environment-Inventory: Produkte und Versionen, die der Benutzer betreibt (Deployment, Environment, Instance-Count). Vendor/Product via `AsyncSelect` (gleicher Look wie AdvancedFilters), Deployment als Chip-Button-Gruppe, Environment als freies Textfeld mit `<datalist>`-Vorschlägen. Item-Karten mit expandierbarer "Show CVEs"-Liste (`GET /api/v1/inventory/{id}/affected-vulnerabilities`). Sidebar-Gruppe **Environment** (eigene Sektion unterhalb von *Security*). |
+| `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln inkl. `inventory`-Typ, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | `/scans` | `ScansPage` | SCA-Scan-Verwaltung (7 Tabs: Targets, Scans, Findings, SBOM mit Summary-Cards + Spalten-Sortierung + Provenance-Filter, Licenses, New Scan, Scanner). Targets-Tab gruppiert Karten in kollabierbare Application-Sektionen mit Severity-Roll-up und inline editierbarer App/Group-Zuordnung. |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (Multi-Select-Toolbar, expandierbarer VEX-Editor mit Detail-Feld, Show-Dismissed-Toggle, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), **AI Analysis** (Inline Trigger-Form mit Provider-Select und Additional-Context-Textarea, ruft `POST /api/v1/scans/{id}/ai-analysis` und pollt den Scan bis der neue Eintrag erscheint; Historie mit Commit-/Image-Digest-Chip, `triggeredBy`-Badge und Origin-Chip `API - Scan` / `MCP - Scan`), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance (nur wenn mindestens eine License-Policy konfiguriert ist), VEX-Export. Tab-Optik verwendet die gleiche Pill-Komponente wie `VulnerabilityDetailPage` (`frontend/src/ui/TabPill.tsx`, `tabPillStyle()` + `TabBadge`). |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |

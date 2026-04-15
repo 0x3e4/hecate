@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox } from "react-icons/lu";
 import { useEffect, useMemo, useState } from "react";
 
 import { version } from "../../package.json";
@@ -40,6 +40,12 @@ const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[]
       { to: "/scans", label: "SCA Scans", icon: LuScanLine },
     ],
   }] : []),
+  {
+    titleEn: "Environment", titleDe: "Umgebung",
+    items: [
+      { to: "/inventory", label: "Inventory", icon: LuBox },
+    ],
+  },
   {
     titleEn: "Analysis", titleDe: "Analyse",
     items: [
@@ -119,6 +125,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/stats": "Statistiken",
     "/changelog": "Changelog",
     "/audit": "Audit-Log",
+    "/inventory": "Inventar",
     "/scans": "SCA-Scans",
     "/system": "System",
     "/info/api": "API",

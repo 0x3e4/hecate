@@ -10,6 +10,7 @@ import { AIAnalysePage } from "./views/AIAnalysePage";
 import { StatsPage } from "./views/StatsPage";
 import { ChangelogPage } from "./views/ChangelogPage";
 import { SystemPage } from "./views/SystemPage";
+import { InventoryPage } from "./views/InventoryPage";
 import { ScansPage } from "./views/ScansPage";
 import { ScanDetailPage } from "./views/ScanDetailPage";
 import { CiCdInfoPage } from "./views/CiCdInfoPage";
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: "vulnerability", element: <Navigate to="/vulnerabilities" replace /> },
       { path: "query-builder", element: <QueryBuilderPage /> },
       { path: "ai-analyse", element: <AIAnalysePage /> },
+      { path: "inventory", element: <InventoryPage /> },
       { path: "scans", element: <ScansPage /> },
       { path: "scans/:scanId", element: <ScanDetailPage /> },
       { path: "audit", element: <AuditLogPage /> },

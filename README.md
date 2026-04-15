@@ -44,7 +44,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 .
 ├── backend/              # FastAPI-Service, Ingestion-Pipelines, Scheduler, CLI
 │   ├── app/
-│   │   ├── api/v1/       # REST-Endpunkte (17 Router-Module)
+│   │   ├── api/v1/       # REST-Endpunkte (18 Router-Module)
 │   │   ├── core/         # Konfiguration (Pydantic Settings), Logging
 │   │   ├── db/           # MongoDB (Motor) & OpenSearch Verbindungen
 │   │   ├── models/       # MongoDB-Dokument-Schemata
@@ -61,7 +61,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 │   ├── src/
 │   │   ├── api/          # Axios-basierte Service-Module
 │   │   ├── components/   # Wiederverwendbare UI-Komponenten
-│   │   ├── views/        # Seitenkomponenten (14 Ansichten)
+│   │   ├── views/        # Seitenkomponenten (15 Ansichten)
 │   │   ├── hooks/        # Custom React Hooks
 │   │   ├── ui/           # Layout-Komponenten (Sidebar, Header)
 │   │   ├── utils/        # CVSS-Parsing, Datumsformatierung
@@ -133,6 +133,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 | Changelog | Letzte Änderungen an Schwachstellen mit Pagination, Datum- und Job-Filter |
 | SCA-Scans | Scan-Ziele, letzte Scans, aggregierte Findings & SBOM (Summary-Cards, Spalten-Sortierung, Provenance-Filter), manueller Scan, SBOM-Import, Lizenzen, Scanner-Monitoring |
 | Scan-Detail | Findings (Multi-Select-Bulk-VEX, expandierbarer VEX-Editor, Show-Dismissed-Toggle, VEX-Import), SBOM (sortierbar, klickbare Filter, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance, VEX-Export |
+| Inventory | Benutzerdeklariertes Environment-Inventory (Produkt + Version + Deployment/Environment/Instance-Count). Matched gegen die Vuln-DB für Impact-Callouts auf CVE-Seiten, KI-Analyse-Kontext und neuen `inventory` Notification-Rule-Typ. |
 | System | Single-Card-Layout. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln, Vorlagen), Data (Sync, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
 | CI/CD | Anleitung zur CI/CD-Integration mit Pipeline-Beispielen (GitHub Actions, GitLab CI, Shell) |
 | API | Interaktive API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
@@ -144,13 +145,14 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Ereignisse:** SCA-Scan abgeschlossen/fehlgeschlagen, Sync-Fehler, neue Schwachstellen nach Ingestion
 - **Regelbasiert:** Konfigurierbare Regeln pro Ereignistyp mit individuellem Channel-Routing (Apprise-Tags)
 - **Watch-Regeln:** Automatische Auswertung von Saved Searches, Vendor-/Produkt-Watches und DQL-Queries nach Ingestion
+- **Inventory-Regeln:** Feuern nach jeder Ingestion, wenn neu veröffentlichte CVEs einen Eintrag im Environment-Inventory über vendor/product-Slug + CPE-Versionsbereich treffen
 - **Scan-Regeln:** Bedingte Benachrichtigungen für SCA-Scans mit Severity-Schwellenwert (z.B. nur bei Critical/High) und Ziel-Filter (Wildcard-Pattern)
 - **Nachrichtenvorlagen:** Anpassbare Titel- und Body-Templates pro Event-Typ mit Platzhaltern (`{variable}`) und Schleifen (`{#each}...{/each}`)
 - **Test-Endpoint:** `POST /api/v1/notifications/test` mit optionalem Tag-Filter und Button in der System-Seite
 - **Fire-and-forget:** Benachrichtigungsfehler unterbrechen nie primäre Workflows
 
 ### Betrieb
-- **Backup & Restore** für Schwachstellen (EUVD/NVD/Alle) und gespeicherte Suchen
+- **Backup & Restore** für Schwachstellen (EUVD/NVD/Alle), gespeicherte Suchen und Environment-Inventory (Export als JSON, Import mit Upsert-Semantik per `_id`)
 - **Gespeicherte Suchen** mit Sidebar-Integration und Audit-Trail
 - **Statistiken** mit OpenSearch-Aggregationen (Mongo-Fallback bei Ausfällen)
 - **Manuelle Sync-Trigger** für alle 9 Datenquellen über die API
@@ -256,6 +258,14 @@ Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI se
 - `GET /api/v1/scans/{scanId}/vex/export` — VEX-Dokument exportieren (CycloneDX VEX)
 - `GET /api/v1/scans/{scanId}/findings?includeDismissed=true` — Verworfene Findings einbeziehen
 
+### Environment Inventory
+- `GET /api/v1/inventory` — Inventar-Einträge auflisten
+- `POST /api/v1/inventory` — Eintrag erstellen
+- `GET /api/v1/inventory/{id}` — Eintrag abrufen
+- `PUT /api/v1/inventory/{id}` — Eintrag aktualisieren
+- `DELETE /api/v1/inventory/{id}` — Eintrag löschen
+- `GET /api/v1/inventory/{id}/affected-vulnerabilities` — aktuell betroffene CVEs für einen Eintrag
+
 ### License Policies
 - `GET /api/v1/license-policies` — Lizenz-Policies auflisten
 - `POST /api/v1/license-policies` — Neue Policy erstellen
@@ -297,7 +307,9 @@ Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI se
 - `GET /api/v1/changelog` — Letzte Änderungen (mit Pagination, Datum- und Source-Filter)
 - `POST /api/v1/sync/trigger/{job}` — Sync-Trigger (euvd, nvd, cpe, kev, cwe, capec, circl, ghsa, osv)
 - `POST /api/v1/sync/resync` — Vulnerabilities löschen und optional neu von Upstream abrufen (Multi-ID, Wildcards, Delete-Only)
-- `GET/POST /api/v1/backup/...` — Export/Import
+- `GET /api/v1/backup/vulnerabilities/{source}/export` · `POST /api/v1/backup/vulnerabilities/{source}/restore` — Schwachstellen-Backup (NVD/EUVD/ALL, Streaming JSON)
+- `GET /api/v1/backup/saved-searches/export` · `POST /api/v1/backup/saved-searches/restore` — Saved-Search-Backup
+- `GET /api/v1/backup/inventory/export` · `POST /api/v1/backup/inventory/restore` — Environment-Inventory-Backup (erhält `_id`, Restore ist Upsert per ID)
 
 ## Backend-CLI
 

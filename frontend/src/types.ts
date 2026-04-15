@@ -293,6 +293,62 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   productVersionIds?: string[];
   changeHistory?: VulnerabilityChangeEntry[];
   sources?: SourceEntry[];
+  affectedInventory?: AffectedInventoryItem[];
+}
+
+export type InventoryDeployment = "onprem" | "cloud" | "hybrid";
+/** Free-form environment label. Common values: prod, staging, dev, test, dr. */
+export type InventoryEnvironment = string;
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  vendorSlug: string;
+  productSlug: string;
+  vendorName?: string | null;
+  productName?: string | null;
+  version: string;
+  deployment: InventoryDeployment;
+  environment: InventoryEnvironment;
+  instanceCount: number;
+  owner?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  affectedVulnCount?: number | null;
+}
+
+export interface InventoryItemListResponse {
+  items: InventoryItem[];
+  total: number;
+}
+
+export interface AffectedInventoryItem {
+  id: string;
+  name: string;
+  vendorName?: string | null;
+  productName?: string | null;
+  version: string;
+  deployment: InventoryDeployment;
+  environment: InventoryEnvironment;
+  instanceCount: number;
+  owner?: string | null;
+}
+
+export interface AffectedVulnerabilityItem {
+  vulnId: string;
+  title?: string | null;
+  severity?: string | null;
+  cvssScore?: number | null;
+  epssScore?: number | null;
+  exploited?: boolean | null;
+  published?: string | null;
+}
+
+export interface AffectedVulnerabilitiesResponse {
+  itemId: string;
+  total: number;
+  vulnerabilities: AffectedVulnerabilityItem[];
 }
 
 export type RefreshSourceType = "NVD" | "EUVD" | "CIRCL" | "GHSA" | "OSV";
@@ -367,7 +423,7 @@ export interface SavedSearch {
 }
 
 export interface BackupRestoreSummary {
-  dataset: "vulnerabilities" | "saved_searches";
+  dataset: "vulnerabilities" | "saved_searches" | "inventory";
   source?: string | null;
   inserted: number;
   updated: number;
