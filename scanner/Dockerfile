@@ -1,6 +1,6 @@
 FROM aquasec/trivy:0.69.3 AS trivy
-FROM anchore/grype:v0.110.0 AS grype
-FROM anchore/syft:v1.42.3 AS syft
+FROM anchore/grype:v0.111.0 AS grype
+FROM anchore/syft:v1.42.4 AS syft
 FROM python:3.13-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
@@ -29,7 +29,7 @@ RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_
 RUN pip install --no-cache-dir "setuptools<74" semgrep==1.114.0
 
 # Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.88.23/trufflehog_3.88.23_linux_amd64.tar.gz \
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.94.3/trufflehog_3.94.3_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
 
 # Enable all Syft catalogers including binary detection
