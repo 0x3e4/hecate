@@ -35,7 +35,7 @@ class NotificationRuleCreate(BaseModel):
     rule_type: str = Field(
         alias="ruleType",
         serialization_alias="ruleType",
-        description="event | saved_search | vendor | product | dql | scan",
+        description="event | saved_search | vendor | product | dql | scan | inventory",
     )
     apprise_tag: str = Field(
         default="all",

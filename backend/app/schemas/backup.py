@@ -9,7 +9,7 @@ from app.schemas._utc import UtcDatetime
 
 
 class BackupMetadata(BaseModel):
-    dataset: Literal["vulnerabilities", "saved_searches"]
+    dataset: Literal["vulnerabilities", "saved_searches", "inventory"]
     exported_at: UtcDatetime = Field(alias="exportedAt")
     item_count: int = Field(alias="itemCount")
 
@@ -35,8 +35,17 @@ class SavedSearchBackupPayload(BaseModel):
     items: list[dict[str, Any]]
 
 
+class InventoryBackupMetadata(BackupMetadata):
+    dataset: Literal["inventory"] = "inventory"
+
+
+class InventoryBackupPayload(BaseModel):
+    metadata: InventoryBackupMetadata
+    items: list[dict[str, Any]]
+
+
 class BackupRestoreSummary(BaseModel):
-    dataset: Literal["vulnerabilities", "saved_searches"]
+    dataset: Literal["vulnerabilities", "saved_searches", "inventory"]
     source: str | None = None
     inserted: int
     updated: int

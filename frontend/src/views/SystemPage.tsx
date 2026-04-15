@@ -2,8 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type 
 import { useNavigate } from "react-router-dom";
 
 import {
+  exportInventoryBackup,
   exportSavedSearchesBackup,
   exportVulnerabilityBackup,
+  restoreInventoryBackup,
   restoreSavedSearchesBackup,
   restoreVulnerabilityBackup,
   type VulnerabilitySource
@@ -74,6 +76,7 @@ type SystemTab = "general" | "notifications" | "data" | "policies";
 type BackupDataset =
   | { id: "VULNERABILITIES"; label: string; description: string; type: "vuln"; source: VulnerabilitySource }
   | { id: "SAVED_SEARCHES"; label: string; description: string; type: "saved_searches" }
+  | { id: "INVENTORY"; label: string; description: string; type: "inventory" }
 
 const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
   {
@@ -91,6 +94,15 @@ const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
     label: t("Saved Searches", "Gespeicherte Suchen"),
     description: t("Backup of all saved search filters", "Sicherung aller gespeicherten Suchfilter"),
     type: "saved_searches"
+  },
+  {
+    id: "INVENTORY",
+    label: t("Environment Inventory", "Umgebungs-Inventar"),
+    description: t(
+      "Backup of all declared inventory items (products, versions, deployment metadata)",
+      "Sicherung aller deklarierten Inventar-Einträge (Produkte, Versionen, Deployment-Metadaten)"
+    ),
+    type: "inventory"
   }
 ];
 
@@ -569,13 +581,17 @@ export const SystemPage = () => {
       const response =
         dataset.type === "vuln"
           ? await exportVulnerabilityBackup(dataset.source)
-          : await exportSavedSearchesBackup();
+          : dataset.type === "inventory"
+            ? await exportInventoryBackup()
+            : await exportSavedSearchesBackup();
 
       const timestamp = new Date().toISOString().replace(/[:]/g, "").replace(/\..+/, "");
       const fallbackName =
         dataset.type === "vuln"
           ? `${dataset.source.toLowerCase()}-backup-${timestamp}.json`
-          : `saved-searches-backup-${timestamp}.json`;
+          : dataset.type === "inventory"
+            ? `inventory-backup-${timestamp}.json`
+            : `saved-searches-backup-${timestamp}.json`;
       const filename = response.filename ?? fallbackName;
 
       const url = URL.createObjectURL(response.data);
@@ -822,6 +838,12 @@ export const SystemPage = () => {
           throw new Error(t(`Invalid backup source: ${meta.source}.`, `Ungültige Backup-Quelle: ${meta.source}.`));
         }
         summary = await restoreVulnerabilityBackup("ALL", payload);
+      } else if (dataset.type === "inventory") {
+        const meta = payload.metadata as { dataset?: string };
+        if (meta.dataset !== "inventory") {
+          throw new Error(t("Backup does not contain inventory items.", "Backup enthält keine Inventar-Einträge."));
+        }
+        summary = await restoreInventoryBackup(payload);
       } else {
         const meta = payload.metadata as { dataset?: string };
         if (meta.dataset !== "saved_searches") {

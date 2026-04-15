@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     mongo_notification_channels_collection: str = "notification_channels"
     mongo_notification_templates_collection: str = "notification_templates"
     mongo_license_policies_collection: str = "license_policies"
+    mongo_environment_inventory_collection: str = "environment_inventory"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None

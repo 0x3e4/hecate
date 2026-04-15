@@ -67,6 +67,7 @@ class AIClient:
         language: str | None = None,
         additional_context: str | None = None,
         triggered_by: str | None = None,
+        affected_inventory: list[dict[str, Any]] | None = None,
     ) -> AIInvestigationResponse:
         """
         Submit a vulnerability context to the requested provider and return the summarised response.
@@ -76,7 +77,8 @@ class AIClient:
             vulnerability,
             normalized_language,
             additional_context,
-            provider
+            provider,
+            affected_inventory=affected_inventory,
         )
 
         if provider == "openai":
@@ -111,6 +113,7 @@ class AIClient:
         language: str | None = None,
         additional_context: str | None = None,
         triggered_by: str | None = None,
+        affected_inventory_map: dict[str, list[dict[str, Any]]] | None = None,
     ) -> AIBatchInvestigationResponse:
         """
         Analyze multiple vulnerabilities together for combined insights.
@@ -121,7 +124,8 @@ class AIClient:
             vulnerabilities,
             normalized_language,
             additional_context,
-            provider
+            provider,
+            affected_inventory_map=affected_inventory_map,
         )
 
         if provider == "openai":
@@ -613,6 +617,7 @@ async def build_vulnerability_prompts(
     *,
     language: str | None = None,
     additional_context: str | None = None,
+    affected_inventory: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """Public wrapper that returns the (system, user) prompt pair for a single vulnerability."""
     return await _build_prompts(
@@ -620,6 +625,7 @@ async def build_vulnerability_prompts(
         _normalize_language(language),
         additional_context,
         "openai",
+        affected_inventory=affected_inventory,
     )
 
 
@@ -628,6 +634,7 @@ async def build_vulnerability_batch_prompts(
     *,
     language: str | None = None,
     additional_context: str | None = None,
+    affected_inventory_map: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[str, str]:
     """Public wrapper that returns the (system, user) prompt pair for a batch analysis."""
     return await _build_batch_prompts(
@@ -635,7 +642,65 @@ async def build_vulnerability_batch_prompts(
         _normalize_language(language),
         additional_context,
         "openai",
+        affected_inventory_map=affected_inventory_map,
     )
+
+
+def _format_inventory_block(items: list[dict[str, Any]] | None) -> str:
+    """Format an ``affected_inventory`` list as a prompt-ready impact block.
+
+    The block is injected verbatim into the user prompt right before the
+    vulnerability context so the model treats the user's environment as
+    authoritative ground truth when writing the priority assessment.
+    """
+    if not items:
+        return ""
+    lines: list[str] = []
+    total_instances = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("productName") or ""
+        version = item.get("version") or ""
+        deployment = item.get("deployment") or ""
+        environment = item.get("environment") or ""
+        instance_count = int(item.get("instanceCount") or item.get("instance_count") or 1)
+        owner = item.get("owner")
+        total_instances += instance_count
+
+        parts: list[str] = []
+        if name:
+            parts.append(str(name))
+        if version:
+            parts.append(f"version {version}")
+        meta_bits: list[str] = []
+        if instance_count:
+            meta_bits.append(f"{instance_count} instance{'s' if instance_count != 1 else ''}")
+        if deployment:
+            meta_bits.append(str(deployment))
+        if environment:
+            meta_bits.append(str(environment))
+        if meta_bits:
+            parts.append(f"({' / '.join(meta_bits)})")
+        if owner:
+            parts.append(f"— owner: {owner}")
+        lines.append("  - " + " ".join(parts))
+
+    if not lines:
+        return ""
+
+    header = (
+        "## YOUR ENVIRONMENT IMPACT\n"
+        "The following items in the user's declared inventory may be affected by this "
+        "vulnerability. Treat this as authoritative ground truth for what the user runs:\n"
+    )
+    footer = (
+        f"\nTotal instances potentially affected: {total_instances}.\n"
+        "In your Priority Assessment, state explicitly whether these exact versions are "
+        "confirmed vulnerable based on the database-verified versions and the official "
+        "advisories, and if so, recommend the target patched version."
+    )
+    return header + "\n".join(lines) + footer
 
 
 def build_scan_prompts(
@@ -670,6 +735,8 @@ async def _build_prompts(
     language: str,
     additional_context: str | None = None,
     provider: str = "openai",
+    *,
+    affected_inventory: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     language_instruction = (
         f"Respond in the language identified by the ISO code '{language}'. "
@@ -798,6 +865,12 @@ async def _build_prompts(
     # Add user-provided additional context if present
     if additional_context and additional_context.strip():
         context += f"\n\nADDITIONAL CONTEXT (provided by analyst):\n{additional_context.strip()}"
+
+    # Prepend the environment-impact block so the model treats it as the
+    # highest-priority input when writing the priority assessment.
+    inventory_block = _format_inventory_block(affected_inventory)
+    if inventory_block:
+        context = f"{inventory_block}\n\n{context}"
 
     # Enhanced user prompt with few-shot guidance
     user_prompt = (
@@ -1107,6 +1180,8 @@ async def _build_batch_prompts(
     language: str,
     additional_context: str | None = None,
     provider: str = "openai",
+    *,
+    affected_inventory_map: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[str, str]:
     """Build prompts for batch vulnerability analysis focused on synthesis."""
     language_instruction = (
@@ -1229,6 +1304,27 @@ async def _build_batch_prompts(
     context_section = f"VULNERABILITIES TO ANALYZE:\n\n{vulnerabilities_section}"
     if additional_context and additional_context.strip():
         context_section += f"\n\nADDITIONAL CONTEXT (from user):\n{additional_context.strip()}"
+
+    if affected_inventory_map:
+        per_vuln_blocks: list[str] = []
+        for vuln in vulnerabilities:
+            items = affected_inventory_map.get(vuln.vuln_id or "") or []
+            if not items:
+                continue
+            block = _format_inventory_block(items)
+            if block:
+                per_vuln_blocks.append(f"### {vuln.vuln_id}\n{block}")
+        if per_vuln_blocks:
+            context_section = (
+                "## YOUR ENVIRONMENT IMPACT (PER VULNERABILITY)\n"
+                "The user's declared inventory intersects with some of the vulnerabilities "
+                "below. Treat these as authoritative ground truth and explicitly call out "
+                "affected items in both the Individual Vulnerability Notes and the "
+                "Recommended Actions sections.\n\n"
+                + "\n\n".join(per_vuln_blocks)
+                + "\n\n"
+                + context_section
+            )
 
     user_prompt = (
         "Analyze these vulnerabilities together. Focus on synthesizing insights that help the team "

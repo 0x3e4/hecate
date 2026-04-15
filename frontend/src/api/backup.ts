@@ -59,3 +59,21 @@ export const restoreSavedSearchesBackup = async (payload: unknown): Promise<Back
   });
   return response.data;
 };
+
+export const exportInventoryBackup = async (): Promise<ExportResponse> => {
+  const response = await api.get<Blob>("/v1/backup/inventory/export", {
+    responseType: "blob",
+    timeout: BACKUP_TIMEOUT
+  });
+  return {
+    data: response.data,
+    filename: extractFilename(response.headers["content-disposition"])
+  };
+};
+
+export const restoreInventoryBackup = async (payload: unknown): Promise<BackupRestoreSummary> => {
+  const response = await api.post<BackupRestoreSummary>("/v1/backup/inventory/restore", payload, {
+    timeout: BACKUP_TIMEOUT
+  });
+  return response.data;
+};

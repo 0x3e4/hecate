@@ -7,14 +7,14 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 ```
 app/
 ├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung (17 Module)
+│   ├── routes.py            # Router-Registrierung (18 Module)
 │   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
 │   ├── cpe.py               # CPE-Katalog (Entries, Vendors, Products)
 │   ├── assets.py            # Asset-Katalog (Vendoren, Produkte, Versionen)
 │   ├── stats.py             # Statistik-Aggregationen
-│   ├── backup.py            # Export/Import (Streaming)
+│   ├── backup.py            # Export/Import (Streaming): Vulnerabilities, Saved Searches, Environment Inventory
 │   ├── sync.py              # Manuelle Sync-Trigger
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
@@ -23,6 +23,7 @@ app/
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
+│   ├── inventory.py         # Environment-Inventory (CRUD + /affected-vulnerabilities)
 │   ├── config.py            # Public Runtime-Config (Feature-Flags aus Backend-Settings für das Frontend)
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
@@ -51,8 +52,9 @@ app/
 │   ├── capec.py             # CAPECEntry
 │   ├── scan.py              # SCA-Scan-Modelle (Target, Scan, Finding, SBOM)
 │   ├── license_policy.py    # LicensePolicyDocument
+│   ├── inventory_item.py    # InventoryItemDocument (Environment Inventory)
 │   └── kev.py               # CisaKevEntry, CisaKevCatalog
-├── repositories/            # Datenzugriffsschicht (14 Repositories)
+├── repositories/            # Datenzugriffsschicht (15 Repositories)
 │   ├── vulnerability_repository.py
 │   ├── cwe_repository.py
 │   ├── capec_repository.py
@@ -66,7 +68,8 @@ app/
 │   ├── scan_repository.py
 │   ├── scan_finding_repository.py
 │   ├── scan_sbom_repository.py
-│   └── license_policy_repository.py
+│   ├── license_policy_repository.py
+│   └── inventory_repository.py
 ├── schemas/                 # API Request/Response Schemata
 │   ├── _utc.py              # Shared `UtcDatetime` Annotated-Type (BeforeValidator) — normalisiert alle ausgehenden datetime-Felder auf UTC-aware, damit der Frontend sie nicht als local time parst
 │   ├── vulnerability.py     # VulnerabilityQuery (inkl. Advanced Filters: Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum), VulnerabilityDetail
@@ -76,6 +79,7 @@ app/
 │   ├── scan.py              # SCA-Scan API-Schemata (inkl. ImportSbomRequest)
 │   ├── vex.py               # VEX API-Schemata (VexUpdate, VexBulkUpdate, VexBulkUpdateByIds, FindingsDismiss, VexImport)
 │   ├── license_policy.py    # License-Policy API-Schemata
+│   ├── inventory.py         # Environment-Inventory API-Schemata
 │   └── saved_search.py
 ├── services/                # Business-Logik
 │   ├── vulnerability_service.py   # Suche, Refresh, Lookup
@@ -83,7 +87,7 @@ app/
 │   ├── capec_service.py           # 3-Tier-Cache + CWE->CAPEC Mapping
 │   ├── ai_service.py              # OpenAI, Anthropic, Gemini Wrapper
 │   ├── stats_service.py           # OpenSearch-Aggregationen (Mongo-Fallback)
-│   ├── backup_service.py          # Streaming Export/Import
+│   ├── backup_service.py          # Streaming Export/Import für Vulnerabilities (NVD/EUVD/ALL), Saved Searches und Environment Inventory (Inventory-Restore = Upsert per `_id`)
 │   ├── sync_service.py            # Sync-Koordination
 │   ├── audit_service.py           # Audit-Logging
 │   ├── changelog_service.py       # Change-Tracking
@@ -95,8 +99,10 @@ app/
 │   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
 │   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward (VEX + Dismissal)
 │   ├── license_compliance_service.py  # Lizenz-Policy-Auswertung
+│   ├── inventory_service.py       # Environment-Inventory CRUD + Matching (30s TTL-Cache)
+│   ├── inventory_matcher.py       # CPE-Versionsbereichs-Matcher (pure functions, selbst-enthaltener Version-Comparator)
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
-│   ├── notification_service.py    # Apprise-Benachrichtigungen
+│   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator)
 │   ├── http/
 │   │   └── rate_limiter.py        # HTTP Rate-Limiting
 │   ├── ingestion/                 # Datenpipelines
@@ -151,10 +157,11 @@ app/
 | `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans (exportierbar als CycloneDX 1.5 / SPDX 2.3) |
 | `scan_layer_analysis` | `ScanLayerAnalysisDocument` | Image-Schichtanalyse aus Dive-Scans |
-| `notification_rules` | — | Benachrichtigungsregeln (Event, Watch, DQL, Scan) |
+| `notification_rules` | — | Benachrichtigungsregeln (Event, Watch, DQL, Scan, Inventory) |
 | `notification_channels` | — | Apprise-Channels (URL + Tag) |
 | `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
+| `environment_inventory` | `InventoryItemDocument` | Benutzerdeklariertes Produkt/Version-Inventory (Deployment, Environment, Instance-Count) |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
