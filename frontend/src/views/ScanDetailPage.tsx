@@ -543,12 +543,25 @@ export const ScanDetailPage = () => {
     return result;
   }, [vulnFindings, severityFilter, findingsSearch, findingsSort]);
 
-  /** Summary computed from deduplicated vulnerability findings (excludes alerts) */
+  /** Summary computed from CVE-deduplicated vulnerability findings (excludes alerts).
+   *  Same CVE across multiple packages counts as 1 vulnerability (highest severity wins). */
   const mergedSummary = useMemo(() => {
     const counts = { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0, total: 0 };
+    const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, negligible: 4, unknown: 5 };
+    const seen = new Map<string, string>(); // dedup_key -> best severity
     for (const f of vulnFindings) {
-      const sev = f.severity.toLowerCase() as keyof typeof counts;
-      if (sev in counts && sev !== "total") (counts[sev] as number)++;
+      const sev = f.severity.toLowerCase();
+      // CVE findings: dedup by vulnerability ID only
+      // No-CVE findings: dedup by package+version
+      const key = f.vulnerabilityId || `:${f.packageName}:${f.packageVersion}`;
+      const prev = seen.get(key);
+      if (prev === undefined || (sevRank[sev] ?? 5) < (sevRank[prev] ?? 5)) {
+        seen.set(key, sev);
+      }
+    }
+    for (const sev of seen.values()) {
+      const k = sev as keyof typeof counts;
+      if (k in counts && k !== "total") (counts[k] as number)++;
       else counts.unknown++;
       counts.total++;
     }

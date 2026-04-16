@@ -100,6 +100,30 @@ class ScanService:
             count += 1
         return count
 
+    async def backfill_target_summaries_v4(self) -> int:
+        """Re-derive target summaries using CVE-only dedup (summary_version 4)."""
+        total, targets = await self.target_repo.list_targets(limit=10000)
+        count = 0
+        for target in targets:
+            tid = target.get("target_id")
+            scan_id = target.get("latest_scan_id")
+            if not tid or not scan_id:
+                continue
+            scan = await self.scan_repo.get(scan_id)
+            if not scan:
+                continue
+            # Always get the correct CVE-deduped summary (returns cached if already v4)
+            summary = await self._get_deduped_summary(scan)
+            # Update target only if its denormalized summary differs
+            if summary != target.get("latest_summary"):
+                await self.target_repo.update_scan_state(
+                    tid,
+                    latest_summary=summary,
+                    latest_scan_id=scan_id,
+                )
+                count += 1
+        return count
+
     async def _clear_running_state(self, target_id: str, completed_scan_id: str) -> None:
         """Clear running state on target, or point to another running scan if one exists."""
         try:
@@ -556,7 +580,7 @@ class ScanService:
             error=error_text,
         )
         # Persist scanner-reported metadata (commit SHA, image digest)
-        meta_update: dict[str, Any] = {"summary_version": 3, "severity_overridden": True}
+        meta_update: dict[str, Any] = {"summary_version": 4, "severity_overridden": True}
         if scan_metadata.get("commit_sha"):
             meta_update["commit_sha"] = scan_metadata["commit_sha"]
         if scan_metadata.get("image_digest"):
@@ -780,30 +804,33 @@ class ScanService:
 
     async def _get_deduped_summary(self, scan: dict[str, Any]) -> dict[str, Any]:
         """Return the deduped summary for a scan, lazily correcting if needed."""
-        if scan.get("summary_version") == 3:
+        if scan.get("summary_version") == 4:
             return scan.get("summary", {})
         # Recompute from findings with dedup
         scan_id = str(scan.get("_id", ""))
         _, findings = await self.finding_repo.list_by_scan(scan_id, limit=10000)
         nv = self._normalize_ver
+        sev_rank = self._SEV_RANK
         counts: dict[str, int] = {
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
         # Exclude non-vulnerability findings from summary
         _excluded = ("malicious-indicator", "compliance-check", "sast-finding", "secret-finding")
         findings = [f for f in findings if f.get("package_type") not in _excluded]
-        # First pass: keyed entries with CVE; collect no-CVE separately
+        # Dedup by CVE ID only (same CVE across packages = 1 vulnerability).
+        # For no-CVE findings, fall back to package_name:version key.
         keyed: dict[str, str] = {}
         no_cve: list[dict[str, Any]] = []
         for f in findings:
-            ver = nv(f.get("package_version", ""))
             vuln_id = f.get("vulnerability_id", "")
             if not vuln_id:
                 no_cve.append(f)
                 continue
-            dedup_key = f"{vuln_id}:{f.get('package_name', '')}:{ver}"
-            if dedup_key not in keyed:
-                keyed[dedup_key] = f.get("severity", "unknown")
+            dedup_key = vuln_id
+            prev = keyed.get(dedup_key)
+            sev = f.get("severity", "unknown")
+            if prev is None or sev_rank.get(sev, 5) < sev_rank.get(prev, 5):
+                keyed[dedup_key] = sev
 
         # Build fix index for merging no-CVE findings
         fix_index: dict[str, str] = {}
@@ -813,7 +840,7 @@ class ScanService:
             if vuln_id and fix_ver:
                 idx_key = f"{f.get('package_name', '')}:{nv(f.get('package_version', ''))}:{nv(fix_ver)}"
                 if idx_key not in fix_index:
-                    fix_index[idx_key] = f"{vuln_id}:{f.get('package_name', '')}:{nv(f.get('package_version', ''))}"
+                    fix_index[idx_key] = vuln_id
 
         for f in no_cve:
             ver = nv(f.get("package_version", ""))
@@ -823,8 +850,10 @@ class ScanService:
                 if idx_key in fix_index:
                     continue
             dedup_key = f":{f.get('package_name', '')}:{ver}"
-            if dedup_key not in keyed:
-                keyed[dedup_key] = f.get("severity", "unknown")
+            prev = keyed.get(dedup_key)
+            sev = f.get("severity", "unknown")
+            if prev is None or sev_rank.get(sev, 5) < sev_rank.get(prev, 5):
+                keyed[dedup_key] = sev
 
         for sev in keyed.values():
             key = sev if sev in counts else "unknown"
@@ -840,7 +869,7 @@ class ScanService:
             db = await get_database()
             await db[settings.mongo_scans_collection].update_one(
                 {"_id": ObjectId(scan_id)},
-                {"$set": {"summary_version": 3}},
+                {"$set": {"summary_version": 4}},
             )
         except Exception:
             pass
@@ -2030,26 +2059,32 @@ class ScanService:
             return v[1:]
         return v
 
+    _SEV_RANK: dict[str, int] = {
+        "critical": 0, "high": 1, "medium": 2, "low": 3, "negligible": 4, "unknown": 5,
+    }
+
     @staticmethod
     def _compute_summary(findings: list[ScanFindingDocument]) -> ScanSummary:
         counts: dict[str, int] = {
             "critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0,
         }
         nv = ScanService._normalize_ver
+        sev_rank = ScanService._SEV_RANK
         # Exclude non-vulnerability findings from vulnerability summary
         _excluded = ("malicious-indicator", "compliance-check", "sast-finding", "secret-finding")
         vuln_findings = [f for f in findings if f.package_type not in _excluded]
-        # First pass: collect all findings keyed by (vuln_id, pkg, ver)
-        # Track no-CVE findings separately so we can merge them with CVE entries
+        # Dedup by CVE ID only (same CVE in multiple packages = 1 vulnerability).
+        # For no-CVE findings, fall back to package_name:version key.
+        # When the same CVE appears at different severities, take the highest.
         keyed: dict[str, str] = {}  # dedup_key -> severity
         no_cve: list[ScanFindingDocument] = []
         for f in vuln_findings:
-            ver = nv(f.package_version)
             if not f.vulnerability_id:
                 no_cve.append(f)
                 continue
-            dedup_key = f"{f.vulnerability_id}:{f.package_name}:{ver}"
-            if dedup_key not in keyed:
+            dedup_key = f.vulnerability_id
+            prev = keyed.get(dedup_key)
+            if prev is None or sev_rank.get(f.severity, 5) < sev_rank.get(prev, 5):
                 keyed[dedup_key] = f.severity
 
         # Second pass: merge no-CVE findings if same pkg+ver+fix exists with a CVE
@@ -2058,7 +2093,7 @@ class ScanService:
             if f.vulnerability_id and f.fix_version:
                 idx_key = f"{f.package_name}:{nv(f.package_version)}:{nv(f.fix_version)}"
                 if idx_key not in fix_index:
-                    fix_index[idx_key] = f"{f.vulnerability_id}:{f.package_name}:{nv(f.package_version)}"
+                    fix_index[idx_key] = f.vulnerability_id
 
         for f in no_cve:
             ver = nv(f.package_version)
@@ -2068,7 +2103,8 @@ class ScanService:
                 if idx_key in fix_index:
                     continue  # merged into CVE entry
             dedup_key = f":{f.package_name}:{ver}"
-            if dedup_key not in keyed:
+            prev = keyed.get(dedup_key)
+            if prev is None or sev_rank.get(f.severity, 5) < sev_rank.get(prev, 5):
                 keyed[dedup_key] = f.severity
 
         for sev in keyed.values():
