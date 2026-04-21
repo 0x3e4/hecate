@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     osv_rate_limit_seconds: float = 0.5
     osv_max_records_per_run: OptionalInt = 5000
 
-    ingestion_user_agent: str = "hecate-ingestion/0.1"
+    ingestion_user_agent: str = "hecate-ingestion/1.0"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True
     ingestion_priority_vuln_db: str = "NVD"  # NVD or EUVD
