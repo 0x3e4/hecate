@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.models.kev import CisaKevCatalog
+from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
 
@@ -34,6 +35,7 @@ class CisaKevClient:
                 "User-Agent": settings.ingestion_user_agent,
                 "Accept": "application/json",
             },
+            verify=get_http_verify(),
         )
         self._owns_client = client is None
 

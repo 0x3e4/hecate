@@ -11,6 +11,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
 
@@ -41,6 +42,7 @@ class CPEClient:
         self._client = client or httpx.AsyncClient(
             timeout=timeout,
             headers=headers,
+            verify=get_http_verify(),
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.nvd_rate_limit_seconds)
 

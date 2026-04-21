@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     opensearch_verify_certs: bool = False
     opensearch_ca_cert: str | None = None
 
+    http_ca_bundle: str | None = None
+
     euvd_base_url: str = "https://euvdservices.enisa.europa.eu/api"
     euvd_timeout_seconds: int = 30
     euvd_page_size: int = 250

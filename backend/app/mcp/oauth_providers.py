@@ -15,6 +15,7 @@ import httpx
 import structlog
 
 from app.core.config import settings
+from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
 
@@ -69,7 +70,7 @@ class GitHubProvider(OAuthProvider):
         return f"{self.AUTHORIZE_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str, redirect_uri: str) -> str:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             resp = await client.post(
                 self.TOKEN_URL,
                 headers={"Accept": "application/json"},
@@ -94,7 +95,7 @@ class GitHubProvider(OAuthProvider):
             "Authorization": f"Bearer {access_token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             user_resp = await client.get(self.USER_URL, headers=headers)
             if user_resp.status_code != 200:
                 raise ProviderError(f"GitHub /user failed: {user_resp.status_code}")
@@ -145,7 +146,7 @@ class MicrosoftProvider(OAuthProvider):
         return f"{self._authorize_url}?{urlencode(params)}"
 
     async def exchange_code(self, code: str, redirect_uri: str) -> str:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             resp = await client.post(
                 self._token_url,
                 data={
@@ -166,7 +167,7 @@ class MicrosoftProvider(OAuthProvider):
             return token
 
     async def fetch_user(self, access_token: str) -> UserInfo:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             resp = await client.get(
                 self.USER_URL,
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -197,7 +198,7 @@ class OIDCProvider(OAuthProvider):
         if self._discovery is not None:
             return self._discovery
         url = f"{self._issuer}/.well-known/openid-configuration"
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
                 raise ProviderError(f"OIDC discovery failed: {url} {resp.status_code}")
@@ -220,7 +221,7 @@ class OIDCProvider(OAuthProvider):
 
     async def exchange_code(self, code: str, redirect_uri: str) -> str:
         meta = await self._discover()
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             resp = await client.post(
                 meta["token_endpoint"],
                 data={
@@ -244,7 +245,7 @@ class OIDCProvider(OAuthProvider):
         userinfo_url = meta.get("userinfo_endpoint")
         if not userinfo_url:
             raise ProviderError("OIDC discovery missing userinfo_endpoint")
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=get_http_verify()) as client:
             resp = await client.get(
                 userinfo_url,
                 headers={"Authorization": f"Bearer {access_token}"},

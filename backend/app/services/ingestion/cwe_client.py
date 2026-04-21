@@ -7,6 +7,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
 
@@ -39,6 +40,7 @@ class CWEClient:
                 "User-Agent": settings.ingestion_user_agent,
                 "Accept": "application/json",
             },
+            verify=get_http_verify(),
         )
         # Be respectful to free API - configurable rate limit (default 1 req/sec)
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.cwe_rate_limit_seconds)

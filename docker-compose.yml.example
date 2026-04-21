@@ -13,6 +13,9 @@ services:
         condition: service_healthy
       opensearch:
         condition: service_healthy
+    # Custom CA
+    # volumes:
+    #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro
 
   frontend:
     image: git.nohub.lol/rk/hecate-frontend:latest
@@ -61,6 +64,9 @@ services:
       resources:
         limits:
           memory: 12G
+    # Custom CA
+    # volumes:
+    #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro
 
   apprise:
     image: caronc/apprise:latest
