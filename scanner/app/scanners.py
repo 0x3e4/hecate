@@ -14,6 +14,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,12 @@ from app.hecate_analyzer import run_analysis
 from app.malware_detector import run_detection
 from app.provenance import check_provenance_batch
 from app.models import ScannerResult
+
+# host -> (user, token); populated by setup_auth() and consumed by
+# _git_auth_args_for() so git clone/ls-remote can inject Basic auth
+# directly via -c http.extraHeader (bypassing WWW-Authenticate negotiation
+# that some servers — notably Azure DevOps Server — handle poorly).
+_GIT_AUTH_MAP: dict[str, tuple[str, str]] = {}
 
 
 def setup_auth(auth_entries: str) -> None:
@@ -37,6 +44,7 @@ def setup_auth(auth_entries: str) -> None:
     """
     docker_auths: dict[str, dict[str, str]] = {}
     git_credentials: list[str] = []
+    _GIT_AUTH_MAP.clear()
 
     for entry in auth_entries.split(","):
         entry = entry.strip()
@@ -48,11 +56,16 @@ def setup_auth(auth_entries: str) -> None:
             host, user, token = parts
             encoded = base64.b64encode(f"{user}:{token}".encode()).decode()
             git_credentials.append(f"https://{user}:{token}@{host}")
+            _GIT_AUTH_MAP[host] = (user, token)
         elif len(parts) == 2:
-            # host:token — token as username (e.g. Gitea, GitHub)
+            # host:token — registry accepts token as username (docker side).
+            # Git side uses PersonalAccessToken as the Basic-auth username:
+            # accepted by ADO Server, Gitea, and GitHub PATs.
             host, token = parts
             encoded = base64.b64encode(f"{token}:".encode()).decode()
-            git_credentials.append(f"https://oauth2:{token}@{host}")
+            git_user = "PersonalAccessToken"
+            git_credentials.append(f"https://{git_user}:{token}@{host}")
+            _GIT_AUTH_MAP[host] = (git_user, token)
         else:
             continue
 
@@ -172,10 +185,29 @@ async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, in
     return stdout.decode(errors="replace"), stderr.decode(errors="replace"), process.returncode or 0
 
 
+def _git_auth_args_for(url: str) -> list[str]:
+    """Return ``-c http.extraHeader=...`` args forcing Basic auth for *url*'s host.
+
+    Returns ``[]`` when no SCANNER_AUTH entry matches, so public repos continue
+    to clone anonymously. Embedding the header here sidesteps the credential-
+    store helper, which ADO Server's WWW-Authenticate negotiation can defeat.
+    """
+    host = urlparse(url).hostname
+    if not host:
+        return []
+    entry = _GIT_AUTH_MAP.get(host)
+    if not entry:
+        return []
+    user, token = entry
+    b64 = base64.b64encode(f"{user}:{token}".encode()).decode()
+    return ["-c", f"http.extraHeader=Authorization: Basic {b64}"]
+
+
 async def _clone_repo(url: str) -> str:
     """Clone a git repository to a temporary directory. Returns the path."""
     tmp_dir = tempfile.mkdtemp(prefix="hecate-scan-")
-    _, stderr, rc = await _run_command(["git", "clone", "--depth", "1", url, tmp_dir], timeout=120)
+    cmd = ["git", *_git_auth_args_for(url), "clone", "--depth", "1", url, tmp_dir]
+    _, stderr, rc = await _run_command(cmd, timeout=120)
     if rc != 0:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise RuntimeError(f"Failed to clone {url}: {stderr}")
@@ -192,7 +224,8 @@ async def get_git_commit_sha(repo_dir: str) -> str | None:
 
 async def get_remote_commit_sha(url: str) -> str | None:
     """Get HEAD commit SHA from a remote repo via ls-remote (no clone needed)."""
-    stdout, _, rc = await _run_command(["git", "ls-remote", url, "HEAD"], timeout=30)
+    cmd = ["git", *_git_auth_args_for(url), "ls-remote", url, "HEAD"]
+    stdout, _, rc = await _run_command(cmd, timeout=30)
     if rc == 0 and stdout.strip():
         # Output format: "<sha>\tHEAD"
         return stdout.strip().split()[0]

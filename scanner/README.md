@@ -357,7 +357,9 @@ SCANNER_AUTH=git.nohub.lol:token1,ghcr.io:ghp_abc
 
 Der Sidecar konfiguriert beim Start:
 - `~/.docker/config.json` — für Container-Image-Pulls (Trivy, Grype, Syft)
-- `~/.git-credentials` — für HTTPS-Clones privater Repositories
+- `~/.git-credentials` — für HTTPS-Clones privater Repositories (Fallback)
+
+Für `git clone` / `ls-remote` injiziert der Scanner die Credentials zusätzlich als `-c http.extraHeader=Authorization: Basic <b64>`-Argument direkt in den `git`-Aufruf. Das umgeht die WWW-Authenticate-Aushandlung, die vor allem bei **Azure DevOps Server** (URL-Muster `/<Collection>/<Project>/_git/<Repo>`) den Credential-Helper an git vorbeiführen und dann mit "Authentication failed" scheitern lässt. Für die 2-teilige `host:token`-Form wird `PersonalAccessToken` als Basic-Auth-User verwendet — kompatibel mit ADO Server, Gitea und GitHub PATs. Wer einen spezifischen User braucht (z. B. Docker Hub), nutzt die 3-teilige `host:user:token`-Form.
 
 **Wichtig:** Kein Docker-Socket-Mounting. Die Scanner-Tools ziehen Container-Images direkt über die Registry-API.
 

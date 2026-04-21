@@ -48,6 +48,12 @@ RUN poetry config virtualenvs.create false \
 # Copy application
 COPY app ./app
 
+# Install entrypoint that extends the system CA store with a user-supplied
+# PEM (via HTTP_CA_BUNDLE) so git and the Go-based scanners trust it too.
+COPY entrypoint.sh /scanner/entrypoint.sh
+RUN chmod +x /scanner/entrypoint.sh
+
 EXPOSE 8080
 
+ENTRYPOINT ["/scanner/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
