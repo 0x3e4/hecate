@@ -11,6 +11,7 @@ import structlog
 from app.core.config import settings
 from app.db.mongo import get_database
 from app.repositories.notification_rule_repository import NotificationRuleRepository
+from app.services.http.ssl import get_http_verify
 from app.schemas.notification import (
     NotificationRuleCreate,
     NotificationRuleResponse,
@@ -97,7 +98,7 @@ class NotificationService:
 
         url = f"{self._base_url}/notify/"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, verify=get_http_verify()) as client:
                 response = await client.post(url, json=payload)
                 if response.status_code < 300:
                     log.info("notification.sent", title=title, tag=tag_value)
@@ -143,7 +144,7 @@ class NotificationService:
 
         url = f"{self._base_url}/status"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, verify=get_http_verify()) as client:
                 response = await client.get(url)
                 reachable = response.status_code < 400
         except Exception:

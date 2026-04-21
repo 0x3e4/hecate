@@ -9,6 +9,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
 
@@ -36,6 +37,7 @@ class NVDClient:
             base_url=settings.nvd_base_url.rstrip("/"),
             timeout=settings.euvd_timeout_seconds,
             headers=headers,
+            verify=get_http_verify(),
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.nvd_rate_limit_seconds)
         configured_page_size = page_size or settings.nvd_page_size

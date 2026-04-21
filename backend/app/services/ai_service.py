@@ -26,6 +26,7 @@ from app.schemas.ai import (
 )
 from app.schemas.vulnerability import VulnerabilityDetail
 from app.services.cwe_service import get_cwe_service
+from app.services.http.ssl import get_http_verify
 
 AI_PROVIDER_LABELS: dict[AIProviderLiteral, str] = {
     "openai": "OpenAI GPT",
@@ -210,7 +211,7 @@ class AIClient:
         if self._client is not None:
             yield self._client
             return
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with httpx.AsyncClient(timeout=self._timeout, verify=get_http_verify()) as client:
             yield client
 
     async def _call_openai(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int] | None]:
@@ -1529,7 +1530,7 @@ def get_ai_client() -> AIClient:
         request_payload.setdefault("model", settings.openai_model or "gpt-4o-mini")
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, verify=get_http_verify()) as client:
                 response = await client.post(endpoint, headers=headers, json=request_payload)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

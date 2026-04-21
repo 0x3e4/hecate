@@ -13,6 +13,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
 
@@ -70,12 +71,14 @@ class OsvClient:
             timeout=timeout,
             headers={"User-Agent": settings.ingestion_user_agent},
             follow_redirects=True,
+            verify=get_http_verify(),
         )
         # Separate long-timeout client for large ZIP downloads
         self._download_client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0, connect=30.0),
             headers={"User-Agent": settings.ingestion_user_agent},
             follow_redirects=True,
+            verify=get_http_verify(),
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.osv_rate_limit_seconds)
 

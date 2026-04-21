@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.parse import quote
@@ -29,6 +30,7 @@ log = logging.getLogger(__name__)
 
 _TIMEOUT = 5.0  # seconds per request
 _CONCURRENCY = 10  # max concurrent registry requests
+_CA_BUNDLE = os.environ.get("HTTP_CA_BUNDLE") or None
 
 
 @dataclass
@@ -390,7 +392,7 @@ async def check_provenance_batch(
         cache[cache_key] = result
         comp["provenance"] = result.to_dict()
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True, verify=_CA_BUNDLE or True) as client:
         await asyncio.gather(
             *[_check_one(client, comp) for comp in components],
             return_exceptions=True,
