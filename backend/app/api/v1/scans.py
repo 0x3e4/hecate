@@ -979,18 +979,29 @@ def _map_finding(doc: dict[str, Any]) -> ScanFindingResponse:
 
 
 def _map_sbom_component(doc: dict[str, Any]) -> SbomComponentResponse:
+    name = doc.get("name", "")
+    version = doc.get("version", "")
+    # Consolidated rows don't have a mongo _id; synthesize a stable react key.
+    raw_id = doc.get("_id")
+    row_id = str(raw_id) if raw_id else f"{name}::{version}"
+    # Consolidated rows carry `file_paths` (list); raw rows carry `file_path` (str).
+    file_path = doc.get("file_path")
+    if not file_path:
+        file_paths = doc.get("file_paths") or []
+        if file_paths:
+            file_path = file_paths[0]
     return SbomComponentResponse(
-        id=str(doc.get("_id", "")),
+        id=row_id,
         scan_id=str(doc.get("scan_id", "")),
         target_id=doc.get("target_id", ""),
-        name=doc.get("name", ""),
-        version=doc.get("version", ""),
+        name=name,
+        version=version,
         type=doc.get("type", ""),
         purl=doc.get("purl"),
         cpe=doc.get("cpe"),
         licenses=doc.get("licenses", []),
         supplier=doc.get("supplier"),
-        file_path=doc.get("file_path"),
+        file_path=file_path,
         provenance_verified=doc.get("provenance_verified"),
         provenance_source_repo=doc.get("provenance_source_repo"),
         provenance_build_system=doc.get("provenance_build_system"),

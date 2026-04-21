@@ -124,6 +124,49 @@ class ScanService:
                 count += 1
         return count
 
+    async def backfill_sbom_component_count_v2(self) -> int:
+        """Recompute sbom_component_count as distinct (name, version) for legacy scans.
+
+        Prior to sbom_count_version=2 the value was len(all_components) — raw rows,
+        inflated by cross-scanner duplicates. This backfill reconciles it with the
+        consolidated aggregation used everywhere on the read path.
+        """
+        from app.db.mongo import get_database
+
+        db = await get_database()
+        cursor = db[settings.mongo_scans_collection].find(
+            {
+                "status": "completed",
+                "$or": [
+                    {"sbom_count_version": {"$exists": False}},
+                    {"sbom_count_version": {"$lt": 2}},
+                ],
+            },
+            {"_id": 1, "sbom_component_count": 1},
+        )
+        updated = 0
+        async for scan_doc in cursor:
+            scan_id = str(scan_doc["_id"])
+            try:
+                deduped = await self.sbom_repo.count_by_scan_consolidated(scan_id)
+                raw = scan_doc.get("sbom_component_count") or 0
+                await db[settings.mongo_scans_collection].update_one(
+                    {"_id": scan_doc["_id"]},
+                    {"$set": {
+                        "sbom_component_count": deduped,
+                        "sbom_row_count": raw,
+                        "sbom_count_version": 2,
+                    }},
+                )
+                updated += 1
+            except Exception:
+                log.warning(
+                    "scan_service.backfill_sbom_count_failed",
+                    scan_id=scan_id,
+                    exc_info=True,
+                )
+        return updated
+
     async def _clear_running_state(self, target_id: str, completed_scan_id: str) -> None:
         """Clear running state on target, or point to another running scan if one exists."""
         try:
@@ -466,6 +509,7 @@ class ScanService:
 
         all_findings: list[ScanFindingDocument] = []
         all_components: list[ScanSbomComponentDocument] = []
+        unique_component_keys: set[tuple[str, str]] = set()
         errors: list[str] = []
         scan_metadata: dict[str, Any] = {}
 
@@ -541,13 +585,15 @@ class ScanService:
                 if components:
                     await self.sbom_repo.bulk_insert(components)
                     all_components.extend(components)
+                    for comp in components:
+                        unique_component_keys.add((comp.name, comp.version))
 
                 # Update running summary so polling sees incremental progress
                 current_summary = self._compute_summary(all_findings)
                 await self.scan_repo.update_status(
                     scan_id, "running",
                     summary=current_summary,
-                    sbom_component_count=len(all_components),
+                    sbom_component_count=len(unique_component_keys),
                 )
 
         # Run all scanners concurrently — each stores results as it finishes
@@ -571,16 +617,22 @@ class ScanService:
         error_text = "; ".join(errors) if errors else None
         status = "completed" if not errors or all_findings or all_components else "failed"
 
+        sbom_component_count = len(unique_component_keys)
         await self.scan_repo.update_status(
             scan_id, status,
             finished_at=finished_at,
             duration_seconds=duration,
             summary=final_summary,
-            sbom_component_count=len(all_components),
+            sbom_component_count=sbom_component_count,
             error=error_text,
         )
         # Persist scanner-reported metadata (commit SHA, image digest)
-        meta_update: dict[str, Any] = {"summary_version": 4, "severity_overridden": True}
+        meta_update: dict[str, Any] = {
+            "summary_version": 4,
+            "severity_overridden": True,
+            "sbom_row_count": len(all_components),
+            "sbom_count_version": 2,
+        }
         if scan_metadata.get("commit_sha"):
             meta_update["commit_sha"] = scan_metadata["commit_sha"]
         if scan_metadata.get("image_digest"):
@@ -660,7 +712,8 @@ class ScanService:
             scan_id=scan_id,
             target=target,
             findings=len(all_findings),
-            sbom_components=len(all_components),
+            sbom_components=sbom_component_count,
+            sbom_rows=len(all_components),
             duration_seconds=round(duration, 2),
         )
 
@@ -673,7 +726,7 @@ class ScanService:
             result={
                 "scan_id": scan_id,
                 "findings_count": len(all_findings),
-                "sbom_component_count": len(all_components),
+                "sbom_component_count": sbom_component_count,
                 "summary": final_summary.model_dump(),
             },
             error=error_text,
@@ -783,7 +836,7 @@ class ScanService:
                 commit_sha=scan_metadata.get("commit_sha"),
                 image_ref=scan_metadata.get("image_digest"),
                 error=error_text,
-                sbom_component_count=len(all_components),
+                sbom_component_count=sbom_component_count,
                 top_findings=top_findings,
                 alerts_summary={"total": len(alert_findings), **alerts_sev},
                 sast_summary={"total": len(sast_findings), **sast_sev},

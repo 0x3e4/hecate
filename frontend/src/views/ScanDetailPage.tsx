@@ -406,6 +406,8 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
   return results;
 }
 
+const SBOM_PAGE_SIZE = 500;
+
 export const ScanDetailPage = () => {
   const { scanId } = useParams<{ scanId: string }>();
   const { t } = useI18n();
@@ -414,6 +416,8 @@ export const ScanDetailPage = () => {
   const [findingsTotal, setFindingsTotal] = useState(0);
   const [sbomComponents, setSbomComponents] = useState<SbomComponent[]>([]);
   const [sbomTotal, setSbomTotal] = useState(0);
+  const [sbomFetched, setSbomFetched] = useState(false);
+  const [sbomLoadingMore, setSbomLoadingMore] = useState(false);
   const [tab, setTab] = useState<Tab>("findings");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -568,34 +572,11 @@ export const ScanDetailPage = () => {
     return counts;
   }, [vulnFindings]);
 
-  /** Deduplicate SBOM components: merge rows with same name+version */
-  const dedupedSbom = useMemo(() => {
-    const map = new Map<string, SbomComponent>();
-    for (const c of sbomComponents) {
-      const key = `${c.name}::${c.version}`;
-      const existing = map.get(key);
-      if (!existing) {
-        map.set(key, { ...c });
-      } else {
-        // Prefer a more specific type over "library"
-        if (existing.type === "library" && c.type && c.type !== "library") {
-          existing.type = c.type;
-        }
-        // Prefer purl if missing
-        if (!existing.purl && c.purl) existing.purl = c.purl;
-        // Merge licenses
-        const allLicenses = new Set([...existing.licenses, ...c.licenses]);
-        existing.licenses = [...allLicenses];
-      }
-    }
-    return [...map.values()];
-  }, [sbomComponents]);
-
   const sbomStats = useMemo(() => {
     const ecosystems: Record<string, number> = {};
     const licenses: Record<string, number> = {};
     const types: Record<string, number> = {};
-    for (const c of dedupedSbom) {
+    for (const c of sbomComponents) {
       // Ecosystem from PURL
       const ecoMatch = c.purl?.match(/^pkg:([^/]+)\//);
       const eco = ecoMatch ? ecoMatch[1] : "unknown";
@@ -615,13 +596,13 @@ export const ScanDetailPage = () => {
       licenses: sortDesc(licenses),
       types: sortDesc(types),
     };
-  }, [dedupedSbom]);
+  }, [sbomComponents]);
 
-  const hasAnyProvenance = useMemo(() => dedupedSbom.some(c => c.provenanceVerified != null), [dedupedSbom]);
-  const hasAnySupplier = useMemo(() => dedupedSbom.some(c => !!c.supplier), [dedupedSbom]);
+  const hasAnyProvenance = useMemo(() => sbomComponents.some(c => c.provenanceVerified != null), [sbomComponents]);
+  const hasAnySupplier = useMemo(() => sbomComponents.some(c => !!c.supplier), [sbomComponents]);
 
   const filteredSortedSbom = useMemo(() => {
-    let items = dedupedSbom;
+    let items = sbomComponents;
     if (sbomFilterEco) {
       items = items.filter(c => {
         const m = c.purl?.match(/^pkg:([^/]+)\//);
@@ -658,7 +639,7 @@ export const ScanDetailPage = () => {
       return av.localeCompare(bv) * dir;
     });
     return sorted;
-  }, [dedupedSbom, sbomSort, sbomFilterEco, sbomFilterLicense, sbomFilterType, sbomFilterProvenance]);
+  }, [sbomComponents, sbomSort, sbomFilterEco, sbomFilterLicense, sbomFilterType, sbomFilterProvenance]);
 
   const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json") => {
     if (!scanId || sbomExporting) return;
@@ -710,14 +691,16 @@ export const ScanDetailPage = () => {
 
       // Load findings+sbom on initial load, while running (incremental results), or when just finished
       if (isInitial || isRunning || justFinished) {
+        const trimmedSearch = sbomSearch.trim();
         const [findingsData, sbomData] = await Promise.all([
           fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed }),
-          fetchScanSbom(scanId, { search: sbomSearch || undefined, limit: 500 }),
+          fetchScanSbom(scanId, { search: trimmedSearch || undefined, limit: SBOM_PAGE_SIZE }),
         ]);
         setFindings(findingsData.items);
         setFindingsTotal(findingsData.total);
         setSbomComponents(sbomData.items);
         setSbomTotal(sbomData.total);
+        setSbomFetched(true);
       }
     } catch (err) {
       console.error("Failed to load scan", err);
@@ -755,11 +738,32 @@ export const ScanDetailPage = () => {
   // Reload SBOM when search changes (findings are filtered client-side)
   useEffect(() => {
     if (!scanId || loading) return;
-    fetchScanSbom(scanId, { search: sbomSearch || undefined, limit: 500 }).then(data => {
+    const trimmedSearch = sbomSearch.trim();
+    fetchScanSbom(scanId, { search: trimmedSearch || undefined, limit: SBOM_PAGE_SIZE }).then(data => {
       setSbomComponents(data.items);
       setSbomTotal(data.total);
+      setSbomFetched(true);
     }).catch(err => console.error("Failed to load SBOM", err));
   }, [sbomSearch]);
+
+  const handleSbomLoadMore = useCallback(async () => {
+    if (!scanId || sbomLoadingMore) return;
+    setSbomLoadingMore(true);
+    try {
+      const trimmedSearch = sbomSearch.trim();
+      const data = await fetchScanSbom(scanId, {
+        search: trimmedSearch || undefined,
+        limit: SBOM_PAGE_SIZE,
+        offset: sbomComponents.length,
+      });
+      setSbomComponents(prev => [...prev, ...data.items]);
+      setSbomTotal(data.total);
+    } catch (err) {
+      console.error("Failed to load more SBOM components", err);
+    } finally {
+      setSbomLoadingMore(false);
+    }
+  }, [scanId, sbomSearch, sbomComponents.length, sbomLoadingMore]);
 
   // Load license compliance data on tab switch
   useEffect(() => {
@@ -929,7 +933,7 @@ export const ScanDetailPage = () => {
             style={tabStyle(tab === "sbom")}
           >
             SBOM
-            <TabBadge count={dedupedSbom.length || scan.sbomComponentCount || sbomTotal || 0} />
+            <TabBadge count={sbomFetched ? sbomTotal : (scan.sbomComponentCount ?? 0)} />
           </button>
           <button
             type="button"
@@ -1661,15 +1665,16 @@ export const ScanDetailPage = () => {
                 </select>
               )}
               <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
-                {filteredSortedSbom.length !== dedupedSbom.length
-                  ? `${filteredSortedSbom.length} / ${dedupedSbom.length}`
-                  : dedupedSbom.length}{" "}
+                {filteredSortedSbom.length !== sbomComponents.length
+                  ? `${filteredSortedSbom.length} / ${sbomComponents.length}`
+                  : sbomComponents.length}
+                {sbomComponents.length < sbomTotal ? ` / ${sbomTotal}` : ""}{" "}
                 {t("components", "Komponenten")}
               </span>
               <div style={{ display: "flex", gap: "0.375rem", marginLeft: "auto" }}>
                 <button
                   onClick={() => void handleSbomExport("cyclonedx-json")}
-                  disabled={!!sbomExporting || dedupedSbom.length === 0}
+                  disabled={!!sbomExporting || sbomComponents.length === 0}
                   style={{
                     padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: sbomExporting ? "wait" : "pointer",
                     background: "rgba(105,219,124,0.12)", color: "#69db7c", border: "1px solid rgba(105,219,124,0.3)",
@@ -1679,7 +1684,7 @@ export const ScanDetailPage = () => {
                 </button>
                 <button
                   onClick={() => void handleSbomExport("spdx-json")}
-                  disabled={!!sbomExporting || dedupedSbom.length === 0}
+                  disabled={!!sbomExporting || sbomComponents.length === 0}
                   style={{
                     padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: sbomExporting ? "wait" : "pointer",
                     background: "rgba(139,148,252,0.12)", color: "#8b94fc", border: "1px solid rgba(139,148,252,0.3)",
@@ -1716,7 +1721,7 @@ export const ScanDetailPage = () => {
               </div>
             </div>
 
-            {dedupedSbom.length > 0 && (
+            {sbomComponents.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
                 {([
                   { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b", filterKey: "eco" as const, activeFilter: sbomFilterEco },
@@ -1769,7 +1774,7 @@ export const ScanDetailPage = () => {
               </div>
             )}
 
-            {dedupedSbom.length === 0 ? (
+            {sbomComponents.length === 0 ? (
               <p className="muted">{t("No SBOM components.", "Keine SBOM-Komponenten.")}</p>
             ) : (
               <div style={{ overflowX: "auto" }}>
@@ -1892,6 +1897,28 @@ export const ScanDetailPage = () => {
                     })}
                   </tbody>
                 </table>
+                {sbomComponents.length < sbomTotal && (
+                  <div style={{ marginTop: "0.75rem", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() => void handleSbomLoadMore()}
+                      disabled={sbomLoadingMore}
+                      style={{
+                        padding: "0.4rem 1rem", borderRadius: "6px", fontSize: "0.8125rem", fontWeight: 600,
+                        cursor: sbomLoadingMore ? "wait" : "pointer",
+                        background: "rgba(139,148,252,0.12)", color: "#8b94fc",
+                        border: "1px solid rgba(139,148,252,0.3)",
+                      }}
+                    >
+                      {sbomLoadingMore
+                        ? t("Loading...", "Lädt...")
+                        : t(
+                            `Load more (${sbomComponents.length} / ${sbomTotal})`,
+                            `Mehr laden (${sbomComponents.length} / ${sbomTotal})`,
+                          )}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>

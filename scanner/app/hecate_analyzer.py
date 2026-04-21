@@ -283,6 +283,279 @@ def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# package-lock.json (npm v7+ and legacy v1)
+# ---------------------------------------------------------------------------
+
+
+def _npm_name_from_lockfile_path(path_key: str) -> str:
+    """Convert a package-lock.json v7+ `packages` key to an npm package name.
+
+    Keys look like "node_modules/@scope/name" or "node_modules/name" or
+    "node_modules/foo/node_modules/bar" (nested). The effective name is the
+    segment after the LAST `node_modules/`.
+    """
+    marker = "node_modules/"
+    idx = path_key.rfind(marker)
+    if idx < 0:
+        return ""
+    return path_key[idx + len(marker):]
+
+
+def parse_package_lock_json(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved dependencies from package-lock.json (npm v1/v2/v3)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for pl_path in root.rglob("package-lock.json"):
+        if _should_skip(pl_path):
+            continue
+        try:
+            data = json.loads(pl_path.read_text(errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+
+        rel_path = str(pl_path.relative_to(root))
+        seen: set[tuple[str, str]] = set()
+
+        # Modern format (lockfileVersion >= 2): top-level `packages` dict.
+        packages = data.get("packages")
+        if isinstance(packages, dict):
+            for key, entry in packages.items():
+                if not isinstance(entry, dict) or not key:
+                    continue
+                # Skip the root project entry (key == "")
+                name = entry.get("name") if isinstance(entry.get("name"), str) else _npm_name_from_lockfile_path(key)
+                version = entry.get("version")
+                if not name or not isinstance(version, str) or not version:
+                    continue
+                if (name, version) in seen:
+                    continue
+                seen.add((name, version))
+                components.append({
+                    "type": "library",
+                    "name": name,
+                    "version": version,
+                    "purl": f"pkg:npm/{name}@{version}",
+                    "properties": [{"name": "hecate:source-file", "value": rel_path}],
+                })
+
+        # Legacy format (lockfileVersion 1): recursive `dependencies` tree.
+        def _walk_legacy(deps: dict[str, Any]) -> None:
+            for name, entry in deps.items():
+                if not isinstance(name, str) or not isinstance(entry, dict):
+                    continue
+                version = entry.get("version")
+                if isinstance(version, str) and version and (name, version) not in seen:
+                    seen.add((name, version))
+                    components.append({
+                        "type": "library",
+                        "name": name,
+                        "version": version,
+                        "purl": f"pkg:npm/{name}@{version}",
+                        "properties": [{"name": "hecate:source-file", "value": rel_path}],
+                    })
+                nested = entry.get("dependencies")
+                if isinstance(nested, dict):
+                    _walk_legacy(nested)
+
+        legacy = data.get("dependencies")
+        if isinstance(legacy, dict):
+            _walk_legacy(legacy)
+
+    return components
+
+
+# ---------------------------------------------------------------------------
+# yarn.lock (classic v1 text format + Berry YAML)
+# ---------------------------------------------------------------------------
+
+
+_YARN_HEADER_RE = re.compile(r'^(?P<spec>\S.*?)\s*:\s*$')
+_YARN_VERSION_RE = re.compile(r'^\s+version\s+"?([^"\s]+)"?\s*$')
+_YARN_RESOLVED_RE = re.compile(r'^\s+resolved\s+"?[^"]*"?\s*$')
+
+
+def _yarn_name_from_spec(spec: str) -> str:
+    """Pull the package name out of a yarn v1 lock spec header.
+
+    Spec examples:
+      "lodash@^4.17.21":
+      "@babel/core@^7.12.3, @babel/core@^7.13.0":
+      foo@1.0.0:
+    """
+    spec = spec.strip().strip('"')
+    # Take the first comma-separated entry
+    first = spec.split(",")[0].strip().strip('"')
+    # Scoped package: @scope/name@range
+    if first.startswith("@"):
+        at = first.find("@", 1)
+        return first[:at] if at > 0 else first
+    at = first.find("@")
+    return first[:at] if at > 0 else first
+
+
+def parse_yarn_lock(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved dependencies from yarn.lock (v1 text + Berry YAML)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for yl_path in root.rglob("yarn.lock"):
+        if _should_skip(yl_path):
+            continue
+        try:
+            content = yl_path.read_text(errors="replace")
+        except OSError:
+            continue
+
+        rel_path = str(yl_path.relative_to(root))
+        seen: set[tuple[str, str]] = set()
+
+        # Try Yarn Berry (YAML) first — starts with "__metadata:" map.
+        if "__metadata:" in content[:200]:
+            try:
+                data = yaml.safe_load(content)
+                if isinstance(data, dict):
+                    for spec, entry in data.items():
+                        if spec == "__metadata" or not isinstance(entry, dict):
+                            continue
+                        name = _yarn_name_from_spec(str(spec))
+                        version = entry.get("version")
+                        if name and isinstance(version, str) and version and (name, version) not in seen:
+                            seen.add((name, version))
+                            components.append({
+                                "type": "library",
+                                "name": name,
+                                "version": version,
+                                "purl": f"pkg:npm/{name}@{version}",
+                                "properties": [{"name": "hecate:source-file", "value": rel_path}],
+                            })
+                    continue
+            except yaml.YAMLError:
+                pass  # fall through to classic parser
+
+        # Classic v1 parser — block header followed by indented `version "x.y.z"`.
+        current_spec: str | None = None
+        for raw in content.splitlines():
+            if not raw.strip() or raw.lstrip().startswith("#"):
+                continue
+            if not raw.startswith((" ", "\t")):
+                m = _YARN_HEADER_RE.match(raw)
+                current_spec = m.group("spec") if m else None
+            elif current_spec is not None:
+                vm = _YARN_VERSION_RE.match(raw)
+                if vm:
+                    name = _yarn_name_from_spec(current_spec)
+                    version = vm.group(1)
+                    if name and version and (name, version) not in seen:
+                        seen.add((name, version))
+                        components.append({
+                            "type": "library",
+                            "name": name,
+                            "version": version,
+                            "purl": f"pkg:npm/{name}@{version}",
+                            "properties": [{"name": "hecate:source-file", "value": rel_path}],
+                        })
+                    current_spec = None  # consume until next header
+
+    return components
+
+
+# ---------------------------------------------------------------------------
+# pnpm-lock.yaml
+# ---------------------------------------------------------------------------
+
+
+def _pnpm_name_and_version(key: str) -> tuple[str, str] | None:
+    """Parse a pnpm lockfile `packages` key into (name, version).
+
+    Key formats across pnpm versions:
+      /@babel/core@7.12.3(peer)        — v9+
+      /@babel/core/7.12.3               — v6
+      /lodash@4.17.21
+      /lodash/4.17.21
+    """
+    if not key.startswith("/"):
+        return None
+    body = key[1:]
+    # Strip peer-dep suffix "(peer-a@1,peer-b@2)" or "_peer@1"
+    paren = body.find("(")
+    if paren >= 0:
+        body = body[:paren]
+    underscore = body.find("_")
+    if underscore >= 0:
+        body = body[:underscore]
+
+    # Try the `name@version` split first (v9+)
+    if body.startswith("@"):
+        # @scope/name@version or @scope/name/version
+        at = body.find("@", 1)
+        slash = body.rfind("/")
+        if at > 0 and (slash < 0 or at > slash):
+            return body[:at], body[at + 1:]
+        if slash > 0:
+            return body[:slash], body[slash + 1:]
+        return None
+
+    at = body.find("@")
+    slash = body.rfind("/")
+    if at > 0 and (slash < 0 or at > slash):
+        return body[:at], body[at + 1:]
+    if slash > 0:
+        return body[:slash], body[slash + 1:]
+    return None
+
+
+def parse_pnpm_lock_yaml(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved dependencies from pnpm-lock.yaml."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for pl_path in root.rglob("pnpm-lock.yaml"):
+        if _should_skip(pl_path):
+            continue
+        try:
+            data = yaml.safe_load(pl_path.read_text(errors="replace"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(data, dict):
+            continue
+
+        rel_path = str(pl_path.relative_to(root))
+        seen: set[tuple[str, str]] = set()
+
+        packages = data.get("packages")
+        if isinstance(packages, dict):
+            for key, entry in packages.items():
+                if not isinstance(key, str):
+                    continue
+                # pnpm v9+ sometimes stores name/version inline on the entry
+                name, version = "", ""
+                if isinstance(entry, dict):
+                    nm = entry.get("name")
+                    ver = entry.get("version")
+                    if isinstance(nm, str) and isinstance(ver, str):
+                        name, version = nm, ver
+                if not name or not version:
+                    parsed = _pnpm_name_and_version(key)
+                    if parsed:
+                        name, version = parsed
+                if not name or not version or (name, version) in seen:
+                    continue
+                seen.add((name, version))
+                components.append({
+                    "type": "library",
+                    "name": name,
+                    "version": version,
+                    "purl": f"pkg:npm/{name}@{version}",
+                    "properties": [{"name": "hecate:source-file", "value": rel_path}],
+                })
+
+    return components
+
+
+# ---------------------------------------------------------------------------
 # Python: requirements.txt
 # ---------------------------------------------------------------------------
 
@@ -436,6 +709,117 @@ def parse_pipfile(source_dir: str) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# Python: Pipfile.lock (pipenv), poetry.lock, uv.lock
+# ---------------------------------------------------------------------------
+
+
+def parse_pipfile_lock(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved versions from Pipfile.lock (includes transitive deps)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for pl_path in root.rglob("Pipfile.lock"):
+        if _should_skip(pl_path):
+            continue
+        try:
+            data = json.loads(pl_path.read_text(errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        rel_path = str(pl_path.relative_to(root))
+        seen: set[tuple[str, str]] = set()
+        for section in ("default", "develop"):
+            deps = data.get(section)
+            if not isinstance(deps, dict):
+                continue
+            for dep_name, dep_entry in deps.items():
+                if not isinstance(dep_name, str) or not isinstance(dep_entry, dict):
+                    continue
+                version = dep_entry.get("version", "")
+                if isinstance(version, str) and version.startswith("=="):
+                    version = version[2:].strip()
+                if not version or not isinstance(version, str):
+                    continue
+                key = (dep_name.lower(), version)
+                if key in seen:
+                    continue
+                seen.add(key)
+                purl = f"pkg:pypi/{dep_name.lower()}@{version}"
+                components.append(_lib_component(dep_name, version, purl, rel_path))
+
+    return components
+
+
+def parse_poetry_lock(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved versions from poetry.lock (includes transitive deps)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for pl_path in root.rglob("poetry.lock"):
+        if _should_skip(pl_path):
+            continue
+        try:
+            data = tomllib.loads(pl_path.read_text(errors="replace"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        rel_path = str(pl_path.relative_to(root))
+        packages = data.get("package")
+        if not isinstance(packages, list):
+            continue
+        seen: set[tuple[str, str]] = set()
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            name = pkg.get("name")
+            version = pkg.get("version")
+            if not isinstance(name, str) or not isinstance(version, str) or not name or not version:
+                continue
+            key = (name.lower(), version)
+            if key in seen:
+                continue
+            seen.add(key)
+            purl = f"pkg:pypi/{name.lower()}@{version}"
+            components.append(_lib_component(name, version, purl, rel_path))
+
+    return components
+
+
+def parse_uv_lock(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved versions from uv.lock (astral-sh/uv, TOML; same shape as poetry.lock)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for ul_path in root.rglob("uv.lock"):
+        if _should_skip(ul_path):
+            continue
+        try:
+            data = tomllib.loads(ul_path.read_text(errors="replace"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        rel_path = str(ul_path.relative_to(root))
+        packages = data.get("package")
+        if not isinstance(packages, list):
+            continue
+        seen: set[tuple[str, str]] = set()
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            name = pkg.get("name")
+            version = pkg.get("version")
+            if not isinstance(name, str) or not isinstance(version, str) or not name or not version:
+                continue
+            key = (name.lower(), version)
+            if key in seen:
+                continue
+            seen.add(key)
+            purl = f"pkg:pypi/{name.lower()}@{version}"
+            components.append(_lib_component(name, version, purl, rel_path))
+
+    return components
+
+
+# ---------------------------------------------------------------------------
 # Python: setup.cfg
 # ---------------------------------------------------------------------------
 
@@ -542,6 +926,38 @@ def parse_cargo_toml(source_dir: str) -> list[dict[str, Any]]:
                         version = _extract_version(v)
                 purl = f"pkg:cargo/{crate_name}@{version}" if version else f"pkg:cargo/{crate_name}"
                 components.append(_lib_component(crate_name, version, purl, rel_path))
+
+    return components
+
+
+def parse_cargo_lock(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved crate versions from Cargo.lock (includes transitive deps)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for cl_path in root.rglob("Cargo.lock"):
+        if _should_skip(cl_path):
+            continue
+        try:
+            data = tomllib.loads(cl_path.read_text(errors="replace"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        rel_path = str(cl_path.relative_to(root))
+        packages = data.get("package")
+        if not isinstance(packages, list):
+            continue
+        seen: set[tuple[str, str]] = set()
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            name = pkg.get("name")
+            version = pkg.get("version")
+            if not isinstance(name, str) or not isinstance(version, str) or not name or not version:
+                continue
+            if (name, version) in seen:
+                continue
+            seen.add((name, version))
+            components.append(_lib_component(name, version, f"pkg:cargo/{name}@{version}", rel_path))
 
     return components
 
@@ -739,32 +1155,205 @@ def parse_gradle(source_dir: str) -> list[dict[str, Any]]:
     return components
 
 
+_GRADLE_LOCK_RE = re.compile(r"^([^:\s#]+):([^:\s]+):([^=\s]+)=", re.MULTILINE)
+
+
+def parse_gradle_lockfile(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved Maven coordinates from gradle.lockfile (Gradle dependency locking)."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for gl_path in root.rglob("gradle.lockfile"):
+        if _should_skip(gl_path):
+            continue
+        try:
+            content = gl_path.read_text(errors="replace")
+        except OSError:
+            continue
+        rel_path = str(gl_path.relative_to(root))
+        seen: set[tuple[str, str]] = set()
+        for m in _GRADLE_LOCK_RE.finditer(content):
+            group_id, artifact_id, version = m.group(1), m.group(2), m.group(3)
+            key = (f"{group_id}:{artifact_id}", version)
+            if key in seen:
+                continue
+            seen.add(key)
+            purl = f"pkg:maven/{group_id}/{artifact_id}@{version}"
+            components.append(_lib_component(f"{group_id}:{artifact_id}", version, purl, rel_path))
+
+    return components
+
+
+# ---------------------------------------------------------------------------
+# Go: go.sum (transitive resolution; go.mod has direct deps)
+# ---------------------------------------------------------------------------
+
+_GOSUM_LINE_RE = re.compile(r"^(\S+)\s+(v\S+?)(?:/go\.mod)?\s+h1:\S+", re.MULTILINE)
+
+
+def parse_go_sum(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved module versions from go.sum.
+
+    Each module appears twice in go.sum (once as the zip, once as `/go.mod`).
+    We deduplicate on (module, version).
+    """
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for gs_path in root.rglob("go.sum"):
+        if _should_skip(gs_path):
+            continue
+        try:
+            content = gs_path.read_text(errors="replace")
+        except OSError:
+            continue
+        rel_path = str(gs_path.relative_to(root))
+        seen: set[tuple[str, str]] = set()
+        for m in _GOSUM_LINE_RE.finditer(content):
+            mod_path, version = m.group(1), m.group(2)
+            if (mod_path, version) in seen:
+                continue
+            seen.add((mod_path, version))
+            purl = f"pkg:golang/{mod_path}@{version}"
+            components.append(_lib_component(mod_path, version, purl, rel_path))
+
+    return components
+
+
+# ---------------------------------------------------------------------------
+# npm: bun.lock (Bun's text lockfile; bun.lockb is binary, handled by syft)
+# ---------------------------------------------------------------------------
+
+
+def parse_bun_lock(source_dir: str) -> list[dict[str, Any]]:
+    """Extract resolved npm versions from bun.lock (Bun's text lockfile, JSONC format).
+
+    bun.lock is "JSON with comments + trailing commas". We strip line comments
+    and trailing commas, then json.loads. Schema:
+      {"lockfileVersion":0,"packages":{"<name>":["<name>@<version>", ...], ...}}
+    """
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+
+    for bl_path in root.rglob("bun.lock"):
+        if _should_skip(bl_path):
+            continue
+        try:
+            raw = bl_path.read_text(errors="replace")
+        except OSError:
+            continue
+        # Strip JSONC line comments (only at line start, not inside URL strings)
+        # and trailing commas, then json.loads.
+        stripped = re.sub(r"(?m)^\s*//[^\n]*$", "", raw)
+        stripped = re.sub(r",(\s*[}\]])", r"\1", stripped)
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        rel_path = str(bl_path.relative_to(root))
+        packages = data.get("packages")
+        if not isinstance(packages, dict):
+            continue
+        seen: set[tuple[str, str]] = set()
+        for _key, entry in packages.items():
+            # Entry is a list: ["pkgname@version", "registry-url", {deps}, "integrity"]
+            if not isinstance(entry, list) or not entry:
+                continue
+            spec = entry[0]
+            if not isinstance(spec, str):
+                continue
+            # Parse "name@version" or "@scope/name@version"
+            if spec.startswith("@"):
+                at = spec.find("@", 1)
+                if at <= 0:
+                    continue
+                name, version = spec[:at], spec[at + 1:]
+            else:
+                at = spec.find("@")
+                if at <= 0:
+                    continue
+                name, version = spec[:at], spec[at + 1:]
+            if not name or not version or (name, version) in seen:
+                continue
+            seen.add((name, version))
+            purl = f"pkg:npm/{name}@{version}"
+            components.append({
+                "type": "library",
+                "name": name,
+                "version": version,
+                "purl": purl,
+                "properties": [{"name": "hecate:source-file", "value": rel_path}],
+            })
+
+    return components
+
+
 # ---------------------------------------------------------------------------
 # C# / .NET: *.csproj + packages.config
 # ---------------------------------------------------------------------------
 
-def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
-    """Extract NuGet dependencies from *.csproj and packages.config."""
-    root = Path(source_dir)
-    components: list[dict[str, Any]] = []
+def _collect_central_package_versions(root: Path) -> dict[str, str]:
+    """Read every Directory.Packages.props (Central Package Management).
 
-    # Modern .NET: *.csproj with <PackageReference>
-    for csproj_path in root.rglob("*.csproj"):
-        if _should_skip(csproj_path):
+    Maps PackageVersion `Include` → `Version`. Resolved package versions are
+    used by .csproj `<PackageReference>` elements that omit the Version attribute.
+    """
+    versions: dict[str, str] = {}
+    for cpm_path in root.rglob("Directory.Packages.props"):
+        if _should_skip(cpm_path):
             continue
         try:
-            tree = ET.parse(csproj_path)  # noqa: S314
+            tree = ET.parse(cpm_path)  # noqa: S314
         except (OSError, ET.ParseError):
             continue
-        rel_path = str(csproj_path.relative_to(root))
-        for pr in tree.iter():
-            tag = pr.tag.split("}")[-1] if "}" in pr.tag else pr.tag
-            if tag == "PackageReference":
-                name = pr.get("Include") or pr.get("include") or ""
+        for el in tree.iter():
+            tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+            if tag == "PackageVersion":
+                name = el.get("Include") or el.get("include") or ""
+                version = el.get("Version") or el.get("version") or ""
+                if name and version and name not in versions:
+                    versions[name] = version
+    return versions
+
+
+def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
+    """Extract NuGet dependencies from *.csproj, packages.config, packages.lock.json."""
+    root = Path(source_dir)
+    components: list[dict[str, Any]] = []
+    cpm_versions = _collect_central_package_versions(root)
+
+    # Modern .NET: *.csproj with <PackageReference>. Also handle *.fsproj/*.vbproj.
+    for proj_glob in ("*.csproj", "*.fsproj", "*.vbproj"):
+        for proj_path in root.rglob(proj_glob):
+            if _should_skip(proj_path):
+                continue
+            try:
+                tree = ET.parse(proj_path)  # noqa: S314
+            except (OSError, ET.ParseError):
+                continue
+            rel_path = str(proj_path.relative_to(root))
+            for pr in tree.iter():
+                tag = pr.tag.split("}")[-1] if "}" in pr.tag else pr.tag
+                if tag != "PackageReference":
+                    continue
+                name = pr.get("Include") or pr.get("include") or pr.get("Update") or ""
+                if not name:
+                    continue
                 version = pr.get("Version") or pr.get("version") or ""
-                if name:
-                    purl = f"pkg:nuget/{name}@{version}" if version else f"pkg:nuget/{name}"
-                    components.append(_lib_component(name, version, purl, rel_path))
+                if not version:
+                    # Look for nested <Version> child (rare style)
+                    for child in pr.iter():
+                        ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                        if ctag == "Version" and child.text:
+                            version = child.text.strip()
+                            break
+                if not version:
+                    # Central Package Management: pull version from Directory.Packages.props
+                    version = cpm_versions.get(name, "")
+                purl = f"pkg:nuget/{name}@{version}" if version else f"pkg:nuget/{name}"
+                components.append(_lib_component(name, version, purl, rel_path))
 
     # Legacy .NET: packages.config
     for pc_path in root.rglob("packages.config"):
@@ -781,6 +1370,66 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
             if name:
                 purl = f"pkg:nuget/{name}@{version}" if version else f"pkg:nuget/{name}"
                 components.append(_lib_component(name, version, purl, rel_path))
+
+    # NuGet lockfile: packages.lock.json (resolved transitive dependencies).
+    # Schema: {"version":1,"dependencies":{"<TFM>":{"<PkgId>":{"resolved":"x.y.z",...}}}}
+    for lock_path in root.rglob("packages.lock.json"):
+        if _should_skip(lock_path):
+            continue
+        try:
+            data = json.loads(lock_path.read_text(errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        rel_path = str(lock_path.relative_to(root))
+        deps_by_tfm = data.get("dependencies")
+        if not isinstance(deps_by_tfm, dict):
+            continue
+        seen: set[tuple[str, str]] = set()
+        for tfm_deps in deps_by_tfm.values():
+            if not isinstance(tfm_deps, dict):
+                continue
+            for pkg_name, pkg_entry in tfm_deps.items():
+                if not isinstance(pkg_name, str) or not isinstance(pkg_entry, dict):
+                    continue
+                version = pkg_entry.get("resolved") or pkg_entry.get("requested") or ""
+                if not isinstance(version, str) or not version:
+                    continue
+                if (pkg_name, version) in seen:
+                    continue
+                seen.add((pkg_name, version))
+                purl = f"pkg:nuget/{pkg_name}@{version}"
+                components.append(_lib_component(pkg_name, version, purl, rel_path))
+
+    # NuGet restore output: project.assets.json (transitive graph).
+    # Useful when no packages.lock.json is present but `dotnet restore` ran.
+    for assets_path in root.rglob("project.assets.json"):
+        if _should_skip(assets_path):
+            continue
+        try:
+            data = json.loads(assets_path.read_text(errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        rel_path = str(assets_path.relative_to(root))
+        libraries = data.get("libraries")
+        if not isinstance(libraries, dict):
+            continue
+        seen2: set[tuple[str, str]] = set()
+        for key, entry in libraries.items():
+            # Keys look like "Newtonsoft.Json/13.0.3"; type "package" only
+            if not isinstance(key, str) or "/" not in key:
+                continue
+            if isinstance(entry, dict) and entry.get("type") and entry["type"] != "package":
+                continue
+            name, _, version = key.partition("/")
+            if not name or not version or (name, version) in seen2:
+                continue
+            seen2.add((name, version))
+            purl = f"pkg:nuget/{name}@{version}"
+            components.append(_lib_component(name, version, purl, rel_path))
 
     return components
 
@@ -945,20 +1594,31 @@ def run_analysis(source_dir: str) -> dict[str, Any]:
     all_components.extend(parse_dockerfiles(source_dir))
     all_components.extend(parse_compose_files(source_dir))
 
-    # JavaScript / Node.js
+    # JavaScript / Node.js — prefer lockfiles (resolved versions), fall back
+    # to manifest-only directories. `_filter_and_merge_sbom` on the backend
+    # collapses duplicates by name+version, so parsing both is safe.
     all_components.extend(parse_package_jsons(source_dir))
+    all_components.extend(parse_package_lock_json(source_dir))
+    all_components.extend(parse_yarn_lock(source_dir))
+    all_components.extend(parse_pnpm_lock_yaml(source_dir))
+    all_components.extend(parse_bun_lock(source_dir))
 
     # Python
     all_components.extend(parse_requirements_txt(source_dir))
     all_components.extend(parse_pyproject_toml(source_dir))
     all_components.extend(parse_pipfile(source_dir))
+    all_components.extend(parse_pipfile_lock(source_dir))
+    all_components.extend(parse_poetry_lock(source_dir))
+    all_components.extend(parse_uv_lock(source_dir))
     all_components.extend(parse_setup_cfg(source_dir))
 
     # Go
     all_components.extend(parse_go_mod(source_dir))
+    all_components.extend(parse_go_sum(source_dir))
 
     # Rust
     all_components.extend(parse_cargo_toml(source_dir))
+    all_components.extend(parse_cargo_lock(source_dir))
 
     # Ruby
     all_components.extend(parse_gemfiles(source_dir))
@@ -969,6 +1629,7 @@ def run_analysis(source_dir: str) -> dict[str, Any]:
     # Java / Kotlin
     all_components.extend(parse_pom_xml(source_dir))
     all_components.extend(parse_gradle(source_dir))
+    all_components.extend(parse_gradle_lockfile(source_dir))
 
     # C# / .NET
     all_components.extend(parse_dotnet(source_dir))

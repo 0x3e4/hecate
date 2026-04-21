@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
         asyncio.create_task(_warm_cwe_cache())
         asyncio.create_task(_backfill_target_scan_state())
         asyncio.create_task(_backfill_target_summaries_v4())
+        asyncio.create_task(_backfill_sbom_component_count_v2())
 
     async def _warm_stats_cache() -> None:  # pragma: no cover - cache warming
         """Warm up the stats cache on startup to improve first request performance."""
@@ -124,6 +125,21 @@ def create_app() -> FastAPI:
             import structlog
             log = structlog.get_logger()
             log.warning("startup.backfill_target_summaries_v4_failed", error=str(e))
+
+    async def _backfill_sbom_component_count_v2() -> None:  # pragma: no cover - one-time migration
+        """Convert raw SBOM row counts on legacy scans to distinct (name, version)."""
+        try:
+            import structlog
+            log = structlog.get_logger()
+            from app.services.scan_service import get_scan_service
+            svc = await get_scan_service()
+            count = await svc.backfill_sbom_component_count_v2()
+            if count:
+                log.info("startup.backfill_sbom_component_count_v2_completed", scans_updated=count)
+        except Exception as e:
+            import structlog
+            log = structlog.get_logger()
+            log.warning("startup.backfill_sbom_component_count_v2_failed", error=str(e))
 
     @app.on_event("shutdown")
     async def _shutdown_scheduler() -> None:  # pragma: no cover - wiring code
