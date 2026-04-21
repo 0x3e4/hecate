@@ -45,26 +45,92 @@ class ScanSbomRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
-        query: dict[str, Any] = {"scan_id": scan_id}
-        if search:
-            query["name"] = {"$regex": search, "$options": "i"}
+        """List SBOM components for a single scan, consolidated by (name, version).
 
+        Raw rows are deduplicated across scanners so the returned `total` matches
+        what the user sees after any client-side dedup. The aggregation mirrors
+        `list_across_scans_consolidated` but constrained to one scan_id.
+        """
+        match_stage: dict[str, Any] = {"scan_id": scan_id}
+        if search:
+            regex = {"$regex": search, "$options": "i"}
+            match_stage["$or"] = [
+                {"name": regex},
+                {"type": regex},
+                {"purl": regex},
+                {"licenses": regex},
+            ]
+
+        pipeline: list[dict[str, Any]] = [
+            {"$match": match_stage},
+            {"$group": {
+                "_id": {"name": "$name", "version": "$version"},
+                "type": {"$first": "$type"},
+                "purl": {"$first": "$purl"},
+                "cpe": {"$first": "$cpe"},
+                "supplier": {"$first": "$supplier"},
+                "licenses": {"$addToSet": "$licenses"},
+                "provenance_verified": {"$max": "$provenance_verified"},
+                "file_paths": {"$addToSet": "$file_path"},
+                "scan_id": {"$first": "$scan_id"},
+                "target_id": {"$first": "$target_id"},
+            }},
+            {"$sort": {"_id.name": 1, "_id.version": 1}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "items": [{"$skip": offset}, {"$limit": limit}],
+            }},
+        ]
         try:
-            total = await self.collection.count_documents(query)
-            cursor = (
-                self.collection.find(query)
-                .sort([("name", 1), ("version", 1)])
-                .skip(offset)
-                .limit(limit)
-            )
-            items = []
-            async for doc in cursor:
-                doc["_id"] = str(doc["_id"])
-                items.append(doc)
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            if not result:
+                return 0, []
+            doc = result[0]
+            total = doc["total"][0]["count"] if doc["total"] else 0
+            items: list[dict[str, Any]] = []
+            for item in doc["items"]:
+                # $addToSet on array fields produces [[...], [...]] — flatten
+                raw_licenses = item.get("licenses", []) or []
+                flat: list[str] = []
+                for entry in raw_licenses:
+                    if isinstance(entry, list):
+                        flat.extend(e for e in entry if isinstance(e, str) and e)
+                    elif isinstance(entry, str) and entry:
+                        flat.append(entry)
+                seen: set[str] = set()
+                unique_licenses = [lic for lic in flat if not (lic in seen or seen.add(lic))]
+                file_paths = sorted({p for p in item.get("file_paths", []) if p})
+                items.append({
+                    "name": item["_id"]["name"],
+                    "version": item["_id"]["version"],
+                    "type": item.get("type", ""),
+                    "purl": item.get("purl"),
+                    "cpe": item.get("cpe"),
+                    "supplier": item.get("supplier"),
+                    "licenses": unique_licenses,
+                    "provenance_verified": item.get("provenance_verified"),
+                    "file_paths": file_paths,
+                    "scan_id": item.get("scan_id"),
+                    "target_id": item.get("target_id"),
+                })
             return total, items
         except PyMongoError as exc:
             log.warning("scan_sbom_repository.list_by_scan_failed", scan_id=scan_id, error=str(exc))
             return 0, []
+
+    async def count_by_scan_consolidated(self, scan_id: str) -> int:
+        """Count distinct (name, version) SBOM components for a single scan."""
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"scan_id": scan_id}},
+            {"$group": {"_id": {"name": "$name", "version": "$version"}}},
+            {"$count": "total"},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            return result[0]["total"] if result else 0
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.count_by_scan_consolidated_failed", scan_id=scan_id, error=str(exc))
+            return 0
 
     async def list_all_by_scan(self, scan_id: str) -> list[dict[str, Any]]:
         """Fetch all SBOM components for a scan (no pagination, for export)."""
