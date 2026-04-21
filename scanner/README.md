@@ -10,7 +10,7 @@ Scanner-Sidecar für die SCA-Funktionalität (Software Composition Analysis) von
 | [Grype](https://github.com/anchore/grype) | Schwachstellen-Scan | `grype-json` |
 | [Syft](https://github.com/anchore/syft) | SBOM-Generierung | `cyclonedx-json` |
 | [OSV Scanner](https://github.com/google/osv-scanner) | Schwachstellen-Scan (OSV DB) | `osv-json` |
-| Hecate Analyzer | SBOM-Extraktion (18 Parser, 12 Ökosysteme) + Malware-Erkennung | `hecate-json` |
+| Hecate Analyzer | SBOM-Extraktion (28 Parser, 12 Ökosysteme) + Malware-Erkennung | `hecate-json` |
 | [Dockle](https://github.com/goodwithtech/dockle) | CIS Docker Benchmark Linter (nur Container-Images) | `dockle-json` |
 | [Dive](https://github.com/wagoodman/dive) | Docker-Image-Schichtanalyse (nur Container-Images) | `dive-json` |
 | [Semgrep](https://github.com/semgrep/semgrep) | SAST-Scanner (nur Source-Repos) | `semgrep-json` |
@@ -104,19 +104,19 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
 
 ### SBOM-Extraktion
 
-Der Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extrahiert SBOM-Komponenten aus 18 Manifest-Typen über 12 Ökosysteme. Lockfiles werden bevorzugt (exakte Versionen), Manifest-Fallback für deklarierte Abhängigkeiten.
+Der Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extrahiert SBOM-Komponenten aus 28 Manifest-Typen über 12 Ökosysteme. Lockfiles und Manifeste werden parallel gelesen — exakte aufgelöste Versionen aus Lockfiles plus deklarierte Abhängigkeiten aus Manifests. Überlappungen werden downstream durch `_filter_and_merge_sbom` (`backend/app/services/scan_parser.py`) über `name:version` zusammengeführt.
 
 | Ökosystem | Manifest-Dateien | PURL-Typ |
 |-----------|-----------------|----------|
 | Docker | `Dockerfile*`, `docker-compose*.yml` | `pkg:docker` |
-| npm | `package.json` | `pkg:npm` |
-| Python | `requirements*.txt`, `pyproject.toml`, `Pipfile`, `setup.cfg` | `pkg:pypi` |
-| Go | `go.mod` | `pkg:golang` |
-| Rust | `Cargo.toml` | `pkg:cargo` |
+| npm | `package.json`, `package-lock.json`, `yarn.lock` (v1 + Berry YAML), `pnpm-lock.yaml`, `bun.lock` | `pkg:npm` |
+| Python | `requirements*.txt`, `pyproject.toml` (PEP 621 + Poetry), `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.cfg` | `pkg:pypi` |
+| Go | `go.mod`, `go.sum` | `pkg:golang` |
+| Rust | `Cargo.toml`, `Cargo.lock` | `pkg:cargo` |
 | Ruby | `Gemfile.lock` (bevorzugt), `Gemfile` | `pkg:gem` |
 | PHP | `composer.lock` (bevorzugt), `composer.json` | `pkg:composer` |
-| Java | `pom.xml` (inkl. Property-Auflösung), `build.gradle(.kts)` | `pkg:maven` |
-| .NET | `*.csproj` (PackageReference), `packages.config` | `pkg:nuget` |
+| Java | `pom.xml` (inkl. Property-Auflösung), `build.gradle(.kts)`, `gradle.lockfile` | `pkg:maven` |
+| .NET | `*.csproj`/`*.fsproj`/`*.vbproj` (PackageReference), `Directory.Packages.props` (Central Package Management), `packages.config`, `packages.lock.json`, `project.assets.json` | `pkg:nuget` |
 | Swift | `Package.resolved` (v1/v2/v3) | `pkg:swift` |
 | Elixir | `mix.lock` | `pkg:hex` |
 | Dart/Flutter | `pubspec.lock` (bevorzugt), `pubspec.yaml` | `pkg:pub` |
@@ -125,6 +125,8 @@ Der Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extrahiert SBOM-Komponent
 **Besonderheiten:**
 - Dockerfiles: ARG-Variablen-Auflösung (`${VAR:-default}`), unauflösbare Platzhalter werden übersprungen
 - Java/Maven: `${property}`-Platzhalter in Versionen werden über `<properties>` aufgelöst
+- .NET Central Package Management: `<PackageReference Include="X" />` ohne `Version` wird gegen `Directory.Packages.props`/`<PackageVersion>` aufgelöst
+- Lockfiles additiv zum Manifest: derselbe Pfad kann sowohl `package.json` als auch `package-lock.json` produzieren — Duplikate werden downstream über `name:version` gemergt
 - Deduplizierung über PURL (Package URL) — identische Pakete aus verschiedenen Manifests werden nur einmal erfasst
 - Übersprungene Verzeichnisse: `node_modules/`, `.git/`, `vendor/`, `dist/`, `build/`, `__pycache__/`, `.venv/`
 

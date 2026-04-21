@@ -67,7 +67,7 @@ app/
 │   ├── scan_target_repository.py
 │   ├── scan_repository.py
 │   ├── scan_finding_repository.py
-│   ├── scan_sbom_repository.py
+│   ├── scan_sbom_repository.py  # list_by_scan: $group {name, version} + $facet-Aggregation (deduped Total + paginierte Items); count_by_scan_consolidated für Backfill
 │   ├── license_policy_repository.py
 │   └── inventory_repository.py
 ├── schemas/                 # API Request/Response Schemata
@@ -94,7 +94,7 @@ app/
 │   ├── saved_search_service.py    # Gespeicherte Suchen
 │   ├── cpe_service.py             # CPE-Katalog
 │   ├── asset_catalog_service.py   # Asset-Katalog
-│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import, AI-Analyse: save_scan_ai_analysis + list_scan_ai_analyses)
+│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import, AI-Analyse, SBOM-Dedup per Scan via unique_component_keys → sbom_component_count, Startup-Backfill backfill_sbom_component_count_v2)
 │   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV, SPDX-SBOM)
 │   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
 │   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward (VEX + Dismissal)

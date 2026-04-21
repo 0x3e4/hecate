@@ -32,7 +32,7 @@ src/
 │   ├── AuditLogPage.tsx         # Ingestion-Protokolle
 │   ├── ChangelogPage.tsx        # Letzte Änderungen
 │   ├── ScansPage.tsx            # SCA-Scan-Übersicht (Ziele, Scans, manueller Scan, SBOM-Import, Lizenzen)
-│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit klickbarem Paketnamen → Detail-Expansion + VEX-Status, SBOM, History mit Zeitbereichs-Filter, AI Analysis mit Inline-Trigger-Form + Commit/Digest-Referenz je Eintrag, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance (nur sichtbar wenn mindestens eine Policy konfiguriert ist), VEX-Export)
+│   ├── ScanDetailPage.tsx       # Scan-Details (Findings mit klickbarem Paketnamen → Detail-Expansion + VEX-Status, SBOM server-dedupliziert nach (name, version) mit "Load more"-Pager in SBOM_PAGE_SIZE=500-Schritten, History mit Zeitbereichs-Filter, AI Analysis mit Inline-Trigger-Form + Commit/Digest-Referenz je Eintrag, Compare, Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance (nur sichtbar wenn mindestens eine Policy konfiguriert ist), VEX-Export)
 │   ├── CiCdInfoPage.tsx         # CI/CD-Integrations-Anleitung
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
 │   ├── McpInfoPage.tsx          # MCP-Server-Info
