@@ -17,8 +17,8 @@ def create_app() -> FastAPI:
     """Application factory so tests can instantiate the app."""
     app = FastAPI(
         title="Hecate API",
-        description="AI-assisted vulnerability intelligence backend.",
-        version="0.1.0",
+        description="Vulnerability intelligence API.",
+        version="1.0.0",
         openapi_url="/api/openapi.json",
         docs_url="/api/docs",
         redoc_url="/api/redoc",
