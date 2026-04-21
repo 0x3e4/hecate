@@ -594,8 +594,8 @@ class NotificationService:
         # Filter by upstream `published` (not `first_seen_at`): a CVE re-published
         # by NVD/EUVD after enrichment should retrigger even if Hecate has had
         # the local record for months. `published` is priority-gated (see
-        # vulnerability_repository._should_write_priority_timestamps), so it
-        # won't flap between NVD and EUVD on every enrichment.
+        # vulnerability_repository._allow_overwrite), so it won't flap between
+        # NVD and EUVD on every enrichment.
         iso = prev.strftime("%Y-%m-%dT%H:%M:%SZ")
         time_dql = f'published:[{iso} TO *]'
 

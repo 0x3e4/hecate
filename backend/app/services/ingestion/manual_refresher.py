@@ -340,11 +340,34 @@ class ManualRefresher:
                     "resolved_source_id": document.source_id,
                 },
             }
-            upsert_result = await repository.upsert(
+            # If NVD also has data, write it via the gated NVD upsert first so
+            # nvd_raw lands in sources[] and NVD-flavored fields are subject to
+            # INGESTION_PRIORITY_VULN_DB. Then write EUVD via its gated upsert.
+            if nvd_record:
+                nvd_built = build_document_from_nvd(
+                    nvd_record, ingested_at=ingested_at, cpe_matches=nvd_cpe_matches
+                )
+                if nvd_built:
+                    nvd_document, _ = nvd_built
+                    nvd_change_context = {
+                        "job_name": "manual_refresh",
+                        "job_label": "Manual Refresh",
+                        "metadata": {
+                            "trigger": "manual",
+                            "provider": "NVD",
+                            "identifier": original_identifier,
+                            "resolved_vuln_id": nvd_document.vuln_id,
+                        },
+                    }
+                    await repository.upsert_from_nvd(
+                        nvd_document,
+                        nvd_raw=nvd_record,
+                        change_context=nvd_change_context,
+                    )
+            upsert_result = await repository.upsert_from_euvd(
                 document,
-                change_context=change_context,
                 euvd_raw=euvd_record,
-                nvd_raw=nvd_record,
+                change_context=change_context,
             )
             message = None
             if document.published is None:
@@ -662,7 +685,9 @@ class ManualRefresher:
             "job_label": "Manual Refresh",
             "metadata": {"trigger": "manual", "provider": "EUVD", "identifier": original_identifier},
         }
-        upsert_result = await repository.upsert(document, change_context=change_context, euvd_raw=euvd_record)
+        upsert_result = await repository.upsert_from_euvd(
+            document, euvd_raw=euvd_record, change_context=change_context
+        )
 
         return VulnerabilityRefreshStatus(
             identifier=original_identifier,
