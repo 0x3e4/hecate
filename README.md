@@ -333,7 +333,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 
 | Kategorie | Wichtige Variablen |
 |-----------|-------------------|
-| **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ` |
+| **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ`, `HTTP_CA_BUNDLE` (Pfad zu einer PEM mit Corporate/MITM-CA; wird beim Container-Start mit den System-CAs gemerged, muss also nur die Corporate-CA enthalten) |
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_VERIFY_CERTS`, `OPENSEARCH_CA_CERT` |
 | **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
