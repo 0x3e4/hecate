@@ -158,7 +158,7 @@ Build-Zeit-Variablen (gebacken in `dist/` beim `pnpm run build`):
 | `VITE_API_BASE_URL` | `/api` | API-Basis-Pfad (wird vor dem ersten Backend-Call gebraucht, deshalb nicht runtime-konfigurierbar) |
 
 Alle anderen Feature-Flags kommen zur Laufzeit vom Backend über `GET /api/v1/config`:
-- **KI-Features**: aktiv wenn mindestens ein AI-Provider-Key gesetzt ist (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` oder `GOOGLE_GEMINI_API_KEY`)
+- **KI-Features**: aktiv wenn mindestens ein AI-Provider konfiguriert ist (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` oder `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_MODEL` für Ollama/vLLM/OpenRouter/LocalAI/LM Studio)
 - **SCA-Features**: `SCA_ENABLED` (Backend)
 - **Auto-Scan-Toggle**: `SCA_AUTO_SCAN_ENABLED` (Backend)
 

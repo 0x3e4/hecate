@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-haiku-20240307"
     google_gemini_api_key: str | None = None
     google_gemini_model: str = "gemini-1.5-flash"
+    openai_compatible_base_url: str | None = None
+    openai_compatible_api_key: str | None = None
+    openai_compatible_model: str = ""
+    openai_compatible_label: str = "Local / OpenAI-Compatible"
     ai_response_language: str = "en"
     ai_web_search_enabled: bool = True
     ai_analysis_password: str | None = None

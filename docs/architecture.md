@@ -9,7 +9,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 - React Single-Page-Application konsumiert REST-APIs des FastAPI-Backends.
 - FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
 - OpenSearch dient als performanter Query-Index, MongoDB hält Normalformdaten und Jobzustand.
-- Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini) stellen Rohdaten bereit.
+- Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini, OpenAI-Compatible für Ollama/vLLM/OpenRouter/LocalAI/LM Studio) stellen Rohdaten bereit.
 - Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
 
 ## Deployment-Topologie
@@ -90,7 +90,7 @@ Service-Klasse je Anwendungsfall:
 - `CWEService` — 3-Tier-Cache (Memory → MongoDB → MITRE API)
 - `CAPECService` — 3-Tier-Cache + CWE→CAPEC Mapping
 - `CPEService` — CPE-Katalog
-- `AIService` — OpenAI, Anthropic, Gemini Wrapper (httpx für OpenAI/Anthropic, google-genai SDK für Gemini)
+- `AIService` — OpenAI, Anthropic, Gemini, OpenAI-Compatible Wrapper (httpx für OpenAI/Anthropic/OpenAI-Compatible, google-genai SDK für Gemini)
 - `StatsService` — OpenSearch-Aggregationen (Mongo-Fallback)
 - `BackupService` — Streaming Export/Import
 - `SyncService` — Sync-Koordination
@@ -217,10 +217,11 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **Audit-Integration:** Scan-Ereignisse werden im Ingestion-Log protokolliert.
 
 ### KI & Analyse
-- `AIClient` verwaltet verfügbare Provider anhand gesetzter API-Schlüssel (OpenAI, Anthropic, Google Gemini).
+- `AIClient` verwaltet verfügbare Provider anhand gesetzter API-Schlüssel bzw. Basis-URLs (OpenAI, Anthropic, Google Gemini, OpenAI-Compatible).
 - **OpenAI:** Responses API (`POST /v1/responses`) mit Reasoning (`reasoning.effort`) und Web-Suche (`web_search_preview` Tool). Konfigurierbar über `OPENAI_REASONING_EFFORT` (Default: `medium`) und `OPENAI_MAX_OUTPUT_TOKENS` (Default: 16000).
 - **Anthropic:** Messages API via httpx.
 - **Google Gemini:** `google-genai` SDK mit optionaler Google-Suche.
+- **OpenAI-Compatible:** Generischer `POST {base_url}/v1/chat/completions`-Client für lokale bzw. Drittanbieter-Endpoints (Ollama, vLLM, OpenRouter, LocalAI, LM Studio). Aktiviert sobald `OPENAI_COMPATIBLE_BASE_URL` und `OPENAI_COMPATIBLE_MODEL` gesetzt sind; `OPENAI_COMPATIBLE_API_KEY` ist optional (Bearer-Auth), `OPENAI_COMPATIBLE_LABEL` überschreibt den UI-Anzeigenamen. `AI_WEB_SEARCH_ENABLED` wirkt nur auf OpenRouter (hängt `:online` an den Modellnamen); Ollama/vLLM ignorieren den Toggle. `HTTP_CA_BUNDLE` gilt auch hier via `get_http_verify()`.
 - Prompt-Builder erstellt Kontexte inkl. Asset- und Historieninformationen in frei wählbarer Sprache.
 - **Asynchrone Verarbeitung:** Einzel- und Batch-Analyse-Endpunkte geben sofort HTTP 202 zurück. Die eigentliche Analyse läuft als `asyncio.create_task()` im Hintergrund. Fortschritt und Ergebnis werden über SSE-Events (`job_started`, `job_completed`, `job_failed`) an das Frontend geliefert.
 - Ergebnisse werden in MongoDB gespeichert und als Audit-Event protokolliert.
@@ -380,6 +381,7 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
 | OpenAI | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
 | Anthropic | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
 | Google Gemini | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
+| OpenAI-Compatible | HTTP (`/v1/chat/completions`) | Optionaler generischer Provider für lokale/Drittanbieter-Endpoints (Ollama, vLLM, OpenRouter, LocalAI, LM Studio) |
 
 ## Technologie-Stack
 
@@ -391,7 +393,7 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
 | Scheduling | APScheduler 3.11 |
 | HTTP-Client | httpx 0.28 (async), Axios 1.13 (Frontend) |
 | Logging | structlog 25 |
-| KI | OpenAI, Anthropic, Google Gemini |
+| KI | OpenAI, Anthropic, Google Gemini, OpenAI-Compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | MCP Server | mcp SDK, OAuth 2.0 (DCR + PKCE/S256), delegated auth via GitHub/Microsoft Entra/OIDC, Streamable HTTP |

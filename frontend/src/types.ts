@@ -30,7 +30,7 @@ export interface CvssMetric {
 
 export type CvssMetrics = Record<string, CvssMetric[]>;
 
-export type AIProviderId = "openai" | "anthropic" | "gemini";
+export type AIProviderId = "openai" | "anthropic" | "gemini" | "openai-compatible";
 
 export interface AIProviderInfo {
   id: AIProviderId;
