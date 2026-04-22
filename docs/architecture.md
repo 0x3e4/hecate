@@ -51,6 +51,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 - Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch, apprise
 - Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend,scanner}:latest`
 - CI/CD: Gitea Actions (`ci.yml` Build + Hecate Scan + SonarQube), externe Composite Action [`0x3e4/hecate-scan-action`](https://github.com/0x3e4/hecate-scan-action)
+- Corporate-MITM-Unterstützung: Backend- und Scanner-Container laden `HTTP_CA_BUNDLE` beim Start über identische Entrypoint-Skripte ([backend/entrypoint.sh](../backend/entrypoint.sh), [scanner/entrypoint.sh](../scanner/entrypoint.sh)), konkatenieren die mounted PEM mit `/etc/ssl/certs/ca-certificates.crt` zu `/tmp/hecate-trust-bundle.pem` und re-exportieren `HTTP_CA_BUNDLE`/`SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE` — das PEM muss daher nur die Corporate-/MITM-CA enthalten und wird additiv zum System-Store verwendet statt als Ersatz (ohne die Konkatenation wären nicht-MITM-proxierte Egress-Ziele mit `CERTIFICATE_VERIFY_FAILED` gebrochen).
 
 ## Backend-Architektur
 
