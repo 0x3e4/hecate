@@ -32,6 +32,7 @@ AI_PROVIDER_LABELS: dict[AIProviderLiteral, str] = {
     "openai": "OpenAI GPT",
     "anthropic": "Anthropic Claude",
     "gemini": "Google Gemini",
+    "openai-compatible": "Local / OpenAI-Compatible",
 }
 
 
@@ -58,6 +59,13 @@ class AIClient:
             providers.append(AIProviderInfo(id="anthropic", label=AI_PROVIDER_LABELS["anthropic"]))
         if settings.google_gemini_api_key and genai is not None and genai_types is not None:
             providers.append(AIProviderInfo(id="gemini", label=AI_PROVIDER_LABELS["gemini"]))
+        if settings.openai_compatible_base_url and settings.openai_compatible_model:
+            providers.append(
+                AIProviderInfo(
+                    id="openai-compatible",
+                    label=settings.openai_compatible_label or AI_PROVIDER_LABELS["openai-compatible"],
+                )
+            )
         return providers
 
     async def analyze_vulnerability(
@@ -94,6 +102,10 @@ class AIClient:
             if not settings.google_gemini_api_key:
                 raise ValueError("Google Gemini provider is not configured.")
             summary, token_usage = await self._call_gemini(system_prompt, user_prompt)
+        elif provider == "openai-compatible":
+            if not settings.openai_compatible_base_url or not settings.openai_compatible_model:
+                raise ValueError("OpenAI-compatible provider is not configured.")
+            summary, token_usage = await self._call_openai_compatible(system_prompt, user_prompt)
         else:  # pragma: no cover - defensive programming
             raise ValueError(f"Unsupported provider '{provider}'.")
 
@@ -141,6 +153,10 @@ class AIClient:
             if not settings.google_gemini_api_key:
                 raise ValueError("Google Gemini provider is not configured.")
             combined_response, token_usage = await self._call_gemini(system_prompt, user_prompt)
+        elif provider == "openai-compatible":
+            if not settings.openai_compatible_base_url or not settings.openai_compatible_model:
+                raise ValueError("OpenAI-compatible provider is not configured.")
+            combined_response, token_usage = await self._call_openai_compatible(system_prompt, user_prompt)
         else:  # pragma: no cover - defensive programming
             raise ValueError(f"Unsupported provider '{provider}'.")
 
@@ -193,6 +209,10 @@ class AIClient:
             if not settings.google_gemini_api_key:
                 raise ValueError("Google Gemini provider is not configured.")
             summary, token_usage = await self._call_gemini(system_prompt, user_prompt)
+        elif provider == "openai-compatible":
+            if not settings.openai_compatible_base_url or not settings.openai_compatible_model:
+                raise ValueError("OpenAI-compatible provider is not configured.")
+            summary, token_usage = await self._call_openai_compatible(system_prompt, user_prompt)
         else:  # pragma: no cover
             raise ValueError(f"Unsupported provider '{provider}'.")
 
@@ -281,6 +301,85 @@ class AIClient:
             token_usage = {
                 "inputTokens": int(usage.get("input_tokens", 0)),
                 "outputTokens": int(usage.get("output_tokens", 0)),
+            }
+        return content, token_usage
+
+    async def _call_openai_compatible(
+        self, system_prompt: str, user_prompt: str
+    ) -> tuple[str, dict[str, int] | None]:
+        base_url = (settings.openai_compatible_base_url or "").rstrip("/")
+        model = settings.openai_compatible_model or ""
+
+        # OpenRouter convention: `:online` suffix turns on web search for models that support it.
+        # For any other host the global toggle is a no-op (Ollama/vLLM have no internet access).
+        if (
+            settings.ai_web_search_enabled
+            and ":online" not in model
+            and "openrouter.ai" in base_url
+        ):
+            model = f"{model}:online"
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if settings.openai_compatible_api_key:
+            headers["Authorization"] = f"Bearer {settings.openai_compatible_api_key}"
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": settings.ai_max_output_tokens,
+            "temperature": 0.3,
+            "stream": False,
+        }
+
+        try:
+            async with self._get_client() as client:
+                response = await client.post(
+                    f"{base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPStatusError as exc:  # pragma: no cover - network failure
+            detail = exc.response.text[:300]
+            logger.error(
+                "OpenAI-compatible API error",
+                status=exc.response.status_code,
+                detail=detail,
+                base_url=base_url,
+                model=model,
+            )
+            raise AIProviderError(
+                f"OpenAI-compatible request failed ({exc.response.status_code}): {detail}"
+            ) from exc
+        except httpx.HTTPError as exc:  # pragma: no cover - network failure
+            raise AIProviderError(f"OpenAI-compatible request failed: {exc}") from exc
+
+        content: str | None = None
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            message = choices[0].get("message") or {}
+            raw = message.get("content")
+            if isinstance(raw, str):
+                content = raw.strip()
+            elif isinstance(raw, list):
+                # Some servers return content as a list of parts (OpenAI tool-call style).
+                parts = [p.get("text", "") for p in raw if isinstance(p, dict) and p.get("type") == "text"]
+                content = "\n".join(parts).strip() or None
+
+        if not content:
+            logger.error("OpenAI-compatible empty response", data=data)
+            raise AIProviderError("OpenAI-compatible response did not contain any text.")
+
+        token_usage: dict[str, int] | None = None
+        usage = data.get("usage")
+        if isinstance(usage, dict) and ("prompt_tokens" in usage or "completion_tokens" in usage):
+            token_usage = {
+                "inputTokens": int(usage.get("prompt_tokens", 0)),
+                "outputTokens": int(usage.get("completion_tokens", 0)),
             }
         return content, token_usage
 

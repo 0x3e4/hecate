@@ -115,7 +115,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 
 ### Suche & Analyse
 - **OpenSearch-Volltext** mit DQL-Unterstützung (Domain-Specific Query Language) und Relevanzsortierung; `source:`-Abfragen suchen automatisch über alle Datenquellen (inkl. `sourceNames`-Alias)
-- **KI-Assessments** über OpenAI, Anthropic oder Google Gemini (einzeln oder Batch)
+- **KI-Assessments** über OpenAI, Anthropic, Google Gemini oder einen generischen OpenAI-Compatible-Endpoint (Ollama, vLLM, OpenRouter, LocalAI, LM Studio), einzeln oder als Batch
 - **CVSS-Metriken** normalisiert über v2.0, v3.0, v3.1 und v4.0
 - **CWE/CAPEC-Anreicherung** mit 3-Tier-Cache (Memory -> MongoDB -> externe Quelle, 7 Tage TTL)
 - **EPSS-Scores** und KEV-Exploitation-Status
@@ -225,7 +225,7 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `POST /api/v1/scans/{scan_id}/ai-analysis` — SCA-Scan-Triage (HTTP 202, Ergebnis wird als `ai_analysis` / `ai_analyses[]` auf dem Scan-Dokument persistiert)
 - `GET /api/v1/scans/ai-analyses` — Liste aller Scans mit mindestens einer gespeicherten AI-Analyse (neueste zuerst). Wird von der AI-Analyse-Seite in die kombinierte Timeline integriert.
 
-Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI setzt es nicht, MCP-`save_*`-Tools setzen es auf `{client_name} - MCP` und der Server hängt das Label zusätzlich als Markdown-Fußzeile an die gespeicherte Zusammenfassung an. Die in `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_GEMINI_API_KEY` konfigurierten Provider werden ausschließlich von diesen HTTP-Endpunkten genutzt — MCP-AI-Flows rufen keinen serverseitigen Provider auf.
+Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI setzt es nicht, MCP-`save_*`-Tools setzen es auf `{client_name} - MCP` und der Server hängt das Label zusätzlich als Markdown-Fußzeile an die gespeicherte Zusammenfassung an. Die in `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_GEMINI_API_KEY` bzw. `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_MODEL` konfigurierten Provider werden ausschließlich von diesen HTTP-Endpunkten genutzt — MCP-AI-Flows rufen keinen serverseitigen Provider auf.
 
 ### Kataloge
 - `GET /api/v1/cwe/{id}` & `POST /api/v1/cwe/bulk` — CWE-Daten
@@ -336,7 +336,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **Allgemein** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ`, `HTTP_CA_BUNDLE` (Pfad zu einer PEM mit Corporate/MITM-CA; wird beim Container-Start mit den System-CAs gemerged, muss also nur die Corporate-CA enthalten) |
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_VERIFY_CERTS`, `OPENSEARCH_CA_CERT` |
-| **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY` |
+| **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `OPENAI_COMPATIBLE_LABEL` (Ollama / vLLM / OpenRouter / LocalAI / LM Studio — via `/v1/chat/completions`) |
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `KEV_FEED_URL`, `GHSA_TOKEN`, `OSV_BASE_URL`, `OSV_TIMEOUT_SECONDS`, `OSV_RATE_LIMIT_SECONDS`, `OSV_MAX_RECORDS_PER_RUN` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
 | **Frontend** | `VITE_API_BASE_URL` (feature flags are derived from backend settings and exposed via `GET /api/v1/config`) |
@@ -360,7 +360,7 @@ Gitea-Workflow `.gitea/workflows/ci.yml` nutzt die öffentliche [Hecate Scan Act
 | Scheduling | APScheduler 3.11 |
 | HTTP-Client | httpx 0.28 (async) |
 | Logging | structlog 25 |
-| KI | OpenAI, Anthropic, Google Gemini (jeweils optional) |
+| KI | OpenAI, Anthropic, Google Gemini, OpenAI-Compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) — jeweils optional |
 | Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
 | Benachrichtigungen | Apprise (caronc/apprise) |
 | MCP Server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |

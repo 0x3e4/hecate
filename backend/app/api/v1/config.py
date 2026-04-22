@@ -25,6 +25,7 @@ async def get_public_config() -> PublicConfigResponse:
         settings.openai_api_key
         or settings.anthropic_api_key
         or settings.google_gemini_api_key
+        or (settings.openai_compatible_base_url and settings.openai_compatible_model)
     )
     return PublicConfigResponse(
         ai_enabled=ai_enabled,

@@ -85,7 +85,7 @@ app/
 │   ├── vulnerability_service.py   # Suche, Refresh, Lookup
 │   ├── cwe_service.py             # 3-Tier-Cache (Memory->Mongo->API)
 │   ├── capec_service.py           # 3-Tier-Cache + CWE->CAPEC Mapping
-│   ├── ai_service.py              # OpenAI, Anthropic, Gemini Wrapper
+│   ├── ai_service.py              # OpenAI, Anthropic, Gemini, OpenAI-Compatible Wrapper (lokale/Drittanbieter-Endpoints)
 │   ├── stats_service.py           # OpenSearch-Aggregationen (Mongo-Fallback)
 │   ├── backup_service.py          # Streaming Export/Import für Vulnerabilities (NVD/EUVD/ALL), Saved Searches und Environment Inventory (Inventory-Restore = Upsert per `_id`)
 │   ├── sync_service.py            # Sync-Koordination

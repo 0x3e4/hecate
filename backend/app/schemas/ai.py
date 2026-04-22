@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-AIProviderLiteral = Literal["openai", "anthropic", "gemini"]
+AIProviderLiteral = Literal["openai", "anthropic", "gemini", "openai-compatible"]
 
 
 class AIProviderInfo(BaseModel):
