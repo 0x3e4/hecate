@@ -794,11 +794,11 @@ class StatsService:
             "sort": [{"published": {"order": "desc"}}],
             "aggs": {
                 "vendors": {
-                    "terms": {"field": "vendorSlugs.keyword", "size": 500},
+                    "terms": {"field": "vendorSlugs", "size": 500},
                     "aggs": {
                         "display_name": {"terms": {"field": "vendors", "size": 1}},
                         "products": {
-                            "terms": {"field": "productSlugs.keyword", "size": 500},
+                            "terms": {"field": "productSlugs", "size": 500},
                         },
                     },
                 },
