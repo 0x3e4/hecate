@@ -780,39 +780,56 @@ class StatsService:
         if zone is not None:
             published_range["time_zone"] = tz
 
-        body: dict[str, Any] = {
-            "size": 200,
-            "track_total_hits": True,
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"range": {"published": published_range}},
-                    ]
-                }
-            },
-            "_source": ["vuln_id", "title", "cvss.severity", "aliases"],
-            "sort": [{"published": {"order": "desc"}}],
-            "aggs": {
-                "vendors": {
-                    "terms": {"field": "vendorSlugs", "size": 500},
-                    "aggs": {
-                        "display_name": {"terms": {"field": "vendors", "size": 1}},
-                        "products": {
-                            "terms": {"field": "productSlugs", "size": 500},
+        def _build_body(use_keyword_suffix: bool) -> dict[str, Any]:
+            suffix = ".keyword" if use_keyword_suffix else ""
+            return {
+                "size": 200,
+                "track_total_hits": True,
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"range": {"published": published_range}},
+                        ]
+                    }
+                },
+                "_source": ["vuln_id", "title", "cvss.severity", "aliases"],
+                "sort": [{"published": {"order": "desc"}}],
+                "aggs": {
+                    "vendors": {
+                        "terms": {"field": f"vendorSlugs{suffix}", "size": 500},
+                        "aggs": {
+                            "display_name": {"terms": {"field": "vendors", "size": 1}},
+                            "products": {
+                                "terms": {"field": f"productSlugs{suffix}", "size": 500},
+                            },
                         },
                     },
+                    "severity_breakdown": {
+                        "terms": {"field": "cvss.severity", "size": 10, "missing": "unknown"},
+                    },
                 },
-                "severity_breakdown": {
-                    "terms": {"field": "cvss.severity", "size": 10, "missing": "unknown"},
-                },
-            },
-        }
+            }
 
-        response = await async_search(
-            settings.opensearch_index,
-            body,
-            suppress_exceptions=True,
-        )
+        try:
+            response = await async_search(
+                settings.opensearch_index,
+                _build_body(use_keyword_suffix=False),
+                suppress_exceptions=False,
+            )
+        except RequestError as exc:
+            if self._is_fielddata_error(exc):
+                log.info("stats.today_retry_keyword_fields")
+                response = await async_search(
+                    settings.opensearch_index,
+                    _build_body(use_keyword_suffix=True),
+                    suppress_exceptions=True,
+                )
+            else:
+                log.warning("stats.today_opensearch_request_error", error=str(exc))
+                response = {"hits": {"hits": [], "total": {"value": 0}}}
+        except (OSConnectionError, OpenSearchException) as exc:
+            log.warning("stats.today_opensearch_unavailable", error=str(exc))
+            response = {"hits": {"hits": [], "total": {"value": 0}}}
 
         aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
 
