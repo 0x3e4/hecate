@@ -102,7 +102,7 @@ app/
 │   ├── inventory_service.py       # Environment-Inventory CRUD + Matching (30s TTL-Cache)
 │   ├── inventory_matcher.py       # CPE-Versionsbereichs-Matcher (pure functions, selbst-enthaltener Version-Comparator)
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
-│   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator)
+│   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator mit optionalem `inventory_item_ids`-Filter)
 │   ├── http/
 │   │   └── rate_limiter.py        # HTTP Rate-Limiting
 │   ├── ingestion/                 # Datenpipelines

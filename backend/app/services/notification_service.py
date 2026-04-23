@@ -225,6 +225,7 @@ class NotificationService:
             "dql_query": payload.dql_query,
             "scan_severity_threshold": payload.scan_severity_threshold,
             "scan_target_filter": payload.scan_target_filter,
+            "inventory_item_ids": payload.inventory_item_ids,
             "last_evaluated_at": None,
             "last_triggered_at": None,
         }
@@ -248,6 +249,7 @@ class NotificationService:
             "dql_query": payload.dql_query,
             "scan_severity_threshold": payload.scan_severity_threshold,
             "scan_target_filter": payload.scan_target_filter,
+            "inventory_item_ids": payload.inventory_item_ids,
         }
         await repo.update(rule_id, updates)
         doc = await repo.get(rule_id)
@@ -776,9 +778,11 @@ class NotificationService:
         from app.services.inventory_service import get_inventory_service
 
         inventory_service = await get_inventory_service()
+        item_ids_raw = rule.get("inventory_item_ids") or []
+        item_ids = [str(x) for x in item_ids_raw] if item_ids_raw else None
         try:
             hits = await inventory_service.new_vulns_for_watch_rule(
-                since=prev, limit=limit
+                since=prev, limit=limit, item_ids=item_ids
             )
         except Exception as exc:
             log.warning(
@@ -1168,6 +1172,7 @@ class NotificationService:
             dql_query=doc.get("dql_query"),
             scan_severity_threshold=doc.get("scan_severity_threshold"),
             scan_target_filter=doc.get("scan_target_filter"),
+            inventory_item_ids=doc.get("inventory_item_ids"),
             created_at=doc.get("created_at", datetime.now(tz=UTC)),
             updated_at=doc.get("updated_at", datetime.now(tz=UTC)),
             last_evaluated_at=doc.get("last_evaluated_at"),

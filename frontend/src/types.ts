@@ -753,7 +753,7 @@ export interface NotificationTestResponse {
   message: string;
 }
 
-export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan";
+export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan" | "inventory";
 
 export interface NotificationRule {
   id: string;
@@ -768,6 +768,7 @@ export interface NotificationRule {
   dqlQuery?: string | null;
   scanSeverityThreshold?: string | null;
   scanTargetFilter?: string | null;
+  inventoryItemIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
   lastEvaluatedAt?: string | null;
@@ -791,6 +792,7 @@ export interface NotificationRuleCreate {
   dqlQuery?: string | null;
   scanSeverityThreshold?: string | null;
   scanTargetFilter?: string | null;
+  inventoryItemIds?: string[] | null;
 }
 
 export interface NotificationChannel {
@@ -804,7 +806,7 @@ export interface NotificationChannelListResponse {
   items: NotificationChannel[];
 }
 
-export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match";
+export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match" | "inventory_match";
 
 export interface NotificationTemplate {
   id: string;
