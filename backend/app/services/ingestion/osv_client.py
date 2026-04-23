@@ -13,6 +13,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.retry import request_with_retry
 from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
@@ -63,6 +64,8 @@ class OsvClient:
         timeout_seconds: int | None = None,
         rate_limiter: AsyncRateLimiter | None = None,
         client: httpx.AsyncClient | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
     ) -> None:
         self.api_base = (api_base_url or settings.osv_base_url).rstrip("/")
         timeout = timeout_seconds or settings.osv_timeout_seconds
@@ -81,6 +84,8 @@ class OsvClient:
             verify=get_http_verify(),
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.osv_rate_limit_seconds)
+        self._max_retries = max_retries if max_retries is not None else settings.osv_max_retries
+        self._retry_backoff = retry_backoff if retry_backoff is not None else settings.osv_retry_backoff_seconds
 
     # ------------------------------------------------------------------
     # GCS bucket helpers
@@ -94,8 +99,19 @@ class OsvClient:
         url = f"{_GCS_BASE}/{ecosystem}/all.zip"
         log.info("osv_client.downloading_zip", ecosystem=ecosystem, url=url)
 
+        response = await request_with_retry(
+            self._download_client,
+            "GET",
+            url,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="osv_client",
+            context={"ecosystem": ecosystem, "op": "zip_download"},
+        )
+        if response is None:
+            log.error("osv_client.zip_download_exhausted", ecosystem=ecosystem, url=url)
+            return []
         try:
-            response = await self._download_client.get(url)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             log.error(
@@ -145,8 +161,19 @@ class OsvClient:
         after *since*.  The CSV is sorted newest-first so we can stop early.
         """
         url = f"{_GCS_BASE}/{ecosystem}/modified_id.csv"
+        response = await request_with_retry(
+            self._download_client,
+            "GET",
+            url,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="osv_client",
+            context={"ecosystem": ecosystem, "op": "modified_csv"},
+        )
+        if response is None:
+            log.warning("osv_client.modified_csv_failed", ecosystem=ecosystem)
+            return []
         try:
-            response = await self._download_client.get(url)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             log.warning("osv_client.modified_csv_failed", ecosystem=ecosystem, error=str(exc))
@@ -181,20 +208,30 @@ class OsvClient:
     async def fetch_vulnerability(self, vuln_id: str) -> dict[str, Any] | None:
         """Fetch a single vulnerability by its OSV ID via ``GET /v1/vulns/{id}``."""
         url = f"{self.api_base}/vulns/{vuln_id}"
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            url,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="osv_client",
+            context={"vuln_id": vuln_id, "op": "fetch_single"},
+        )
+        if response is None:
+            return None
+
+        if response.status_code == 404:
+            return None
+
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(url)
-
-            if response.status_code == 404:
-                return None
-
             response.raise_for_status()
-            data = response.json()
-            return data if isinstance(data, dict) else None
-
         except httpx.HTTPError as exc:
             log.warning("osv_client.fetch_single_failed", vuln_id=vuln_id, error=str(exc))
             return None
+
+        data = response.json()
+        return data if isinstance(data, dict) else None
 
     # ------------------------------------------------------------------
     # High-level iterators

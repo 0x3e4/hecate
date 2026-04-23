@@ -104,7 +104,9 @@ app/
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
 │   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator mit optionalem `inventory_item_ids`-Filter)
 │   ├── http/
-│   │   └── rate_limiter.py        # HTTP Rate-Limiting
+│   │   ├── rate_limiter.py        # HTTP Rate-Limiting (minimum interval between requests)
+│   │   ├── retry.py               # `request_with_retry()` — geteilter Exponential-Backoff-Helper (transient httpx-Errors, 5xx, 429 mit Retry-After)
+│   │   └── ssl.py                 # `get_http_verify()` — TLS-Trust-Store (`HTTP_CA_BUNDLE` oder certifi)
 │   ├── ingestion/                 # Datenpipelines
 │   │   ├── euvd_pipeline.py       # EUVD (ENISA)
 │   │   ├── nvd_pipeline.py        # NVD (NIST)
@@ -112,15 +114,15 @@ app/
 │   │   ├── cpe_pipeline.py        # CPE (NVD, Mid-Run-Progress-Reporting)
 │   │   ├── circl_pipeline.py      # CIRCL
 │   │   ├── ghsa_pipeline.py       # GHSA (GitHub Advisory)
-│   │   ├── euvd_client.py         # EUVD API-Client
-│   │   ├── nvd_client.py          # NVD API-Client
+│   │   ├── euvd_client.py         # EUVD API-Client (eigener Retry-Loop, skippt Seiten nach 3 consecutive failures)
+│   │   ├── nvd_client.py          # NVD API-Client (shared `request_with_retry`, fail-hard nach Exhaustion)
 │   │   ├── cisa_client.py         # KEV API-Client
 │   │   ├── cpe_client.py          # CPE API-Client (Retry mit Exponential-Backoff)
 │   │   ├── cwe_client.py          # CWE MITRE API-Client
 │   │   ├── capec_client.py        # CAPEC XML-Parser
-│   │   ├── circl_client.py        # CIRCL API-Client
-│   │   ├── ghsa_client.py         # GHSA API-Client
-│   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client
+│   │   ├── circl_client.py        # CIRCL API-Client (shared `request_with_retry`, fail-soft per Record)
+│   │   ├── ghsa_client.py         # GHSA API-Client (shared `request_with_retry` + `iter_all_advisories`-Guard: loggt `iteration_aborted_on_failure` bei Retry-Exhaustion, statt "Seitenende" vorzutäuschen)
+│   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client (shared `request_with_retry` — auch für 100–300 MB Ecosystem-ZIPs)
 │   │   ├── osv_pipeline.py        # OSV (OSV.dev, Mid-Run-Progress-Reporting)
 │   │   ├── normalizer.py          # Normalisierung aller Quellen
 │   │   ├── job_tracker.py         # Job-Lifecycle & Audit

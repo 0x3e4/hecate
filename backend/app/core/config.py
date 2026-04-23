@@ -84,8 +84,11 @@ class Settings(BaseSettings):
 
     nvd_base_url: str = "https://services.nvd.nist.gov/rest/json"
     nvd_api_key: str | None = None
+    nvd_timeout_seconds: int = 60
     nvd_rate_limit_seconds: float = 6.0
     nvd_page_size: int = 2000
+    nvd_max_retries: int = 5
+    nvd_retry_backoff_seconds: float = 5.0
     nvd_max_records_per_run: OptionalInt = None
 
     cpe_base_url: str = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
@@ -103,17 +106,23 @@ class Settings(BaseSettings):
     circl_base_url: str = "https://vulnerability.circl.lu/api"
     circl_timeout_seconds: int = 30
     circl_rate_limit_seconds: float = 1.0
+    circl_max_retries: int = 3
+    circl_retry_backoff_seconds: float = 3.0
     circl_max_records_per_run: OptionalInt = 1000
 
     ghsa_base_url: str = "https://api.github.com/advisories"
     ghsa_token: str | None = None
     ghsa_timeout_seconds: int = 30
     ghsa_rate_limit_seconds: float = 1.0
+    ghsa_max_retries: int = 3
+    ghsa_retry_backoff_seconds: float = 5.0
     ghsa_max_records_per_run: OptionalInt = 5000
 
     osv_base_url: str = "https://api.osv.dev/v1"
     osv_timeout_seconds: int = 30
     osv_rate_limit_seconds: float = 0.5
+    osv_max_retries: int = 5
+    osv_retry_backoff_seconds: float = 5.0
     osv_max_records_per_run: OptionalInt = 5000
 
     ingestion_user_agent: str = "hecate-ingestion/1.0"

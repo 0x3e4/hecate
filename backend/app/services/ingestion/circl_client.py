@@ -10,6 +10,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.retry import request_with_retry
 from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
@@ -30,6 +31,8 @@ class CirclClient:
         timeout_seconds: int | None = None,
         rate_limiter: AsyncRateLimiter | None = None,
         client: httpx.AsyncClient | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
     ) -> None:
         self.base_url = (base_url or settings.circl_base_url).rstrip("/")
         timeout = timeout_seconds or settings.circl_timeout_seconds
@@ -44,6 +47,8 @@ class CirclClient:
             verify=get_http_verify(),
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.circl_rate_limit_seconds)
+        self._max_retries = max_retries if max_retries is not None else settings.circl_max_retries
+        self._retry_backoff = retry_backoff if retry_backoff is not None else settings.circl_retry_backoff_seconds
 
     async def fetch_cve(self, cve_id: str) -> dict[str, Any] | None:
         """
@@ -64,19 +69,31 @@ class CirclClient:
 
     async def _fetch_cve_record(self, cve_id: str) -> dict[str, Any] | None:
         url = f"{self.base_url}/cve/{cve_id}"
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            url,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="circl_client",
+            context={"cve_id": cve_id, "op": "fetch_cve"},
+        )
+        if response is None:
+            log.warning("circl_client.fetch_failed", cve_id=cve_id)
+            return None
+
+        if response.status_code == 404:
+            log.debug("circl_client.cve_not_found", cve_id=cve_id)
+            return None
+
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(url)
-
-            if response.status_code == 404:
-                log.debug("circl_client.cve_not_found", cve_id=cve_id)
-                return None
-
             response.raise_for_status()
-            return response.json()
         except httpx.HTTPError as exc:
             log.warning("circl_client.fetch_failed", cve_id=cve_id, error=str(exc))
             return None
+
+        return response.json()
 
     async def _fetch_epss_probability(self, cve_id: str) -> float | None:
         """
@@ -85,11 +102,21 @@ class CirclClient:
         Returns None on any failure — EPSS is best-effort enrichment.
         """
         url = f"{self.base_url}/epss/{cve_id}"
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            url,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="circl_client",
+            context={"cve_id": cve_id, "op": "fetch_epss"},
+        )
+        if response is None:
+            return None
+        if response.status_code == 404:
+            return None
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(url)
-            if response.status_code == 404:
-                return None
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPError as exc:
@@ -131,17 +158,29 @@ class CirclClient:
         Returns up to 30 CVEs by default.
         """
         url = f"{self.base_url}/last"
-        try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(url)
-            response.raise_for_status()
-            results = response.json()
-            if isinstance(results, list):
-                return results[:limit]
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            url,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="circl_client",
+            context={"op": "fetch_last_updated"},
+        )
+        if response is None:
+            log.error("circl_client.fetch_last_failed")
             return []
+        try:
+            response.raise_for_status()
         except httpx.HTTPError as exc:
             log.error("circl_client.fetch_last_failed", error=str(exc))
             return []
+
+        results = response.json()
+        if isinstance(results, list):
+            return results[:limit]
+        return []
 
     async def close(self) -> None:
         await self._client.aclose()
