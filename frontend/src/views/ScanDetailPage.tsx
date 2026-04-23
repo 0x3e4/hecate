@@ -14,6 +14,15 @@ import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { getCurrentTimezone } from "../timezone/storage";
+import {
+  TYPE_ALIASES,
+  buildDepsDevUrl,
+  buildSnykUrl,
+  buildRegistryUrl,
+  buildSocketUrl,
+  buildBundlephobiaUrl,
+  buildNpmGraphUrl,
+} from "../utils/sbomLinks";
 import type {
   Scan,
   ScanAiAnalysis,
@@ -46,121 +55,6 @@ function stripScanPath(path: string | null | undefined): string {
 /** Extract domain from URL for display */
 function urlDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
-}
-
-/** Normalize scanner-specific type names to canonical ecosystem names */
-const TYPE_ALIASES: Record<string, string> = {
-  "node-pkg": "npm",
-  "gobinary": "go",
-  "jar": "maven",
-  "pom": "maven",
-  "python-pkg": "pypi",
-  "dotnet-core": "nuget",
-  "rust-crate": "cargo",
-};
-
-/** Map purl/type to deps.dev ecosystem name */
-const DEPS_DEV_ECOSYSTEM: Record<string, string> = {
-  npm: "npm",
-  pypi: "pypi",
-  nuget: "nuget",
-  maven: "maven",
-  golang: "go",
-  go: "go",
-  cargo: "cargo",
-  gem: "rubygems",
-  rubygems: "rubygems",
-  composer: "packagist",
-  packagist: "packagist",
-};
-
-/** Map purl/type to Snyk package type */
-const SNYK_ECOSYSTEM: Record<string, string> = {
-  npm: "npm",
-  pypi: "pip",
-  nuget: "nuget",
-  maven: "maven",
-  golang: "golang",
-  go: "golang",
-  gem: "rubygems",
-  rubygems: "rubygems",
-  composer: "composer",
-};
-
-function getEcosystemFromPurl(purl: string | null | undefined): string | null {
-  if (!purl) return null;
-  // purl format: pkg:<type>/<namespace>/<name>@<version>
-  const match = purl.match(/^pkg:([^/]+)\//);
-  return match ? match[1].toLowerCase() : null;
-}
-
-function buildDepsDevUrl(name: string, version: string, type: string, purl?: string | null): string | null {
-  const raw = getEcosystemFromPurl(purl) ?? type.toLowerCase();
-  const eco = TYPE_ALIASES[raw] ?? raw;
-  const mapped = DEPS_DEV_ECOSYSTEM[eco];
-  if (!mapped || !name || !version) return null;
-  return `https://deps.dev/${mapped}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
-}
-
-function buildSnykUrl(name: string, version: string, type: string, purl?: string | null): string | null {
-  const raw = getEcosystemFromPurl(purl) ?? type.toLowerCase();
-  const eco = TYPE_ALIASES[raw] ?? raw;
-  const mapped = SNYK_ECOSYSTEM[eco];
-  if (!mapped || !name || !version) return null;
-  return `https://security.snyk.io/package/${mapped}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
-}
-
-/** Build a direct link to the package on its native registry */
-function buildRegistryUrl(name: string, version: string, type: string, purl?: string | null): { url: string; label: string } | null {
-  const raw = getEcosystemFromPurl(purl) ?? type.toLowerCase();
-  const eco = TYPE_ALIASES[raw] ?? raw;
-  if (!name) return null;
-  const v = version ? encodeURIComponent(version) : "";
-  const n = encodeURIComponent(name);
-  switch (eco) {
-    case "npm":
-      return { url: `https://www.npmjs.com/package/${name}${v ? `/v/${v}` : ""}`, label: "npm" };
-    case "pypi":
-      return { url: `https://pypi.org/project/${n}/${v || ""}`, label: "PyPI" };
-    case "maven": {
-      // Maven purl: pkg:maven/group/artifact — name may contain the group
-      const parts = name.split("/");
-      if (parts.length === 2) {
-        return { url: `https://central.sonatype.com/artifact/${parts[0]}/${parts[1]}${v ? `/${v}` : ""}`, label: "Maven" };
-      }
-      return { url: `https://central.sonatype.com/search?q=${n}`, label: "Maven" };
-    }
-    case "go":
-    case "golang":
-      return { url: `https://pkg.go.dev/${name}${v ? `@${v}` : ""}`, label: "Go" };
-    case "nuget":
-      return { url: `https://www.nuget.org/packages/${n}${v ? `/${v}` : ""}`, label: "NuGet" };
-    case "cargo":
-      return { url: `https://crates.io/crates/${n}${v ? `/${v}` : ""}`, label: "crates.io" };
-    case "gem":
-      return { url: `https://rubygems.org/gems/${n}${v ? `/versions/${v}` : ""}`, label: "RubyGems" };
-    case "composer":
-    case "packagist":
-      return { url: `https://packagist.org/packages/${name}`, label: "Packagist" };
-    case "cocoapods":
-      return { url: `https://cocoapods.org/pods/${n}`, label: "CocoaPods" };
-    case "hex":
-      return { url: `https://hex.pm/packages/${n}${v ? `/${v}` : ""}`, label: "Hex" };
-    case "pub":
-      return { url: `https://pub.dev/packages/${n}${v ? `/versions/${v}` : ""}`, label: "pub.dev" };
-    case "swift":
-      return { url: `https://swiftpackageindex.com/search?query=${n}`, label: "Swift" };
-    case "docker":
-    case "oci":
-      // Docker Hub or generic registry
-      if (!name.includes(".") && !name.includes(":")) {
-        const dockerName = name.includes("/") ? name : `library/${name}`;
-        return { url: `https://hub.docker.com/r/${dockerName}`, label: "Docker Hub" };
-      }
-      return null;
-    default:
-      return null;
-  }
 }
 
 /** Build a clickable source URL from image ref or target id.
@@ -1802,6 +1696,9 @@ export const ScanDetailPage = () => {
                       const depsUrl = buildDepsDevUrl(c.name, c.version, c.type, c.purl);
                       const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
                       const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
+                      const socketUrl = buildSocketUrl(c.name, c.version, c.type, c.purl);
+                      const bundlephobiaUrl = buildBundlephobiaUrl(c.name, c.version, c.type, c.purl);
+                      const npmGraphUrl = buildNpmGraphUrl(c.name, c.version, c.type, c.purl);
                       return (
                         <tr key={c.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                           <td style={tdStyle}>
@@ -1889,7 +1786,25 @@ export const ScanDetailPage = () => {
                                   {registryLink.label}
                                 </a>
                               )}
-                              {!depsUrl && !snykUrl && !registryLink && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
+                              {socketUrl && (
+                                <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
+                                  style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
+                                  socket.dev
+                                </a>
+                              )}
+                              {bundlephobiaUrl && (
+                                <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
+                                  style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
+                                  bundlephobia
+                                </a>
+                              )}
+                              {npmGraphUrl && (
+                                <a href={npmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
+                                  style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
+                                  npmgraph
+                                </a>
+                              )}
+                              {!depsUrl && !snykUrl && !registryLink && !socketUrl && !bundlephobiaUrl && !npmGraphUrl && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
                             </div>
                           </td>
                         </tr>
