@@ -10,6 +10,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.retry import request_with_retry
 from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
@@ -33,6 +34,8 @@ class GhsaClient:
         rate_limiter: AsyncRateLimiter | None = None,
         token: str | None = None,
         client: httpx.AsyncClient | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
     ) -> None:
         self.base_url = (base_url or settings.ghsa_base_url).rstrip("/")
         timeout = timeout_seconds or settings.ghsa_timeout_seconds
@@ -56,6 +59,11 @@ class GhsaClient:
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.ghsa_rate_limit_seconds)
         self._has_token = bool(resolved_token)
+        self._max_retries = max_retries if max_retries is not None else settings.ghsa_max_retries
+        self._retry_backoff = retry_backoff if retry_backoff is not None else settings.ghsa_retry_backoff_seconds
+        # Distinguishes "real end of pagination" from "retry-exhausted failure"
+        # inside iter_all_advisories. Set by fetch_advisories on error paths.
+        self._last_fetch_failed = False
 
     async def fetch_advisories(
         self,
@@ -83,37 +91,39 @@ class GhsaClient:
         if after:
             params["after"] = after
 
-        try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(self.base_url, params=params)
+        self._last_fetch_failed = False
 
-            # Check for rate limiting before raising
-            if response.status_code == 403:
-                remaining = response.headers.get("x-ratelimit-remaining", "?")
-                reset = response.headers.get("x-ratelimit-reset", "?")
-                log.error(
-                    "ghsa_client.rate_limited",
-                    status=403,
-                    remaining=remaining,
-                    reset=reset,
-                    has_token=self._has_token,
-                )
-                return [], None
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            self.base_url,
+            params=params,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="ghsa_client",
+            context={"modified_since": modified_since, "has_token": self._has_token},
+        )
+        if response is None:
+            self._last_fetch_failed = True
+            return [], None
 
-            response.raise_for_status()
-            advisories = response.json()
-            next_cursor = self._parse_next_cursor(response.headers.get("link"))
-
-            count = len(advisories) if isinstance(advisories, list) else 0
-            log.debug(
-                "ghsa_client.page_fetched",
-                count=count,
-                has_next=next_cursor is not None,
-                modified_since=modified_since,
+        # 403 from GitHub is either a rate-limit or auth issue; retrying won't help.
+        if response.status_code == 403:
+            remaining = response.headers.get("x-ratelimit-remaining", "?")
+            reset = response.headers.get("x-ratelimit-reset", "?")
+            log.error(
+                "ghsa_client.rate_limited",
+                status=403,
+                remaining=remaining,
+                reset=reset,
+                has_token=self._has_token,
             )
+            self._last_fetch_failed = True
+            return [], None
 
-            return advisories if isinstance(advisories, list) else [], next_cursor
-
+        try:
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             log.error(
                 "ghsa_client.http_error",
@@ -121,11 +131,21 @@ class GhsaClient:
                 error=str(exc),
                 has_token=self._has_token,
             )
+            self._last_fetch_failed = True
             return [], None
 
-        except httpx.HTTPError as exc:
-            log.warning("ghsa_client.fetch_failed", error=str(exc), has_token=self._has_token)
-            return [], None
+        advisories = response.json()
+        next_cursor = self._parse_next_cursor(response.headers.get("link"))
+
+        count = len(advisories) if isinstance(advisories, list) else 0
+        log.debug(
+            "ghsa_client.page_fetched",
+            count=count,
+            has_next=next_cursor is not None,
+            modified_since=modified_since,
+        )
+
+        return advisories if isinstance(advisories, list) else [], next_cursor
 
     async def fetch_advisory_by_id(
         self,
@@ -133,24 +153,33 @@ class GhsaClient:
     ) -> dict[str, Any] | None:
         """Fetch a single advisory by its GHSA ID."""
         url = f"{self.base_url}/{ghsa_id}"
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            url,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="ghsa_client",
+            context={"ghsa_id": ghsa_id},
+        )
+        if response is None:
+            return None
+
+        if response.status_code == 404:
+            return None
+        if response.status_code == 403:
+            log.error("ghsa_client.rate_limited", ghsa_id=ghsa_id, status=403)
+            return None
+
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(url)
-
-            if response.status_code == 404:
-                return None
-
-            if response.status_code == 403:
-                log.error("ghsa_client.rate_limited", ghsa_id=ghsa_id, status=403)
-                return None
-
             response.raise_for_status()
-            data = response.json()
-            return data if isinstance(data, dict) else None
-
         except httpx.HTTPError as exc:
             log.warning("ghsa_client.fetch_single_failed", ghsa_id=ghsa_id, error=str(exc))
             return None
+
+        data = response.json()
+        return data if isinstance(data, dict) else None
 
     async def fetch_advisory_by_cve(
         self,
@@ -162,23 +191,34 @@ class GhsaClient:
             "cve_id": cve_id,
             "per_page": 1,
         }
-        try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get(self.base_url, params=params)
-
-            if response.status_code == 403:
-                log.error("ghsa_client.rate_limited", cve_id=cve_id, status=403)
-                return None
-
-            response.raise_for_status()
-            advisories = response.json()
-            if isinstance(advisories, list) and advisories:
-                return advisories[0]
+        response = await request_with_retry(
+            self._client,
+            "GET",
+            self.base_url,
+            params=params,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="ghsa_client",
+            context={"cve_id": cve_id},
+        )
+        if response is None:
             return None
 
+        if response.status_code == 403:
+            log.error("ghsa_client.rate_limited", cve_id=cve_id, status=403)
+            return None
+
+        try:
+            response.raise_for_status()
         except httpx.HTTPError as exc:
             log.warning("ghsa_client.fetch_by_cve_failed", cve_id=cve_id, error=str(exc))
             return None
+
+        advisories = response.json()
+        if isinstance(advisories, list) and advisories:
+            return advisories[0]
+        return None
 
     async def iter_all_advisories(
         self,
@@ -202,7 +242,15 @@ class GhsaClient:
             )
 
             if not advisories:
-                if page == 1:
+                if self._last_fetch_failed:
+                    log.error(
+                        "ghsa_client.iteration_aborted_on_failure",
+                        page=page,
+                        yielded=yielded,
+                        modified_since=modified_since,
+                        message="Pagination stopped because a page failed after all retries",
+                    )
+                elif page == 1:
                     log.info(
                         "ghsa_client.no_advisories",
                         modified_since=modified_since,

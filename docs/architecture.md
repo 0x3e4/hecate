@@ -120,9 +120,10 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | OSV | OSV.dev GCS Bucket + REST-API | 120 min | OSV-Schwachstellen (Hybrid: reichert CVEs an + erstellt MAL-/PYSEC-/OSV-Einträge, 11 Ökosysteme) |
 
 - Alle Pipelines unterstützen inkrementelle und initiale Syncs.
+- **Gemeinsamer HTTP-Retry-Layer** ([backend/app/services/http/retry.py](../backend/app/services/http/retry.py)): Alle Ingestion-Clients (NVD, EUVD, CPE, CIRCL, GHSA, OSV) retry-en transiente `httpx.HTTPError`, 5xx und 429 (honoriert `Retry-After`) mit Exponential-Backoff. Pro Quelle konfigurierbar via `{SOURCE}_MAX_RETRIES` / `{SOURCE}_RETRY_BACKOFF_SECONDS`. NVD ist fail-hard (Pagination läuft rückwärts, eine stille Sprung-über-2000-CVEs wäre schlimmer als ein klarer Abbruch); CIRCL/OSV/GHSA sind fail-soft (skippen Record / Ecosystem / Seite). GHSA setzt zusätzlich einen `_last_fetch_failed`-Flag, damit `iter_all_advisories` Retry-Exhaustion als `ghsa_client.iteration_aborted_on_failure` loggt statt als "Seitenende" zu verstummen.
 - **EUVD Pipeline:** Liest paginiert, gleicht CVE-IDs ab, reichert mit NVD- und KEV-Daten an, pflegt Change-Historie, aktualisiert OpenSearch-Index + Mongo-Dokumente.
-- **NVD Pipeline:** Aktualisiert CVSS/EPSS/Referenzen für bestehende Datensätze, optional begrenzt über `modifiedSince`.
-- **CPE Pipeline:** Synchronisiert NVD-CPE-Katalog, erzeugt Vendor-/Produkt-/Versionseinträge und legt Slug-Metadaten in Mongo ab. HTTP-Retry mit Exponential-Backoff (3 Versuche, 429/5xx). Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
+- **NVD Pipeline:** Aktualisiert CVSS/EPSS/Referenzen für bestehende Datensätze, optional begrenzt über `modifiedSince`. Read-Timeout 60s (vorher 30s) — zu kurz für 2000-per-page JSON-Responses.
+- **CPE Pipeline:** Synchronisiert NVD-CPE-Katalog, erzeugt Vendor-/Produkt-/Versionseinträge und legt Slug-Metadaten in Mongo ab. Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
 - **KEV Pipeline:** Hält CISA Known-Exploited-Catalog aktuell und stellt Exploitation-Metadaten für EUVD/NVD bereit.
 - **CWE Pipeline:** Synchronisiert MITRE CWE-Katalog über REST-API mit 7-Tage TTL-Cache.
 - **CAPEC Pipeline:** Parst MITRE CAPEC XML, erstellt Angriffsmuster-Einträge mit CWE-Zuordnung.

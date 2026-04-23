@@ -9,6 +9,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.http.rate_limiter import AsyncRateLimiter
+from app.services.http.retry import request_with_retry
 from app.services.http.ssl import get_http_verify
 
 log = structlog.get_logger()
@@ -25,6 +26,8 @@ class NVDClient:
         client: httpx.AsyncClient | None = None,
         rate_limiter: AsyncRateLimiter | None = None,
         page_size: int | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
     ) -> None:
         headers = {
             "User-Agent": settings.ingestion_user_agent,
@@ -35,18 +38,41 @@ class NVDClient:
 
         self._client = client or httpx.AsyncClient(
             base_url=settings.nvd_base_url.rstrip("/"),
-            timeout=settings.euvd_timeout_seconds,
+            timeout=httpx.Timeout(settings.nvd_timeout_seconds, connect=10.0),
             headers=headers,
             verify=get_http_verify(),
         )
         self._rate_limiter = rate_limiter or AsyncRateLimiter(settings.nvd_rate_limit_seconds)
         configured_page_size = page_size or settings.nvd_page_size
         self._page_size = max(1, min(configured_page_size, 2000))
+        self._max_retries = max_retries if max_retries is not None else settings.nvd_max_retries
+        self._retry_backoff = retry_backoff if retry_backoff is not None else settings.nvd_retry_backoff_seconds
+
+    async def _get(
+        self,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> httpx.Response | None:
+        return await request_with_retry(
+            self._client,
+            "GET",
+            url,
+            params=params,
+            rate_limiter=self._rate_limiter,
+            max_retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            log_prefix="nvd_client",
+            context=context,
+        )
 
     async def fetch_cve(self, cve_id: str) -> dict[str, Any] | None:
+        response = await self._get("/cves/2.0", params={"cveId": cve_id}, context={"vuln_id": cve_id})
+        if response is None:
+            log.warning("nvd_client.fetch_failed", vuln_id=cve_id)
+            return None
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get("/cves/2.0", params={"cveId": cve_id})
             response.raise_for_status()
         except httpx.HTTPError as exc:
             log.warning("nvd_client.fetch_failed", vuln_id=cve_id, error=str(exc))
@@ -63,10 +89,11 @@ class NVDClient:
         return None
 
     async def fetch_cpe_matches(self, cve_id: str) -> list[dict[str, Any]] | None:
-        params = {"cveId": cve_id}
+        response = await self._get("/cpematch/2.0", params={"cveId": cve_id}, context={"vuln_id": cve_id})
+        if response is None:
+            log.warning("nvd_client.cpe_match_failed", vuln_id=cve_id)
+            return None
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get("/cpematch/2.0", params=params)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             log.warning("nvd_client.cpe_match_failed", vuln_id=cve_id, error=str(exc))
@@ -80,9 +107,10 @@ class NVDClient:
 
     async def total_results(self) -> int:
         params = {"startIndex": 0, "resultsPerPage": 1}
+        response = await self._get("/cves/2.0", params=params)
+        if response is None:
+            raise RuntimeError("Failed to fetch NVD total results.")
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get("/cves/2.0", params=params)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             log.error("nvd_client.total_failed", error=str(exc))
@@ -138,9 +166,10 @@ class NVDClient:
         if last_modified_end_param:
             params["lastModEndDate"] = last_modified_end_param
 
+        response = await self._get("/cves/2.0", params=params)
+        if response is None:
+            raise RuntimeError("Failed to get total NVD CVE count.")
         try:
-            async with self._rate_limiter.slot():
-                response = await self._client.get("/cves/2.0", params=params)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code if exc.response else None
@@ -187,9 +216,10 @@ class NVDClient:
             if last_modified_end_param:
                 params["lastModEndDate"] = last_modified_end_param
 
+            response = await self._get("/cves/2.0", params=params, context={"start_index": start_index})
+            if response is None:
+                raise RuntimeError("Failed to iterate NVD CVEs.")
             try:
-                async with self._rate_limiter.slot():
-                    response = await self._client.get("/cves/2.0", params=params)
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code if exc.response else None
