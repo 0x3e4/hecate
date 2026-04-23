@@ -77,6 +77,7 @@ class CirclClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="circl_client",
+            validate_json=True,
             context={"cve_id": cve_id, "op": "fetch_cve"},
         )
         if response is None:
@@ -110,6 +111,7 @@ class CirclClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="circl_client",
+            validate_json=True,
             context={"cve_id": cve_id, "op": "fetch_epss"},
         )
         if response is None:
@@ -166,6 +168,7 @@ class CirclClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="circl_client",
+            validate_json=True,
             context={"op": "fetch_last_updated"},
         )
         if response is None:

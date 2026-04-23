@@ -216,6 +216,7 @@ class OsvClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="osv_client",
+            validate_json=True,
             context={"vuln_id": vuln_id, "op": "fetch_single"},
         )
         if response is None:
