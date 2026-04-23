@@ -26,6 +26,14 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
+import {
+  buildDepsDevUrl,
+  buildSnykUrl,
+  buildRegistryUrl,
+  buildSocketUrl,
+  buildBundlephobiaUrl,
+  buildNpmGraphUrl,
+} from "../utils/sbomLinks";
 import type {
   ScanTarget,
   Scan,
@@ -1550,6 +1558,7 @@ export const ScansPage = () => {
                             {h.label} {sbomSort.col === h.col ? (sbomSort.dir === "asc" ? "▲" : "▼") : ""}
                           </th>
                         ))}
+                        <th style={thStyle}>{t("Links", "Links")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1597,10 +1606,62 @@ export const ScansPage = () => {
                               <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
                                 {c.targets.length}
                               </td>
+                              <td style={tdStyle} onClick={e => e.stopPropagation()}>
+                                {(() => {
+                                  const depsUrl = buildDepsDevUrl(c.name, c.version, c.type, c.purl);
+                                  const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
+                                  const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
+                                  const socketUrl = buildSocketUrl(c.name, c.version, c.type, c.purl);
+                                  const bundlephobiaUrl = buildBundlephobiaUrl(c.name, c.version, c.type, c.purl);
+                                  const npmGraphUrl = buildNpmGraphUrl(c.name, c.version, c.type, c.purl);
+                                  const hasAny = depsUrl || snykUrl || registryLink || socketUrl || bundlephobiaUrl || npmGraphUrl;
+                                  return (
+                                    <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
+                                      {depsUrl && (
+                                        <a href={depsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
+                                          style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
+                                          deps.dev
+                                        </a>
+                                      )}
+                                      {snykUrl && (
+                                        <a href={snykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
+                                          style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
+                                          Snyk
+                                        </a>
+                                      )}
+                                      {registryLink && (
+                                        <a href={registryLink.url} target="_blank" rel="noopener noreferrer" title={registryLink.label}
+                                          style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
+                                          {registryLink.label}
+                                        </a>
+                                      )}
+                                      {socketUrl && (
+                                        <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
+                                          style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
+                                          socket.dev
+                                        </a>
+                                      )}
+                                      {bundlephobiaUrl && (
+                                        <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
+                                          style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
+                                          bundlephobia
+                                        </a>
+                                      )}
+                                      {npmGraphUrl && (
+                                        <a href={npmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
+                                          style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
+                                          npmgraph
+                                        </a>
+                                      )}
+                                      {!hasAny && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
                             </tr>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={6} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
+                                <td colSpan={7} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
                                   <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
                                     {t("Found in targets:", "Gefunden in Zielen:")}
                                   </div>
