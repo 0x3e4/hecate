@@ -275,6 +275,7 @@ class InventoryService:
         *,
         since: datetime,
         limit: int = 100,
+        item_ids: list[str] | None = None,
     ) -> list[tuple[dict[str, Any], list[AffectedInventoryItem]]]:
         """Return vulns published since ``since`` that affect any inventory item.
 
@@ -284,10 +285,19 @@ class InventoryService:
         against the cached inventory list to drop version mismatches. Returns a
         list of ``(vuln_doc, affected_items)`` pairs so the caller can render
         both the CVE info and the per-vuln environment impact in notifications.
+
+        If ``item_ids`` is provided, the candidate inventory pool is narrowed to
+        just those entries — enables per-item-scoped rules in addition to the
+        default global scope.
         """
         raw_inventory = await self.list_all_cached()
         if not raw_inventory:
             return []
+        if item_ids:
+            allowed = {str(x) for x in item_ids}
+            raw_inventory = [i for i in raw_inventory if str(i.get("_id")) in allowed]
+            if not raw_inventory:
+                return []
 
         pairs_vendor = sorted({
             (str(i.get("vendor_slug") or "").lower())

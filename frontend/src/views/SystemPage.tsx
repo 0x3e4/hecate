@@ -48,6 +48,7 @@ import {
   resyncVulnerabilities,
 } from "../api/sync";
 import { fetchScanTargets } from "../api/scans";
+import { fetchInventoryItems } from "../api/inventory";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -68,6 +69,7 @@ import type {
   LicensePolicy,
   LicenseGroups,
   ScanTarget,
+  InventoryItem,
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
@@ -215,7 +217,9 @@ export const SystemPage = () => {
   const [formDqlQuery, setFormDqlQuery] = useState("");
   const [formScanSeverityThreshold, setFormScanSeverityThreshold] = useState("");
   const [formScanTargetFilter, setFormScanTargetFilter] = useState("");
+  const [formInventoryItemIds, setFormInventoryItemIds] = useState<string[]>([]);
   const [scanTargets, setScanTargets] = useState<ScanTarget[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
 
   // Channel management state
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
@@ -304,6 +308,7 @@ export const SystemPage = () => {
     setFormDqlQuery("");
     setFormScanSeverityThreshold("");
     setFormScanTargetFilter("");
+    setFormInventoryItemIds([]);
     setEditingRule(null);
   };
 
@@ -321,6 +326,7 @@ export const SystemPage = () => {
       setFormDqlQuery(rule.dqlQuery || "");
       setFormScanSeverityThreshold(rule.scanSeverityThreshold || "");
       setFormScanTargetFilter(rule.scanTargetFilter || "");
+      setFormInventoryItemIds(rule.inventoryItemIds || []);
     } else {
       resetRuleForm();
     }
@@ -343,6 +349,7 @@ export const SystemPage = () => {
         dqlQuery: formType === "dql" ? formDqlQuery || null : null,
         scanSeverityThreshold: formType === "scan" ? formScanSeverityThreshold || null : null,
         scanTargetFilter: formType === "scan" ? formScanTargetFilter || null : null,
+        inventoryItemIds: formType === "inventory" ? (formInventoryItemIds.length ? formInventoryItemIds : null) : null,
       };
       if (editingRule) {
         await updateNotificationRule(editingRule.id, payload);
@@ -411,6 +418,7 @@ export const SystemPage = () => {
       case "product": return t("Product", "Produkt");
       case "dql": return t("DQL Query", "DQL-Abfrage");
       case "scan": return t("SCA Scan", "SCA-Scan");
+      case "inventory": return t("Inventory", "Inventar");
     }
   };
 
@@ -433,6 +441,11 @@ export const SystemPage = () => {
         if (rule.scanTargetFilter) parts.push(rule.scanTargetFilter);
         return parts.join(" · ") || t("All scans", "Alle Scans");
       }
+      case "inventory": {
+        const ids = rule.inventoryItemIds || [];
+        if (ids.length === 0) return t("All inventory items", "Alle Inventar-Einträge");
+        return t(`${ids.length} item(s)`, `${ids.length} Eintrag/Einträge`);
+      }
     }
   };
 
@@ -444,6 +457,7 @@ export const SystemPage = () => {
     { value: "scan_failed", label: "Scan Failed" },
     { value: "sync_failed", label: "Sync Failed" },
     { value: "watch_rule_match", label: "Watch Rule Match" },
+    { value: "inventory_match", label: "Inventory Match" },
   ];
 
   const TEMPLATE_PLACEHOLDERS: Record<NotificationEventKey, { scalars: string; loops?: { label: string; fields: string }[] }> = {
@@ -470,6 +484,13 @@ export const SystemPage = () => {
         { label: "vulnerabilities", fields: "{id}, {severity}, {cvss}, {cwes}, {summary}, {title}, {vendors}, {products}, {versions}, {exploited}, {source}, {published}" },
       ],
     },
+    inventory_match: {
+      scalars: "{icon}, {rule_name}, {count}, {noun}, {vulnerabilities_list}, {affected_item_count}, {total_instances}, {time}",
+      loops: [
+        { label: "vulnerabilities", fields: "{id}, {severity}, {cvss}, {title}, {published}, {affectedItems}" },
+        { label: "affected_items", fields: "{id}, {name}, {version}, {deployment}, {environment}, {instanceCount}, {owner}" },
+      ],
+    },
   };
 
   const DEFAULT_TEMPLATES: Record<NotificationEventKey, { title: string; body: string }> = {
@@ -492,6 +513,10 @@ export const SystemPage = () => {
     watch_rule_match: {
       title: "{icon} Hecate — {count} New {noun}: {rule_name}",
       body: "Rule: {rule_name}\nMatches: {count}\nVulnerabilities: {vulnerabilities_list}\nTime: {time}",
+    },
+    inventory_match: {
+      title: "{icon} Hecate — {count} inventory-affecting {noun}: {rule_name}",
+      body: "Rule: {rule_name}\nNew vulnerabilities affecting your inventory: {count}\nInventory items impacted: {affected_item_count} ({total_instances} instances)\nVulnerabilities: {vulnerabilities_list}\nTime: {time}",
     },
   };
 
@@ -785,6 +810,7 @@ export const SystemPage = () => {
     void loadScannerStatus();
     void loadLicensePolicies();
     void fetchScanTargets({ limit: 200 }).then((r) => setScanTargets(r.items)).catch(() => {});
+    void fetchInventoryItems().then((r) => setInventoryItems(r.items)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1551,6 +1577,7 @@ export const SystemPage = () => {
                     <option value="product">{t("Product", "Produkt")}</option>
                     <option value="dql">{t("DQL Query", "DQL-Abfrage")}</option>
                     <option value="scan">{t("SCA Scan", "SCA-Scan")}</option>
+                    <option value="inventory">{t("Inventory", "Inventar")}</option>
                   </select>
                 </div>
                 <div>
@@ -1692,6 +1719,50 @@ export const SystemPage = () => {
                       {t("Leave empty to match all targets.", "Leer lassen für alle Ziele.")}
                     </p>
                   </div>
+                </div>
+              )}
+
+              {formType === "inventory" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    {t("Inventory Items (leave empty = all)", "Inventar-Einträge (leer = alle)")}
+                  </label>
+                  {inventoryItems.length === 0 ? (
+                    <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                      {t(
+                        "No inventory items yet. The rule will still work (global scope) once you add items on the Inventory page.",
+                        "Noch keine Inventar-Einträge. Die Regel funktioniert dennoch (global), sobald Sie auf der Inventar-Seite Einträge hinzufügen.",
+                      )}
+                    </p>
+                  ) : (
+                    <select
+                      multiple
+                      value={formInventoryItemIds}
+                      onChange={(e) =>
+                        setFormInventoryItemIds(
+                          Array.from(e.target.selectedOptions).map((o) => o.value),
+                        )
+                      }
+                      size={Math.min(8, Math.max(3, inventoryItems.length))}
+                      style={{ width: "100%", padding: "0.5rem", boxSizing: "border-box" }}
+                    >
+                      {inventoryItems.map((item) => {
+                        const vendor = item.vendorName || item.vendorSlug;
+                        const product = item.productName || item.productSlug;
+                        return (
+                          <option key={item.id} value={item.id}>
+                            {item.name} — {vendor}/{product} {item.version}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                  <p className="muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+                    {t(
+                      "Fires when a newly published vulnerability affects the selected items. Leave empty to watch all inventory entries. Hold Ctrl/Cmd to select multiple.",
+                      "Löst aus, sobald eine neu veröffentlichte Schwachstelle die ausgewählten Einträge betrifft. Leer lassen, um alle Inventar-Einträge zu beobachten. Mehrfachauswahl mit Strg/Cmd.",
+                    )}
+                  </p>
                 </div>
               )}
 

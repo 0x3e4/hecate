@@ -110,7 +110,7 @@ async def create_rule(
     payload: NotificationRuleCreate,
     service: NotificationService = Depends(get_notification_service),
 ) -> NotificationRuleResponse:
-    valid_types = {"event", "saved_search", "vendor", "product", "dql", "scan"}
+    valid_types = {"event", "saved_search", "vendor", "product", "dql", "scan", "inventory"}
     if payload.rule_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"Invalid rule_type. Must be one of: {', '.join(sorted(valid_types))}")
     return await service.create_rule(payload)
@@ -152,7 +152,7 @@ async def delete_rule(
 # --- Message Templates CRUD ---
 
 
-VALID_EVENT_KEYS = {"new_vulnerabilities", "scan_completed", "scan_failed", "sync_failed", "watch_rule_match"}
+VALID_EVENT_KEYS = {"new_vulnerabilities", "scan_completed", "scan_failed", "sync_failed", "watch_rule_match", "inventory_match"}
 
 
 @router.get("/templates", response_model=NotificationTemplateListResponse)

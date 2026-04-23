@@ -145,7 +145,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **Ereignisse:** SCA-Scan abgeschlossen/fehlgeschlagen, Sync-Fehler, neue Schwachstellen nach Ingestion
 - **Regelbasiert:** Konfigurierbare Regeln pro Ereignistyp mit individuellem Channel-Routing (Apprise-Tags)
 - **Watch-Regeln:** Automatische Auswertung von Saved Searches, Vendor-/Produkt-Watches und DQL-Queries nach Ingestion
-- **Inventory-Regeln:** Feuern nach jeder Ingestion, wenn neu veröffentlichte CVEs einen Eintrag im Environment-Inventory über vendor/product-Slug + CPE-Versionsbereich treffen
+- **Inventory-Regeln:** Feuern nach jeder Ingestion, wenn neu veröffentlichte CVEs einen Eintrag im Environment-Inventory über vendor/product-Slug + CPE-Versionsbereich treffen. Optionaler Item-Filter (`inventoryItemIds`) verengt die Regel auf ausgewählte Einträge; leer = global
 - **Scan-Regeln:** Bedingte Benachrichtigungen für SCA-Scans mit Severity-Schwellenwert (z.B. nur bei Critical/High) und Ziel-Filter (Wildcard-Pattern)
 - **Nachrichtenvorlagen:** Anpassbare Titel- und Body-Templates pro Event-Typ mit Platzhaltern (`{variable}`) und Schleifen (`{#each}...{/each}`)
 - **Test-Endpoint:** `POST /api/v1/notifications/test` mit optionalem Tag-Filter und Button in der System-Seite

@@ -93,6 +93,14 @@ class NotificationRuleCreate(BaseModel):
         description="Target name filter (supports * wildcards)",
     )
 
+    # inventory
+    inventory_item_ids: list[str] | None = Field(
+        default=None,
+        alias="inventoryItemIds",
+        serialization_alias="inventoryItemIds",
+        description="Restrict inventory rule to specific item ids; null/empty = all items",
+    )
+
     model_config = {"populate_by_name": True}
 
 
@@ -137,6 +145,11 @@ class NotificationRuleResponse(BaseModel):
         default=None,
         alias="scanTargetFilter",
         serialization_alias="scanTargetFilter",
+    )
+    inventory_item_ids: list[str] | None = Field(
+        default=None,
+        alias="inventoryItemIds",
+        serialization_alias="inventoryItemIds",
     )
 
     created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
@@ -198,7 +211,7 @@ class NotificationTemplateCreate(BaseModel):
         max_length=100,
         alias="eventKey",
         serialization_alias="eventKey",
-        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match",
+        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match, inventory_match",
     )
     tag: str = Field(
         default="all",
