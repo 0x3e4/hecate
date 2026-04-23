@@ -64,6 +64,7 @@ class NVDClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="nvd_client",
+            validate_json=True,
             context=context,
         )
 

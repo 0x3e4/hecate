@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Mapping
 
 import httpx
@@ -22,6 +23,7 @@ async def request_with_retry(
     params: Mapping[str, Any] | None = None,
     rate_limiter: AsyncRateLimiter | None = None,
     retry_on_5xx: bool = True,
+    validate_json: bool = False,
     context: Mapping[str, Any] | None = None,
 ) -> httpx.Response | None:
     """Execute an HTTP request with exponential-backoff retries on transient errors.
@@ -36,6 +38,12 @@ async def request_with_retry(
       * ``5xx`` responses are retried when ``retry_on_5xx`` is True.
       * All other ``4xx`` responses are returned as-is; the caller decides
         how to interpret them (404 = not found, 403 = auth issue, etc.).
+      * When ``validate_json`` is True, the body of a ``2xx`` response is
+        parsed via ``response.json()`` inside the retry loop. Truncated or
+        malformed JSON (``json.JSONDecodeError``, ``httpx.DecodingError``)
+        is treated as transient — upstream sometimes closes the TCP
+        connection mid-stream but reports a successful status, leaving a
+        body that cuts off mid-token.
 
     On exhaustion returns ``None``. The caller decides whether this is
     fail-hard (raise) or fail-soft (skip/return-sentinel).
@@ -120,6 +128,31 @@ async def request_with_retry(
                 **log_context,
             )
             return response
+
+        if validate_json and 200 <= status < 300:
+            try:
+                response.json()
+            except (json.JSONDecodeError, httpx.DecodingError) as exc:
+                last_error_str = f"{exc.__class__.__name__}: {exc}"
+                if attempt < max_retries:
+                    delay = backoff_base * (2 ** attempt)
+                    log.warning(
+                        f"{log_prefix}.response_decode_retrying",
+                        error=last_error_str,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        retry_in=delay,
+                        **log_context,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                log.error(
+                    f"{log_prefix}.response_decode_exhausted",
+                    error=last_error_str,
+                    attempts=attempt + 1,
+                    **log_context,
+                )
+                return None
 
         return response
 

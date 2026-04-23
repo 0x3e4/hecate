@@ -102,6 +102,7 @@ class GhsaClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="ghsa_client",
+            validate_json=True,
             context={"modified_since": modified_since, "has_token": self._has_token},
         )
         if response is None:
@@ -161,6 +162,7 @@ class GhsaClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="ghsa_client",
+            validate_json=True,
             context={"ghsa_id": ghsa_id},
         )
         if response is None:
@@ -200,6 +202,7 @@ class GhsaClient:
             max_retries=self._max_retries,
             backoff_base=self._retry_backoff,
             log_prefix="ghsa_client",
+            validate_json=True,
             context={"cve_id": cve_id},
         )
         if response is None:
