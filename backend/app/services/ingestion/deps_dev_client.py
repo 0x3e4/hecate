@@ -156,5 +156,72 @@ class DepsDevClient:
                     out.append(version_str.strip())
         return out
 
+    async def fetch_npm_registry_versions(self, name: str) -> list[str] | None:
+        """Fallback for unpublished npm packages: query the npm registry directly.
+
+        deps.dev returns 404 for packages that npm has **unpublished** (which
+        is exactly what happens after a typosquat/malware takedown — the bulk
+        of MAL-* records). The npm registry preserves these historical
+        versions under `time.unpublished.versions` even after the package is
+        gone, so we can still reconstruct the affected-versions list.
+
+        Returns None on 404 / network error / unexpected payload. Returns an
+        empty list only if the response genuinely had no versions.
+        """
+        quoted = quote(name, safe="/@")  # preserve literal slash + @ for scoped names
+        url = f"https://registry.npmjs.org/{quoted}"
+        try:
+            response = await self._client.get(url)
+        except httpx.HTTPError as exc:
+            log.warning("npm_registry.transport_error", package=name, error=str(exc))
+            return None
+        if response.status_code == 404:
+            log.debug("npm_registry.not_found", package=name)
+            return None
+        if response.status_code >= 400:
+            log.warning(
+                "npm_registry.http_error",
+                status=response.status_code,
+                package=name,
+                body_preview=response.text[:200],
+            )
+            return None
+        try:
+            data = response.json()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("npm_registry.json_parse_failed", package=name, error=str(exc))
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        # Union of currently-published versions (`versions` dict keys) and any
+        # versions that were unpublished (`time.unpublished.versions` list).
+        out: list[str] = []
+        seen: set[str] = set()
+        published = data.get("versions")
+        if isinstance(published, dict):
+            for v in published.keys():
+                if isinstance(v, str) and v not in seen:
+                    seen.add(v)
+                    out.append(v)
+        time_block = data.get("time")
+        if isinstance(time_block, dict):
+            unpublished = time_block.get("unpublished")
+            if isinstance(unpublished, dict):
+                uvs = unpublished.get("versions")
+                if isinstance(uvs, list):
+                    for v in uvs:
+                        if isinstance(v, str) and v not in seen:
+                            seen.add(v)
+                            out.append(v)
+            # Fallback: any timestamped entry that isn't a reserved key
+            for key in time_block.keys():
+                if key in {"created", "modified", "unpublished"}:
+                    continue
+                if isinstance(key, str) and key not in seen:
+                    seen.add(key)
+                    out.append(key)
+        return out
+
     async def close(self) -> None:
         await self._client.aclose()

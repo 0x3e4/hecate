@@ -180,6 +180,22 @@ async def enrich_document(
             if key in enriched:
                 continue
             versions = await cli.fetch_package_versions(system=system, name=name)
+            # Fallback: for NPM, deps.dev returns 404 whenever a package has
+            # been unpublished (the common case after a typosquat takedown —
+            # e.g. `vite-plugin-compress-plus` listed 0.5.2/0.5.3/0.5.4 on
+            # OSV but npm removed the package and deps.dev lost the
+            # versions). The npm registry preserves the historical list
+            # under `time.unpublished.versions`, so query it directly as a
+            # secondary source.
+            if not versions and system == "NPM":
+                registry_versions = await cli.fetch_npm_registry_versions(name)
+                if registry_versions:
+                    log.info(
+                        "mal_enrichment.npm_registry_fallback",
+                        package=name,
+                        versions=len(registry_versions),
+                    )
+                    versions = registry_versions
             if versions:
                 enriched[key] = versions
     finally:
