@@ -707,10 +707,12 @@ def _parse_epss(value: Any) -> float | None:
         return None
 
     # Canonical storage is 0..1 (FIRST probability). EUVD's API returns the
-    # value in 0..100 percentage form (e.g. 88.66), so rescale when we see a
-    # value out of the 0..1 band. Clamp to [0,1] to stay robust against junk.
-    if raw > 1:
-        raw = raw / 100
+    # value in 0..100 percentage form for all magnitudes (e.g. 88.66 for
+    # 88.66%, 0.38 for 0.38%), so always divide by 100 — the previous
+    # `if raw > 1` heuristic left small percent values like 0.38 unscaled,
+    # producing 0.38 stored where CIRCL would report 0.0038. Clamp to [0,1]
+    # to stay robust against junk.
+    raw = raw / 100
     if raw < 0:
         raw = 0.0
     if raw > 1:
