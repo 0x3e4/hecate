@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { VulnerabilityPreview } from "../types";
+import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types";
 import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
 import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../api/stats";
 import { SkeletonBlock } from "../components/Skeleton";
@@ -26,6 +26,11 @@ export const DashboardPage = () => {
   const [queryNotFound, setQueryNotFound] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState<boolean>(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  // Manual-sync is dispatched async (HTTP 202) and the real result lands on
+  // the SSE bus as `vulnerability_refresh_<jobId>` — remember both the jobId
+  // and the query ID so the matching effect below can navigate / toast.
+  const [pendingSyncJob, setPendingSyncJob] = useState<{ jobId: string; query: string } | null>(null);
+  const pendingSyncTimeoutRef = useRef<number | null>(null);
 
   // SSE: refresh dashboard when new vulnerabilities are ingested
   const { jobs: sseJobs } = useSSE();
@@ -114,6 +119,29 @@ export const DashboardPage = () => {
     try {
       const response = await triggerVulnerabilityRefresh(payload);
 
+      // Async path (current backend): remember the jobId and let the SSE
+      // effect pick up the final per-ID results when `job_completed` fires.
+      if (response.jobId) {
+        setPendingSyncJob({ jobId: response.jobId, query: queryNotFound });
+        setToast({
+          type: "success",
+          message: t(
+            `Synchronizing "${queryNotFound}" — this can take up to 3 minutes.`,
+            `Synchronisiere "${queryNotFound}" — das kann bis zu 3 Minuten dauern.`
+          ),
+        });
+        if (pendingSyncTimeoutRef.current !== null) {
+          window.clearTimeout(pendingSyncTimeoutRef.current);
+        }
+        pendingSyncTimeoutRef.current = window.setTimeout(() => {
+          setPendingSyncJob(null);
+          setSyncLoading(false);
+          pendingSyncTimeoutRef.current = null;
+        }, 300000);
+        return;
+      }
+
+      // Legacy synchronous path (older backends without async dispatch).
       const hasInsertedOrUpdated = response.results.some(
         (r) => r.status === "inserted" || r.status === "updated"
       );
@@ -145,6 +173,7 @@ export const DashboardPage = () => {
           ),
         });
       }
+      setSyncLoading(false);
     } catch (error) {
       console.error("Manual sync failed", error);
       setToast({
@@ -154,10 +183,64 @@ export const DashboardPage = () => {
           "Synchronisation fehlgeschlagen. NVD/EUVD/GHSA haben diese Schwachstelle möglicherweise nicht."
         ),
       });
-    } finally {
       setSyncLoading(false);
     }
   }, [queryNotFound, navigate, t]);
+
+  // Match pending manual-sync jobId against the SSE stream; same contract as
+  // the vulnerability-detail page's refresh subscription.
+  useEffect(() => {
+    if (!pendingSyncJob) return;
+    const jobName = `vulnerability_refresh_${pendingSyncJob.jobId}`;
+    const event = sseJobs.get(jobName);
+    if (!event || (event.eventType !== "job_completed" && event.eventType !== "job_failed")) {
+      return;
+    }
+    if (pendingSyncTimeoutRef.current !== null) {
+      window.clearTimeout(pendingSyncTimeoutRef.current);
+      pendingSyncTimeoutRef.current = null;
+    }
+    const query = pendingSyncJob.query;
+    setPendingSyncJob(null);
+    setSyncLoading(false);
+
+    if (event.eventType === "job_failed") {
+      setToast({
+        type: "error",
+        message: `${t("Synchronization failed.", "Synchronisation fehlgeschlagen.")}${event.error ? ` (${event.error})` : ""}`,
+      });
+      return;
+    }
+    const metadata = event.metadata ?? {};
+    const results = Array.isArray((metadata as Record<string, unknown>).results)
+      ? ((metadata as Record<string, unknown>).results as VulnerabilityRefreshStatus[])
+      : [];
+    const success = results.find((r) => r.status === "inserted" || r.status === "updated");
+    const errors = results.filter((r) => r.status === "error");
+    if (success) {
+      const targetId = success.resolvedId || query;
+      setQueryNotFound(null);
+      setQueryInput("");
+      navigate(`/vulnerability/${encodeURIComponent(targetId)}`);
+    } else if (errors.length > 0) {
+      const errorMessages = errors.map((e) => e.message || t("Unknown error", "Unbekannter Fehler")).join("; ");
+      setToast({
+        type: "error",
+        message: t(
+          `Vulnerability not found in NVD/EUVD/GHSA: ${errorMessages}`,
+          `Schwachstelle nicht in NVD/EUVD/GHSA gefunden: ${errorMessages}`
+        ),
+      });
+    } else {
+      setToast({
+        type: "error",
+        message: t(
+          `Vulnerability "${query}" could not be synchronized. Not available in NVD, EUVD or GHSA.`,
+          `Schwachstelle "${query}" konnte nicht synchronisiert werden. Nicht in NVD, EUVD oder GHSA vorhanden.`
+        ),
+      });
+    }
+  }, [pendingSyncJob, sseJobs, navigate, t]);
 
   const handleQueryKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1139,6 +1222,20 @@ const DashboardVulnCard = ({
                     🧩
                   </span>
                   OSV
+                </a>
+              ))}
+              {malAliases.map((alias) => (
+                <a
+                  key={`deps-${alias}`}
+                  href={`https://deps.dev/advisory/osv/${encodeURIComponent(alias)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="deps.dev advisory"
+                >
+                  <span role="img" aria-label="deps.dev">
+                    📦
+                  </span>
+                  deps.dev
                 </a>
               ))}
               {pysecAliases.map((alias) => (

@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 
+from app.core.config import settings
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.schemas.sync import SyncState
@@ -39,6 +40,10 @@ SYNC_JOBS = [
     ("ghsa_initial_sync", "GHSA Initial Sync"),
     ("osv_sync", "OSV Sync"),
     ("osv_initial_sync", "OSV Initial Sync"),
+    # NOTE: `mal_enrichment_backfill` is intentionally excluded from this
+    # list. It's a CLI-only job (no scheduler, no HTTP trigger) so showing
+    # it here produced a confusing "CLI only" row. The audit-log page still
+    # surfaces its runs via the JobTracker-produced ingestion_logs entry.
 ]
 
 

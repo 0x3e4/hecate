@@ -11,6 +11,8 @@ from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.asset_catalog_service import AssetCatalogService
+from app.services.ingestion.deps_dev_client import DepsDevClient
+from app.services.ingestion.mal_enrichment import maybe_enrich_by_id
 from app.services.ingestion.osv_client import OsvClient
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.normalizer import (
@@ -35,8 +37,16 @@ class OsvPipeline:
     - Records without CVE alias (MAL-*, PYSEC-*, etc.): create new documents.
     """
 
-    def __init__(self, *, client: OsvClient | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        client: OsvClient | None = None,
+        deps_dev_client: DepsDevClient | None = None,
+    ) -> None:
         self.client = client or OsvClient()
+        # Long-lived deps.dev client so MAL-* enrichment during a sync reuses
+        # one httpx.AsyncClient + one rate-limiter across all records.
+        self.deps_dev_client = deps_dev_client or DepsDevClient()
 
     async def sync(
         self,
@@ -241,11 +251,20 @@ class OsvPipeline:
                 elif upper.startswith("GHSA-") and ghsa_alias is None:
                     ghsa_alias = upper
 
-        # Prefer CVE > GHSA > OSV ID as the canonical document ID.
-        # MAL-* entries almost always have a GHSA alias; using the GHSA ID
-        # allows the GHSA pipeline to enrich the same document.
+        # Priority:
+        #  - MAL-* records always keep MAL-* as the primary _id, so the rich
+        #    OSSF/deps.dev description + version enrichment lives on the
+        #    authoritative doc. Any existing GHSA / EUVD doc that aliases
+        #    this MAL-* will be absorbed into the MAL-* doc by the repository
+        #    layer (see `_absorb_aliased_docs`).
+        #  - For everything else, prefer CVE > GHSA > OSV ID so a CVE doc
+        #    collects the richer CVE-centric feeds.
+        raw_id = osv_id.strip() if isinstance(osv_id, str) else ""
+        is_mal = raw_id.upper().startswith("MAL-")
         has_cve = cve_id is not None
-        if has_cve:
+        if is_mal:
+            vuln_id = raw_id.upper()
+        elif has_cve:
             vuln_id = cve_id
         elif ghsa_alias:
             vuln_id = ghsa_alias
@@ -349,6 +368,24 @@ class OsvPipeline:
             change_context=change_context,
         )
 
+        # Fill in published versions for MAL-*/GHSA-* records — OSSF publishes
+        # MAL-* with `introduced: "0"` (all versions) and deps.dev gives us
+        # the actual short list. We run enrichment on every upsert outcome
+        # (inserted / updated / unchanged) because a doc with broad ranges
+        # that OSV didn't touch on this pass still needs enrichment; the
+        # helper is idempotent and bails early when ranges are already
+        # specific, so the "unchanged" case is cheap (one Mongo read per
+        # record + at most N deps.dev calls when targets exist).
+        if vuln_id.upper().startswith(("MAL-", "GHSA-")):
+            try:
+                await maybe_enrich_by_id(vuln_id, client=self.deps_dev_client)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "osv_pipeline.enrichment_failed",
+                    vuln_id=vuln_id,
+                    error=str(exc),
+                )
+
         if result == "inserted":
             log.debug("osv_pipeline.created", vuln_id=vuln_id, osv_id=osv_id)
             return "created"
@@ -360,6 +397,7 @@ class OsvPipeline:
 
     async def close(self) -> None:
         await self.client.close()
+        await self.deps_dev_client.close()
 
     @staticmethod
     def _resolve_limit(explicit_limit: int | None) -> int | None:

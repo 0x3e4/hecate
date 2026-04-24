@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 
 from fastapi import FastAPI, HTTPException
 
-from app.models import CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
+from app.malware_detector.known_compromised import serialize_blocklist
+from app.malware_intel_refresh import refresh_now, start_background_refresh
+from app.models import BlocklistEntry, BlocklistResponse, CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
 from app.scanners import (
     extract_source_archive,
     get_git_commit_sha,
@@ -18,9 +21,12 @@ from app.scanners import (
 # Track active scan count
 _active_scans = 0
 
-app = FastAPI(title="Hecate Scanner Sidecar", version="0.1.0")
+app = FastAPI(title="Hecate Scanner Sidecar", version="1.0.0")
 
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog"}
+
+
+_refresh_task = None
 
 
 @app.on_event("startup")
@@ -28,6 +34,23 @@ async def _startup() -> None:
     auth = os.environ.get("SCANNER_AUTH")
     if auth:
         setup_auth(auth)
+    # Warm the dynamic malware-intel blocklist from the backend. Fail-open:
+    # any transport error just leaves the static blocklist active.
+    await refresh_now()
+    global _refresh_task
+    _refresh_task = start_background_refresh()
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    global _refresh_task
+    if _refresh_task is not None:
+        _refresh_task.cancel()
+        try:
+            await _refresh_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+        _refresh_task = None
 
 
 @app.get("/health")
@@ -102,6 +125,19 @@ async def check(request: CheckRequest) -> CheckResponse:
         return CheckResponse(target=request.target, type=request.type, current_commit_sha=sha)
     else:
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
+
+
+@app.get("/blocklist", response_model=BlocklistResponse)
+async def blocklist() -> BlocklistResponse:
+    """Merged view of the static HEC-090 blocklist and the runtime-loaded
+    dynamic intel (populated via `update_dynamic_blocklist`). The backend
+    is expected to enrich dynamic entries with timestamps from MongoDB.
+    """
+    raw = serialize_blocklist()
+    return BlocklistResponse(
+        total=len(raw),
+        entries=[BlocklistEntry(**e) for e in raw],
+    )
 
 
 @app.post("/scan", response_model=ScanResponse)

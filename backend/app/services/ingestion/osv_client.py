@@ -234,6 +234,57 @@ class OsvClient:
         data = response.json()
         return data if isinstance(data, dict) else None
 
+    async def query_by_package(
+        self,
+        *,
+        name: str,
+        ecosystem: str,
+    ) -> list[dict[str, Any]]:
+        """Reverse-lookup helper: ``POST /v1/query`` to find every vulnerability
+        OSV lists for a given (package, ecosystem).
+
+        OSV has no direct alias-reverse-lookup endpoint. Manual-refresh for
+        GHSA-* IDs that are known to OSV **only as aliases of MAL-*** (i.e.
+        the GHSA itself 404s on ``/vulns/{id}``) needs this as a fallback to
+        pull the underlying MAL-* record. Callers filter the returned list
+        by their own criteria (e.g. "aliases contains our GHSA ID").
+
+        Single attempt, no retry: this is a best-effort fallback, and the
+        caller can just try again next time the user clicks refresh.
+        """
+        url = f"{self.api_base}/query"
+        payload = {"package": {"name": name, "ecosystem": ecosystem}}
+        try:
+            if self._rate_limiter is not None:
+                async with self._rate_limiter.slot():
+                    response = await self._client.post(url, json=payload)
+            else:
+                response = await self._client.post(url, json=payload)
+        except httpx.HTTPError as exc:
+            log.warning(
+                "osv_client.query_by_package_failed",
+                package=name,
+                ecosystem=ecosystem,
+                error=str(exc),
+            )
+            return []
+        if response.status_code >= 400:
+            log.warning(
+                "osv_client.query_by_package_http_error",
+                package=name,
+                ecosystem=ecosystem,
+                status=response.status_code,
+            )
+            return []
+        try:
+            data = response.json()
+        except Exception:  # noqa: BLE001
+            return []
+        if not isinstance(data, dict):
+            return []
+        vulns = data.get("vulns")
+        return vulns if isinstance(vulns, list) else []
+
     # ------------------------------------------------------------------
     # High-level iterators
     # ------------------------------------------------------------------

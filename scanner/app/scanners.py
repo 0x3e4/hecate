@@ -203,15 +203,59 @@ def _git_auth_args_for(url: str) -> list[str]:
     return ["-c", f"http.extraHeader=Authorization: Basic {b64}"]
 
 
+def _looks_like_auth_failure(stderr: str) -> bool:
+    """True when git's stderr matches a host's auth-rejection pattern.
+
+    Used to decide whether to retry a git call without the injected auth
+    header — covers the case where SCANNER_AUTH has a stale token for a host
+    that also serves public repos (one bad PAT shouldn't block ls-remote /
+    clone on public repos at the same host).
+    """
+    if not stderr:
+        return False
+    s = stderr.lower()
+    return (
+        "authentication failed" in s
+        or "could not read username" in s
+        or "invalid username or token" in s
+        or "401 unauthorized" in s
+        or "403 forbidden" in s
+        or "password authentication is not supported" in s
+    )
+
+
 async def _clone_repo(url: str) -> str:
-    """Clone a git repository to a temporary directory. Returns the path."""
-    tmp_dir = tempfile.mkdtemp(prefix="hecate-scan-")
-    cmd = ["git", *_git_auth_args_for(url), "clone", "--depth", "1", url, tmp_dir]
-    _, stderr, rc = await _run_command(cmd, timeout=120)
-    if rc != 0:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        raise RuntimeError(f"Failed to clone {url}: {stderr}")
-    return tmp_dir
+    """Clone a git repository to a temporary directory. Returns the path.
+
+    Mirrors the auth-fallback semantics of ``get_remote_commit_sha``: if the
+    injected SCANNER_AUTH credentials are rejected, retry anonymously so a
+    stale PAT on a mixed-auth host doesn't break clones of public repos.
+    """
+    auth_args = _git_auth_args_for(url)
+
+    async def _attempt(args: list[str]) -> tuple[str, str, int]:
+        tmp_dir = tempfile.mkdtemp(prefix="hecate-scan-")
+        cmd = ["git", *args, "clone", "--depth", "1", url, tmp_dir]
+        _, stderr, rc = await _run_command(cmd, timeout=120)
+        if rc != 0:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return "", stderr, rc
+        return tmp_dir, stderr, rc
+
+    tmp_dir, stderr, rc = await _attempt(auth_args)
+    if rc == 0:
+        return tmp_dir
+
+    if auth_args and _looks_like_auth_failure(stderr):
+        logger.warning(
+            "_clone_repo.auth_rejected_retrying_anonymously url=%s stderr=%r",
+            url, stderr[:300],
+        )
+        tmp_dir, stderr, rc = await _attempt([])
+        if rc == 0:
+            return tmp_dir
+
+    raise RuntimeError(f"Failed to clone {url}: {stderr}")
 
 
 async def get_git_commit_sha(repo_dir: str) -> str | None:
@@ -223,30 +267,62 @@ async def get_git_commit_sha(repo_dir: str) -> str | None:
 
 
 async def get_remote_commit_sha(url: str) -> str | None:
-    """Get HEAD commit SHA from a remote repo via ls-remote (no clone needed)."""
-    cmd = ["git", *_git_auth_args_for(url), "ls-remote", url, "HEAD"]
-    stdout, _, rc = await _run_command(cmd, timeout=30)
+    """Get HEAD commit SHA from a remote repo via ls-remote (no clone needed).
+
+    If SCANNER_AUTH supplied credentials for the host and the authenticated
+    call fails with an auth-rejection pattern, retries anonymously — a single
+    stale PAT on a host with mixed public/private repos shouldn't block the
+    public ones.
+
+    Logs the stderr / failure reason on terminal failure — otherwise these
+    silent failures show up to the backend as "no_current_fingerprint" with
+    no way to tell whether it's DNS, TLS, auth, or timeout.
+    """
+    auth_args = _git_auth_args_for(url)
+
+    async def _attempt(args: list[str]) -> tuple[str, str, int]:
+        cmd = ["git", *args, "ls-remote", url, "HEAD"]
+        return await _run_command(cmd, timeout=30)
+
+    stdout, stderr, rc = await _attempt(auth_args)
     if rc == 0 and stdout.strip():
-        # Output format: "<sha>\tHEAD"
         return stdout.strip().split()[0]
+
+    if auth_args and _looks_like_auth_failure(stderr):
+        logger.warning(
+            "get_remote_commit_sha.auth_rejected_retrying_anonymously url=%s stderr=%r",
+            url, stderr[:300],
+        )
+        stdout, stderr, rc = await _attempt([])
+        if rc == 0 and stdout.strip():
+            return stdout.strip().split()[0]
+
+    logger.warning(
+        "get_remote_commit_sha.failed url=%s rc=%d stdout=%r stderr=%r",
+        url, rc, stdout[:200], stderr[:400],
+    )
     return None
 
 
 async def get_image_digest(image_ref: str) -> str | None:
     """Get image digest via skopeo or docker inspect. Falls back to trivy/grype metadata."""
     # Try docker inspect first (works if image is pulled)
-    stdout, _, rc = await _run_command(
+    docker_stdout, docker_stderr, docker_rc = await _run_command(
         ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", image_ref], timeout=30,
     )
-    if rc == 0 and stdout.strip() and "@" in stdout.strip():
+    if docker_rc == 0 and docker_stdout.strip() and "@" in docker_stdout.strip():
         # Extract just the digest part: registry/name@sha256:abc... -> sha256:abc...
-        return stdout.strip().split("@", 1)[1]
+        return docker_stdout.strip().split("@", 1)[1]
     # Try skopeo (doesn't require pulling)
-    stdout, _, rc = await _run_command(
+    skopeo_stdout, skopeo_stderr, skopeo_rc = await _run_command(
         ["skopeo", "inspect", "--format", "{{.Digest}}", f"docker://{image_ref}"], timeout=30,
     )
-    if rc == 0 and stdout.strip():
-        return stdout.strip()
+    if skopeo_rc == 0 and skopeo_stdout.strip():
+        return skopeo_stdout.strip()
+    logger.warning(
+        "get_image_digest.failed image=%s docker_rc=%d docker_stderr=%r skopeo_rc=%d skopeo_stderr=%r",
+        image_ref, docker_rc, docker_stderr[:200], skopeo_rc, skopeo_stderr[:400],
+    )
     return None
 
 

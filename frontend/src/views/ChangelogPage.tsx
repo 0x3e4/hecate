@@ -153,6 +153,7 @@ export const ChangelogPage = () => {
               <option value="KEV">KEV</option>
               <option value="CIRCL">CIRCL</option>
               <option value="OSV">OSV</option>
+              <option value="deps_dev">deps.dev</option>
             </select>
           </label>
           {(fromDate || sourceFilter) && (

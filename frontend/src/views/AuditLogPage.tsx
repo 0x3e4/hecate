@@ -32,6 +32,7 @@ const JOB_LABELS: Record<string, string> = {
   "sca-scan": "SCA Scan",
   osv_sync: "OSV Sync",
   osv_initial_sync: "OSV Initial Sync",
+  mal_enrichment_backfill: "MAL-* deps.dev Enrichment",
   mcp: "MCP",
   mcp_oauth: "MCP",
 };
@@ -424,6 +425,7 @@ export const AuditLogPage = () => {
               <option value="sca-scan">SCA Scan</option>
               <option value="osv_sync">OSV Sync</option>
               <option value="osv_initial_sync">OSV Initial Sync</option>
+              <option value="mal_enrichment_backfill">MAL-* deps.dev Enrichment</option>
               <option value="mcp">MCP</option>
             </select>
           </label>

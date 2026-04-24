@@ -22,6 +22,7 @@ import {
   buildSocketUrl,
   buildBundlephobiaUrl,
   buildNpmGraphUrl,
+  buildAikidoUrl,
 } from "../utils/sbomLinks";
 import type {
   Scan,
@@ -1263,6 +1264,11 @@ export const ScanDetailPage = () => {
                     {filteredMerged.map(f => {
                       const fDepsUrl = buildDepsDevUrl(f.packageName, f.packageVersion, f.packageType);
                       const fSnykUrl = buildSnykUrl(f.packageName, f.packageVersion, f.packageType);
+                      const fRegistry = buildRegistryUrl(f.packageName, f.packageVersion, f.packageType);
+                      const fSocketUrl = buildSocketUrl(f.packageName, f.packageVersion, f.packageType);
+                      const fAikidoUrl = buildAikidoUrl(f.packageName, f.packageVersion, f.packageType);
+                      const fBundlephobiaUrl = buildBundlephobiaUrl(f.packageName, f.packageVersion, f.packageType);
+                      const fNpmGraphUrl = buildNpmGraphUrl(f.packageName, f.packageVersion, f.packageType);
                       const isSelected = selectedKeys.has(f.key);
                       const isVexExpanded = vexEditingId === f.key;
                       const isDetailExpanded = detailExpandedId === f.key;
@@ -1369,7 +1375,7 @@ export const ScanDetailPage = () => {
                             </span>
                           </td>
                           <td style={tdStyle}>
-                            <div style={{ display: "flex", gap: "0.375rem" }}>
+                            <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
                               {fDepsUrl && (
                                 <a href={fDepsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
                                   style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
@@ -1380,6 +1386,36 @@ export const ScanDetailPage = () => {
                                 <a href={fSnykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
                                   style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
                                   Snyk
+                                </a>
+                              )}
+                              {fRegistry && (
+                                <a href={fRegistry.url} target="_blank" rel="noopener noreferrer" title={fRegistry.label}
+                                  style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
+                                  {fRegistry.label}
+                                </a>
+                              )}
+                              {fSocketUrl && (
+                                <a href={fSocketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
+                                  style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
+                                  socket.dev
+                                </a>
+                              )}
+                              {fAikidoUrl && (
+                                <a href={fAikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
+                                  style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
+                                  aikido
+                                </a>
+                              )}
+                              {fBundlephobiaUrl && (
+                                <a href={fBundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
+                                  style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
+                                  bundlephobia
+                                </a>
+                              )}
+                              {fNpmGraphUrl && (
+                                <a href={fNpmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
+                                  style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
+                                  npmgraph
                                 </a>
                               )}
                             </div>
@@ -1697,6 +1733,7 @@ export const ScanDetailPage = () => {
                       const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
                       const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
                       const socketUrl = buildSocketUrl(c.name, c.version, c.type, c.purl);
+                      const aikidoUrl = buildAikidoUrl(c.name, c.version, c.type, c.purl);
                       const bundlephobiaUrl = buildBundlephobiaUrl(c.name, c.version, c.type, c.purl);
                       const npmGraphUrl = buildNpmGraphUrl(c.name, c.version, c.type, c.purl);
                       return (
@@ -1792,6 +1829,12 @@ export const ScanDetailPage = () => {
                                   socket.dev
                                 </a>
                               )}
+                              {aikidoUrl && (
+                                <a href={aikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
+                                  style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
+                                  aikido
+                                </a>
+                              )}
                               {bundlephobiaUrl && (
                                 <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
                                   style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
@@ -1804,7 +1847,7 @@ export const ScanDetailPage = () => {
                                   npmgraph
                                 </a>
                               )}
-                              {!depsUrl && !snykUrl && !registryLink && !socketUrl && !bundlephobiaUrl && !npmGraphUrl && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
+                              {!depsUrl && !snykUrl && !registryLink && !socketUrl && !aikidoUrl && !bundlephobiaUrl && !npmGraphUrl && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
                             </div>
                           </td>
                         </tr>

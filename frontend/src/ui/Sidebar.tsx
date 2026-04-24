@@ -38,6 +38,7 @@ const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[]
     titleEn: "Security", titleDe: "Sicherheit",
     items: [
       { to: "/scans", label: "SCA Scans", icon: LuScanLine },
+      { to: "/malware-feed", label: "Malware Feed", icon: LuShieldAlert },
     ],
   }] : []),
   {
@@ -127,6 +128,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/audit": "Audit-Log",
     "/inventory": "Inventar",
     "/scans": "SCA-Scans",
+    "/malware-feed": "Malware-Feed",
     "/system": "System",
     "/info/api": "API",
     "/info/cicd": "CI/CD",

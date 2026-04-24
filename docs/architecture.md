@@ -57,7 +57,7 @@ Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Qu
 
 ### API-Schicht
 
-18 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
+19 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
 - `status.py` — Health Check / Liveness Probe, Scanner-Health
 - `config.py` — Public Runtime-Config (`GET /api/v1/config`): leitet `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` aus den Backend-Settings ab und ersetzt die früheren `VITE_*`-Feature-Flags
 - `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse
@@ -129,8 +129,9 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 - **CAPEC Pipeline:** Parst MITRE CAPEC XML, erstellt Angriffsmuster-Einträge mit CWE-Zuordnung.
 - **CIRCL Pipeline:** Liest zusätzliche Schwachstelleninformationen von CIRCL und reichert bestehende Datensätze an. Ist **Source of Truth für EPSS**: `CirclClient.fetch_cve` ruft parallel `/api/cve/{id}` und `/api/epss/{id}` auf, normalisiert den FIRST-Wert auf die 0..1-Skala und überschreibt damit `epss_score` unkonditional. `_find_vulns_needing_enrichment` zieht zusätzlich Dokumente mit `epss_score > 1` zurück in die Queue, damit Altdaten (z. B. aus EUVD in 0..100-Form) beim nächsten Lauf repariert werden.
 - **GHSA Pipeline:** Synchronisiert GitHub Security Advisories. Hybrid: Advisories mit CVE-ID enrichen bestehende CVE-Dokumente oder erstellen neue CVE-Dokumente (Pre-Fill). Advisories ohne CVE-ID erstellen eigenständige GHSA-Einträge. Aliases stammen nur aus `identifiers`-Array, nicht aus Referenz-URLs.
-- **OSV Pipeline:** Synchronisiert OSV.dev-Schwachstellen. Initial-Sync über GCS Bucket ZIP-Exporte, inkrementeller Sync über `modified_id.csv` + REST-API. Hybrid wie GHSA: Records mit CVE-Alias enrichen CVE-Dokumente, Records ohne CVE-Alias (MAL-*, PYSEC-*, etc.) erstellen eigenständige OSV-Einträge. ID-Priorität: CVE > GHSA > OSV ID. 11 Ökosysteme (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions). Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
-- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA+OSV, EUVD → EUVD, GHSA → GHSA-API). OSV-Refresh für alle ID-Typen verfügbar. Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) unterstützt mehrere IDs (`vulnIds: list[str]`), Wildcard-Patterns (z.B. `CVE-2024-*`) und Delete-Only-Modus.
+- **OSV Pipeline:** Synchronisiert OSV.dev-Schwachstellen. Initial-Sync über GCS Bucket ZIP-Exporte, inkrementeller Sync über `modified_id.csv` + REST-API. Hybrid wie GHSA: Records mit CVE-Alias enrichen CVE-Dokumente, Records ohne CVE-Alias (MAL-*, PYSEC-*, etc.) erstellen eigenständige OSV-Einträge. **MAL-als-primäre-ID:** MAL-*-Records sind immer die primäre `_id` — existierende EUVD-/GHSA-Dokumente für dasselbe Paket werden via `_absorb_aliased_docs()` in das MAL-Dokument gemerged und die Original-Docs aus Mongo + OpenSearch gelöscht. Restliche ID-Priorität: CVE > GHSA > Raw-OSV-ID. 11 Ökosysteme (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions). Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
+- **deps.dev-Anreicherung (MAL-*/GHSA-*):** [backend/app/services/ingestion/mal_enrichment.py](../backend/app/services/ingestion/mal_enrichment.py) fragt deps.dev Package API für Dokumente mit broad `>=0`-Ranges auf `impactedProducts[].versions` und ersetzt das Range mit der tatsächlichen Versionsliste. Ausgelöst (a) inline nach jedem OSV-MAL-/GHSA-Upsert via `maybe_enrich_by_id()`, (b) bei Manual-Refresh für MAL-/GHSA-IDs auch wenn OSV nichts liefert, (c) als CLI-Backfill via `poetry run python -m app.cli enrich-mal`. Schreibt `impactedProducts`, `product_versions`, `last_change_job="deps_dev_enrichment"`/`last_change_at`, Change-History-Entry mit `job_label="deps.dev Enrichment"`, und **reindext das fertige Dokument in OpenSearch** (notwendig weil `VulnerabilityService.get_by_id()` OpenSearch und nicht Mongo liest). Idempotent via `_is_broad_range()`-Gate.
+- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA+OSV, EUVD → EUVD, GHSA → GHSA-API, MAL-/PYSEC-/OSV- → OSV). OSV-Refresh für alle ID-Typen verfügbar. Ohne den OSV-Short-Circuit-Branch für MAL-/PYSEC-/OSV- würde der Default-Flow auf den `_build_reserved_document()`-Pfad durchfallen und bestehende MAL-Dokumente mit einem Placeholder (`source="EUVD"`, `summary="reserved…"`) überschreiben. Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) unterstützt mehrere IDs (`vulnIds: list[str]`), Wildcard-Patterns (z.B. `CVE-2024-*`) und Delete-Only-Modus.
 
 ### Datenbeziehungen
 - CVE → CWE: Aus NVD `weaknesses`-Array, gespeichert auf `VulnerabilityDocument`.
@@ -148,7 +149,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 
 ### Persistenz
 
-#### MongoDB (21 Collections)
+#### MongoDB (22 Collections)
 
 | Collection | Beschreibung |
 |-----------|-------------|
@@ -173,6 +174,7 @@ Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + M
 | `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
 | `environment_inventory` | Benutzerdeklariertes Produkt/Version-Inventory mit Deployment/Environment/Instance-Count |
+| `malware_intel` | Dynamische Malware-Intel-Einträge; speist Scanner-Sidecars `_DYNAMIC_BLOCKLIST` via `GET /api/v1/malware/known-compromised` (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
 
 - Repositories auf Basis von Motor (async) kapseln Abfragen und Updates.
 - Repository-Pattern: `create()` Classmethod erstellt Indexes, `_id` = Entity-ID, `upsert()` gibt `"inserted"` / `"updated"` / `"unchanged"` zurück.
@@ -283,7 +285,8 @@ poetry run python -m app.cli reindex-opensearch
 | `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
 | `/inventory` | `InventoryPage` | Environment-Inventory: Produkte und Versionen, die der Benutzer betreibt (Deployment, Environment, Instance-Count). Vendor/Product via `AsyncSelect` (gleicher Look wie AdvancedFilters), Deployment als Chip-Button-Gruppe, Environment als freies Textfeld mit `<datalist>`-Vorschlägen. Item-Karten mit expandierbarer "Show CVEs"-Liste (`GET /api/v1/inventory/{id}/affected-vulnerabilities`). Sidebar-Gruppe **Environment** (eigene Sektion unterhalb von *Security*). |
 | `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln inkl. `inventory`-Typ, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (7 Tabs: Targets, Scans, Findings, SBOM mit Summary-Cards + Spalten-Sortierung + Provenance-Filter, Licenses, New Scan, Scanner). Targets-Tab gruppiert Karten in kollabierbare Application-Sektionen mit Severity-Roll-up und inline editierbarer App/Group-Zuordnung. |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung mit 7 Haupt-Tabs (Targets, Scans, Findings mit Links-Spalte + expandierbarer Detail-Row, SBOM mit dynamischem Type-Filter aus Facets, Security Alerts mit Category-Filter, Licenses, Scanner). Findings- und SBOM-Zeilen zeigen eine Links-Spalte mit deps.dev, Snyk, Registry, socket.dev, bundlephobia (npm-only), npmgraph (npm-only). Targets-Tab gruppiert Karten in kollabierbare Application-Sektionen mit Severity-Roll-up. |
+| `/blocklist` | `BlocklistPage` | Merged-Ansicht der HEC-090-Blocklist (statische Scanner-Einträge + MAL-*-Records aus der OSV-Ingestion). Sidebar-Gruppe **Security** (Geschwister von SCA Scans). Sortiert dynamic-Einträge nach Timestamp descending vor static-Einträgen (nach `staticIndex` descending — neueste Appends zuerst), unterstützt Suche + Ecosystem/Source-Filter, paginiert 50/Seite. Backend-Endpoint `GET /api/v1/malware/malware-feed` proxied zum Scanner-Sidecar `GET /blocklist` für die statischen Einträge und liest MAL-*-Records direkt aus der `vulnerabilities`-Collection; fail-open wenn Scanner nicht erreichbar. |
 | `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (Multi-Select-Toolbar, expandierbarer VEX-Editor mit Detail-Feld, Show-Dismissed-Toggle, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), **AI Analysis** (Inline Trigger-Form mit Provider-Select und Additional-Context-Textarea, ruft `POST /api/v1/scans/{id}/ai-analysis` und pollt den Scan bis der neue Eintrag erscheint; Historie mit Commit-/Image-Digest-Chip, `triggeredBy`-Badge und Origin-Chip `API - Scan` / `MCP - Scan`), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance (nur wenn mindestens eine License-Policy konfiguriert ist), VEX-Export. Tab-Optik verwendet die gleiche Pill-Komponente wie `VulnerabilityDetailPage` (`frontend/src/ui/TabPill.tsx`, `tabPillStyle()` + `TabBadge`). |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/info/api` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |

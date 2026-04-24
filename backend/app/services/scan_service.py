@@ -1210,16 +1210,49 @@ class ScanService:
         return await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
 
     async def get_badge_counts(self) -> dict[str, int]:
-        """Return lightweight counts for tab badges (findings, SBOM, licenses)."""
+        """Return lightweight counts for tab badges (findings, SBOM, licenses, alerts)."""
         scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
         if not scan_ids:
-            return {"findings": 0, "sbom": 0, "licenses": 0}
-        findings_count, sbom_count, license_count = await asyncio.gather(
+            return {"findings": 0, "sbom": 0, "licenses": 0, "alerts": 0}
+        findings_count, sbom_count, license_count, alerts_count = await asyncio.gather(
             self.finding_repo.count_consolidated(scan_ids),
             self.sbom_repo.count_consolidated(scan_ids),
             self.sbom_repo.count_distinct_licenses(scan_ids),
+            self.finding_repo.count_alerts_consolidated(scan_ids),
         )
-        return {"findings": findings_count, "sbom": sbom_count, "licenses": license_count}
+        return {
+            "findings": findings_count,
+            "sbom": sbom_count,
+            "licenses": license_count,
+            "alerts": alerts_count,
+        }
+
+    async def get_global_alerts(
+        self,
+        *,
+        search: str | None = None,
+        severity: str | None = None,
+        category: str | None = None,
+        target_id: str | None = None,
+        sort_by: str = "severity",
+        sort_order: str = "desc",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Aggregate malicious-indicator findings from the latest completed scan of each target."""
+        scan_ids = await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
+        if not scan_ids:
+            return 0, []
+        return await self.finding_repo.list_alerts_across_scans(
+            scan_ids,
+            search=search,
+            severity=severity,
+            category=category,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=limit,
+            offset=offset,
+        )
 
     async def get_global_sbom(
         self,
@@ -1602,7 +1635,19 @@ class ScanService:
 
         # Happy path: both fingerprints available — compare directly
         if current and previous:
-            return current != previous
+            changed = current != previous
+            # Log the comparison at INFO so operators can verify the scanner is
+            # returning a sensible current fingerprint. Without this, a bug where
+            # ls-remote returns a stale SHA would silently skip every run.
+            log.info(
+                "scan_service.change_check_compared",
+                target=target,
+                target_type=target_type,
+                current=current,
+                previous=previous,
+                changed=changed,
+            )
+            return changed
 
         # Valid current fingerprint but no previous → first scan needed
         if current and not previous:

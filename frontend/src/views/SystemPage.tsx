@@ -2143,6 +2143,11 @@ export const SystemPage = () => {
                   const isBusy = syncTriggeringId === syncId || sync.status === "running";
                   const isExpanded = expandedSyncId === sync.jobName;
                   const hasDetails = sync.lastResult || sync.error;
+                  // Some jobs are CLI-only (no scheduler / HTTP trigger): hide
+                  // the Start-manually affordance so users don't get mis-routed
+                  // into a different source's trigger endpoint via the syncType
+                  // fallback chain.
+                  const canTrigger = !sync.jobName.startsWith("mal_enrichment_backfill");
 
                   return (
                     <>
@@ -2197,17 +2202,30 @@ export const SystemPage = () => {
                           )}
                         </td>
                         <td style={syncTableCellStyle}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleTriggerSync(syncType, isInitial);
-                            }}
-                            disabled={isBusy}
-                            style={{ minWidth: "120px", fontSize: "0.85rem" }}
-                          >
-                            {isBusy ? t("Starting...", "Wird gestartet…") : t("Start manually", "Manuell starten")}
-                          </button>
+                          {canTrigger ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleTriggerSync(syncType, isInitial);
+                              }}
+                              disabled={isBusy}
+                              style={{ minWidth: "120px", fontSize: "0.85rem" }}
+                            >
+                              {isBusy ? t("Starting...", "Wird gestartet…") : t("Start manually", "Manuell starten")}
+                            </button>
+                          ) : (
+                            <span
+                              className="muted"
+                              style={{ fontSize: "0.75rem" }}
+                              title={t(
+                                "This job is CLI-only: poetry run python -m app.cli enrich-mal",
+                                "Dieser Job läuft nur per CLI: poetry run python -m app.cli enrich-mal",
+                              )}
+                            >
+                              {t("CLI only", "Nur via CLI")}
+                            </span>
+                          )}
                         </td>
                       </tr>
                       {isExpanded && hasDetails && (

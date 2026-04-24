@@ -362,7 +362,7 @@ export interface VulnerabilityRefreshRequest {
 export type VulnerabilityRefreshStatus = {
   identifier: string;
   provider?: string | null;
-  status: "inserted" | "updated" | "skipped" | "error";
+  status: "inserted" | "updated" | "skipped" | "error" | "accepted";
   message?: string | null;
   changedFields?: number | null;
   resolvedId?: string | null;
@@ -371,6 +371,11 @@ export type VulnerabilityRefreshStatus = {
 export interface VulnerabilityRefreshResponse {
   requested: string[];
   results: VulnerabilityRefreshStatus[];
+  // Backend dispatches refresh asynchronously (HTTP 202) to stay under the
+  // Cloudflare 100s edge timeout. Clients subscribe to SSE `job_completed` /
+  // `job_failed` events with `jobName === "vulnerability_refresh_" + jobId`
+  // to pick up the final per-ID results.
+  jobId?: string | null;
 }
 
 export interface PagedVulnerabilityResponse {
@@ -650,6 +655,8 @@ export interface ConsolidatedFinding {
   targets: ConsolidatedTarget[];
   cvssScore?: number | null;
   urls?: string[];
+  packageType?: string | null;
+  packagePath?: string | null;
 }
 
 export interface ConsolidatedFindingListResponse {
@@ -670,6 +677,22 @@ export interface ConsolidatedSbom {
 export interface ConsolidatedSbomListResponse {
   total: number;
   items: ConsolidatedSbom[];
+}
+
+export interface ConsolidatedAlert {
+  title?: string | null;
+  packageName: string;
+  packageVersion: string;
+  severity: string;
+  description?: string | null;
+  category?: string | null;
+  packagePath?: string | null;
+  targets: ConsolidatedTarget[];
+}
+
+export interface ConsolidatedAlertListResponse {
+  total: number;
+  items: ConsolidatedAlert[];
 }
 
 export interface ScanLayerDetail {
@@ -908,4 +931,28 @@ export interface LicenseOverviewItem {
 export interface LicenseOverviewResponse {
   items: LicenseOverviewItem[];
   total: number;
+}
+
+export interface BlocklistEntry {
+  source: "static" | "dynamic";
+  ecosystem: string;
+  name: string;
+  versions: string[];
+  allVersions: boolean;
+  description: string;
+  origin?: string | null;
+  staticIndex?: number | null;
+  updatedAt?: string | null;
+  ingestedAt?: string | null;
+  severity?: string | null;
+  references?: string[];
+  alsoSeenIn?: string[];
+  relatedOrigins?: string[];
+}
+
+export interface BlocklistResponse {
+  generatedAt: string;
+  total: number;
+  scannerAvailable: boolean;
+  entries: BlocklistEntry[];
 }

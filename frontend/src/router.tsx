@@ -13,6 +13,7 @@ import { SystemPage } from "./views/SystemPage";
 import { InventoryPage } from "./views/InventoryPage";
 import { ScansPage } from "./views/ScansPage";
 import { ScanDetailPage } from "./views/ScanDetailPage";
+import { BlocklistPage } from "./views/BlocklistPage";
 import { CiCdInfoPage } from "./views/CiCdInfoPage";
 import { ApiInfoPage } from "./views/ApiInfoPage";
 import { McpInfoPage } from "./views/McpInfoPage";
@@ -31,6 +32,8 @@ export const router = createBrowserRouter([
       { path: "inventory", element: <InventoryPage /> },
       { path: "scans", element: <ScansPage /> },
       { path: "scans/:scanId", element: <ScanDetailPage /> },
+      { path: "malware-feed", element: <BlocklistPage /> },
+      { path: "blocklist", element: <Navigate to="/malware-feed" replace /> },
       { path: "audit", element: <AuditLogPage /> },
       { path: "stats", element: <StatsPage /> },
       { path: "changelog", element: <ChangelogPage /> },
