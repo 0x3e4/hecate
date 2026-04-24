@@ -20,6 +20,8 @@ from app.schemas.license_policy import (
     LicenseOverviewResponse,
 )
 from app.schemas.scan import (
+    ConsolidatedAlertListResponse,
+    ConsolidatedAlertResponse,
     ConsolidatedFindingListResponse,
     ConsolidatedFindingResponse,
     ConsolidatedSbomListResponse,
@@ -401,6 +403,29 @@ async def get_global_findings(
     return ConsolidatedFindingListResponse(
         total=total,
         items=[_map_consolidated_finding(item) for item in items],
+    )
+
+
+@router.get("/alerts", response_model=ConsolidatedAlertListResponse)
+async def get_global_alerts(
+    search: str | None = Query(default=None, description="Search by package name, title, or description"),
+    severity: str | None = Query(default=None, description="Filter by severity"),
+    category: str | None = Query(default=None, description="Filter by Hecate malware-detector category"),
+    target_id: str | None = Query(default=None, alias="targetId", description="Filter by target"),
+    sort_by: str = Query(default="severity", alias="sortBy", description="Sort field"),
+    sort_order: str = Query(default="desc", alias="sortOrder", description="Sort order: asc or desc"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    service: ScanService = Depends(get_scan_service),
+) -> ConsolidatedAlertListResponse:
+    """Get consolidated Security Alerts (malicious-indicator findings) from the latest completed scan of each target."""
+    total, items = await service.get_global_alerts(
+        search=search, severity=severity, category=category, target_id=target_id,
+        sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset,
+    )
+    return ConsolidatedAlertListResponse(
+        total=total,
+        items=[_map_consolidated_alert(item) for item in items],
     )
 
 
@@ -1025,6 +1050,24 @@ def _map_consolidated_finding(doc: dict[str, Any]) -> ConsolidatedFindingRespons
         ],
         cvss_score=doc.get("cvss_score"),
         urls=doc.get("urls", []),
+        package_type=doc.get("package_type"),
+        package_path=doc.get("package_path"),
+    )
+
+
+def _map_consolidated_alert(doc: dict[str, Any]) -> ConsolidatedAlertResponse:
+    return ConsolidatedAlertResponse(
+        title=doc.get("title"),
+        package_name=doc.get("package_name", ""),
+        package_version=doc.get("package_version", ""),
+        severity=doc.get("severity") or "unknown",
+        description=doc.get("description"),
+        category=doc.get("category"),
+        package_path=doc.get("package_path"),
+        targets=[
+            ConsolidatedTargetSchema(target_id=t["target_id"], scan_id=t["scan_id"])
+            for t in doc.get("targets", [])
+        ],
     )
 
 

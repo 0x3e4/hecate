@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from app.core.config import settings
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
@@ -32,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-ghsa", "sync-osv", "reindex-opensearch"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-ghsa, sync-osv, reindex-opensearch).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch).",
     )
     parser.add_argument(
         "--since",
@@ -49,6 +50,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--initial",
         action="store_true",
         help="Force an initial/full sync (supported for ingest, sync-euvd, sync-cpe, sync-nvd, sync-cwe, and sync-capec).",
+    )
+    parser.add_argument(
+        "--ecosystem",
+        type=str,
+        help="Ecosystem filter for purge-malware (e.g. 'vscode', 'npm'). Matches both MAL-* vulnerability docs and malware_intel entries.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't actually delete — just print counts.",
     )
     return parser
 
@@ -133,6 +144,22 @@ def main() -> None:
         effective_limit = args.limit if args.limit is not None else (0 if args.initial else None)
         result = asyncio.run(run_osv_sync_once(limit=effective_limit, initial_sync=args.initial))
         print(f"OSV sync finished: {result}")
+    elif args.command == "enrich-mal":
+        if args.since:
+            parser.error("The --since option is not supported for enrich-mal.")
+        if args.initial:
+            parser.error("The --initial option is not supported for enrich-mal.")
+        result = asyncio.run(run_mal_enrichment_once(limit=args.limit))
+        print(f"MAL enrichment finished: {result}")
+    elif args.command == "purge-malware":
+        if not args.ecosystem:
+            parser.error("The --ecosystem argument is required for purge-malware.")
+        if args.since or args.initial or args.limit:
+            parser.error("purge-malware only accepts --ecosystem and --dry-run.")
+        result = asyncio.run(
+            run_malware_purge_once(ecosystem=args.ecosystem, dry_run=args.dry_run)
+        )
+        print(f"Malware purge finished: {result}")
     elif args.command == "reindex-opensearch":
         if args.limit is not None:
             parser.error("The --limit option is not supported for reindex-opensearch.")
@@ -186,6 +213,125 @@ async def run_ghsa_sync_once(
         return await pipeline.sync(limit=limit, initial_sync=initial_sync)
     finally:
         await pipeline.close()
+
+
+async def run_mal_enrichment_once(limit: int | None = None) -> dict[str, int]:
+    """Backfill deps.dev version data onto existing MAL-* vulnerability docs.
+
+    Walks the vulnerabilities collection for `_id` matching `^MAL-` that still
+    carry broad `introduced: "0"` ranges and rewrites `impactedProducts` with
+    actual published versions. Rate-limited by the deps.dev client. Meant to
+    be run once after deploy (`--limit` optional to bound the API-call budget
+    — default is no cap, runs until exhausted).
+
+    Wrapped in `JobTracker` so the run surfaces in the audit log (`job:
+    mal_enrichment_backfill`) and the System → Data → Sync Status view.
+    """
+    from app.db.mongo import get_database
+    from app.repositories.ingestion_state_repository import IngestionStateRepository
+    from app.services.ingestion.deps_dev_client import DepsDevClient
+    from app.services.ingestion.job_tracker import JobTracker
+    from app.services.ingestion.mal_enrichment import enrich_mal_document
+
+    database = await get_database()
+    collection = database[settings.mongo_vulnerabilities_collection]
+
+    state_repo = await IngestionStateRepository.create()
+    tracker = JobTracker(state_repo)
+    ctx = await tracker.start(
+        "mal_enrichment_backfill",
+        limit=limit,
+        label="MAL-* deps.dev Enrichment",
+    )
+
+    client = DepsDevClient()
+    stats = {"scanned": 0, "patched": 0, "unchanged": 0, "failed": 0}
+    try:
+        cursor = collection.find({"_id": {"$regex": "^MAL-"}})
+        if limit:
+            cursor = cursor.limit(limit)
+        async for doc in cursor:
+            stats["scanned"] += 1
+            try:
+                patched = await enrich_mal_document(doc, client=client)
+            except Exception as exc:  # noqa: BLE001
+                stats["failed"] += 1
+                print(f"  ! {doc.get('_id')}: {exc}", flush=True)
+                continue
+            if patched > 0:
+                stats["patched"] += 1
+                print(f"  + {doc.get('_id')}: patched {patched} product(s)", flush=True)
+            else:
+                stats["unchanged"] += 1
+            if stats["scanned"] % 100 == 0:
+                print(f"  … {stats['scanned']} scanned · {stats['patched']} patched", flush=True)
+    except Exception as exc:
+        await tracker.fail(ctx, str(exc))
+        raise
+    finally:
+        await client.close()
+
+    await tracker.finish(ctx, **stats)
+    return stats
+
+
+async def run_malware_purge_once(*, ecosystem: str, dry_run: bool = False) -> dict[str, int]:
+    """Delete every malware entry for a given ecosystem.
+
+    Targets two collections:
+    - `malware_intel` — dynamic blocklist entries (exact ecosystem match).
+    - `vulnerabilities` — MAL-* documents whose `impactedProducts[].vendor.name`
+      matches the ecosystem (case-insensitive, with OSV naming variants like
+      'VSCode' / 'VSCode:https://open-vsx.org' folded in).
+
+    Intended for one-off cleanups when an ecosystem produces too many false
+    positives or the user wants to re-evaluate. Reversible via the next
+    scheduled OSV sync, which will re-ingest upstream records.
+    """
+    from app.db.mongo import get_database
+
+    eco_lower = ecosystem.strip().lower()
+    if not eco_lower:
+        return {"intel_deleted": 0, "vuln_deleted": 0}
+
+    # OSV stores `vendor.name` with upstream casing (e.g. "VSCode"). Build a
+    # small set of variants so a single --ecosystem vscode catches all of them.
+    variants = {eco_lower}
+    if eco_lower == "vscode":
+        variants.update({"vscode", "vscode:https://open-vsx.org"})
+    # case-insensitive regex, anchored so 'npm' doesn't match 'nuget-npm'
+    variant_regex = "|".join(f"^{_regex_escape(v)}$" for v in variants)
+
+    database = await get_database()
+    intel = database[settings.mongo_malware_intel_collection]
+    vulns = database[settings.mongo_vulnerabilities_collection]
+
+    intel_query = {"ecosystem": {"$in": list(variants)}}
+    vuln_query = {
+        "_id": {"$regex": "^MAL-"},
+        "$or": [
+            {"impactedProducts.vendor.name": {"$regex": variant_regex, "$options": "i"}},
+            {"impacted_products.vendor.name": {"$regex": variant_regex, "$options": "i"}},
+        ],
+    }
+
+    if dry_run:
+        intel_n = await intel.count_documents(intel_query)
+        vuln_n = await vulns.count_documents(vuln_query)
+        print(f"  [dry-run] would delete {intel_n} malware_intel + {vuln_n} vulnerabilities rows")
+        return {"intel_deleted": intel_n, "vuln_deleted": vuln_n}
+
+    intel_result = await intel.delete_many(intel_query)
+    vuln_result = await vulns.delete_many(vuln_query)
+    return {
+        "intel_deleted": intel_result.deleted_count,
+        "vuln_deleted": vuln_result.deleted_count,
+    }
+
+
+def _regex_escape(s: str) -> str:
+    import re
+    return re.escape(s)
 
 
 async def run_osv_sync_once(

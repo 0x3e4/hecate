@@ -21,8 +21,9 @@ src/
 │   ├── savedSearches.ts         # Gespeicherte Suchen (CRUD)
 │   ├── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── licensePolicy.ts        # Lizenz-Policy-Verwaltung (CRUD, Default, Gruppen)
-│   └── inventory.ts            # Environment-Inventory (CRUD + affected-vulnerabilities)
-├── views/                       # Seitenkomponenten (15 Ansichten)
+│   ├── inventory.ts            # Environment-Inventory (CRUD + affected-vulnerabilities)
+│   └── malware.ts              # Malware-Blocklist-Overview (`GET /v1/malware/malware-feed` — merged static + OSV-MAL)
+├── views/                       # Seitenkomponenten (16 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern (inkl. erweiterte Filter)
 │   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
@@ -37,6 +38,7 @@ src/
 │   ├── ApiInfoPage.tsx          # API-Dokumentation mit Swagger-UI
 │   ├── McpInfoPage.tsx          # MCP-Server-Info
 │   ├── InventoryPage.tsx        # Environment-Inventory (CRUD + betroffene CVEs pro Eintrag)
+│   ├── BlocklistPage.tsx        # Merged HEC-090-Blocklist-Overview (statische Scanner-Einträge + MAL-*-Records aus der OSV-Ingestion, newest-first, Search + Ecosystem/Source-Filter)
 │   └── SystemPage.tsx           # System (Single-Card-Layout, 4 Tabs: General, Notifications, Data, Policies)
 ├── components/                  # Wiederverwendbare Komponenten
 │   ├── AIAnalyse/
@@ -103,8 +105,9 @@ src/
 | `/changelog` | `ChangelogPage` | Letzte Änderungen mit Pagination, Datum- und Job-Filter (inkl. OSV im Job-Dropdown) |
 | `/inventory` | `InventoryPage` | Environment-Inventory: drei `.card`-Sektionen (Intro+Chips-Summary, Add/Edit-Form, Items-Grid). Vendor/Product via `AsyncSelect<Option, false>` (gleicher Look wie AdvancedFilters). Deployment als Chip-Button-Gruppe, Environment als freies Textfeld mit `<datalist>`-Vorschlägen (prod/staging/dev/test/dr + bereits verwendete Werte). Item-Karten als `.vuln-card` mit Severity-Border gefärbt nach der höchsten betroffenen CVE, expandierbare "Show CVEs"-Liste per Eintrag. |
 | `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln inkl. `inventory`-Typ mit optionalem Item-Filter via nativem Multi-Select, Vorlagen inkl. `inventory_match`), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Ziele, Scans, manueller Scan, SBOM mit Summary-Cards + Sortierung + Provenance-Filter, SBOM-Import, Lizenzen). Targets-Tab gruppiert Karten in **kollabierbare Application-Sektionen** mit Severity-Roll-up (Collapse-Zustand persistiert via `usePersistentState('hecate.scan.groupCollapsed')`). Target-Cards: Action-Reihe unten gepinnt (flex-column), inline editierbare **App/Group**-Zeile mit `<datalist>`-Vorschlägen aus existierenden Gruppen; SBOM-Import-Targets ohne Auto-Scan-, Rescan-, Scanner-Edit- und Group-Edit-Affordances. |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Multi-Select-Toolbar mit Bulk-Apply/Dismiss/Restore, Show-Dismissed-Toggle, Inline-VEX-Editor als expandierbare Zeile mit Status/Justification/Detail, VEX-Import-Button), SBOM (sortierbare Spalten, klickbare Summary-Cards zum Filtern, Provenance-Filter), History (Zeitbereichs-Filter 7d/30d/90d/All, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export |
+| `/scans` | `ScansPage` | SCA-Scan-Verwaltung (Targets, Scans, Findings mit Links-Spalte + expandierbarer Detail-Row, SBOM mit dynamischem Type-Filter aus Facets + Summary-Cards + Sortierung + Provenance-Filter, Security Alerts mit Category-Filter, Licenses, Scanner). Findings- und SBOM-Zeilen zeigen eine Links-Spalte mit deps.dev, Snyk, Registry, socket.dev, bundlephobia (npm-only), npmgraph (npm-only). Targets-Tab gruppiert Karten in **kollabierbare Application-Sektionen** mit Severity-Roll-up (Collapse-Zustand persistiert via `usePersistentState('hecate.scan.groupCollapsed')`). Target-Cards: Action-Reihe unten gepinnt (flex-column), inline editierbare **App/Group**-Zeile mit `<datalist>`-Vorschlägen aus existierenden Gruppen; SBOM-Import-Targets ohne Auto-Scan-, Rescan-, Scanner-Edit- und Group-Edit-Affordances. |
+| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (VEX-Multi-Select-Toolbar mit Bulk-Apply/Dismiss/Restore, Show-Dismissed-Toggle, Inline-VEX-Editor als expandierbare Zeile mit Status/Justification/Detail, VEX-Import-Button, Links-Spalte mit 6 Pills), SBOM (sortierbare Spalten, klickbare Summary-Cards zum Filtern, Provenance-Filter, Links-Spalte), History (Zeitbereichs-Filter 7d/30d/90d/All, Commit-SHA-Links), Compare (bis zu 200 Scans), Security Alerts, SAST, Secrets, Best Practices, Layer Analysis, License Compliance, VEX-Export |
+| `/blocklist` | `BlocklistPage` | Merged-Ansicht der HEC-090-Blocklist (statisch aus Scanner + dynamisch aus OSV-MAL-*-Records). Sidebar-Gruppe **Security** (Geschwister von SCA Scans). Tabelle: Added (Timestamp oder "—"), Source-Chip (static/dynamic), Ecosystem, Package (+ Severity-Chip für dynamic), Versions ("all versions"-Chip für allVersions=true), Description, Origin. Default-Sort: dynamic-Einträge nach Timestamp desc vor static-Einträgen nach `staticIndex` desc. Filter: Suche, Ecosystem, Source. Fail-open: Backend liefert MongoDB-only wenn Scanner unerreichbar (`scannerAvailable=false`), Banner erscheint. |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
 | `/info/api` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
 | `/info/mcp` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools inkl. `prepare_*`/`save_*`-Paare und `get_sca_scan`, Beispiel-Prompts, Konfiguration) |

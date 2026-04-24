@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     mongo_notification_templates_collection: str = "notification_templates"
     mongo_license_policies_collection: str = "license_policies"
     mongo_environment_inventory_collection: str = "environment_inventory"
+    mongo_malware_intel_collection: str = "malware_intel"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
@@ -124,6 +125,16 @@ class Settings(BaseSettings):
     osv_max_retries: int = 5
     osv_retry_backoff_seconds: float = 5.0
     osv_max_records_per_run: OptionalInt = 5000
+
+    # deps.dev enrichment — fills in actual published versions for MAL-* OSV
+    # records that ship with the conservative `introduced: "0"` range (meaning
+    # "all versions"). Runs inline during OSV ingest on new MAL-* entries and
+    # via `poetry run python -m app.cli enrich-mal` for backfill. No API key.
+    deps_dev_base_url: str = "https://api.deps.dev/v3"
+    deps_dev_timeout_seconds: int = 15
+    deps_dev_rate_limit_seconds: float = 0.1  # 10 req/s default
+    deps_dev_max_retries: int = 3
+    deps_dev_retry_backoff_seconds: float = 2.0
 
     ingestion_user_agent: str = "hecate-ingestion/1.0"
     ingestion_running_timeout_minutes: int = 60

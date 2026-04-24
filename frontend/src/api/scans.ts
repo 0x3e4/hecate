@@ -7,6 +7,7 @@ import type {
   Scan,
   ScanFindingListResponse,
   SbomComponentListResponse,
+  ConsolidatedAlertListResponse,
   ConsolidatedFindingListResponse,
   ConsolidatedSbomListResponse,
   ScanLayerAnalysis,
@@ -92,8 +93,22 @@ export const fetchGlobalSbom = async (params?: {
   return response.data;
 };
 
-export const fetchBadgeCounts = async (): Promise<{ findings: number; sbom: number; licenses: number }> => {
-  const response = await api.get<{ findings: number; sbom: number; licenses: number }>("/v1/scans/badge-counts");
+export const fetchGlobalAlerts = async (params?: {
+  search?: string;
+  severity?: string;
+  category?: string;
+  targetId?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ConsolidatedAlertListResponse> => {
+  const response = await api.get<ConsolidatedAlertListResponse>("/v1/scans/alerts", { params });
+  return response.data;
+};
+
+export const fetchBadgeCounts = async (): Promise<{ findings: number; sbom: number; licenses: number; alerts: number }> => {
+  const response = await api.get<{ findings: number; sbom: number; licenses: number; alerts: number }>("/v1/scans/badge-counts");
   return response.data;
 };
 

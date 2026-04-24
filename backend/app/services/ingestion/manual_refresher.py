@@ -84,6 +84,65 @@ class ManualRefresher:
                     return alias.strip()
         return None
 
+    async def _resolve_osv_by_packages(
+        self,
+        existing_doc: dict | None,
+        lookup_id: str,
+    ) -> list[dict]:
+        """OSV reverse-alias fallback — given a local doc and the GHSA ID we
+        were trying to refresh, ask OSV about each affected package and
+        return candidate vulns whose ``aliases`` include our GHSA.
+
+        OSV publishes MAL-* records for malicious packages under the MAL-* ID
+        only; the associated GHSA is listed as an alias on the MAL- record
+        but has no standalone OSV entry. Without this reverse lookup, manual
+        refresh on such GHSA-* IDs always 404s and the user sees "skipped".
+
+        Case-insensitive alias match so OSV's lowercased ``ghsa-xxx-yyy-zzz``
+        entries match our uppercase ``GHSA-XXX-YYY-ZZZ`` identifiers.
+        """
+        if not existing_doc:
+            return []
+        want = lookup_id.strip().upper()
+
+        # Pull (name, ecosystem) tuples out of impactedProducts; the vendor.name
+        # on OSV-sourced docs holds the ecosystem (e.g. "npm", "PyPI").
+        targets: list[tuple[str, str]] = []
+        for field in ("impactedProducts", "impacted_products"):
+            items = existing_doc.get(field) or []
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                vendor = item.get("vendor") or {}
+                product = item.get("product") or {}
+                eco = (vendor.get("name") or "").strip()
+                pkg = (product.get("name") or "").strip()
+                if pkg and eco:
+                    targets.append((pkg, eco))
+
+        if not targets:
+            return []
+
+        out: list[dict] = []
+        seen_ids: set[str] = set()
+        for pkg_name, ecosystem in targets:
+            vulns = await self._osv_client.query_by_package(name=pkg_name, ecosystem=ecosystem)
+            for v in vulns:
+                if not isinstance(v, dict):
+                    continue
+                vid = v.get("id")
+                if not isinstance(vid, str) or vid in seen_ids:
+                    continue
+                aliases = v.get("aliases") or []
+                if not isinstance(aliases, list):
+                    continue
+                if any(isinstance(a, str) and a.strip().upper() == want for a in aliases):
+                    seen_ids.add(vid)
+                    out.append(v)
+        return out
+
     async def refresh(
         self,
         identifiers: Iterable[str],
@@ -245,6 +304,20 @@ class ManualRefresher:
         is_ghsa = GHSA_PATTERN.fullmatch(upper_normalized) is not None
         if is_ghsa:
             return await self._refresh_from_ghsa(
+                original_identifier=original_identifier,
+                normalized_identifier=normalized_identifier,
+                repository=repository,
+                asset_catalog=asset_catalog,
+                is_cve=is_cve,
+            )
+
+        # MAL-* / PYSEC-* / OSV-* IDs are OSV-native — route them to the OSV
+        # refresh path. Without this branch the default flow falls through to
+        # EUVD/NVD (both return nothing for these prefixes), then writes a
+        # reserved-placeholder document that clobbers the existing OSV data
+        # (source="EUVD", summary="This identifier is reserved…").
+        if upper_normalized.startswith(("MAL-", "PYSEC-", "OSV-")):
+            return await self._refresh_from_osv(
                 original_identifier=original_identifier,
                 normalized_identifier=normalized_identifier,
                 repository=repository,
@@ -842,6 +915,20 @@ class ManualRefresher:
             change_context=change_context,
         )
 
+        # Run deps.dev enrichment regardless of GHSA's upsert verdict — the
+        # local doc may have broad ranges even when GHSA has no newer data.
+        # The helper is idempotent so this is always safe.
+        if vuln_id.upper().startswith(("GHSA-", "MAL-")):
+            try:
+                from app.services.ingestion.mal_enrichment import maybe_enrich_by_id
+                await maybe_enrich_by_id(vuln_id)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "manual_refresher.enrichment_failed",
+                    vuln_id=vuln_id,
+                    error=str(exc),
+                )
+
         resolved = vuln_id if vuln_id != original_identifier.upper() else None
 
         if result == "inserted":
@@ -993,7 +1080,39 @@ class ManualRefresher:
 
         record = await self._osv_client.fetch_vulnerability(lookup_id)
 
+        # GHSA-for-MAL fallback: OSV's /vulns/{id} returns 404 for GHSA IDs
+        # that are only published as aliases of a MAL-* record (OSSF publishes
+        # the malicious package under MAL-* and OSV 404s the GHSA direct
+        # lookup). Query by each affected package and pick any vulnerability
+        # whose aliases list our GHSA. Exercises the same upsert path
+        # afterwards so the MAL data gets merged into the GHSA doc.
+        if not record and lookup_id.upper().startswith("GHSA-"):
+            existing_doc = await repository.collection.find_one({"_id": normalized_identifier})
+            candidate_records = await self._resolve_osv_by_packages(existing_doc, lookup_id)
+            if candidate_records:
+                record = candidate_records[0]
+
         if not record:
+            # Even when OSV has nothing to offer, a local MAL-*/GHSA-* doc
+            # may still carry broad ranges that deps.dev can fill in. Try
+            # enrichment as a best-effort side-effect before returning.
+            if normalized_identifier.upper().startswith(("MAL-", "GHSA-")):
+                try:
+                    from app.services.ingestion.mal_enrichment import maybe_enrich_by_id
+                    enriched = await maybe_enrich_by_id(normalized_identifier)
+                    if enriched > 0:
+                        return VulnerabilityRefreshStatus(
+                            identifier=original_identifier,
+                            provider="OSV",
+                            status="updated",
+                            message=f"OSV had no new record; enriched {enriched} product(s) via deps.dev.",
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "manual_refresher.enrichment_failed",
+                        vuln_id=normalized_identifier,
+                        error=str(exc),
+                    )
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="OSV",
@@ -1030,7 +1149,14 @@ class ManualRefresher:
                     ghsa_alias = upper
 
         has_cve = cve_alias is not None
-        if euvd_target_id:
+        # Match the OSV pipeline's priority: MAL-* is always primary, so the
+        # detail page always lands on the MAL- record with its rich
+        # description + deps.dev enrichment. Absorption below collapses
+        # pre-existing EUVD/GHSA docs that alias this MAL-*.
+        is_mal = osv_id_normalized.upper().startswith("MAL-")
+        if is_mal:
+            vuln_id = osv_id_normalized.upper()
+        elif euvd_target_id:
             # Enriching an existing EUVD document — keep its _id as vuln_id
             vuln_id = euvd_target_id
         elif has_cve:
@@ -1129,14 +1255,37 @@ class ManualRefresher:
             change_context=change_context,
         )
 
+        # Enrich MAL-*/GHSA-* docs with deps.dev published-version data after
+        # **any** refresh outcome — including "unchanged". The common case for
+        # manual re-sync on a broad-range MAL-* is that OSV has no new data
+        # but the local doc still shows `>=0`; running enrichment here is
+        # what makes the UI button actually useful in that case. The helper
+        # is idempotent (broad-range-only) so re-running is safe.
+        enriched_count = 0
+        if vuln_id.upper().startswith(("MAL-", "GHSA-")):
+            try:
+                from app.services.ingestion.mal_enrichment import maybe_enrich_by_id
+                enriched_count = await maybe_enrich_by_id(vuln_id)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "manual_refresher.enrichment_failed",
+                    vuln_id=vuln_id,
+                    error=str(exc),
+                )
+
         resolved = vuln_id if vuln_id != original_identifier.upper() else None
+        enrichment_suffix = (
+            f" Enriched {enriched_count} product(s) via deps.dev."
+            if enriched_count > 0
+            else ""
+        )
 
         if result == "inserted":
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="OSV",
                 status="inserted",
-                message="Created from OSV record.",
+                message="Created from OSV record." + enrichment_suffix,
                 resolved_id=resolved,
             )
         elif result == "updated":
@@ -1144,7 +1293,30 @@ class ManualRefresher:
                 identifier=original_identifier,
                 provider="OSV",
                 status="updated",
-                message="Enriched with OSV data.",
+                message="Enriched with OSV data." + enrichment_suffix,
+                resolved_id=resolved,
+            )
+        # result == "unchanged": if deps.dev patched anything, flip to
+        # "updated" so the UI doesn't flash a misleading "skipped" / "no
+        # changes" banner when the enrichment did useful work.
+        if enriched_count > 0:
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="OSV",
+                status="updated",
+                message=f"OSV had no new data; enriched {enriched_count} product(s) via deps.dev.",
+                resolved_id=resolved,
+            )
+        # For MAL-*/GHSA-* records the common "nothing changed" case is that
+        # OSV has no update AND deps.dev has no further enrichment to offer
+        # (e.g. because a prior enrichment already patched the doc). Surface
+        # that explicitly so the user doesn't think the button did nothing.
+        if vuln_id.upper().startswith(("MAL-", "GHSA-")):
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="OSV",
+                status="skipped",
+                message="No new data from OSV and no new versions from deps.dev.",
                 resolved_id=resolved,
             )
         return VulnerabilityRefreshStatus(

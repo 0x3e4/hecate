@@ -351,6 +351,12 @@ class ConsolidatedFindingResponse(BaseModel):
         default=None, alias="cvssScore", serialization_alias="cvssScore"
     )
     urls: list[str] = Field(default_factory=list)
+    package_type: str | None = Field(
+        default=None, alias="packageType", serialization_alias="packageType"
+    )
+    package_path: str | None = Field(
+        default=None, alias="packagePath", serialization_alias="packagePath"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -358,6 +364,28 @@ class ConsolidatedFindingResponse(BaseModel):
 class ConsolidatedFindingListResponse(BaseModel):
     total: int
     items: list[ConsolidatedFindingResponse]
+
+
+class ConsolidatedAlertResponse(BaseModel):
+    """Malicious-indicator findings grouped by rule+package+version, across scans."""
+
+    title: str | None = None
+    package_name: str = Field(alias="packageName", serialization_alias="packageName")
+    package_version: str = Field(alias="packageVersion", serialization_alias="packageVersion")
+    severity: str = "unknown"
+    description: str | None = None
+    category: str | None = None
+    package_path: str | None = Field(
+        default=None, alias="packagePath", serialization_alias="packagePath"
+    )
+    targets: list[ConsolidatedTargetSchema] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class ConsolidatedAlertListResponse(BaseModel):
+    total: int
+    items: list[ConsolidatedAlertResponse]
 
 
 class ConsolidatedSbomResponse(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -61,15 +62,94 @@ async def search_vulnerabilities(
     return await service.search(query)
 
 
-@router.post("/refresh", response_model=VulnerabilityRefreshResponse)
+@router.post(
+    "/refresh",
+    response_model=VulnerabilityRefreshResponse,
+    status_code=202,
+)
 async def trigger_refresh(
     payload: VulnerabilityRefreshRequest,
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> VulnerabilityRefreshResponse:
+    """Trigger a vulnerability feed refresh asynchronously.
+
+    The request is enqueued as a background task and the response returns
+    immediately with HTTP 202 so clients don't hit Cloudflare's 100s edge
+    timeout on slow upstream sources (OSV.dev can take 90-150s per MAL-*
+    record; deps.dev enrichment adds another few seconds). The final per-ID
+    results are published on the SSE stream as a `job_completed` event with
+    `jobName == f"vulnerability_refresh_{jobId}"` — clients subscribe and
+    render the outcome when it arrives.
     """
-    Trigger vulnerability feed refresh.
-    """
-    return await service.trigger_refresh(payload)
+    requested_ids = list(dict.fromkeys((payload.vuln_ids or []) + (payload.source_ids or [])))
+    if not requested_ids:
+        raise HTTPException(status_code=400, detail="No identifiers provided.")
+
+    job_id = uuid.uuid4().hex[:16]
+    job_name = f"vulnerability_refresh_{job_id}"
+    started_at = datetime.now(UTC)
+
+    publish_job_started(
+        job_name,
+        started_at,
+        vulnerabilityIds=requested_ids,
+        source=payload.source,
+    )
+
+    asyncio.create_task(
+        _run_refresh_background(
+            payload=payload,
+            service=service,
+            job_name=job_name,
+            started_at=started_at,
+        )
+    )
+
+    accepted_results = [
+        {
+            "identifier": identifier,
+            "provider": payload.source,
+            "status": "accepted",
+            "message": "Queued — results will arrive via SSE.",
+        }
+        for identifier in requested_ids
+    ]
+    return VulnerabilityRefreshResponse.model_validate(
+        {
+            "requested": requested_ids,
+            "results": accepted_results,
+            "jobId": job_id,
+        }
+    )
+
+
+async def _run_refresh_background(
+    *,
+    payload: VulnerabilityRefreshRequest,
+    service: VulnerabilityService,
+    job_name: str,
+    started_at: datetime,
+) -> None:
+    """Execute the refresh and publish the result onto the SSE bus."""
+    try:
+        result = await service.trigger_refresh(payload)
+    except Exception as exc:  # noqa: BLE001
+        finished_at = datetime.now(UTC)
+        logger.exception("vulnerability_refresh.background_failed", job_name=job_name, error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc))
+        return
+
+    finished_at = datetime.now(UTC)
+    try:
+        result_payload = result.model_dump(by_alias=True, mode="json")
+    except Exception:  # pragma: no cover - defensive
+        result_payload = {"requested": payload.vuln_ids, "results": []}
+    publish_job_completed(
+        job_name,
+        started_at,
+        finished_at,
+        **result_payload,
+    )
 
 
 @router.post("/lookup", response_model=VulnerabilityLookupResponse)

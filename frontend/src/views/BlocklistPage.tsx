@@ -1,0 +1,470 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { fetchBlocklist } from "../api/malware";
+import { SkeletonBlock } from "../components/Skeleton";
+import { useI18n } from "../i18n/context";
+import { formatDateTime } from "../utils/dateFormat";
+import {
+  buildDepsDevUrl,
+  buildSnykUrl,
+  buildRegistryUrl,
+  buildSocketUrl,
+  buildBundlephobiaUrl,
+  buildNpmGraphUrl,
+  buildAikidoUrl,
+} from "../utils/sbomLinks";
+import type { BlocklistEntry } from "../types";
+
+const PAGE_SIZE = 50;
+
+const SOURCE_COLORS: Record<string, { bg: string; fg: string; border: string }> = {
+  static: { bg: "rgba(167,139,250,0.12)", fg: "#a78bfa", border: "rgba(167,139,250,0.28)" },
+  dynamic: { bg: "rgba(99,230,190,0.12)", fg: "#63e6be", border: "rgba(99,230,190,0.28)" },
+};
+
+const SEV_COLOR: Record<string, string> = {
+  critical: "#ff6b6b",
+  high: "#ff922b",
+  medium: "#fcc419",
+  low: "#69db7c",
+};
+
+// Patterns for vuln identifiers that Hecate indexes, in priority order. Used to
+// turn an `origin` URL like `https://github.com/advisories/GHSA-xxx` into an
+// internal `/vulnerability/<id>` deep-link without losing the external URL.
+const VULN_ID_PATTERNS: { name: string; re: RegExp }[] = [
+  { name: "GHSA", re: /GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i },
+  { name: "MAL",  re: /MAL-\d{4}-\d+/i },
+  { name: "CVE",  re: /CVE-\d{4}-\d{4,}/i },
+  { name: "PYSEC", re: /PYSEC-\d{4}-\d+/i },
+  { name: "OSV", re: /OSV-\d{4}-\d+/i },
+  { name: "EUVD", re: /EUVD-\d{4}-\d+/i },
+];
+
+function extractVulnId(origin: string | null | undefined): string | null {
+  if (!origin) return null;
+  for (const { re } of VULN_ID_PATTERNS) {
+    const m = origin.match(re);
+    if (m) return m[0].toUpperCase();
+  }
+  return null;
+}
+
+function isUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return /^https?:\/\//i.test(value);
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+/** Sort key: dynamic entries rank by updatedAt/ingestedAt desc, static by staticIndex desc.
+ *  Timestamps in ms (~1.7e12) always dominate plausible static indexes, so dynamic rows
+ *  naturally float to the top when timestamps exist. */
+function sortKey(e: BlocklistEntry): number {
+  if (e.source === "dynamic") {
+    const ts = e.updatedAt || e.ingestedAt;
+    if (ts) {
+      const n = Date.parse(ts);
+      if (!Number.isNaN(n)) return n;
+    }
+    return 0;
+  }
+  return e.staticIndex ?? 0;
+}
+
+export const BlocklistPage = () => {
+  const { t } = useI18n();
+
+  const [entries, setEntries] = useState<BlocklistEntry[]>([]);
+  const [scannerAvailable, setScannerAvailable] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [ecosystemFilter, setEcosystemFilter] = useState("");
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    document.title = t("Hecate Cyber Defense - Malware Feed", "Hecate Cyber Defense - Malware-Feed");
+    return () => { document.title = "Hecate Cyber Defense"; };
+  }, [t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetchBlocklist({
+          ecosystem: ecosystemFilter || undefined,
+          search: search || undefined,
+          includeMal: true,
+        });
+        if (cancelled) return;
+        setEntries(res.entries);
+        setScannerAvailable(res.scannerAvailable);
+        setPage(0);
+      } catch (e) {
+        if (!cancelled) setError(t("Failed to load blocklist.", "Blockliste konnte nicht geladen werden."));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, search ? 300 : 0);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [search, ecosystemFilter, t]);
+
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      if (a.source !== b.source) return a.source === "dynamic" ? -1 : 1;
+      return sortKey(b) - sortKey(a);
+    });
+  }, [entries]);
+
+  const ecosystems = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of entries) if (e.ecosystem) set.add(e.ecosystem);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+
+  const staticCount = useMemo(() => entries.filter(e => e.source === "static").length, [entries]);
+  const dynamicCount = useMemo(() => entries.filter(e => e.source === "dynamic").length, [entries]);
+
+  const pageEntries = sortedEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(sortedEntries.length / PAGE_SIZE));
+
+  return (
+    <div className="page">
+      <section className="card">
+        <h2>{t("Malware Feed", "Malware-Feed")}</h2>
+        <p className="muted">
+          {t(
+            "Collection of malicious packages — curated HEC-090 supply-chain attacks plus every MAL-* advisory Hecate has synced from OSV. Sorted newest-first.",
+            "Sammlung bösartiger Pakete — kuratierte HEC-090-Supply-Chain-Angriffe plus jede MAL-*-Advisory, die Hecate via OSV synchronisiert hat. Neueste zuerst."
+          )}
+        </p>
+
+        {!scannerAvailable && (
+          <div style={{ marginTop: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "6px", background: "rgba(252,196,25,0.08)", border: "1px solid rgba(252,196,25,0.2)", color: "#fcc419", fontSize: "0.8125rem" }}>
+            {t(
+              "Scanner sidecar is unreachable — static HEC-090 entries are not visible until it comes back. MAL-* entries still render from MongoDB.",
+              "Scanner-Sidecar nicht erreichbar — statische HEC-090-Einträge erst wieder sichtbar wenn er zurück ist. MAL-*-Einträge rendern weiterhin aus MongoDB."
+            )}
+          </div>
+        )}
+
+        {/* Filters */}
+        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            type="text"
+            placeholder={t("Search package name or description…", "Paketname oder Beschreibung suchen…")}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ flex: "1 1 240px", padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
+          />
+          <select
+            value={ecosystemFilter}
+            onChange={e => setEcosystemFilter(e.target.value)}
+            style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
+          >
+            <option value="">{t("All ecosystems", "Alle Ökosysteme")}</option>
+            {ecosystems.map(eco => (
+              <option key={eco} value={eco}>{eco}</option>
+            ))}
+          </select>
+          <div style={{ marginLeft: "auto", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
+            {loading
+              ? t("Loading…", "Lädt…")
+              : t(
+                  `${sortedEntries.length} entries · ${staticCount} static · ${dynamicCount} dynamic`,
+                  `${sortedEntries.length} Einträge · ${staticCount} statisch · ${dynamicCount} dynamisch`,
+                )}
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ marginTop: "1rem", padding: "0.75rem", borderRadius: "6px", background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.2)", color: "#ff8787" }}>
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ marginTop: "1rem" }}>
+            <SkeletonBlock height="10rem" />
+          </div>
+        ) : sortedEntries.length === 0 ? (
+          <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
+            {t("No blocklist entries match your filters.", "Keine Blocklisten-Einträge entsprechen Ihren Filtern.")}
+          </p>
+        ) : (
+          <>
+            <div style={{ marginTop: "1rem", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "0.75rem" }}>
+              {pageEntries.map((e, idx) => (
+                <BlocklistCard
+                  key={`${e.source}-${e.ecosystem}-${e.name}-${e.versions.join(",")}-${idx}`}
+                  entry={e}
+                  t={t}
+                />
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "0.5rem", alignItems: "center" }}>
+                <button
+                  type="button"
+                  disabled={page === 0}
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#eee", cursor: page === 0 ? "not-allowed" : "pointer", opacity: page === 0 ? 0.4 : 1 }}
+                >
+                  ‹ {t("Previous", "Zurück")}
+                </button>
+                <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8125rem" }}>
+                  {page + 1} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={page + 1 >= totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#eee", cursor: page + 1 >= totalPages ? "not-allowed" : "pointer", opacity: page + 1 >= totalPages ? 0.4 : 1 }}
+                >
+                  {t("Next", "Weiter")} ›
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </div>
+  );
+};
+
+export default BlocklistPage;
+
+
+// --- Card component ---
+
+type CardProps = {
+  entry: BlocklistEntry;
+  t: (en: string, de: string) => string;
+};
+
+const linkPillStyle = (color: string, bg: string, border: string): React.CSSProperties => ({
+  color,
+  background: bg,
+  border: `1px solid ${border}`,
+  textDecoration: "none",
+  fontSize: "0.6875rem",
+  padding: "0.125rem 0.5rem",
+  borderRadius: "3px",
+  whiteSpace: "nowrap",
+});
+
+const BlocklistCard = ({ entry: e, t }: CardProps) => {
+  const colors = SOURCE_COLORS[e.source] || SOURCE_COLORS.static;
+  const sevColor = e.severity ? SEV_COLOR[e.severity.toLowerCase()] : null;
+  const ts = e.updatedAt || e.ingestedAt;
+
+  // Always package-level for the malware-feed: malicious versions get
+  // deprecated / retracted from registries, so a versioned URL (e.g.
+  // deps.dev/npm/@bitwarden%2Fcli/2026.4.0) 404s. Every builder falls back
+  // to a package-page URL when version is empty.
+  const depsUrl = buildDepsDevUrl(e.name, "", e.ecosystem);
+  const snykUrl = buildSnykUrl(e.name, "", e.ecosystem);
+  const registryLink = buildRegistryUrl(e.name, "", e.ecosystem);
+  const socketUrl = buildSocketUrl(e.name, "", e.ecosystem);
+  const bundlephobiaUrl = buildBundlephobiaUrl(e.name, "", e.ecosystem);
+  const npmGraphUrl = buildNpmGraphUrl(e.name, "", e.ecosystem);
+  const aikidoUrl = buildAikidoUrl(e.name, "", e.ecosystem);
+
+  const vulnId = extractVulnId(e.origin);
+  const originIsUrl = isUrl(e.origin);
+
+  return (
+    <div
+      style={{
+        background: "rgba(255,255,255,0.02)",
+        border: `1px solid ${colors.border}`,
+        borderLeft: `3px solid ${colors.fg}`,
+        borderRadius: "8px",
+        padding: "0.75rem 0.875rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
+      }}
+    >
+      {/* Header: ecosystem + package link + severity + timestamp */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", flexWrap: "wrap" }}>
+        <span style={{
+          padding: "0.125rem 0.5rem",
+          borderRadius: "4px",
+          fontSize: "0.6875rem",
+          fontWeight: 600,
+          background: "rgba(255,255,255,0.06)",
+          color: "rgba(255,255,255,0.75)",
+          textTransform: "lowercase",
+        }}>
+          {e.ecosystem || "unknown"}
+        </span>
+        <span style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: "0.875rem", color: "#fff", wordBreak: "break-all" }}>
+          {registryLink ? (
+            <a
+              href={registryLink.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#fff", textDecoration: "none", borderBottom: "1px dashed rgba(255,255,255,0.25)" }}
+              title={t(`View on ${registryLink.label}`, `Auf ${registryLink.label} ansehen`)}
+            >
+              {e.name}
+            </a>
+          ) : e.name}
+        </span>
+        {sevColor && (
+          <span style={{
+            fontSize: "0.6rem",
+            padding: "0.0625rem 0.375rem",
+            borderRadius: "3px",
+            background: `${sevColor}1a`,
+            color: sevColor,
+            fontWeight: 700,
+            textTransform: "uppercase",
+          }}>
+            {e.severity}
+          </span>
+        )}
+      </div>
+
+      {/* Versions */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", alignItems: "center" }}>
+        {e.allVersions ? (
+          <span style={{ fontSize: "0.6875rem", padding: "0.125rem 0.5rem", borderRadius: "3px", background: "rgba(252,196,25,0.12)", color: "#fcc419", fontStyle: "italic" }}>
+            {t("all versions", "alle Versionen")}
+          </span>
+        ) : e.versions.length > 0 ? (
+          e.versions.map((v, i) => (
+            <span key={`${v}-${i}`} style={{
+              fontSize: "0.6875rem",
+              padding: "0.0625rem 0.375rem",
+              borderRadius: "3px",
+              background: "rgba(255,255,255,0.05)",
+              color: "rgba(255,255,255,0.7)",
+              fontFamily: "monospace",
+            }}>
+              {v}
+            </span>
+          ))
+        ) : (
+          <span style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.3)" }}>—</span>
+        )}
+      </div>
+
+      {/* Description */}
+      {e.description && (
+        <p style={{
+          margin: 0,
+          fontSize: "0.75rem",
+          lineHeight: 1.45,
+          color: "rgba(255,255,255,0.65)",
+          display: "-webkit-box",
+          WebkitLineClamp: 4,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}>
+          {e.description}
+        </p>
+      )}
+
+      {/* Origin / vuln-id / also-flagged-by */}
+      {(e.origin || vulnId || (e.alsoSeenIn && e.alsoSeenIn.length > 0) || (e.relatedOrigins && e.relatedOrigins.length > 0)) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem", alignItems: "center", fontSize: "0.7rem", color: "rgba(255,255,255,0.5)" }}>
+          {vulnId && (
+            <Link
+              to={`/vulnerability/${encodeURIComponent(vulnId)}`}
+              style={linkPillStyle("#ffd43b", "rgba(255,193,7,0.12)", "rgba(255,193,7,0.25)")}
+              title={t("Open Hecate vulnerability detail", "Hecate-Schwachstellen-Detail öffnen")}
+            >
+              {vulnId}
+            </Link>
+          )}
+          {e.origin && (
+            originIsUrl ? (
+              <a
+                href={e.origin}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem", wordBreak: "break-all" }}
+                title={e.origin}
+              >
+                {hostOf(e.origin)} ↗
+              </a>
+            ) : (
+              <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.7rem", wordBreak: "break-word" }}>
+                {e.origin}
+              </span>
+            )
+          )}
+          {/* Surface only cross-referenced vuln IDs from relatedOrigins (MAL-/GHSA-/CVE-/…)
+              as internal deep-link pills. Hostname pills and the "also flagged by" label
+              are intentionally omitted — the footer's external-tool pills cover the
+              package-research angle, and we don't want host-pill noise in the origin line. */}
+          {(e.relatedOrigins || []).map(url => {
+            const relVulnId = extractVulnId(url);
+            if (!relVulnId || relVulnId === vulnId) return null;
+            return (
+              <Link
+                key={url}
+                to={`/vulnerability/${encodeURIComponent(relVulnId)}`}
+                style={linkPillStyle("#ffd43b", "rgba(255,193,7,0.12)", "rgba(255,193,7,0.25)")}
+                title={t("Open Hecate vulnerability detail", "Hecate-Schwachstellen-Detail öffnen")}
+              >
+                {relVulnId}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer: links + timestamp */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", marginTop: "auto", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+          {depsUrl && (
+            <a href={depsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev" style={linkPillStyle("#ffd43b", "rgba(255,193,7,0.1)", "rgba(255,193,7,0.2)")}>
+              deps.dev
+            </a>
+          )}
+          {snykUrl && (
+            <a href={snykUrl} target="_blank" rel="noopener noreferrer" title="Snyk" style={linkPillStyle("#a78bfa", "rgba(167,139,250,0.1)", "rgba(167,139,250,0.2)")}>
+              Snyk
+            </a>
+          )}
+          {socketUrl && (
+            <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev" style={linkPillStyle("#ff8787", "rgba(255,135,135,0.1)", "rgba(255,135,135,0.2)")}>
+              socket.dev
+            </a>
+          )}
+          {aikidoUrl && (
+            <a href={aikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev" style={linkPillStyle("#9775fa", "rgba(151,117,250,0.1)", "rgba(151,117,250,0.2)")}>
+              aikido
+            </a>
+          )}
+          {bundlephobiaUrl && (
+            <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia" style={linkPillStyle("#74c0fc", "rgba(116,192,252,0.1)", "rgba(116,192,252,0.2)")}>
+              bundlephobia
+            </a>
+          )}
+          {npmGraphUrl && (
+            <a href={npmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph" style={linkPillStyle("#faa2c1", "rgba(250,162,193,0.1)", "rgba(250,162,193,0.2)")}>
+              npmgraph
+            </a>
+          )}
+        </div>
+        {ts && (
+          <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.35)", whiteSpace: "nowrap" }}>
+            {formatDateTime(ts)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};

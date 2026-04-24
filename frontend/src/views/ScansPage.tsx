@@ -9,6 +9,7 @@ import {
   fetchScans,
   fetchGlobalFindings,
   fetchGlobalSbom,
+  fetchGlobalAlerts,
   fetchBadgeCounts,
   fetchSbomFacets,
   type SbomFacets,
@@ -27,10 +28,12 @@ import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 import {
+  TYPE_ALIASES,
   buildDepsDevUrl,
   buildSnykUrl,
   buildRegistryUrl,
   buildSocketUrl,
+  buildAikidoUrl,
   buildBundlephobiaUrl,
   buildNpmGraphUrl,
 } from "../utils/sbomLinks";
@@ -40,12 +43,13 @@ import type {
   ScanSummary,
   ConsolidatedFinding,
   ConsolidatedSbom,
+  ConsolidatedAlert,
   ScannerStats,
   SubmitScanResponse,
   LicenseOverviewItem,
 } from "../types";
 
-type Tab = "targets" | "scans" | "findings" | "sbom" | "licenses" | "scanner";
+type Tab = "targets" | "scans" | "findings" | "sbom" | "licenses" | "alerts" | "scanner";
 type SourceRepoInputMode = "url" | "zip";
 
 interface ConfirmModal {
@@ -97,6 +101,22 @@ export const ScansPage = () => {
   // Badge counts (unfiltered, for tab labels)
   const [findingsBadgeTotal, setFindingsBadgeTotal] = useState(0);
   const [sbomBadgeTotal, setSbomBadgeTotal] = useState(0);
+  const [alertsBadgeTotal, setAlertsBadgeTotal] = useState(0);
+
+  // Global Security Alerts tab
+  const [globalAlerts, setGlobalAlerts] = useState<ConsolidatedAlert[]>([]);
+  const [globalAlertsTotal, setGlobalAlertsTotal] = useState(0);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsSearch, setAlertsSearch] = useState("");
+  const [alertsSeverity, setAlertsSeverity] = useState<string | null>(null);
+  const [alertsCategory, setAlertsCategory] = useState<string | null>(null);
+  const [alertsTargetId, setAlertsTargetId] = useState<string | null>(null);
+  const [alertsSortBy, setAlertsSortBy] = useState("severity");
+  const [alertsSortOrder, setAlertsSortOrder] = useState<"asc" | "desc">("desc");
+  const [alertsOffset, setAlertsOffset] = useState(0);
+  const alertsLimit = 50;
+  const alertsSearchRef = useRef(alertsSearch);
+  alertsSearchRef.current = alertsSearch;
 
   // Global findings tab
   const [globalFindings, setGlobalFindings] = useState<ConsolidatedFinding[]>([]);
@@ -164,6 +184,7 @@ export const ScansPage = () => {
         setFindingsBadgeTotal(counts.findings);
         setSbomBadgeTotal(counts.sbom);
         setLicenseOverviewTotal(counts.licenses);
+        setAlertsBadgeTotal(counts.alerts);
       })
       .catch(() => { /* ignore */ });
   }, []);
@@ -184,13 +205,14 @@ export const ScansPage = () => {
         const [targetsRes, scansRes, badgeCounts] = await Promise.all([
           fetchScanTargets({ limit: 100 }),
           fetchScans({ limit: 1 }),
-          fetchBadgeCounts().catch(() => ({ findings: 0, sbom: 0, licenses: 0 })),
+          fetchBadgeCounts().catch(() => ({ findings: 0, sbom: 0, licenses: 0, alerts: 0 })),
         ]);
         setTargets(targetsRes.items);
         setScanTotal(scansRes.total);
         setFindingsBadgeTotal(badgeCounts.findings);
         setSbomBadgeTotal(badgeCounts.sbom);
         setLicenseOverviewTotal(badgeCounts.licenses);
+        setAlertsBadgeTotal(badgeCounts.alerts);
       } else if (tab === "scans") {
         // Load targets for filter dropdown if not yet loaded
         if (targets.length === 0) {
@@ -200,7 +222,7 @@ export const ScansPage = () => {
         const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
         setScans(res.items);
         setScanTotal(res.total);
-      } else if (tab === "findings" || tab === "sbom") {
+      } else if (tab === "findings" || tab === "sbom" || tab === "alerts") {
         // Ensure targets loaded for filter dropdown
         if (targets.length === 0) {
           const tRes = await fetchScanTargets({ limit: 100 });
@@ -258,6 +280,33 @@ export const ScansPage = () => {
     }, findingsSearch ? 300 : 0);
     return () => clearTimeout(timer);
   }, [tab, findingsSearch, findingsSeverity, findingsTargetId, findingsSortBy, findingsSortOrder, findingsOffset]);
+
+  // Debounced fetch for global Security Alerts tab
+  useEffect(() => {
+    if (tab !== "alerts") return;
+    setAlertsLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchGlobalAlerts({
+          search: alertsSearchRef.current || undefined,
+          severity: alertsSeverity || undefined,
+          category: alertsCategory || undefined,
+          targetId: alertsTargetId || undefined,
+          sortBy: alertsSortBy,
+          sortOrder: alertsSortOrder,
+          limit: alertsLimit,
+          offset: alertsOffset,
+        });
+        setGlobalAlerts(res.items);
+        setGlobalAlertsTotal(res.total);
+      } catch (err) {
+        console.error("Failed to load global alerts", err);
+      } finally {
+        setAlertsLoading(false);
+      }
+    }, alertsSearch ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [tab, alertsSearch, alertsSeverity, alertsCategory, alertsTargetId, alertsSortBy, alertsSortOrder, alertsOffset]);
 
   // Debounced fetch for global SBOM tab
   useEffect(() => {
@@ -508,6 +557,7 @@ export const ScansPage = () => {
             { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
             { key: "findings" as Tab, label: t("Findings", "Funde"), count: findingsBadgeTotal || undefined },
             { key: "sbom" as Tab, label: "SBOM", count: sbomBadgeTotal || undefined },
+            { key: "alerts" as Tab, label: t("Security Alerts", "Sicherheitswarnungen"), count: alertsBadgeTotal || undefined },
             { key: "licenses" as Tab, label: t("Licenses", "Lizenzen"), count: licenseOverviewTotal || undefined },
             { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
           ]).map(({ key, label, count }) => (
@@ -1095,6 +1145,7 @@ export const ScansPage = () => {
                             )}
                           </th>
                         ))}
+                        <th style={{ ...thStyle, whiteSpace: "nowrap" }}>{t("Links", "Links")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1104,6 +1155,18 @@ export const ScansPage = () => {
                         const sevColor = sevColors[sev] || "#868e96";
                         const rowKey = `${f.vulnerabilityId || ""}|${f.packageName}|${f.packageVersion}`;
                         const isExpanded = expandedFindings.has(rowKey);
+                        const pkgType = f.packageType || "";
+                        const fDepsUrl = buildDepsDevUrl(f.packageName, f.packageVersion, pkgType);
+                        const fSnykUrl = buildSnykUrl(f.packageName, f.packageVersion, pkgType);
+                        const fRegistry = buildRegistryUrl(f.packageName, f.packageVersion, pkgType);
+                        const fSocketUrl = buildSocketUrl(f.packageName, f.packageVersion, pkgType);
+                        const fAikidoUrl = buildAikidoUrl(f.packageName, f.packageVersion, pkgType);
+                        const fBundlephobiaUrl = buildBundlephobiaUrl(f.packageName, f.packageVersion, pkgType);
+                        const fNpmGraphUrl = buildNpmGraphUrl(f.packageName, f.packageVersion, pkgType);
+                        const hasAnyLinks = fDepsUrl || fSnykUrl || fRegistry || fSocketUrl || fAikidoUrl || fBundlephobiaUrl || fNpmGraphUrl;
+                        const packagePathClean = f.packagePath
+                          ? f.packagePath.replace(/^\/tmp\/hecate-(?:scan|upload)-[^/]+\//, "")
+                          : "";
                         return (
                           <React.Fragment key={rowKey}>
                             <tr
@@ -1121,7 +1184,14 @@ export const ScansPage = () => {
                                   <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8125rem" }}>{f.title || "—"}</span>
                                 )}
                               </td>
-                              <td style={{ ...tdStyle, fontSize: "0.8125rem", fontFamily: "monospace" }}>{f.packageName}</td>
+                              <td style={{ ...tdStyle, fontSize: "0.8125rem", fontFamily: "monospace" }}>
+                                <span
+                                  style={{ color: "#74c0fc", borderBottom: "1px dashed rgba(116,192,252,0.3)" }}
+                                  title={t("Click to show details", "Klicken für Details")}
+                                >
+                                  {f.packageName}
+                                </span>
+                              </td>
                               <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>{f.packageVersion}</td>
                               <td style={tdStyle}>
                                 <span style={{
@@ -1149,11 +1219,104 @@ export const ScansPage = () => {
                               <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
                                 {f.targets.length}
                               </td>
+                              <td style={tdStyle} onClick={e => e.stopPropagation()}>
+                                <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
+                                  {fDepsUrl && (
+                                    <a href={fDepsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
+                                      style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
+                                      deps.dev
+                                    </a>
+                                  )}
+                                  {fSnykUrl && (
+                                    <a href={fSnykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
+                                      style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
+                                      Snyk
+                                    </a>
+                                  )}
+                                  {fRegistry && (
+                                    <a href={fRegistry.url} target="_blank" rel="noopener noreferrer" title={fRegistry.label}
+                                      style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
+                                      {fRegistry.label}
+                                    </a>
+                                  )}
+                                  {fSocketUrl && (
+                                    <a href={fSocketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
+                                      style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
+                                      socket.dev
+                                    </a>
+                                  )}
+                                  {fAikidoUrl && (
+                                    <a href={fAikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
+                                      style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
+                                      aikido
+                                    </a>
+                                  )}
+                                  {fBundlephobiaUrl && (
+                                    <a href={fBundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
+                                      style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
+                                      bundlephobia
+                                    </a>
+                                  )}
+                                  {fNpmGraphUrl && (
+                                    <a href={fNpmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
+                                      style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
+                                      npmgraph
+                                    </a>
+                                  )}
+                                  {!hasAnyLinks && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
+                                </div>
+                              </td>
                             </tr>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={8} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
+                                <td colSpan={9} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
+                                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.75rem", maxWidth: "900px", marginTop: "0.5rem" }}>
+                                    {packagePathClean && (
+                                      <>
+                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Source", "Quelle")}</span>
+                                        <span style={{ color: "#74c0fc", fontFamily: "monospace", fontSize: "0.7rem" }}>{packagePathClean}</span>
+                                      </>
+                                    )}
+                                    {pkgType && (
+                                      <>
+                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Type", "Typ")}</span>
+                                        <span style={{ color: "rgba(255,255,255,0.7)" }}>{TYPE_ALIASES[pkgType] || pkgType}</span>
+                                      </>
+                                    )}
+                                    {f.cvssScore != null && (
+                                      <>
+                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>CVSS</span>
+                                        <span style={{ color: f.cvssScore >= 9 ? "#ff6b6b" : f.cvssScore >= 7 ? "#ffa94d" : f.cvssScore >= 4 ? "#fcc419" : "#69db7c" }}>{f.cvssScore.toFixed(1)}</span>
+                                      </>
+                                    )}
+                                    {f.title && (
+                                      <>
+                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Title", "Titel")}</span>
+                                        <span style={{ color: "rgba(255,255,255,0.7)" }}>{f.title}</span>
+                                      </>
+                                    )}
+                                    {(f.urls ?? []).length > 0 && (
+                                      <>
+                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("References", "Referenzen")}</span>
+                                        <span style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+                                          {(f.urls ?? []).slice(0, 5).map((url, i) => {
+                                            let host = url;
+                                            try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+                                            return (
+                                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                                                style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem" }}>
+                                                {host}
+                                              </a>
+                                            );
+                                          })}
+                                          {(f.urls ?? []).length > 5 && (
+                                            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6875rem" }}>+{(f.urls ?? []).length - 5}</span>
+                                          )}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.75rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
                                     {t("Found in targets:", "Gefunden in Zielen:")}
                                   </div>
                                   <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
@@ -1216,6 +1379,208 @@ export const ScansPage = () => {
                       }}
                     >
                       {t("Next", "Weiter")} →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Global Security Alerts tab */}
+        {tab === "alerts" && (
+          <div>
+            {/* Filters */}
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder={t("Search package, rule, or text…", "Paket, Regel oder Text suchen…")}
+                value={alertsSearch}
+                onChange={e => { setAlertsSearch(e.target.value); setAlertsOffset(0); }}
+                style={{ flex: "1 1 220px", padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
+              />
+              <select
+                value={alertsSeverity ?? ""}
+                onChange={e => { setAlertsSeverity(e.target.value || null); setAlertsOffset(0); }}
+                style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
+              >
+                <option value="">{t("All severities", "Alle Schweregrade")}</option>
+                <option value="critical">critical</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </select>
+              <select
+                value={alertsCategory ?? ""}
+                onChange={e => { setAlertsCategory(e.target.value || null); setAlertsOffset(0); }}
+                style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
+              >
+                <option value="">{t("All categories", "Alle Kategorien")}</option>
+                {/* Categories from scanner/app/malware_detector/rules.py. Keep in sync
+                    when new categories are added — unknown values still filter correctly
+                    via exact data_source match. */}
+                {[
+                  "install_hook",
+                  "suspicious_api",
+                  "exfiltration",
+                  "obfuscation",
+                  "unicode_obfuscation",
+                  "typosquatting",
+                  "pth_backdoor",
+                  "cicd",
+                  "persistence",
+                  "kubernetes",
+                  "worm",
+                  "ai_abuse",
+                  "sandbox_evasion",
+                  "known_compromised",
+                ].map(cat => (
+                  <option key={cat} value={cat}>{cat.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+              <select
+                value={alertsTargetId ?? ""}
+                onChange={e => { setAlertsTargetId(e.target.value || null); setAlertsOffset(0); }}
+                style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee", maxWidth: "260px" }}
+              >
+                <option value="">{t("All targets", "Alle Ziele")}</option>
+                {targets.map(tgt => (
+                  <option key={tgt.id} value={tgt.id}>{tgt.name || tgt.id}</option>
+                ))}
+              </select>
+            </div>
+
+            {alertsLoading ? (
+              <SkeletonBlock height="10rem" />
+            ) : globalAlerts.length === 0 ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(105,219,124,0.05)", border: "1px solid rgba(105,219,124,0.15)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
+                <p style={{ color: "#69db7c", margin: 0, fontSize: "0.875rem" }}>
+                  {t("No security alerts from current scans.", "Keine Sicherheitswarnungen aus aktuellen Scans.")}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                        {([
+                          { col: "severity", label: t("Severity", "Schweregrad") },
+                          { col: "title", label: t("Rule", "Regel") },
+                          { col: "package_name", label: t("Package", "Paket") },
+                          { col: "category", label: t("Category", "Kategorie") },
+                          { col: "targets", label: t("Targets", "Ziele") },
+                        ] as const).map(h => (
+                          <th key={h.col}
+                            style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
+                            onClick={() => {
+                              if (alertsSortBy === h.col) {
+                                setAlertsSortOrder(prev => prev === "asc" ? "desc" : "asc");
+                              } else {
+                                setAlertsSortBy(h.col);
+                                setAlertsSortOrder("desc");
+                              }
+                              setAlertsOffset(0);
+                            }}>
+                            {h.label} {alertsSortBy === h.col ? (alertsSortOrder === "asc" ? "▲" : "▼") : ""}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {globalAlerts.map((a, idx) => {
+                        const sev = (a.severity || "").toLowerCase();
+                        const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : sev === "low" ? "#69db7c" : "rgba(255,255,255,0.4)";
+                        return (
+                          <tr key={`${a.title}|${a.packageName}|${a.packageVersion}|${idx}`} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td style={tdStyle}>
+                              <span style={{
+                                padding: "0.125rem 0.5rem",
+                                borderRadius: "4px",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${sevColor}20`,
+                                color: sevColor,
+                              }}>
+                                {sev || "—"}
+                              </span>
+                            </td>
+                            <td style={{ ...tdStyle, fontSize: "0.8125rem", color: "#fff" }}>
+                              <div style={{ fontWeight: 500 }}>{a.title || "—"}</div>
+                              {a.description && (
+                                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.45)", marginTop: "0.125rem", maxWidth: "600px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {a.description.split("\n")[0]}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ ...tdStyle, fontSize: "0.8125rem" }}>
+                              <div style={{ color: "#fff" }}>{a.packageName}</div>
+                              {a.packageVersion && (
+                                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>@ {a.packageVersion}</div>
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              {a.category ? (
+                                <span style={{
+                                  padding: "0.125rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.7rem",
+                                  background: "rgba(92,132,255,0.1)",
+                                  color: "#5c84ff",
+                                  border: "1px solid rgba(92,132,255,0.2)",
+                                }}>
+                                  {a.category.replace(/_/g, " ")}
+                                </span>
+                              ) : <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
+                            </td>
+                            <td style={{ ...tdStyle, fontSize: "0.8125rem" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
+                                {a.targets.slice(0, 3).map((t2, i2) => (
+                                  <Link
+                                    key={`${t2.scanId}-${i2}`}
+                                    to={`/scans/${t2.scanId}`}
+                                    style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem" }}
+                                  >
+                                    {targets.find(tt => tt.id === t2.targetId)?.name || t2.targetId}
+                                  </Link>
+                                ))}
+                                {a.targets.length > 3 && (
+                                  <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.4)" }}>
+                                    +{a.targets.length - 3} {t("more", "weitere")}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                {globalAlertsTotal > alertsLimit && (
+                  <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "0.5rem", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      disabled={alertsOffset === 0}
+                      onClick={() => setAlertsOffset(prev => Math.max(0, prev - alertsLimit))}
+                      style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#eee", cursor: alertsOffset === 0 ? "not-allowed" : "pointer", opacity: alertsOffset === 0 ? 0.4 : 1 }}
+                    >
+                      ‹ {t("Previous", "Zurück")}
+                    </button>
+                    <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8125rem" }}>
+                      {alertsOffset + 1}–{Math.min(alertsOffset + alertsLimit, globalAlertsTotal)} / {globalAlertsTotal}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={alertsOffset + alertsLimit >= globalAlertsTotal}
+                      onClick={() => setAlertsOffset(prev => prev + alertsLimit)}
+                      style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#eee", cursor: alertsOffset + alertsLimit >= globalAlertsTotal ? "not-allowed" : "pointer", opacity: alertsOffset + alertsLimit >= globalAlertsTotal ? 0.4 : 1 }}
+                    >
+                      {t("Next", "Weiter")} ›
                     </button>
                   </div>
                 )}
@@ -1453,9 +1818,22 @@ export const ScansPage = () => {
                 }}
               >
                 <option value="">{t("All types", "Alle Typen")}</option>
-                {["library", "application", "framework", "container", "firmware", "file", "operating-system"].map(tp => (
-                  <option key={tp} value={tp}>{tp}</option>
-                ))}
+                {(() => {
+                  // Merge CycloneDX canonical types with whatever ecosystem labels
+                  // the scanners emitted (pnpm, npm, yarn, gobinary, rust-crate, …),
+                  // so the filter reflects what's actually in the data.
+                  const baseline = ["library", "application", "framework", "container", "firmware", "file", "operating-system"];
+                  const facetTypes = (sbomFacets?.types ?? []).map(f => f.name).filter(Boolean);
+                  const merged = Array.from(new Set<string>([
+                    ...baseline,
+                    ...facetTypes,
+                    ...(sbomType ? [sbomType] : []),
+                  ]));
+                  merged.sort((a, b) => a.localeCompare(b));
+                  return merged.map(tp => (
+                    <option key={tp} value={tp}>{tp}</option>
+                  ));
+                })()}
               </select>
               <select
                 value={sbomTargetId || ""}
@@ -1612,9 +1990,10 @@ export const ScansPage = () => {
                                   const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
                                   const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
                                   const socketUrl = buildSocketUrl(c.name, c.version, c.type, c.purl);
+                                  const aikidoUrl = buildAikidoUrl(c.name, c.version, c.type, c.purl);
                                   const bundlephobiaUrl = buildBundlephobiaUrl(c.name, c.version, c.type, c.purl);
                                   const npmGraphUrl = buildNpmGraphUrl(c.name, c.version, c.type, c.purl);
-                                  const hasAny = depsUrl || snykUrl || registryLink || socketUrl || bundlephobiaUrl || npmGraphUrl;
+                                  const hasAny = depsUrl || snykUrl || registryLink || socketUrl || aikidoUrl || bundlephobiaUrl || npmGraphUrl;
                                   return (
                                     <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
                                       {depsUrl && (
@@ -1639,6 +2018,12 @@ export const ScansPage = () => {
                                         <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
                                           style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
                                           socket.dev
+                                        </a>
+                                      )}
+                                      {aikidoUrl && (
+                                        <a href={aikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
+                                          style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
+                                          aikido
                                         </a>
                                       )}
                                       {bundlephobiaUrl && (

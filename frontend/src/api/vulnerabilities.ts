@@ -192,7 +192,19 @@ export const listSingleAiAnalyses = async (
 export const triggerVulnerabilityRefresh = async (
   payload: VulnerabilityRefreshRequest
 ): Promise<VulnerabilityRefreshResponse> => {
-  const response = await api.post<VulnerabilityRefreshResponse>("/v1/vulnerabilities/refresh", payload);
+  // The refresh endpoint dispatches asynchronously now: it returns HTTP 202
+  // with a `jobId` in under 100ms. The heavy work (OSV fetch + deps.dev
+  // enrichment + OpenSearch reindex, up to ~150s per record) finishes in
+  // the background and emits the final results on the SSE stream as a
+  // `job_completed` event with `jobName === "vulnerability_refresh_" + jobId`.
+  // Subscribers (VulnerabilityDetailPage, DashboardPage) watch `useSSE` for
+  // the matching jobName and surface the outcome when it arrives. This
+  // dodges the Cloudflare 100s edge timeout that was 524-ing the old
+  // synchronous path for MAL-*/GHSA-* IDs.
+  const response = await api.post<VulnerabilityRefreshResponse>(
+    "/v1/vulnerabilities/refresh",
+    payload,
+  );
   return response.data;
 };
 

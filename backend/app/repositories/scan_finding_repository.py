@@ -206,6 +206,11 @@ class ScanFindingRepository:
                 "targets": {"$addToSet": {"target_id": "$target_id", "scan_id": "$scan_id"}},
                 "cvss_score": {"$max": "$cvss_score"},
                 "urls": {"$first": "$urls"},
+                # package_type and package_path come from arbitrary per-finding
+                # rows within the group; $first is fine since TYPE_ALIASES
+                # normalizes scanner-specific labels ("node-pkg" -> "npm").
+                "package_type": {"$first": "$package_type"},
+                "package_path": {"$first": "$package_path"},
             }},
             {"$addFields": {"target_count": {"$size": "$targets"}}},
             {"$sort": {sort_field: direction, "_id.package_name": 1}},
@@ -234,11 +239,158 @@ class ScanFindingRepository:
                     "targets": item.get("targets", []),
                     "cvss_score": item.get("cvss_score"),
                     "urls": item.get("urls", []),
+                    "package_type": item.get("package_type"),
+                    "package_path": item.get("package_path"),
                 })
             return total, items
         except PyMongoError as exc:
             log.warning("scan_finding_repository.list_across_scans_consolidated_failed", error=str(exc))
             return 0, []
+
+    async def list_alerts_across_scans(
+        self,
+        scan_ids: list[str],
+        *,
+        search: str | None = None,
+        severity: str | None = None,
+        category: str | None = None,
+        sort_by: str = "severity",
+        sort_order: str = "desc",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Consolidated malicious-indicator findings across scans.
+
+        Groups by (title, package_name, package_version) so the same rule hit on
+        the same package doesn't appear N times when it surfaces in N target
+        scans. Targets are aggregated into `targets: [{target_id, scan_id}]`.
+        """
+        if not scan_ids:
+            return 0, []
+        match_stage: dict[str, Any] = {
+            "scan_id": {"$in": scan_ids},
+            "package_type": "malicious-indicator",
+        }
+        if search:
+            regex = {"$regex": search, "$options": "i"}
+            match_stage["$or"] = [
+                {"package_name": regex},
+                {"title": regex},
+                {"description": regex},
+            ]
+        if severity:
+            match_stage["severity"] = severity
+        if category:
+            # Category is derived from data_source at read time by stripping
+            # the "hecate-malware-detector:" prefix. Filter on data_source
+            # directly so we stay on the pre-group $match (cheaper than a
+            # post-$addFields match, and lets the existing data_source path
+            # use the index if one exists).
+            match_stage["data_source"] = f"hecate-malware-detector:{category}"
+
+        # Severity ordinal for deterministic sort. Mongo $indexOfArray returns -1
+        # for unknown severities, so they sink to the end when dir=-1.
+        severity_order = ["critical", "high", "medium", "low", "negligible", "unknown"]
+
+        sort_field_map: dict[str, str] = {
+            "severity": "severity_rank",
+            "package_name": "_id.package_name",
+            "title": "_id.title",
+            "category": "category",
+            "targets": "target_count",
+        }
+        sort_field = sort_field_map.get(sort_by, "severity_rank")
+        # severity_rank is ascending = highest first (critical=0). User-facing
+        # "desc" means critical-first, so flip for the severity_rank case.
+        if sort_field == "severity_rank":
+            direction = 1 if sort_order == "desc" else -1
+        else:
+            direction = -1 if sort_order == "desc" else 1
+
+        pipeline: list[dict[str, Any]] = [
+            {"$match": match_stage},
+            {"$group": {
+                "_id": {
+                    "title": "$title",
+                    "package_name": "$package_name",
+                    "package_version": "$package_version",
+                },
+                "severity": {"$first": "$severity"},
+                "description": {"$first": "$description"},
+                "data_source": {"$first": "$data_source"},
+                "package_path": {"$first": "$package_path"},
+                "targets": {"$addToSet": {"target_id": "$target_id", "scan_id": "$scan_id"}},
+            }},
+            {"$addFields": {
+                "target_count": {"$size": "$targets"},
+                "severity_rank": {"$indexOfArray": [severity_order, "$severity"]},
+                "category": {
+                    "$let": {
+                        "vars": {"ds": {"$ifNull": ["$data_source", ""]}},
+                        "in": {
+                            "$cond": [
+                                {"$regexMatch": {"input": "$$ds", "regex": "^hecate-malware-detector:"}},
+                                # len("hecate-malware-detector:") == 24
+                                {"$substr": ["$$ds", 24, -1]},
+                                "$$ds",
+                            ]
+                        },
+                    }
+                },
+            }},
+            {"$sort": {sort_field: direction, "_id.package_name": 1}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "items": [{"$skip": offset}, {"$limit": limit}],
+            }},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            if not result:
+                return 0, []
+            doc = result[0]
+            total = doc["total"][0]["count"] if doc["total"] else 0
+            items: list[dict[str, Any]] = []
+            for item in doc["items"]:
+                items.append({
+                    "title": item["_id"]["title"],
+                    "package_name": item["_id"]["package_name"],
+                    "package_version": item["_id"]["package_version"],
+                    "severity": item.get("severity"),
+                    "description": item.get("description"),
+                    "category": item.get("category"),
+                    "package_path": item.get("package_path"),
+                    "targets": item.get("targets", []),
+                })
+            return total, items
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.list_alerts_across_scans_failed", error=str(exc))
+            return 0, []
+
+    async def count_alerts_consolidated(self, scan_ids: list[str]) -> int:
+        """Count consolidated malicious-indicator findings across scans."""
+        if not scan_ids:
+            return 0
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {
+                "scan_id": {"$in": scan_ids},
+                "package_type": "malicious-indicator",
+            }},
+            {"$group": {"_id": {
+                "title": "$title",
+                "package_name": "$package_name",
+                "package_version": "$package_version",
+            }}},
+            {"$count": "total"},
+        ]
+        try:
+            result = await self.collection.aggregate(pipeline).to_list(1)
+            if not result:
+                return 0
+            return result[0].get("total", 0)
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.count_alerts_consolidated_failed", error=str(exc))
+            return 0
 
     async def count_consolidated(self, scan_ids: list[str]) -> int:
         """Count consolidated findings (grouped by vulnerability+package+version) across scans."""

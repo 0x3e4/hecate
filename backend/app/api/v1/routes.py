@@ -12,6 +12,7 @@ from app.api.v1 import (
     events,
     inventory,
     license_policies,
+    malware,
     notifications,
     saved_searches,
     scans,
@@ -40,3 +41,4 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(license_policies.router, prefix="/license-policies", tags=["license-policies"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(events.router, prefix="/events", tags=["events"])
+api_router.include_router(malware.router, prefix="/malware", tags=["malware"])

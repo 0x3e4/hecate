@@ -1,6 +1,6 @@
 FROM aquasec/trivy:0.69.3 AS trivy
-FROM anchore/grype:v0.111.0 AS grype
-FROM anchore/syft:v1.42.4 AS syft
+FROM anchore/grype:v0.111.1 AS grype
+FROM anchore/syft:v1.43.0 AS syft
 FROM python:3.13-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management

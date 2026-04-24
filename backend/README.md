@@ -7,7 +7,7 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 ```
 app/
 ├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung (18 Module)
+│   ├── routes.py            # Router-Registrierung (19 Module)
 │   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
@@ -24,6 +24,7 @@ app/
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
 │   ├── inventory.py         # Environment-Inventory (CRUD + /affected-vulnerabilities)
+│   ├── malware.py           # Malware-Intel (GET /known-compromised für Scanner-Refresh, GET /malware-feed für Frontend-Overview)
 │   ├── config.py            # Public Runtime-Config (Feature-Flags aus Backend-Settings für das Frontend)
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
@@ -122,11 +123,13 @@ app/
 │   │   ├── capec_client.py        # CAPEC XML-Parser
 │   │   ├── circl_client.py        # CIRCL API-Client (shared `request_with_retry`, fail-soft per Record)
 │   │   ├── ghsa_client.py         # GHSA API-Client (shared `request_with_retry` + `iter_all_advisories`-Guard: loggt `iteration_aborted_on_failure` bei Retry-Exhaustion, statt "Seitenende" vorzutäuschen)
-│   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client (shared `request_with_retry` — auch für 100–300 MB Ecosystem-ZIPs)
-│   │   ├── osv_pipeline.py        # OSV (OSV.dev, Mid-Run-Progress-Reporting)
+│   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client (shared `request_with_retry` — auch für 100–300 MB Ecosystem-ZIPs; `query_by_package` für GHSA-für-MAL-Fallback)
+│   │   ├── osv_pipeline.py        # OSV (OSV.dev, Mid-Run-Progress-Reporting; MAL-als-primäre-ID, absorbs aliased EUVD/GHSA-Dokumente, triggered deps.dev-Enrichment post-Upsert)
+│   │   ├── deps_dev_client.py     # deps.dev Package API-Client (`api.deps.dev/v3`, shared `request_with_retry`; maps OSV-Ecosystem → deps.dev-System: NPM, PYPI, GO, MAVEN, NUGET, CARGO)
+│   │   ├── mal_enrichment.py      # deps.dev-Anreicherung für MAL-*/GHSA-*-Dokumente mit broad `>=0`-Ranges; patched `impactedProducts` + `product_versions` + reindext OpenSearch; writes `change_history` mit `job_name="deps_dev_enrichment"`
 │   │   ├── normalizer.py          # Normalisierung aller Quellen
 │   │   ├── job_tracker.py         # Job-Lifecycle & Audit
-│   │   ├── manual_refresher.py    # On-Demand Refresh
+│   │   ├── manual_refresher.py    # On-Demand Refresh (Default-Dispatcher routet MAL-/PYSEC-/OSV-* → OSV; sonst würde der Placeholder-Fallback bestehende MAL-Dokumente überschreiben)
 │   │   └── startup_cleanup.py     # Zombie-Job Bereinigung
 │   └── scheduling/
 │       └── manager.py             # APScheduler (Bootstrap + Periodic)
@@ -134,7 +137,7 @@ app/
 │   ├── strings.py                 # Slugify etc.
 │   └── request.py                 # IP-Extraktion
 ├── main.py                        # FastAPI App-Initialisierung
-└── cli.py                         # CLI-Einstiegspunkt (11 Befehle)
+└── cli.py                         # CLI-Einstiegspunkt (13 Befehle)
 ```
 
 ## Datenmodell
@@ -164,6 +167,7 @@ app/
 | `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
 | `environment_inventory` | `InventoryItemDocument` | Benutzerdeklariertes Produkt/Version-Inventory (Deployment, Environment, Instance-Count) |
+| `malware_intel` | `MalwareIntelDocument` | Dynamische Malware-Intel-Einträge; Upsert-Key `(source, ecosystem, package_name, version)`; speist die Scanner-Blocklist (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
@@ -237,6 +241,8 @@ poetry run python -m app.cli sync-capec [--initial]
 poetry run python -m app.cli sync-circl [--limit N]
 poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
 poetry run python -m app.cli sync-osv [--limit N] [--initial]
+poetry run python -m app.cli enrich-mal [--limit N]              # deps.dev-Anreicherung bestehender MAL-*-Dokumente
+poetry run python -m app.cli purge-malware --ecosystem <eco> [--dry-run]  # Löscht ein Ökosystem aus malware_intel + MAL-* vulnerabilities
 poetry run python -m app.cli reindex-opensearch
 ```
 
