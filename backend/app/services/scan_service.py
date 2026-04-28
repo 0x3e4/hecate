@@ -1090,10 +1090,19 @@ class ScanService:
             return False
         result = await db[settings.mongo_scans_collection].update_one(
             {"_id": oid},
-            {
-                "$push": {"ai_analyses": assessment},
-                "$set": {"ai_analysis": assessment},
-            },
+            [
+                {
+                    "$set": {
+                        "ai_analyses": {
+                            "$concatArrays": [
+                                {"$cond": [{"$isArray": "$ai_analyses"}, "$ai_analyses", []]},
+                                [assessment],
+                            ]
+                        },
+                        "ai_analysis": assessment,
+                    }
+                }
+            ],
         )
         return result.modified_count > 0
 
