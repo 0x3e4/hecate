@@ -65,8 +65,8 @@ class ScanDocument(BaseModel):
     compliance_summary: dict[str, int] | None = None
     license_compliance_summary: dict[str, int] | None = None
     layer_analysis_available: bool = False
-    ai_analyses: list[dict[str, Any]] | None = Field(
-        default=None, description="Full history of AI analyses for this scan (most recent last)"
+    ai_analyses: list[dict[str, Any]] = Field(
+        default_factory=list, description="Full history of AI analyses for this scan (most recent last)"
     )
     ai_analysis: dict[str, Any] | None = Field(
         default=None, description="Latest AI analysis (mirror of ai_analyses[-1] for convenience)"

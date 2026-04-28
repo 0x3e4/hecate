@@ -2592,8 +2592,11 @@ def build_document_from_osv(
         elif upper.startswith("GHSA-") and ghsa_alias is None:
             ghsa_alias = upper
 
-    # Prefer CVE > GHSA > OSV ID as canonical document ID
-    if cve_alias:
+    # Priority: preserve MAL-* (authoritative for malicious-package docs),
+    # otherwise CVE > GHSA > OSV ID. Mirrors osv_pipeline._process_record().
+    if osv_id.upper().startswith("MAL-"):
+        vuln_id = osv_id.upper()
+    elif cve_alias:
         vuln_id = cve_alias
     elif ghsa_alias:
         vuln_id = ghsa_alias
