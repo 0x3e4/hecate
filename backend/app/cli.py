@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from app.core.config import settings
+from app.db.opensearch import opensearch_bulk_mode
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
@@ -174,7 +175,8 @@ def main() -> None:
 async def run_cpe_sync_once(limit: int | None = None, *, initial_sync: bool = False) -> dict[str, int]:
     pipeline = CPEPipeline()
     try:
-        return await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            return await pipeline.sync(limit=limit, initial_sync=initial_sync)
     finally:
         await pipeline.close()
 
@@ -185,19 +187,22 @@ async def run_nvd_sync_once(
     modified_since: datetime | None = None,
 ) -> dict[str, Any]:
     pipeline = NVDPipeline()
-    return await pipeline.sync(initial_sync=initial_sync, modified_since=modified_since)
+    with opensearch_bulk_mode():
+        return await pipeline.sync(initial_sync=initial_sync, modified_since=modified_since)
 
 
 async def run_kev_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
     pipeline = KevPipeline()
-    return await pipeline.sync(initial_sync=initial_sync)
+    with opensearch_bulk_mode():
+        return await pipeline.sync(initial_sync=initial_sync)
 
 
 async def run_circl_sync_once(limit: int | None = None) -> dict[str, int]:
     """Run CIRCL enrichment sync once from CLI."""
     pipeline = CirclPipeline()
     try:
-        return await pipeline.sync(limit=limit)
+        with opensearch_bulk_mode():
+            return await pipeline.sync(limit=limit)
     finally:
         await pipeline.close()
 
@@ -210,7 +215,8 @@ async def run_ghsa_sync_once(
     """Run GHSA sync once from CLI."""
     pipeline = GhsaPipeline()
     try:
-        return await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            return await pipeline.sync(limit=limit, initial_sync=initial_sync)
     finally:
         await pipeline.close()
 
@@ -250,21 +256,22 @@ async def run_mal_enrichment_once(limit: int | None = None) -> dict[str, int]:
         cursor = collection.find({"_id": {"$regex": "^MAL-"}})
         if limit:
             cursor = cursor.limit(limit)
-        async for doc in cursor:
-            stats["scanned"] += 1
-            try:
-                patched = await enrich_mal_document(doc, client=client)
-            except Exception as exc:  # noqa: BLE001
-                stats["failed"] += 1
-                print(f"  ! {doc.get('_id')}: {exc}", flush=True)
-                continue
-            if patched > 0:
-                stats["patched"] += 1
-                print(f"  + {doc.get('_id')}: patched {patched} product(s)", flush=True)
-            else:
-                stats["unchanged"] += 1
-            if stats["scanned"] % 100 == 0:
-                print(f"  … {stats['scanned']} scanned · {stats['patched']} patched", flush=True)
+        with opensearch_bulk_mode():
+            async for doc in cursor:
+                stats["scanned"] += 1
+                try:
+                    patched = await enrich_mal_document(doc, client=client)
+                except Exception as exc:  # noqa: BLE001
+                    stats["failed"] += 1
+                    print(f"  ! {doc.get('_id')}: {exc}", flush=True)
+                    continue
+                if patched > 0:
+                    stats["patched"] += 1
+                    print(f"  + {doc.get('_id')}: patched {patched} product(s)", flush=True)
+                else:
+                    stats["unchanged"] += 1
+                if stats["scanned"] % 100 == 0:
+                    print(f"  … {stats['scanned']} scanned · {stats['patched']} patched", flush=True)
     except Exception as exc:
         await tracker.fail(ctx, str(exc))
         raise
@@ -279,7 +286,7 @@ async def run_malware_purge_once(*, ecosystem: str, dry_run: bool = False) -> di
     """Delete every malware entry for a given ecosystem.
 
     Targets two collections:
-    - `malware_intel` — dynamic blocklist entries (exact ecosystem match).
+    - `malware_intel` — dynamic known-compromised entries (exact ecosystem match).
     - `vulnerabilities` — MAL-* documents whose `impactedProducts[].vendor.name`
       matches the ecosystem (case-insensitive, with OSV naming variants like
       'VSCode' / 'VSCode:https://open-vsx.org' folded in).
@@ -342,7 +349,8 @@ async def run_osv_sync_once(
     """Run OSV sync once from CLI."""
     pipeline = OsvPipeline()
     try:
-        return await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            return await pipeline.sync(limit=limit, initial_sync=initial_sync)
     finally:
         await pipeline.close()
 

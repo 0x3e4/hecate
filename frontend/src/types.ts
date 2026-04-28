@@ -933,7 +933,7 @@ export interface LicenseOverviewResponse {
   total: number;
 }
 
-export interface BlocklistEntry {
+export interface MalwareFeedEntry {
   source: "static" | "dynamic";
   ecosystem: string;
   name: string;
@@ -950,9 +950,12 @@ export interface BlocklistEntry {
   relatedOrigins?: string[];
 }
 
-export interface BlocklistResponse {
+export interface MalwareFeedResponse {
   generatedAt: string;
   total: number;
+  malTotal: number;
+  offset: number;
+  limit: number;
   scannerAvailable: boolean;
-  entries: BlocklistEntry[];
+  entries: MalwareFeedEntry[];
 }

@@ -49,6 +49,52 @@ log = structlog.get_logger()
 _ENRICHABLE_PREFIXES: tuple[str, ...] = ("MAL-", "GHSA-")
 
 
+def _bootstrap_impacted_from_denormalised(
+    doc: dict[str, Any],
+    vuln_id: str,
+) -> list[dict[str, Any]] | None:
+    """Synthesise a single ``impacted_products`` entry from the doc's
+    ``vendors`` + ``products`` arrays so deps.dev enrichment can proceed.
+
+    Returns the synthetic list (one entry, broad-range versions) when the
+    doc qualifies as a malware advisory with unambiguous package scope, or
+    None to bail. The caller treats None as "leave doc untouched".
+    """
+    aliases = doc.get("aliases") or []
+    has_mal_signal = vuln_id.upper().startswith("MAL-") or any(
+        isinstance(a, str) and a.strip().upper().startswith("MAL-") for a in aliases
+    )
+    if not has_mal_signal:
+        return None
+
+    vendors_arr = doc.get("vendors") or []
+    products_arr = doc.get("products") or []
+    if not isinstance(vendors_arr, list) or not isinstance(products_arr, list):
+        return None
+    if len(vendors_arr) != 1 or len(products_arr) != 1:
+        return None
+
+    vendor = vendors_arr[0]
+    product = products_arr[0]
+    if not isinstance(vendor, str) or not isinstance(product, str):
+        return None
+    vendor = vendor.strip()
+    product = product.strip()
+    if not vendor or not product:
+        return None
+
+    return [
+        {
+            "vendor": {"name": vendor},
+            "product": {"name": product},
+            # Broad-range sentinel — _is_broad_range matches on this so the
+            # rest of enrich_document treats the entry as enrichable.
+            "versions": [">=0"],
+            "vulnerable": True,
+        }
+    ]
+
+
 def _is_broad_range(versions: list[Any] | None) -> bool:
     """True when a versions list is either empty or holds only the OSSF-style
     sentinel strings that signal "all versions"."""
@@ -72,9 +118,23 @@ def _patch_impacted_products(
     impacted: list[dict[str, Any]],
     enriched_versions_by_product: dict[str, list[str]],
 ) -> tuple[list[dict[str, Any]], int]:
-    """Return (new_impacted_products, num_patched). Only broad entries with a
-    matching deps.dev lookup get replaced; everything else is preserved
-    in-place so the `$set` overwrite is safe for repeated calls."""
+    """Return (new_impacted_products, num_patched). Only **broad** entries
+    with a matching deps.dev / npm-registry lookup get replaced; everything
+    else is preserved in-place.
+
+    The broad-only gate is what keeps the enrichment pass safe for
+    compromised legitimate packages. OSV publishes records like
+    `@bitwarden/cli` with both an explicit ``versions: ["2026.4.0"]``
+    (the actual malicious release) and a ranges sentinel ``{introduced:
+    "0"}`` (OSSF convention for "treat all versions as suspect until
+    triage"). The normalizer now prefers the explicit list, so this
+    function correctly leaves it alone — replacing it with the full
+    npm-published list would mark clean releases as malicious.
+
+    For records whose only data is the `>=0` sentinel (typosquat malware
+    that's malicious from introduction, e.g. `@fr3newera/baileys`), the
+    caller hands us the merged deps.dev + npm-registry list and we replace.
+    """
     patched = 0
     out: list[dict[str, Any]] = []
     for entry in impacted:
@@ -148,10 +208,35 @@ async def enrich_document(
         return 0
 
     impacted_raw = doc.get("impactedProducts") or doc.get("impacted_products") or []
-    if not isinstance(impacted_raw, list) or not impacted_raw:
-        return 0
+    if not isinstance(impacted_raw, list):
+        impacted_raw = []
+    if not impacted_raw:
+        # Bootstrap from the denormalised `vendors` + `products` arrays when
+        # the doc was created without an impacted_products entry — typically
+        # malware advisories where the GHSA pipeline ingested a minimal record
+        # because GitHub's Advisory API omits versionable scope for malware
+        # findings. Without this bootstrap, deps.dev enrichment would no-op
+        # forever (the empty list short-circuits the original guard) and the
+        # detail page never gets a real version list, even though we know
+        # vendor + product from the denormalised arrays.
+        #
+        # Gated tightly to avoid bootstrapping non-malware advisories with
+        # an "all published versions" list (which would incorrectly mark
+        # every release as compromised):
+        #   1. ID must already be MAL-prefixed *or* carry a MAL-* alias
+        #      (signals "malicious package", not "vulnerable version range").
+        #   2. Exactly one vendor + one product (no ambiguity about which
+        #      package the advisory targets).
+        bootstrapped = _bootstrap_impacted_from_denormalised(doc, vuln_id)
+        if not bootstrapped:
+            return 0
+        impacted_raw = bootstrapped
 
-    # Collect (system, name) pairs that need enrichment.
+    # Collect (system, name) pairs that need enrichment. Only broad entries
+    # are eligible — non-broad ones come from OSV's explicit ``versions:
+    # [...]`` list and are already authoritative; replacing or extending
+    # them with the npm-published history would falsely mark clean
+    # releases (e.g. every prior @bitwarden/cli version) as malicious.
     targets: list[tuple[str, str, str]] = []  # (system, name, product_lower_key)
     for entry in impacted_raw:
         if not isinstance(entry, dict):
@@ -180,22 +265,32 @@ async def enrich_document(
             if key in enriched:
                 continue
             versions = await cli.fetch_package_versions(system=system, name=name)
-            # Fallback: for NPM, deps.dev returns 404 whenever a package has
-            # been unpublished (the common case after a typosquat takedown —
-            # e.g. `vite-plugin-compress-plus` listed 0.5.2/0.5.3/0.5.4 on
-            # OSV but npm removed the package and deps.dev lost the
-            # versions). The npm registry preserves the historical list
-            # under `time.unpublished.versions`, so query it directly as a
-            # secondary source.
-            if not versions and system == "NPM":
-                registry_versions = await cli.fetch_npm_registry_versions(name)
-                if registry_versions:
-                    log.info(
-                        "mal_enrichment.npm_registry_fallback",
-                        package=name,
-                        versions=len(registry_versions),
-                    )
-                    versions = registry_versions
+            # For broad NPM entries, also pull the npm registry's
+            # ``time.unpublished.versions`` so packages whose malicious
+            # releases were taken down (e.g. ``@fr3newera/baileys`` left
+            # only ``0.0.1-security`` published) regain their historical
+            # 1.0.0–1.0.6 list. deps.dev's package endpoint only returns
+            # currently-published versions, so this fills the gap.
+            if system == "NPM":
+                registry = await cli.fetch_npm_registry_versions(name)
+                if registry:
+                    base = list(versions or [])
+                    seen = {v for v in base if isinstance(v, str)}
+                    added = 0
+                    for v in registry:
+                        if isinstance(v, str) and v not in seen:
+                            seen.add(v)
+                            base.append(v)
+                            added += 1
+                    if added > 0 or not versions:
+                        log.info(
+                            "mal_enrichment.npm_registry_merged",
+                            package=name,
+                            deps_dev_versions=len(versions or []),
+                            registry_versions=len(registry),
+                            added=added,
+                        )
+                    versions = base
             if versions:
                 enriched[key] = versions
     finally:

@@ -1,7 +1,10 @@
 import asyncio
+import contextlib
+import contextvars
 import os
 import ssl
 import warnings
+from collections.abc import Iterator
 from typing import Any
 
 from urllib3.exceptions import InsecureRequestWarning
@@ -249,7 +252,55 @@ def ensure_vulnerability_index(index_name: str) -> None:
         _mark_opensearch_unavailable(error=exc, operation="indices.create", index=index_name)
 
 
-async def async_index_document(index: str, document_id: str, document: dict[str, Any]) -> None:
+_OS_WAIT_FOR_REFRESH: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "opensearch_wait_for_refresh", default=True
+)
+
+
+@contextlib.contextmanager
+def opensearch_bulk_mode() -> Iterator[None]:
+    """Run a block with OpenSearch writes set to ``refresh=false``.
+
+    Bulk pipelines (NVD/EUVD/GHSA/OSV/CIRCL initial + incremental syncs)
+    enter this context once per run. Inside it every ``async_index_document``
+    / ``async_update_document`` / ``async_delete_document`` call returns as
+    soon as the doc is durable, instead of blocking until the next
+    refresh. The default ``refresh_interval`` (1 s) still makes the data
+    searchable shortly after — but the per-write queue at ~1 s/PUT under
+    ``wait_for`` is gone, which is what made initial syncs of tens of
+    thousands of CVEs run for hours and starve concurrent manual
+    refreshes for OSV+deps.dev enrichment.
+
+    User-initiated writes (manual refresh, scan completion, deps.dev
+    enrichment that runs inline after a manual refresh) do *not* enter
+    this context, so they keep ``refresh=wait_for`` and the UI's read-
+    after-write semantics are preserved.
+    """
+    token = _OS_WAIT_FOR_REFRESH.set(False)
+    try:
+        yield
+    finally:
+        _OS_WAIT_FOR_REFRESH.reset(token)
+
+
+def _resolve_refresh(wait_for_refresh: bool | None) -> str | bool:
+    """Pick the OpenSearch ``refresh`` argument for one write.
+
+    Explicit kwarg wins; otherwise read the bulk-mode ContextVar.
+    """
+    if wait_for_refresh is None:
+        wait_for_refresh = _OS_WAIT_FOR_REFRESH.get()
+    return "wait_for" if wait_for_refresh else False
+
+
+async def async_index_document(
+    index: str,
+    document_id: str,
+    document: dict[str, Any],
+    *,
+    wait_for_refresh: bool | None = None,
+) -> None:
+    """Index a single document. See ``opensearch_bulk_mode`` for refresh semantics."""
     client = get_client()
     loop = asyncio.get_running_loop()
 
@@ -257,10 +308,11 @@ async def async_index_document(index: str, document_id: str, document: dict[str,
     if index not in _ensured_indices:
         ensure_vulnerability_index(index)
 
+    refresh = _resolve_refresh(wait_for_refresh)
     try:
         await loop.run_in_executor(
             None,
-            lambda: client.index(index=index, id=document_id, body=document, refresh="wait_for"),
+            lambda: client.index(index=index, id=document_id, body=document, refresh=refresh),
         )
         _mark_opensearch_available()
     except (OSConnectionError, OpenSearchException) as exc:
@@ -294,10 +346,17 @@ async def async_search(index: str, body: dict[str, Any], *, suppress_exceptions:
         raise
 
 
-async def async_update_document(index: str, document_id: str, fields: dict[str, Any]) -> bool:
+async def async_update_document(
+    index: str,
+    document_id: str,
+    fields: dict[str, Any],
+    *,
+    wait_for_refresh: bool | None = None,
+) -> bool:
     client = get_client()
     loop = asyncio.get_running_loop()
 
+    refresh = _resolve_refresh(wait_for_refresh)
     try:
         await loop.run_in_executor(
             None,
@@ -305,7 +364,7 @@ async def async_update_document(index: str, document_id: str, fields: dict[str, 
                 index=index,
                 id=document_id,
                 body={"doc": fields, "doc_as_upsert": False},
-                refresh="wait_for",
+                refresh=refresh,
             ),
         )
         _mark_opensearch_available()
@@ -326,11 +385,18 @@ async def async_update_document(index: str, document_id: str, fields: dict[str, 
         return False
 
 
-async def async_update_document_script(index: str, document_id: str, script: dict[str, Any]) -> bool:
+async def async_update_document_script(
+    index: str,
+    document_id: str,
+    script: dict[str, Any],
+    *,
+    wait_for_refresh: bool | None = None,
+) -> bool:
     """Update a document using a script (e.g., to append to arrays)."""
     client = get_client()
     loop = asyncio.get_running_loop()
 
+    refresh = _resolve_refresh(wait_for_refresh)
     try:
         await loop.run_in_executor(
             None,
@@ -338,7 +404,7 @@ async def async_update_document_script(index: str, document_id: str, script: dic
                 index=index,
                 id=document_id,
                 body={"script": script},
-                refresh="wait_for",
+                refresh=refresh,
             ),
         )
         _mark_opensearch_available()
@@ -359,15 +425,21 @@ async def async_update_document_script(index: str, document_id: str, script: dic
         return False
 
 
-async def async_delete_document(index: str, document_id: str) -> bool:
+async def async_delete_document(
+    index: str,
+    document_id: str,
+    *,
+    wait_for_refresh: bool | None = None,
+) -> bool:
     """Delete a document from OpenSearch by ID. Returns True if deleted, False if not found."""
     client = get_client()
     loop = asyncio.get_running_loop()
 
+    refresh = _resolve_refresh(wait_for_refresh)
     try:
         await loop.run_in_executor(
             None,
-            lambda: client.delete(index=index, id=document_id, refresh="wait_for"),
+            lambda: client.delete(index=index, id=document_id, refresh=refresh),
         )
         _mark_opensearch_available()
         return True

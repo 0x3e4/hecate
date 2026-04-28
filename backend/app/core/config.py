@@ -124,7 +124,13 @@ class Settings(BaseSettings):
     osv_rate_limit_seconds: float = 0.5
     osv_max_retries: int = 5
     osv_retry_backoff_seconds: float = 5.0
-    osv_max_records_per_run: OptionalInt = 5000
+    # Per-run record cap for OSV incremental syncs. With the cursor logic in
+    # OsvPipeline.sync (advance to max_processed_modified on cap-hit instead
+    # of `now`), a cap is now safe — but None is the documented default
+    # because the timeout (`INGESTION_RUNNING_TIMEOUT_MINUTES`) is the right
+    # primary bound for runtime. Set a positive value only if you need to
+    # throttle a noisy upstream window without raising the global timeout.
+    osv_max_records_per_run: OptionalInt = None
 
     # deps.dev enrichment — fills in actual published versions for MAL-* OSV
     # records that ship with the conservative `introduced: "0"` range (meaning
@@ -161,6 +167,16 @@ class Settings(BaseSettings):
     scheduler_nvd_full_sync_enabled: bool = True
     scheduler_nvd_full_sync_cron_hour: int = 2  # 2 AM UTC
     scheduler_nvd_full_sync_cron_day_of_week: str = "wed"  # Wednesday
+    # OSV initial-mode full sync re-pulls each ecosystem's all.zip, so it
+    # heals any drift from the incremental cap-on-cursor bug and absorbs
+    # any GHSA placeholders the GHSA pipeline created in the meantime.
+    # Defaulted to Friday to spread the weekly load across the week (EUVD
+    # is Sunday, NVD is Wednesday). The full sync is unbounded by record
+    # count — it runs until the timeout (`INGESTION_RUNNING_TIMEOUT_MINUTES`)
+    # or until every ecosystem ZIP is exhausted.
+    scheduler_osv_full_sync_enabled: bool = True
+    scheduler_osv_full_sync_cron_hour: int = 2  # 2 AM UTC
+    scheduler_osv_full_sync_cron_day_of_week: str = "fri"  # Friday
 
     # SCA Scanning
     sca_enabled: bool = True

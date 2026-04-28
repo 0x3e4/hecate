@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
+from app.db.opensearch import opensearch_bulk_mode
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
@@ -216,6 +217,20 @@ class SchedulerManager:
                 replace_existing=True,
             )
 
+        # OSV weekly full sync
+        if settings.scheduler_osv_full_sync_enabled:
+            self.scheduler.add_job(
+                _scheduled_osv_full_sync,
+                trigger=CronTrigger(
+                    day_of_week=settings.scheduler_osv_full_sync_cron_day_of_week,
+                    hour=settings.scheduler_osv_full_sync_cron_hour,
+                    minute=0,
+                    timezone=settings.scheduler_timezone,
+                ),
+                id="osv_full_sync",
+                replace_existing=True,
+            )
+
     async def shutdown(self) -> None:
         if self._bootstrap_task is not None and not self._bootstrap_task.done():
             self._bootstrap_task.cancel()
@@ -294,7 +309,8 @@ async def _initial_cpe_sync() -> None:
 async def _execute_cpe_sync(*, limit: int | None, initial_sync: bool) -> None:
     pipeline = CPEPipeline()
     try:
-        result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
         event = "scheduler.cpe_sync_completed" if not initial_sync else "scheduler.cpe_initial_sync_completed"
         log.info(event, **result)
     except Exception as exc:  # noqa: BLE001
@@ -321,7 +337,8 @@ async def _execute_nvd_sync(*, initial_sync: bool) -> None:
     pipeline_started_at = datetime.now(tz=UTC)
     pipeline = NVDPipeline()
     try:
-        result = await pipeline.sync(initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            result = await pipeline.sync(initial_sync=initial_sync)
         event = "scheduler.nvd_sync_completed" if not initial_sync else "scheduler.nvd_initial_sync_completed"
         log.info(event, **result)
         await _notify_new_vulnerabilities("NVD", result.get("ingested", 0))
@@ -361,7 +378,8 @@ async def _execute_kev_sync(*, initial_sync: bool) -> None:
     pipeline_started_at = datetime.now(tz=UTC)
     pipeline = KevPipeline()
     try:
-        result = await pipeline.sync(initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            result = await pipeline.sync(initial_sync=initial_sync)
         event = "scheduler.kev_sync_completed" if not initial_sync else "scheduler.kev_initial_sync_completed"
         log.info(event, **result)
         await _evaluate_watch_rules_after_pipeline("KEV", pipeline_started_at)
@@ -386,7 +404,8 @@ async def _initial_euvd_ingestion() -> None:
 async def _execute_euvd_ingestion(*, limit: int | None, initial_sync: bool) -> None:
     pipeline_started_at = datetime.now(tz=UTC)
     try:
-        result = await run_ingestion(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            result = await run_ingestion(limit=limit, initial_sync=initial_sync)
         event = (
             "scheduler.euvd_ingestion_completed"
             if not initial_sync
@@ -568,7 +587,8 @@ async def _execute_circl_sync() -> None:
     pipeline_started_at = datetime.now(tz=UTC)
     pipeline = CirclPipeline()
     try:
-        result = await pipeline.sync()
+        with opensearch_bulk_mode():
+            result = await pipeline.sync()
         log.info("scheduler.circl_sync_completed", **result)
         await _evaluate_watch_rules_after_pipeline("CIRCL", pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
@@ -600,7 +620,8 @@ async def _execute_ghsa_sync(*, initial_sync: bool) -> None:
     try:
         # limit=0 for initial sync means no limit (fetch all advisories)
         limit = 0 if initial_sync else None
-        result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
         event = "scheduler.ghsa_sync_completed" if not initial_sync else "scheduler.ghsa_initial_sync_completed"
         log.info(event, **result)
         await _notify_new_vulnerabilities("GHSA", result.get("created", 0))
@@ -634,7 +655,8 @@ async def _execute_osv_sync(*, initial_sync: bool) -> None:
     pipeline = OsvPipeline()
     try:
         limit = 0 if initial_sync else None
-        result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        with opensearch_bulk_mode():
+            result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
         event = "scheduler.osv_sync_completed" if not initial_sync else "scheduler.osv_initial_sync_completed"
         log.info(event, **result)
         await _notify_new_vulnerabilities("OSV", result.get("created", 0))
@@ -645,6 +667,24 @@ async def _execute_osv_sync(*, initial_sync: bool) -> None:
         await _notify_sync_failed("osv_sync", str(exc))
     finally:
         await pipeline.close()
+
+
+async def _scheduled_osv_full_sync() -> None:
+    """Weekly OSV full sync — re-pulls each ecosystem's all.zip.
+
+    Heals any drift left by partial incremental syncs (cap or timeout) and
+    triggers absorption of GHSA placeholders the GHSA pipeline created in
+    the meantime, since `upsert_from_osv` runs the absorption pre-pass on
+    every MAL- doc it inserts/updates.
+    """
+    if settings.ingestion_bootstrap_on_startup:
+        completed = await _initial_sync_already_completed("osv_initial_sync")
+        if not completed:
+            log.info("scheduler.osv_full_sync_skipped_initial_sync_incomplete")
+            return
+
+    log.info("scheduler.osv_full_sync_starting")
+    await _execute_osv_sync(initial_sync=True)
 
 
 async def _delayed_watch_rule_evaluation() -> None:

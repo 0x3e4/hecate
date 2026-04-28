@@ -123,6 +123,30 @@ class ManualRefresher:
                     targets.append((pkg, eco))
 
         if not targets:
+            # Fallback: GHSA pipeline drops minimal docs for malware advisories
+            # (no `impacted_products`, just denormalised `vendors`+`products`).
+            # Without this fallback, the reverse-alias lookup short-circuits
+            # and the user sees "skipped" on Refresh-from-OSV — exactly the
+            # case that surfaces when OSV's MAL-* record hasn't been ingested
+            # yet because the GHSA itself isn't a standalone OSV record.
+            # Only use the pair when there's exactly one of each, otherwise
+            # we don't know which vendor pairs with which product.
+            vendors_arr = existing_doc.get("vendors") or []
+            products_arr = existing_doc.get("products") or []
+            if (
+                isinstance(vendors_arr, list)
+                and isinstance(products_arr, list)
+                and len(vendors_arr) == 1
+                and len(products_arr) == 1
+                and isinstance(vendors_arr[0], str)
+                and isinstance(products_arr[0], str)
+            ):
+                pkg = products_arr[0].strip()
+                eco = vendors_arr[0].strip()
+                if pkg and eco:
+                    targets.append((pkg, eco))
+
+        if not targets:
             return []
 
         out: list[dict] = []
