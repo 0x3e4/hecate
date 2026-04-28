@@ -106,7 +106,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 - **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (not_affected, affected, fixed, under_investigation) mit Justification und Detail. Expandierbarer Inline-Editor, Multi-Select-Bulk-Updates aus dem Findings-Tab, CycloneDX VEX Export/Import. Automatischer VEX Carry-Forward zwischen Scans.
 - **Findings-Dismissal:** Verwerfen irrelevanter Findings als persönlicher Anzeigefilter (separat von VEX); standardmäßig ausgeblendet, "Show dismissed"-Toggle blendet sie wieder ein. Carry-Forward zwischen Scans wie bei VEX.
 - **License Compliance:** Lizenz-Policy-Management mit konfigurierbaren Regeln (erlaubt, verboten, Review-erforderlich), automatische Auswertung nach jedem Scan, License-Compliance-Übersicht über alle Scans
-- **Malware-Erkennung:** Hecate Analyzer mit 35 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads, SHA-256 Hash-Matching). HEC-090-Blocklist wird durch MAL-*-Records aus der OSV-Ingestion dynamisch ergänzt; eine UI-Seite `/blocklist` unter Security zeigt die merged-Sicht (statisch + dynamisch, neueste zuerst).
+- **Malware-Erkennung:** Hecate Analyzer mit 35 Heuristik-Regeln für Supply-Chain-Angriffe (inkl. Steganografie, plattformspezifische Payloads, SHA-256 Hash-Matching). Eine UI-Seite `/malware-feed` unter *Security* zeigt jede MAL-aliased OSV-Advisory die ingestiert wurde (~417k Records, server-paginiert, mit Substring-Suche und Ecosystem-Filter); die scanner-seitige HEC-090-Liste bleibt für die In-Scan-Detection erhalten.
 - **Provenance-Verifikation:** Automatische Prüfung der Paketherkunft über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker)
 - **Best Practices:** Dockle prüft CIS Docker Benchmarks (nur Container-Images, opt-in)
 - **Layer-Analyse:** Dive analysiert Image-Schichten auf Effizienz und Verschwendung (nur Container-Images, opt-in)
@@ -253,8 +253,8 @@ Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI se
 - `GET /api/v1/scans/alerts` — Consolidated Security Alerts (malicious-indicator Findings) über alle aktuellen Scans
 
 ### Malware Intelligence
-- `GET /api/v1/malware/known-compromised` — Dynamic malware-intel blocklist (für Scanner-Sidecar zum Refresh seiner HEC-090-Erweiterung; aktuell leer, reserviert für zukünftige Threat-Intel-Feeds)
-- `GET /api/v1/malware/malware-feed` — Merged HEC-090-Blocklist für die Frontend-Overview-Seite (statisch vom Scanner-Sidecar + dynamisch aus OSV MAL-*-Records in der `vulnerabilities`-Collection, 60s TTL-Cache, fail-open wenn Scanner nicht erreichbar)
+- `GET /api/v1/malware/known-compromised` — Dynamic malware-intel feed (für Scanner-Sidecar zum Refresh seiner HEC-090-Erweiterung; aktuell leer, reserviert für zukünftige Threat-Intel-Feeds)
+- `GET /api/v1/malware/malware-feed` — Paginierter Malware-Feed für die Frontend-Overview-Seite (alle MAL-aliased OSV-Records aus der `vulnerabilities`-Collection plus optionale `malware_intel`-Einträge; `offset`/`limit` Pagination, OpenSearch-backed Substring-Search wenn `search` gesetzt ist, ecosystem-Filter via display-case-Variants, 60s Response-Cache + 30min Count-Cache)
 
 ### VEX (Vulnerability Exploitability Exchange) & Findings-Dismissal
 - `PUT /api/v1/scans/vex/findings/{findingId}` — VEX-Status eines Findings setzen (Status, Justification, Detail)

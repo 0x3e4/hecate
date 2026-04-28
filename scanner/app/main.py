@@ -6,9 +6,9 @@ import shutil
 
 from fastapi import FastAPI, HTTPException
 
-from app.malware_detector.known_compromised import serialize_blocklist
+from app.malware_detector.known_compromised import serialize_malware_feed
 from app.malware_intel_refresh import refresh_now, start_background_refresh
-from app.models import BlocklistEntry, BlocklistResponse, CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
+from app.models import CheckRequest, CheckResponse, MalwareFeedEntry, MalwareFeedResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
 from app.scanners import (
     extract_source_archive,
     get_git_commit_sha,
@@ -34,8 +34,9 @@ async def _startup() -> None:
     auth = os.environ.get("SCANNER_AUTH")
     if auth:
         setup_auth(auth)
-    # Warm the dynamic malware-intel blocklist from the backend. Fail-open:
-    # any transport error just leaves the static blocklist active.
+    # Warm the dynamic malware-intel cache from the backend. Fail-open:
+    # any transport error just leaves the static known-compromised list
+    # active for HEC-090 detection.
     await refresh_now()
     global _refresh_task
     _refresh_task = start_background_refresh()
@@ -127,16 +128,18 @@ async def check(request: CheckRequest) -> CheckResponse:
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
 
-@app.get("/blocklist", response_model=BlocklistResponse)
-async def blocklist() -> BlocklistResponse:
-    """Merged view of the static HEC-090 blocklist and the runtime-loaded
-    dynamic intel (populated via `update_dynamic_blocklist`). The backend
-    is expected to enrich dynamic entries with timestamps from MongoDB.
+@app.get("/malware-feed", response_model=MalwareFeedResponse)
+async def malware_feed() -> MalwareFeedResponse:
+    """Merged view of the static HEC-090 known-compromised list and the
+    runtime-loaded dynamic intel (populated via
+    ``update_dynamic_known_compromised``). The backend's user-facing
+    ``/v1/malware/malware-feed`` endpoint health-probes this route to
+    populate ``scannerAvailable`` on the response.
     """
-    raw = serialize_blocklist()
-    return BlocklistResponse(
+    raw = serialize_malware_feed()
+    return MalwareFeedResponse(
         total=len(raw),
-        entries=[BlocklistEntry(**e) for e in raw],
+        entries=[MalwareFeedEntry(**e) for e in raw],
     )
 
 

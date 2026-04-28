@@ -370,8 +370,21 @@ class OsvClient:
         modified_since: datetime,
         seen_ids: set[str],
     ) -> AsyncIterator[dict[str, Any]]:
-        """Yield records changed since cutoff via CSV + API (incremental sync)."""
+        """Yield records changed since cutoff via CSV + API (incremental sync).
+
+        We process the CSV **oldest-first** even though OSV ships it
+        newest-first. This matters when an upstream pipeline run is
+        truncated by the per-run cap or by a timeout: the pipeline saves
+        ``max_processed_modified`` as the next ``modified_since``, and that
+        watermark advances monotonically only when iteration is oldest-
+        first. Newest-first plus a cap silently drops the oldest unprocessed
+        rows — the bug that produced a ~9 % MAL-record gap before this fix.
+        """
         changed_ids = await self.fetch_modified_ids(ecosystem, since=modified_since)
+        # `fetch_modified_ids` returns CSV order (newest-first); reverse to
+        # oldest-first so the pipeline's cursor advances row-by-row from
+        # near `modified_since` toward `now`.
+        changed_ids = list(reversed(changed_ids))
         fetched = 0
         for vuln_id in changed_ids:
             if vuln_id in seen_ids:

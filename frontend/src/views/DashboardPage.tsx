@@ -126,8 +126,8 @@ export const DashboardPage = () => {
         setToast({
           type: "success",
           message: t(
-            `Synchronizing "${queryNotFound}" — this can take up to 3 minutes.`,
-            `Synchronisiere "${queryNotFound}" — das kann bis zu 3 Minuten dauern.`
+            `Synchronizing "${queryNotFound}" from upstream sources…`,
+            `Synchronisiere "${queryNotFound}" von Upstream-Quellen…`
           ),
         });
         if (pendingSyncTimeoutRef.current !== null) {
@@ -429,14 +429,8 @@ const SingleVulnQuery = ({
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontWeight: 500, color: "rgba(255,193,7,0.9)" }}>
                   {t(
-                    `Fetching "${queryNotFound}" from upstream sources...`,
+                    `Fetching "${queryNotFound}" from upstream sources…`,
                     `„${queryNotFound}" wird von Upstream-Quellen abgerufen…`
-                  )}
-                </p>
-                <p style={{ margin: "0.25rem 0 0", color: "rgba(255,255,255,0.5)", fontSize: "0.85rem" }}>
-                  {t(
-                    "Checking NVD, EUVD and GitHub Security Advisories",
-                    "NVD, EUVD und GitHub Security Advisories werden abgefragt"
                   )}
                 </p>
               </div>

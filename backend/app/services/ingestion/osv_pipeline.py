@@ -28,6 +28,31 @@ log = structlog.get_logger()
 STATE_KEY = "osv"
 
 
+def _parse_iso_timestamp(value: Any) -> datetime | None:
+    """Parse an OSV ``modified`` field into an aware UTC datetime.
+
+    OSV records store timestamps as RFC-3339 strings (``2026-04-23T05:38:28.588737Z``).
+    Returns None for missing / unparseable values so the caller can use
+    None-coalescing to keep ``max_processed_modified`` valid across
+    records with bad timestamps.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        # Python's fromisoformat doesn't accept the trailing "Z" before 3.11;
+        # we run on 3.13 but keep the swap for safety.
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
 class OsvPipeline:
     """
     Pipeline for ingesting vulnerabilities from OSV.dev.
@@ -94,6 +119,14 @@ class OsvPipeline:
         progress_interval = 500
         log_repo: IngestionLogRepository | None = None
 
+        # Track the highest `modified` time of any record we successfully
+        # processed in this run. On a partial completion (cap hit / timeout)
+        # this becomes the cursor so the next run resumes from there. With
+        # oldest-first iteration in `_iter_incremental`, this is monotonic
+        # and no record is permanently lost. See the cursor-advancement
+        # block at the end of this method for the full logic.
+        max_processed_modified: datetime | None = None
+
         try:
             repository = await VulnerabilityRepository.create()
             asset_catalog = await AssetCatalogService.create()
@@ -139,6 +172,20 @@ class OsvPipeline:
                             unchanged += 1
                         elif result_status == "skipped":
                             skipped += 1
+
+                        # Track newest-of-processed `modified` time. We only
+                        # consider records that actually went through the
+                        # upsert path (created/enriched/unchanged), not
+                        # skipped or failed ones — skipped records are by
+                        # definition not "processed" and their timestamps
+                        # shouldn't advance the cursor.
+                        if result_status in ("created", "enriched", "unchanged"):
+                            rec_modified = _parse_iso_timestamp(record.get("modified"))
+                            if rec_modified is not None and (
+                                max_processed_modified is None
+                                or rec_modified > max_processed_modified
+                            ):
+                                max_processed_modified = rec_modified
 
                     except Exception as exc:
                         osv_id = record.get("id", "unknown")
@@ -194,7 +241,55 @@ class OsvPipeline:
             await tracker.fail(ctx, str(exc))
             raise
 
-        await state_repo.set_timestamp(STATE_KEY, datetime.now(tz=UTC))
+        # --- Cursor advancement ---
+        #
+        # The previous behaviour was to unconditionally `set_timestamp(now)`
+        # after the loop. That's correct only when the loop fully drained the
+        # iterator: every CSV change since `modified_since` was processed. On
+        # a partial completion (record-count cap hit, or async timeout) the
+        # `now` cursor causes the next sync's `since=now` filter to skip the
+        # CSV rows we never got to — silently dropping records.
+        #
+        # Observed gap from this bug: ~9 % of upstream MAL-2026 records were
+        # missing because every incremental sync since 2026-04-08 hit the
+        # 5000-record cap and advanced the cursor past unprocessed entries.
+        #
+        # Rules:
+        #
+        # * Full completion (no timeout, didn't hit the cap):
+        #   advance to `now` — this is "everything modified since last_run is
+        #   in the DB".
+        # * Incremental partial completion (cap or timeout):
+        #   advance to `max_processed_modified`. With oldest-first CSV
+        #   iteration in `_iter_incremental`, this is the newest of the rows
+        #   we processed; the rows we didn't process are all newer (smaller
+        #   number of records) and the next run picks them up via
+        #   `since=max_processed_modified`.
+        # * Initial sync partial completion (timeout):
+        #   leave the cursor unchanged. The next run sees `last_ts is None`
+        #   and re-runs initial mode, which is idempotent (upserts).
+        # * Zero records processed (all skipped/failed):
+        #   leave the cursor unchanged so the next run retries the same
+        #   range; otherwise a transient outage on every record would
+        #   silently advance past them.
+        hit_cap = effective_limit is not None and processed_total >= effective_limit
+        partial = hit_cap or timed_out
+
+        if not partial:
+            new_cursor: datetime | None = datetime.now(tz=UTC)
+        elif initial_sync:
+            # Don't advance — let the next run redo initial. The ZIP iterator
+            # has no per-ecosystem progress state, so partial cursor would
+            # silently drop all records older than max_processed_modified
+            # in any ecosystem we hadn't fully completed.
+            new_cursor = None
+        elif max_processed_modified is not None:
+            new_cursor = max_processed_modified
+        else:
+            new_cursor = None
+
+        if new_cursor is not None:
+            await state_repo.set_timestamp(STATE_KEY, new_cursor)
 
         result = {
             "created": created,
@@ -205,6 +300,8 @@ class OsvPipeline:
             "limit": effective_limit,
             "modified_since": modified_since.isoformat() if modified_since else None,
             "timed_out": timed_out,
+            "hit_cap": hit_cap,
+            "cursor_advanced_to": new_cursor.isoformat() if new_cursor else None,
         }
         await tracker.finish(ctx, **result)
         log.info("osv_pipeline.sync_complete", **result)

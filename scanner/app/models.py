@@ -59,8 +59,8 @@ class CheckResponse(BaseModel):
     current_commit_sha: str | None = None
 
 
-class BlocklistEntry(BaseModel):
-    """One merged entry from the static + dynamic malware blocklist."""
+class MalwareFeedEntry(BaseModel):
+    """One merged entry from the static + dynamic malware feed."""
 
     source: str  # "static" | "dynamic"
     ecosystem: str
@@ -78,6 +78,6 @@ class BlocklistEntry(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class BlocklistResponse(BaseModel):
+class MalwareFeedResponse(BaseModel):
     total: int
-    entries: list[BlocklistEntry]
+    entries: list[MalwareFeedEntry]

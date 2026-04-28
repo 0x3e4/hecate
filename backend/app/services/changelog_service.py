@@ -18,6 +18,27 @@ from app.schemas.changelog import (
 log = structlog.get_logger()
 
 
+# Source-slug → list of `last_change_job` values produced by the corresponding
+# pipeline. Mapping the UI's coarse filter ("osv") to the exact job names used
+# at write time lets the changelog query stay on `$in` against an indexed
+# field — anchored regex (``^osv_``) defeats the compound
+# `(last_change_job, last_change_at)` index and a 50-row page took 20 s.
+# Keep this in sync with the writers that call ``_stamp_last_change_job``.
+_SOURCE_TO_JOB_NAMES: dict[str, list[str]] = {
+    "osv": ["osv_sync", "osv_initial_sync"],
+    "nvd": ["nvd_sync", "nvd_initial_sync"],
+    "euvd": ["euvd_ingestion", "euvd_initial_sync"],
+    "ghsa": ["ghsa_sync", "ghsa_initial_sync"],
+    "circl": ["circl_sync"],
+    "kev": ["kev_sync", "kev_initial_sync"],
+    "deps_dev": ["deps_dev_enrichment"],
+    "deps.dev": ["deps_dev_enrichment"],
+    "depsdev": ["deps_dev_enrichment"],
+    "manual": ["manual_refresh"],
+    "manual_refresh": ["manual_refresh"],
+}
+
+
 class ChangelogService:
     """Service for retrieving recent vulnerability changes."""
 
@@ -51,10 +72,21 @@ class ChangelogService:
                     date_constraint["$lte"] = to_date
                 query_filter["last_change_at"] = date_constraint
             if source:
-                # Use the denormalized last_change_job field (indexed) instead of
-                # an expensive $expr scan over the change_history array.
-                source_lower = source.lower()
-                query_filter["last_change_job"] = {"$regex": f"^{source_lower}_", "$options": "i"}
+                # Map the source slug to the exact `last_change_job` values
+                # the pipelines write. ``$in`` against the indexed
+                # ``last_change_job`` field (compound with
+                # ``last_change_at -1``) makes filter+sort run in ~50 ms;
+                # the previous anchored ``$regex`` query took ~20 s.
+                source_lower = source.lower().strip()
+                job_names = _SOURCE_TO_JOB_NAMES.get(source_lower)
+                if job_names is None:
+                    # Unknown source — fall back to a case-sensitive prefix
+                    # regex. Slow but never returns wrong data.
+                    query_filter["last_change_job"] = {
+                        "$regex": f"^{source_lower}_"
+                    }
+                else:
+                    query_filter["last_change_job"] = {"$in": job_names}
 
             # Only fetch the fields we need to improve performance
             projection = {

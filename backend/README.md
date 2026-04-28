@@ -167,7 +167,7 @@ app/
 | `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
 | `environment_inventory` | `InventoryItemDocument` | Benutzerdeklariertes Produkt/Version-Inventory (Deployment, Environment, Instance-Count) |
-| `malware_intel` | `MalwareIntelDocument` | Dynamische Malware-Intel-Einträge; Upsert-Key `(source, ecosystem, package_name, version)`; speist die Scanner-Blocklist (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
+| `malware_intel` | `MalwareIntelDocument` | Dynamische Malware-Intel-Einträge; Upsert-Key `(source, ecosystem, package_name, version)`; speist die Scanner-Sidecar-Erweiterung der HEC-090-Liste und wird im `/v1/malware/malware-feed`-UI gemerged (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
@@ -187,9 +187,9 @@ Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregati
 | CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
 | CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
-| OSV | OSV.dev GCS Bucket + REST-API | 120 min | OSV-Schwachstellen (Hybrid: CVE-Enrichment + MAL/PYSEC/OSV-Einträge, 11 Ökosysteme) |
+| OSV | OSV.dev GCS Bucket + REST-API | 120 min + wöchentlicher Full-Sync (Fr 2 Uhr UTC) | OSV-Schwachstellen (Hybrid: CVE-Enrichment + MAL/PYSEC/OSV-Einträge, 11 Ökosysteme; per-Run Cursor-Advancement gegen Cap-Hit-Datenverlust) |
 
-Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs: EUVD Sonntag 2 Uhr UTC, NVD Mittwoch 2 Uhr UTC.
+Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs: EUVD Sonntag 2 Uhr UTC, NVD Mittwoch 2 Uhr UTC, OSV Freitag 2 Uhr UTC. Bulk-Pipelines wrappen ihre `pipeline.sync(...)`-Calls in `opensearch_bulk_mode()` (siehe `app/db/opensearch.py`), wodurch OpenSearch-Writes auf `refresh=false` umgeschaltet werden — Initial-Syncs schreiben mit ~5–9ms/PUT statt ~1s/PUT (`wait_for`) und blockieren keine konkurrierenden Manual-Refreshes mehr. User-initiierte Writes (Manual-Refresh, Scan-Completion, deps.dev-Enrichment via Manual-Refresh) bleiben auf `refresh=wait_for` für read-after-write-Konsistenz.
 
 **Hinweis:** Die Intervalle in `.env.example` können von den Code-Defaults abweichen. Die autoritativen Defaults stehen in `app/core/config.py`.
 

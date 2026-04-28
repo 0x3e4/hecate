@@ -104,11 +104,11 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
 
 Leichtgewichtiger Fingerprint-Check — holt das aktuelle Image-Digest (`skopeo inspect` / `docker inspect`) oder den HEAD-Commit-SHA (`git ls-remote`) ohne einen Scan durchzuführen. Wird vom Backend-Auto-Scan verwendet, um unveränderte Targets zu überspringen. `ls-remote` und `git clone` fallen automatisch auf einen anonymen Retry zurück, wenn `SCANNER_AUTH` für den Host injected wurde und die Credentials abgelehnt werden (ein stale Token für private Repos soll öffentliche Repos am selben Host nicht blockieren).
 
-### `GET /blocklist`
+### `GET /malware-feed`
 
-Gibt die merged statische + dynamische HEC-090-Blocklist als JSON zurück. Wird vom Backend (`GET /api/v1/malware/malware-feed`) für die `/blocklist`-Overview-Seite im Frontend konsumiert und dort mit MongoDB-Timestamps angereichert.
+Gibt die merged statische + dynamische HEC-090-Liste als JSON zurück. Das Backend health-probed diesen Endpoint, um den `scannerAvailable`-Flag auf der `/v1/malware/malware-feed`-UI-Antwort zu setzen — die Einträge selbst werden seit dem Refactor nicht mehr in die UI gemerged (sie wiederholten sich auf jeder paginierten Seite und waren grossteils Duplikate der MAL-aliased Records aus der OSV-Ingestion). Der Endpoint bleibt aber für In-Scan-HEC-090-Detection und potenzielle künftige Threat-Intel-Konsumenten erhalten.
 
-**Response-Shape:** `{ total: int, entries: [BlocklistEntry] }`, wobei jedes `entry` die Felder `source` (`"static"` | `"dynamic"`), `ecosystem`, `name`, `versions[]`, `allVersions`, `description`, `origin`, `staticIndex` trägt. Serialisierung via `serialize_blocklist()` in [`malware_detector/known_compromised.py`](app/malware_detector/known_compromised.py).
+**Response-Shape:** `{ total: int, entries: [MalwareFeedEntry] }`, wobei jedes `entry` die Felder `source` (`"static"` | `"dynamic"`), `ecosystem`, `name`, `versions[]`, `allVersions`, `description`, `origin`, `staticIndex` trägt. Serialisierung via `serialize_malware_feed()` in [`malware_detector/known_compromised.py`](app/malware_detector/known_compromised.py).
 
 ### `GET /stats`
 
@@ -301,7 +301,7 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 | `unicode_obfuscation.py` | Unsichtbare Unicode-Payload-Erkennung (mit Cyrillic-Locale-Awareness) |
 | `worm_detection.py` | Selbstverbreitung, destruktive Payloads, KI-Tool-Missbrauch |
 | `sandbox_evasion.py` | Bedingte Sandbox-Erkennung |
-| `known_compromised.py` | Blocklist kompromittierter Paketversionen (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP, prt-scan, CanisterSprawl, Bitwarden). Statische `_BLOCKLIST` + runtime-refreshed `_DYNAMIC_BLOCKLIST` (via `update_dynamic_blocklist()` aus der Backend-`/known-compromised`-API; aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Feeds); `serialize_blocklist()` gibt die merged JSON-Form für den `/blocklist`-Endpoint aus. |
+| `known_compromised.py` | Liste kompromittierter Paketversionen (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP, prt-scan, CanisterSprawl, Bitwarden). Statische `_BLOCKLIST` + runtime-refreshed `_DYNAMIC_BLOCKLIST` (via `update_dynamic_known_compromised()` aus der Backend-`/known-compromised`-API; aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Feeds); `serialize_malware_feed()` gibt die merged JSON-Form für den `/malware-feed`-Endpoint aus. |
 | `hash_matching.py` | SHA-256 Hash-Matching bekannter maliciöser Payload-Dateien |
 | `sarif_formatter.py` | SARIF 2.1.0 Output-Formatter für GitHub/GitLab Code Scanning Integration (Severity: critical/high->error, medium->warning, low->note) |
 | `popular_packages.py` | Top-200 npm/PyPI-Pakete (Referenzlisten) |
@@ -334,9 +334,9 @@ Nach der SBOM-Extraktion prüft der Hecate Analyzer optional die Provenance (Her
 - **Source-Repos**: Git-Commit-SHA wird aus dem geklonten Repository extrahiert
 - **Container-Images**: Image-Digest via `docker inspect` oder `skopeo inspect`
 
-### Dynamischer Blocklist-Refresh
+### Dynamischer Known-Compromised-Refresh
 
-`scanner/app/malware_intel_refresh.py` pollt beim Startup und danach alle 30 min (`MALWARE_INTEL_REFRESH_SECONDS`, default 1800) den Backend-Endpoint `GET /api/v1/malware/known-compromised`. Das Ergebnis wird via `update_dynamic_blocklist()` in `_DYNAMIC_BLOCKLIST` gespiegelt. Fail-open: Network-/HTTP-/JSON-Fehler lassen die statische Liste unangetastet — der Scanner verweigert nie einen Scan wegen einer unerreichbaren Intel-Quelle. Backend-URL via `HECATE_BACKEND_URL` / `BACKEND_URL` (default `http://backend:8000`).
+`scanner/app/malware_intel_refresh.py` pollt beim Startup und danach alle 30 min (`MALWARE_INTEL_REFRESH_SECONDS`, default 1800) den Backend-Endpoint `GET /api/v1/malware/known-compromised`. Das Ergebnis wird via `update_dynamic_known_compromised()` in `_DYNAMIC_BLOCKLIST` gespiegelt. Fail-open: Network-/HTTP-/JSON-Fehler lassen die statische Liste unangetastet — der Scanner verweigert nie einen Scan wegen einer unerreichbaren Intel-Quelle. Backend-URL via `HECATE_BACKEND_URL` / `BACKEND_URL` (default `http://backend:8000`).
 
 ## Sandbox-Hardening
 

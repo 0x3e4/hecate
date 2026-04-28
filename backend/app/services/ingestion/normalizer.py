@@ -2433,7 +2433,10 @@ def _extract_osv_package_info(
         ver_strings: list[str] = []
         patched_versions: list[str] = []
 
-        # Explicit versions list
+        # Explicit versions list. Always populate the asset-catalog bucket so
+        # vendor/product slugs land regardless of which path supplies the
+        # impactedProducts.versions strings below.
+        explicit_versions_clean: list[str] = []
         explicit_versions = entry.get("versions") or []
         if isinstance(explicit_versions, list):
             for v in explicit_versions:
@@ -2441,9 +2444,11 @@ def _extract_osv_package_info(
                     versions.add(v.strip())
                     bucket = product_version_map.setdefault(package_name, set())
                     bucket.add(v.strip())
+                    explicit_versions_clean.append(v.strip())
 
         # Version ranges (SEMVER / ECOSYSTEM / GIT)
         ranges = entry.get("ranges") or []
+        range_strings: list[str] = []
         if isinstance(ranges, list):
             for range_obj in ranges:
                 if not isinstance(range_obj, dict):
@@ -2464,11 +2469,26 @@ def _extract_osv_package_info(
                     if fixed is not None:
                         range_str += f" <{fixed}"
                         patched_versions.append(str(fixed))
-                    ver_strings.append(range_str)
+                    range_strings.append(range_str)
 
-        # Fall back to explicit versions if no ranges produced version strings
-        if not ver_strings and explicit_versions:
-            ver_strings = [v.strip() for v in explicit_versions if isinstance(v, str) and v.strip()]
+        # Pick the impactedProducts.versions list. OSV records often carry
+        # **both** an explicit `versions: [...]` list (the precise affected
+        # releases) and a `ranges: [{introduced: "0"}]` block (the OSSF
+        # malicious-packages "all versions" sentinel). When both exist the
+        # explicit list is authoritative — we used to fall through to the
+        # `>=0` range string here, which `_is_broad_range()` then treated
+        # as enrichment fodder and replaced with every published version
+        # of the package, marking clean releases as malicious. Honoring
+        # `versions` first preserves OSV's precise scope.
+        #
+        # If only ranges exist (typosquat malware that's malicious from
+        # introduction, e.g. `@fr3newera/baileys`), the broad sentinel is
+        # the right starting point — deps.dev / npm-registry enrichment
+        # will replace it with the published-version list downstream.
+        if explicit_versions_clean:
+            ver_strings = explicit_versions_clean
+        else:
+            ver_strings = range_strings
 
         vendor_slug = slugify(ecosystem_name) or ecosystem_name.lower()
         product_slug = slugify(package_name) or package_name.lower()
