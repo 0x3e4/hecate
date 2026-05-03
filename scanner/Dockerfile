@@ -1,6 +1,6 @@
 FROM aquasec/trivy:0.69.3 AS trivy
-FROM anchore/grype:v0.111.1 AS grype
-FROM anchore/syft:v1.43.0 AS syft
+FROM anchore/grype:v0.112.0 AS grype
+FROM anchore/syft:v1.44.0 AS syft
 FROM python:3.13-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
@@ -18,7 +18,7 @@ RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/
     | tar xz -C /usr/local/bin dockle
 
 # Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.5/osv-scanner_linux_amd64 \
+RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.6/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
 
 # Install Dive (Docker image layer analysis)
