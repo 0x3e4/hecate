@@ -67,11 +67,25 @@ class OsvPipeline:
         *,
         client: OsvClient | None = None,
         deps_dev_client: DepsDevClient | None = None,
+        initial_sync_concurrency: int | None = None,
+        initial_sync_batch_size: int | None = None,
     ) -> None:
         self.client = client or OsvClient()
         # Long-lived deps.dev client so MAL-* enrichment during a sync reuses
         # one httpx.AsyncClient + one rate-limiter across all records.
         self.deps_dev_client = deps_dev_client or DepsDevClient()
+        # Initial-sync concurrency knobs. Default to settings; tests override.
+        # Incremental mode ignores both — see `sync()`.
+        self._initial_concurrency = max(
+            1, initial_sync_concurrency
+            if initial_sync_concurrency is not None
+            else settings.osv_initial_sync_concurrency,
+        )
+        self._initial_batch_size = max(
+            self._initial_concurrency, initial_sync_batch_size
+            if initial_sync_batch_size is not None
+            else settings.osv_initial_sync_batch_size,
+        )
 
     async def sync(
         self,
@@ -150,28 +164,101 @@ class OsvPipeline:
                 limit=effective_limit,
             )
 
-            async with asyncio.timeout(timeout_seconds):
-                async for record in self.client.iter_all_vulnerabilities(
-                    modified_since=modified_since,
-                    max_records=effective_limit,
-                ):
+            # Initial sync: dispatch records concurrently in fixed-size batches.
+            # Incremental sync: keep concurrency=1 — the OSV REST limiter
+            # (osv_rate_limit_seconds) makes parallelism marginal there and
+            # incremental volume is small.
+            concurrency = self._initial_concurrency if initial_sync else 1
+            batch_size = self._initial_batch_size if initial_sync else 1
+            semaphore = asyncio.Semaphore(concurrency)
+
+            async def _process_one(record: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+                """Worker coroutine. Returns (status, record) or
+                ("error", record) on exception. Caller folds into counters."""
+                async with semaphore:
                     try:
-                        result_status = await self._process_record(
+                        status = await self._process_record(
                             record=record,
                             repository=repository,
                             asset_catalog=asset_catalog,
                             job_name=job_name,
                             job_label=label,
                         )
+                        return (status, record)
+                    except Exception as exc:  # noqa: BLE001 — fold into counters
+                        osv_id = record.get("id", "unknown")
+                        log.warning(
+                            "osv_pipeline.process_failed",
+                            osv_id=osv_id,
+                            error=str(exc),
+                        )
+                        return ("error", record)
 
-                        if result_status == "created":
-                            created += 1
-                        elif result_status == "enriched":
-                            enriched += 1
-                        elif result_status == "unchanged":
-                            unchanged += 1
-                        elif result_status == "skipped":
+            async with asyncio.timeout(timeout_seconds):
+                # `(record, vuln_id)` buffer; collisions on `vuln_id` within
+                # one batch get deferred to the next batch so concurrent
+                # writes never race on the same `_id`. Different OSV IDs can
+                # resolve to the same `vuln_id` (e.g. a CVE entry and a
+                # GHSA entry aliasing the same CVE), and `OsvClient`'s
+                # `seen_ids` set only dedups by OSV ID.
+                buffer: list[tuple[dict[str, Any], str]] = []
+                iterator_done = False
+                iter_obj = self.client.iter_all_vulnerabilities(
+                    modified_since=modified_since,
+                    max_records=effective_limit,
+                ).__aiter__()
+
+                while not iterator_done or buffer:
+                    # Top up the buffer until we have at least batch_size
+                    # records or the iterator is exhausted.
+                    while not iterator_done and len(buffer) < batch_size:
+                        try:
+                            record = await iter_obj.__anext__()
+                        except StopAsyncIteration:
+                            iterator_done = True
+                            break
+                        vuln_id = self._resolve_vuln_id(record)
+                        if vuln_id is None:
+                            # Records we can't resolve (no `id`, withdrawn,
+                            # etc.) are counted here without dispatching to
+                            # a worker. `_process_record` would also have
+                            # returned "skipped" for these.
                             skipped += 1
+                            processed_total += 1
+                            continue
+                        buffer.append((record, vuln_id))
+
+                    if not buffer:
+                        break
+
+                    # Pick records to dispatch this batch; collisions on
+                    # `vuln_id` go back into the buffer for the next batch.
+                    seen_in_batch: set[str] = set()
+                    to_dispatch: list[dict[str, Any]] = []
+                    next_buffer: list[tuple[dict[str, Any], str]] = []
+                    for record, vid in buffer:
+                        if vid in seen_in_batch:
+                            next_buffer.append((record, vid))
+                        else:
+                            seen_in_batch.add(vid)
+                            to_dispatch.append(record)
+                    buffer = next_buffer
+
+                    results = await asyncio.gather(
+                        *(_process_one(r) for r in to_dispatch),
+                    )
+
+                    for status, record in results:
+                        if status == "created":
+                            created += 1
+                        elif status == "enriched":
+                            enriched += 1
+                        elif status == "unchanged":
+                            unchanged += 1
+                        elif status == "skipped":
+                            skipped += 1
+                        elif status == "error":
+                            failures += 1
 
                         # Track newest-of-processed `modified` time. We only
                         # consider records that actually went through the
@@ -179,7 +266,7 @@ class OsvPipeline:
                         # skipped or failed ones — skipped records are by
                         # definition not "processed" and their timestamps
                         # shouldn't advance the cursor.
-                        if result_status in ("created", "enriched", "unchanged"):
+                        if status in ("created", "enriched", "unchanged"):
                             rec_modified = _parse_iso_timestamp(record.get("modified"))
                             if rec_modified is not None and (
                                 max_processed_modified is None
@@ -187,19 +274,12 @@ class OsvPipeline:
                             ):
                                 max_processed_modified = rec_modified
 
-                    except Exception as exc:
-                        osv_id = record.get("id", "unknown")
-                        log.warning(
-                            "osv_pipeline.process_failed",
-                            osv_id=osv_id,
-                            error=str(exc),
-                        )
-                        failures += 1
+                        processed_total += 1
 
-                    processed_total += 1
+                    # Progress reporting once per batch (was per-record).
                     now = datetime.now(tz=UTC)
                     if (
-                        processed_total % progress_interval == 0
+                        processed_total % progress_interval < batch_size
                         or (now - last_progress_log).total_seconds() >= 60
                     ):
                         progress_payload = {
@@ -495,6 +575,55 @@ class OsvPipeline:
     async def close(self) -> None:
         await self.client.close()
         await self.deps_dev_client.close()
+
+    @staticmethod
+    def _resolve_vuln_id(record: dict[str, Any]) -> str | None:
+        """Compute the canonical ``vuln_id`` for an OSV record.
+
+        Mirrors the same priority order as ``_process_record`` (MAL > CVE >
+        GHSA > raw OSV ID) so the producer can deduplicate concurrent
+        writes by ``vuln_id`` before dispatching workers. Returns None
+        when the record should be skipped (no ID, withdrawn).
+
+        Kept cheap — pure string manipulation on the aliases array. Runs
+        once per record in the producer loop; ``_process_record`` re-runs
+        the same logic, but the cost is negligible vs. the I/O work it
+        guards.
+        """
+        raw_osv_id = record.get("id")
+        if not isinstance(raw_osv_id, str) or not raw_osv_id.strip():
+            return None
+        raw_osv_id = raw_osv_id.strip()
+        if record.get("withdrawn") is not None:
+            return None
+
+        upper_prefixes = ("GHSA-", "MAL-", "PYSEC-")
+        osv_id = (
+            raw_osv_id.upper()
+            if raw_osv_id.upper().startswith(upper_prefixes)
+            else raw_osv_id
+        )
+
+        cve_id: str | None = None
+        ghsa_alias: str | None = None
+        aliases_raw = record.get("aliases") or []
+        if isinstance(aliases_raw, list):
+            for alias in aliases_raw:
+                if not isinstance(alias, str) or not alias.strip():
+                    continue
+                upper = alias.strip().upper()
+                if upper.startswith("CVE-") and cve_id is None:
+                    cve_id = upper
+                elif upper.startswith("GHSA-") and ghsa_alias is None:
+                    ghsa_alias = upper
+
+        if osv_id.upper().startswith("MAL-"):
+            return osv_id.upper()
+        if cve_id is not None:
+            return cve_id
+        if ghsa_alias is not None:
+            return ghsa_alias
+        return osv_id
 
     @staticmethod
     def _resolve_limit(explicit_limit: int | None) -> int | None:

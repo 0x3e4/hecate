@@ -131,6 +131,14 @@ class Settings(BaseSettings):
     # primary bound for runtime. Set a positive value only if you need to
     # throttle a noisy upstream window without raising the global timeout.
     osv_max_records_per_run: OptionalInt = None
+    # Concurrency knobs for the OSV initial-sync per-record loop. The producer
+    # buffers `osv_initial_sync_batch_size` records, then dispatches them via
+    # `asyncio.gather` with a `Semaphore(osv_initial_sync_concurrency)` cap.
+    # Bookkeeping (counters, cursor, progress) stays single-threaded on the
+    # producer. Incremental sync is unaffected — it processes serially because
+    # the OSV REST limiter (osv_rate_limit_seconds) makes parallelism marginal.
+    osv_initial_sync_concurrency: int = 16
+    osv_initial_sync_batch_size: int = 32
 
     # deps.dev enrichment — fills in actual published versions for MAL-* OSV
     # records that ship with the conservative `introduced: "0"` range (meaning

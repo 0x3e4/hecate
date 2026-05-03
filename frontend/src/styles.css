@@ -148,15 +148,11 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 0 1.5rem;
+  scrollbar-width: none;
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
+  display: none;
 }
 
 .sidebar-link {
@@ -551,9 +547,9 @@ details[open] > .advanced-filter-cvss-summary::before {
 
 .app-sidebar.collapsed .sidebar-link-short {
   display: inline-flex;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   background: rgba(92, 132, 255, 0.12);
   position: relative;
 }
@@ -592,7 +588,7 @@ details[open] > .advanced-filter-cvss-summary::before {
 .app-sidebar.collapsed .sidebar-link {
   justify-content: center;
   gap: 0;
-  padding: 0.65rem 0;
+  padding: 0.3rem 0;
 }
 
 .app-sidebar.collapsed .sidebar-subnav {
