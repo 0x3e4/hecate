@@ -286,22 +286,34 @@ class ScanSbomRepository:
             log.warning("scan_sbom_repository.count_consolidated_failed", error=str(exc))
             return 0
 
-    async def count_distinct_licenses(self, scan_ids: list[str]) -> int:
-        """Count distinct license identifiers across scans."""
+    async def list_distinct_raw_licenses(self, scan_ids: list[str]) -> list[str]:
+        """Return distinct raw license strings across scans.
+
+        SPDX expressions like ``"MIT OR Apache-2.0"`` are returned as a single
+        string — splitting into atoms is the caller's responsibility (see
+        ``split_spdx_expression`` in ``license_compliance_service``). The
+        Licenses-tab badge needs the post-split atom count to match the
+        overview page; counting raw strings here would over-report whenever
+        a component declared a compound expression.
+        """
         if not scan_ids:
-            return 0
+            return []
         pipeline: list[dict[str, Any]] = [
             {"$match": {"scan_id": {"$in": scan_ids}}},
             {"$unwind": "$licenses"},
             {"$group": {"_id": "$licenses"}},
-            {"$count": "total"},
         ]
         try:
-            result = await self.collection.aggregate(pipeline).to_list(1)
-            return result[0]["total"] if result else 0
+            cursor = self.collection.aggregate(pipeline)
+            out: list[str] = []
+            async for doc in cursor:
+                value = doc.get("_id")
+                if isinstance(value, str) and value.strip():
+                    out.append(value)
+            return out
         except PyMongoError as exc:
-            log.warning("scan_sbom_repository.count_distinct_licenses_failed", error=str(exc))
-            return 0
+            log.warning("scan_sbom_repository.list_distinct_raw_licenses_failed", error=str(exc))
+            return []
 
     async def delete_by_scan(self, scan_id: str) -> int:
         try:

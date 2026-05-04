@@ -38,6 +38,17 @@ export const fetchScanTarget = async (targetId: string): Promise<ScanTarget> => 
   return response.data;
 };
 
+// Force an out-of-band scanner /check probe and return the refreshed target.
+// Used by the Scanner-tab diagnostics table to let users re-run the probe on
+// demand without waiting for the next 30-min auto-scan cron. Does NOT submit
+// a scan even when the verdict is "changed".
+export const triggerTargetCheck = async (targetId: string): Promise<ScanTarget> => {
+  const response = await api.post<ScanTarget>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/check`,
+  );
+  return response.data;
+};
+
 export const fetchScans = async (params?: {
   targetId?: string;
   status?: string;

@@ -35,6 +35,31 @@ class ScanTargetDocument(BaseModel):
     scan_count: int = 0
     last_image_digest: str | None = Field(default=None, description="Image digest from most recent scan")
     last_commit_sha: str | None = Field(default=None, description="Commit SHA from most recent scan")
+    # Last auto-scan change-detection probe. Captured for every call to
+    # ``ScanService.check_target_changed`` so the SCA Scans → Scanner tab can
+    # surface a per-target diagnostics table when a target seemingly fails to
+    # auto-scan despite the toggle being on.
+    last_check_at: datetime | None = Field(
+        default=None, description="When the scanner /check probe last ran for this target"
+    )
+    last_check_verdict: str | None = Field(
+        default=None,
+        description=(
+            "One of: 'changed' | 'unchanged' | 'first_scan' | "
+            "'check_failed_skipped' | 'check_failed_scanned'. The first three "
+            "use a successful /check response; the last two cover the /check "
+            "failure paths in ``check_target_changed`` (skipped when a "
+            "previous fingerprint exists, scanned otherwise)."
+        ),
+    )
+    last_check_current_fingerprint: str | None = Field(
+        default=None,
+        description="Fingerprint returned by the most recent /check (digest or commit SHA)",
+    )
+    last_check_error: str | None = Field(
+        default=None,
+        description="Error message from the most recent /check call when it failed (None on success)",
+    )
     # Denormalized scan state (updated at scan lifecycle events)
     latest_summary: dict[str, int] | None = Field(default=None)
     latest_scan_id: str | None = Field(default=None)

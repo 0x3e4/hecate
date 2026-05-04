@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import shutil
 
 from fastapi import FastAPI, HTTPException
 
-from app.malware_detector.known_compromised import serialize_malware_feed
-from app.malware_intel_refresh import refresh_now, start_background_refresh
-from app.models import CheckRequest, CheckResponse, MalwareFeedEntry, MalwareFeedResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
+from app.models import CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
 from app.scanners import (
     extract_source_archive,
     get_git_commit_sha,
@@ -26,32 +23,11 @@ app = FastAPI(title="Hecate Scanner Sidecar", version="1.0.0")
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog"}
 
 
-_refresh_task = None
-
-
 @app.on_event("startup")
 async def _startup() -> None:
     auth = os.environ.get("SCANNER_AUTH")
     if auth:
         setup_auth(auth)
-    # Warm the dynamic malware-intel cache from the backend. Fail-open:
-    # any transport error just leaves the static known-compromised list
-    # active for HEC-090 detection.
-    await refresh_now()
-    global _refresh_task
-    _refresh_task = start_background_refresh()
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    global _refresh_task
-    if _refresh_task is not None:
-        _refresh_task.cancel()
-        try:
-            await _refresh_task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
-        _refresh_task = None
 
 
 @app.get("/health")
@@ -126,21 +102,6 @@ async def check(request: CheckRequest) -> CheckResponse:
         return CheckResponse(target=request.target, type=request.type, current_commit_sha=sha)
     else:
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
-
-
-@app.get("/malware-feed", response_model=MalwareFeedResponse)
-async def malware_feed() -> MalwareFeedResponse:
-    """Merged view of the static HEC-090 known-compromised list and the
-    runtime-loaded dynamic intel (populated via
-    ``update_dynamic_known_compromised``). The backend's user-facing
-    ``/v1/malware/malware-feed`` endpoint health-probes this route to
-    populate ``scannerAvailable`` on the response.
-    """
-    raw = serialize_malware_feed()
-    return MalwareFeedResponse(
-        total=len(raw),
-        entries=[MalwareFeedEntry(**e) for e in raw],
-    )
 
 
 @app.post("/scan", response_model=ScanResponse)

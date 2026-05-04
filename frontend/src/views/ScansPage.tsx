@@ -21,6 +21,7 @@ import {
   cancelScan,
   fetchScannerStats,
   importSbomFile,
+  triggerTargetCheck,
 } from "../api/scans";
 import { fetchLicenseOverview } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
@@ -230,8 +231,15 @@ export const ScansPage = () => {
         }
       } else if (tab === "scanner") {
         try {
-          const stats = await fetchScannerStats();
+          // Targets in parallel — the auto-scan diagnostics table below
+          // wants the latest last_check_* fields, and the polling loop for
+          // this tab refetches both every 5 s.
+          const [stats, targetsRes] = await Promise.all([
+            fetchScannerStats(),
+            fetchScanTargets({ limit: 100 }),
+          ]);
           setScannerStats(stats);
+          setTargets(targetsRes.items);
           if (!stats.error) {
             const now = Date.now();
             setMemHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.memoryUsedBytes }]);
@@ -379,8 +387,15 @@ export const ScansPage = () => {
             const res = await fetchScanTargets({ limit: 100 });
             setTargets(res.items);
           } else if (tab === "scanner") {
-            const stats = await fetchScannerStats();
+            // Refetch targets in parallel so the auto-scan diagnostics table
+            // below picks up the most recent /check probe results without
+            // requiring a tab switch.
+            const [stats, targetsRes] = await Promise.all([
+              fetchScannerStats(),
+              fetchScanTargets({ limit: 100 }),
+            ]);
             setScannerStats(stats);
+            setTargets(targetsRes.items);
             if (!stats.error) {
               const now = Date.now();
               setMemHistory(prev => [...prev.slice(-(maxHistory - 1)), { time: now, value: stats.memoryUsedBytes }]);
@@ -2497,6 +2512,20 @@ export const ScansPage = () => {
                     minutes={chartMinutes}
                   />
                 </div>
+
+                {/* Auto-scan change-detection diagnostics. Helps debug why an
+                    auto-scan-enabled target isn't being scanned: each row
+                    shows the most recent /check probe — when it ran, what
+                    fingerprint the scanner returned, the verdict the
+                    scheduler reached, and the error if /check failed.
+                    Verdict pills are clickable to force-rerun the probe. */}
+                <AutoScanDiagnosticsTable
+                  targets={targets}
+                  onTriggerCheck={async (targetId) => {
+                    const refreshed = await triggerTargetCheck(targetId);
+                    setTargets(prev => prev.map(t => t.id === targetId ? refreshed : t));
+                  }}
+                />
               </div>
             )}
             {!loading && scannerStats?.error && (
@@ -2974,6 +3003,288 @@ const SourceBadge = ({ source }: { source: string }) => {
 };
 
 type DataPoint = { time: number; value: number };
+
+// Per-target auto-scan diagnostics. Renders one row per `autoScan: true`
+// target with the result of the most recent `/check` probe so users can
+// debug why a target isn't being auto-scanned even with the toggle on.
+// Backend persists every probe result via
+// ``ScanTargetRepository.update_last_check``. Verdict cells are clickable
+// to force-rerun the probe out-of-band — `onTriggerCheck` is async so the
+// row can show a loading state during the in-flight call.
+const AutoScanDiagnosticsTable = ({
+  targets,
+  onTriggerCheck,
+}: {
+  targets: ScanTarget[];
+  onTriggerCheck: (targetId: string) => Promise<void>;
+}) => {
+  const { t } = useI18n();
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const autoScanTargets = useMemo(
+    () => targets.filter(target => target.autoScan !== false),
+    [targets],
+  );
+
+  const runCheck = useCallback(async (targetId: string) => {
+    setPending(prev => {
+      const next = new Set(prev);
+      next.add(targetId);
+      return next;
+    });
+    setErrors(prev => {
+      if (!(targetId in prev)) return prev;
+      const next = { ...prev };
+      delete next[targetId];
+      return next;
+    });
+    try {
+      await onTriggerCheck(targetId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrors(prev => ({ ...prev, [targetId]: msg }));
+    } finally {
+      setPending(prev => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
+    }
+  }, [onTriggerCheck]);
+
+  if (autoScanTargets.length === 0) {
+    return (
+      <div style={{ marginTop: "0.5rem" }}>
+        <h3 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.5rem 0" }}>
+          {t("Auto-scan diagnostics", "Auto-Scan-Diagnose")}
+        </h3>
+        <p className="muted" style={{ fontSize: "0.8125rem", margin: 0 }}>
+          {t(
+            "No targets with auto-scan enabled.",
+            "Keine Ziele mit aktivem Auto-Scan."
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  // Newest probe first; targets that were never probed sink to the bottom.
+  const sorted = [...autoScanTargets].sort((a, b) => {
+    const ta = a.lastCheckAt ? Date.parse(a.lastCheckAt) : 0;
+    const tb = b.lastCheckAt ? Date.parse(b.lastCheckAt) : 0;
+    return tb - ta;
+  });
+
+  const verdictPill = (verdict: ScanTarget["lastCheckVerdict"]): { label: string; bg: string; fg: string; border: string; tooltip: string } => {
+    switch (verdict) {
+      case "changed":
+        return {
+          label: t("changed → scan", "geändert → Scan"),
+          bg: "rgba(81,207,102,0.12)",
+          fg: "#51cf66",
+          border: "rgba(81,207,102,0.3)",
+          tooltip: t(
+            "Current fingerprint differs from the stored one — auto-scan submitted.",
+            "Aktueller Fingerprint weicht vom gespeicherten ab — Auto-Scan submitted."
+          ),
+        };
+      case "unchanged":
+        return {
+          label: t("unchanged → skip", "unverändert → übersprungen"),
+          bg: "rgba(255,255,255,0.06)",
+          fg: "rgba(255,255,255,0.55)",
+          border: "rgba(255,255,255,0.15)",
+          tooltip: t(
+            "Current fingerprint matches the stored one — no scan needed.",
+            "Aktueller Fingerprint stimmt mit dem gespeicherten überein — kein Scan nötig."
+          ),
+        };
+      case "first_scan":
+        return {
+          label: t("first scan", "erster Scan"),
+          bg: "rgba(92,132,255,0.12)",
+          fg: "#5c84ff",
+          border: "rgba(92,132,255,0.3)",
+          tooltip: t(
+            "No stored fingerprint yet — auto-scan will run an initial scan.",
+            "Noch kein gespeicherter Fingerprint — Auto-Scan startet einen Initial-Scan."
+          ),
+        };
+      case "check_failed_skipped":
+        return {
+          label: t("check failed → skip", "Check fehlgeschlagen → übersprungen"),
+          bg: "rgba(255,193,7,0.12)",
+          fg: "#fcc419",
+          border: "rgba(255,193,7,0.3)",
+          tooltip: t(
+            "Scanner /check call failed but a previous fingerprint exists, so the run was skipped to avoid wasted scans. Inspect the error column.",
+            "Scanner-/check-Aufruf fehlgeschlagen, aber ein früherer Fingerprint existiert — Run übersprungen, um unnötige Scans zu vermeiden. Fehler in der nächsten Spalte prüfen."
+          ),
+        };
+      case "check_failed_scanned":
+        return {
+          label: t("check failed → scan", "Check fehlgeschlagen → Scan"),
+          bg: "rgba(255,107,107,0.12)",
+          fg: "#ff6b6b",
+          border: "rgba(255,107,107,0.3)",
+          tooltip: t(
+            "Scanner /check failed and there is no previous fingerprint — auto-scan ran a fail-open initial scan.",
+            "Scanner-/check fehlgeschlagen und es gibt keinen früheren Fingerprint — Auto-Scan startete einen fail-open Initial-Scan."
+          ),
+        };
+      default:
+        return {
+          label: t("never probed", "noch nie geprüft"),
+          bg: "rgba(255,255,255,0.04)",
+          fg: "rgba(255,255,255,0.4)",
+          border: "rgba(255,255,255,0.1)",
+          tooltip: t(
+            "The auto-scan scheduler has not probed this target yet. The next run will populate this row.",
+            "Der Auto-Scan-Scheduler hat dieses Ziel noch nicht geprüft. Der nächste Lauf füllt diese Zeile."
+          ),
+        };
+    }
+  };
+
+  const truncate = (value: string | null | undefined, head = 12): string => {
+    if (!value) return "—";
+    if (value.length <= head + 4) return value;
+    return `${value.slice(0, head)}…`;
+  };
+
+  return (
+    <div style={{ marginTop: "0.5rem" }}>
+      <h3 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.25rem 0" }}>
+        {t("Auto-scan diagnostics", "Auto-Scan-Diagnose")}
+      </h3>
+      <p className="muted" style={{ fontSize: "0.75rem", margin: "0 0 0.5rem 0" }}>
+        {t(
+          "Most recent change-detection probe per auto-scan target. Use this to figure out why a target isn't being scanned automatically.",
+          "Letzter Change-Detection-Probe pro Auto-Scan-Ziel. Damit lässt sich nachvollziehen, warum ein Ziel nicht automatisch gescannt wird."
+        )}
+      </p>
+      <div style={{ overflowX: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
+          <thead>
+            <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+              <th style={diagHeaderStyle}>{t("Target", "Ziel")}</th>
+              <th style={diagHeaderStyle}>{t("Type", "Typ")}</th>
+              <th style={diagHeaderStyle}>{t("Last check", "Letzter Check")}</th>
+              <th style={diagHeaderStyle}>{t("Current", "Aktuell")}</th>
+              <th style={diagHeaderStyle}>{t("Stored", "Gespeichert")}</th>
+              <th style={diagHeaderStyle}>{t("Verdict", "Ergebnis")}</th>
+              <th style={diagHeaderStyle}>{t("Error", "Fehler")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(target => {
+              const pill = verdictPill(target.lastCheckVerdict);
+              const stored = target.type === "container_image"
+                ? target.lastImageDigest
+                : target.lastCommitSha;
+              return (
+                <tr key={target.id} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <td style={diagCellStyle}>
+                    <div style={{ fontWeight: 500 }}>{target.name}</div>
+                    {target.id !== target.name && (
+                      <div className="muted" style={{ fontSize: "0.6875rem" }}>{target.id}</div>
+                    )}
+                  </td>
+                  <td style={diagCellStyle}>
+                    <span style={{
+                      padding: "0.125rem 0.4rem", borderRadius: "4px",
+                      background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.7)",
+                      fontSize: "0.6875rem",
+                    }}>
+                      {target.type === "container_image" ? t("image", "Image") : t("repo", "Repo")}
+                    </span>
+                  </td>
+                  <td style={diagCellStyle} title={target.lastCheckAt || undefined}>
+                    {target.lastCheckAt ? formatDateTime(target.lastCheckAt) : "—"}
+                  </td>
+                  <td style={diagCellStyle}>
+                    <code title={target.lastCheckCurrentFingerprint || undefined} style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.7)" }}>
+                      {truncate(target.lastCheckCurrentFingerprint)}
+                    </code>
+                  </td>
+                  <td style={diagCellStyle}>
+                    <code title={stored || undefined} style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.7)" }}>
+                      {truncate(stored)}
+                    </code>
+                  </td>
+                  <td style={diagCellStyle}>
+                    {(() => {
+                      const isPending = pending.has(target.id);
+                      const tooltip = isPending
+                        ? t("Running /check probe…", "/check-Probe läuft …")
+                        : `${pill.tooltip}\n\n${t("Click to re-run the probe.", "Zum erneuten Ausführen klicken.")}`;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => runCheck(target.id)}
+                          disabled={isPending}
+                          title={tooltip}
+                          style={{
+                            padding: "0.125rem 0.5rem",
+                            borderRadius: "4px",
+                            background: pill.bg,
+                            color: pill.fg,
+                            border: `1px solid ${pill.border}`,
+                            fontSize: "0.6875rem",
+                            whiteSpace: "nowrap",
+                            cursor: isPending ? "wait" : "pointer",
+                            opacity: isPending ? 0.6 : 1,
+                            font: "inherit",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                          }}
+                        >
+                          {isPending && (
+                            <span aria-hidden style={{ fontSize: "0.625rem" }}>⟳</span>
+                          )}
+                          {pill.label}
+                        </button>
+                      );
+                    })()}
+                  </td>
+                  <td style={diagCellStyle}>
+                    {errors[target.id] ? (
+                      <span title={errors[target.id]} style={{ color: "#ff6b6b", fontSize: "0.6875rem", display: "inline-block", maxWidth: "20ch", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>
+                        {errors[target.id]}
+                      </span>
+                    ) : target.lastCheckError ? (
+                      <span title={target.lastCheckError} style={{ color: "#ff6b6b", fontSize: "0.6875rem", display: "inline-block", maxWidth: "20ch", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>
+                        {target.lastCheckError}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const diagHeaderStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "0.5rem 0.75rem",
+  fontWeight: 600,
+  fontSize: "0.6875rem",
+  color: "rgba(255,255,255,0.5)",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const diagCellStyle: React.CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  verticalAlign: "top",
+};
 
 const LiveChart = ({ label, data, max, current, color, minutes }: { label: string; data: DataPoint[]; max: number; current: number; color: string; minutes: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);

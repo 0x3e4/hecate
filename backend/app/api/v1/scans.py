@@ -314,6 +314,32 @@ async def delete_target(
         raise HTTPException(status_code=404, detail="Scan target not found")
 
 
+@router.post("/targets/{target_id:path}/check", response_model=ScanTargetResponse)
+async def trigger_target_check(
+    target_id: str,
+    service: ScanService = Depends(get_scan_service),
+) -> ScanTargetResponse:
+    """Force an out-of-band ``/check`` probe and refresh diagnostics.
+
+    Powers the clickable verdict pill on the SCA Scans → Scanner tab —
+    runs the same code path as the auto-scan scheduler's per-target probe
+    (``ScanService.check_target_changed``), persists the new
+    ``last_check_*`` fields, and returns the refreshed target. **Does not
+    submit a scan** even when the verdict is ``changed``: this is a
+    diagnostics tool, not a scan trigger; the user can trigger a scan
+    separately via the Targets-tab card.
+    """
+    target = await service.get_target(target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Scan target not found")
+    target_type = target.get("type", "container_image")
+    await service.check_target_changed(target_id, target_type, target)
+    refreshed = await service.get_target(target_id)
+    if not refreshed:
+        raise HTTPException(status_code=404, detail="Scan target not found")
+    return _map_target(refreshed)
+
+
 # --- Scans ---
 
 
@@ -941,6 +967,12 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         running_scan_status=doc.get("running_scan_status"),
         auto_scan=doc.get("auto_scan", True),
         scanners=doc.get("scanners", []),
+        last_check_at=doc.get("last_check_at"),
+        last_check_verdict=doc.get("last_check_verdict"),
+        last_check_current_fingerprint=doc.get("last_check_current_fingerprint"),
+        last_check_error=doc.get("last_check_error"),
+        last_image_digest=doc.get("last_image_digest"),
+        last_commit_sha=doc.get("last_commit_sha"),
     )
 
 
