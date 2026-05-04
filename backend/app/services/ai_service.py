@@ -1466,7 +1466,13 @@ def _build_scan_prompts(
         "clarifying questions. Commit to your conclusions based on the findings provided.\n\n"
         "Ground every recommendation in the findings provided. Do not invent packages, versions, or "
         "CVEs that are not in the input. Be concise but specific — a fix recommendation must name the "
-        "package and the target version."
+        "package and the target version.\n\n"
+        "ID hygiene (strict): each finding's `id=` field is the only identifier you may use for it. "
+        "If `id=` starts with `secret:`, `sast:`, `compliance:`, or `malicious:`, the finding has no "
+        "CVE, GHSA, or advisory ID — refer to it by its `title` and never invent or look up an "
+        "advisory ID for it. If `id=` is a real identifier (`CVE-…`, `GHSA-…`, `MAL-…`, etc.) cite it "
+        "verbatim. Web search must not be used to assign an advisory ID to a finding that doesn't "
+        "already have one."
     )
 
     scan_meta = {
@@ -1493,10 +1499,26 @@ def _build_scan_prompts(
     )
     capped = sorted_findings[:50]
 
+    non_vuln_categories = {
+        "secret-finding": "secret",
+        "sast-finding": "sast",
+        "compliance-check": "compliance",
+        "malicious-indicator": "malicious",
+    }
+
     lines: list[str] = []
     for f in capped:
+        category = non_vuln_categories.get(str(f.get("package_type") or "").lower())
+        vuln_id = f.get("vulnerability_id")
+        if vuln_id:
+            id_value = vuln_id
+        elif category:
+            id_value = f"{category}:{f.get('title') or ''}"
+        else:
+            id_value = f.get("title")
         entry = {
-            "id": f.get("vulnerability_id") or f.get("title"),
+            "id": id_value,
+            "type": category or "vulnerability",
             "severity": f.get("severity"),
             "cvss": f.get("cvss_score"),
             "package": f.get("package_name"),
