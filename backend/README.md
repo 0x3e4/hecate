@@ -34,13 +34,13 @@ app/
 │   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
 │   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events
-│   └── tools/                   # 18 MCP-Tools (6 Module)
+│   └── tools/                   # 30 MCP-Tools (6 Module)
 │       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis
 │       ├── cpe.py               # search_cpe
 │       ├── assets.py            # search_vendors, search_products
 │       ├── stats.py             # get_vulnerability_stats
 │       ├── cwe_capec.py         # get_cwe, get_capec
-│       └── scans.py             # get_scan_findings, get_sca_scan, trigger_scan, trigger_sync, prepare_scan_ai_analysis, save_scan_ai_analysis
+│       └── scans.py             # get_scan_findings, get_scan_findings_by_scan, get_security_alerts, get_scan_sbom, get_sbom_components, get_sbom_facets, get_target_scan_history, compare_scans, get_layer_analysis, list_scan_targets, list_target_groups, list_scans, find_findings_by_cve, get_sca_scan, trigger_scan, trigger_sync, prepare_scan_ai_analysis, save_scan_ai_analysis
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
 │   └── logging_config.py    # structlog-Konfiguration

@@ -23,7 +23,7 @@ export const McpInfoPage = () => {
         </p>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <span style={{ ...badgeStyle, background: "rgba(255,212,59,0.1)", color: "#ffd43b", border: "1px solid rgba(255,212,59,0.2)" }}>
-            18 Tools
+            30 Tools
           </span>
           <span style={{ ...badgeStyle, background: "rgba(139,250,167,0.1)", color: "#8bfaa7", border: "1px solid rgba(139,250,167,0.2)" }}>
             OAuth 2.0 + PKCE
@@ -191,7 +191,19 @@ export const McpInfoPage = () => {
             <tr><td><code>get_vulnerability_stats</code></td><td>{t("Database statistics and severity distribution", "Datenbank-Statistiken und Schweregrad-Verteilung")}</td></tr>
             <tr><td><code>get_cwe</code></td><td>{t("CWE weakness details", "CWE-Schwachstellentyp-Details")}</td></tr>
             <tr><td><code>get_capec</code></td><td>{t("CAPEC attack pattern details", "CAPEC-Angriffsmuster-Details")}</td></tr>
-            <tr><td><code>get_scan_findings</code></td><td>{t("Query SCA scan findings", "SCA-Scan-Findings abfragen")}</td></tr>
+            <tr><td><code>get_scan_findings</code></td><td>{t("Query consolidated SCA findings across all targets (latest scan per target)", "Konsolidierte SCA-Findings über alle Targets abfragen (neuester Scan pro Target)")}</td></tr>
+            <tr><td><code>get_scan_findings_by_scan</code></td><td>{t("Findings of a single scan, optionally filtered by package_type (library, sast-finding, secret-finding, malicious-indicator, compliance-check)", "Findings eines einzelnen Scans, optional gefiltert nach package_type (library, sast-finding, secret-finding, malicious-indicator, compliance-check)")}</td></tr>
+            <tr><td><code>get_security_alerts</code></td><td>{t("Malicious-indicator findings (Hecate malware rules + MAL-* hits) — the Security Alerts tab data", "Malicious-Indicator-Findings (Hecate Malware-Regeln + MAL-*-Treffer) — die Daten des Security-Alerts-Tabs")}</td></tr>
+            <tr><td><code>get_scan_sbom</code></td><td>{t("SBOM components for a single scan (deduped by name+version)", "SBOM-Komponenten eines einzelnen Scans (dedupliziert nach Name+Version)")}</td></tr>
+            <tr><td><code>get_sbom_components</code></td><td>{t("Consolidated SBOM components across the latest scan of each target", "Konsolidierte SBOM-Komponenten über den neuesten Scan jedes Targets")}</td></tr>
+            <tr><td><code>get_sbom_facets</code></td><td>{t("Ecosystem / license / type facet counts across SBOMs", "Ökosystem-/Lizenz-/Typ-Facet-Zählungen über SBOMs")}</td></tr>
+            <tr><td><code>get_target_scan_history</code></td><td>{t("Historical completed scans for a target with severity summaries (timeline view)", "Historische abgeschlossene Scans für ein Target mit Severity-Summaries (Timeline-Ansicht)")}</td></tr>
+            <tr><td><code>compare_scans</code></td><td>{t("Diff two scans: added / removed / changed / unchanged findings", "Zwei Scans diffen: hinzugefügte / entfernte / geänderte / unveränderte Findings")}</td></tr>
+            <tr><td><code>get_layer_analysis</code></td><td>{t("Dive container-image layer analysis (per-layer command, size, digest)", "Dive Container-Image-Schichtanalyse (pro Layer Command, Size, Digest)")}</td></tr>
+            <tr><td><code>list_scan_targets</code></td><td>{t("List registered scan targets — used to discover target_ids for other tools", "Registrierte Scan-Targets auflisten — zum Auffinden von target_ids für andere Tools")}</td></tr>
+            <tr><td><code>list_target_groups</code></td><td>{t("List application groups with rolled-up severity totals", "Anwendungs-Gruppen mit aufsummierten Severity-Totals auflisten")}</td></tr>
+            <tr><td><code>list_scans</code></td><td>{t("List recent scans (newest first), optionally filtered by target or status", "Aktuelle Scans auflisten (neueste zuerst), optional gefiltert nach Target oder Status")}</td></tr>
+            <tr><td><code>find_findings_by_cve</code></td><td>{t("Find scan findings tied to a specific CVE/GHSA/OSV ID across all scans", "Scan-Findings zu einer bestimmten CVE/GHSA/OSV-ID über alle Scans finden")}</td></tr>
             <tr><td><code>trigger_scan</code></td><td>{t("Submit an SCA scan (write scope: source IP must be in MCP_WRITE_IP_SAFELIST)", "SCA-Scan starten (Schreib-Scope: Quell-IP muss in MCP_WRITE_IP_SAFELIST sein)")}</td></tr>
             <tr><td><code>trigger_sync</code></td><td>{t("Trigger data sync from upstream source (write scope: source IP must be in MCP_WRITE_IP_SAFELIST)", "Daten-Sync von Upstream-Quelle auslösen (Schreib-Scope: Quell-IP muss in MCP_WRITE_IP_SAFELIST sein)")}</td></tr>
             <tr><td><code>get_sca_scan</code></td><td>{t("Look up SCA scans by scan_id, target name, or group", "SCA-Scans per scan_id, Target-Name oder Gruppe abrufen")}</td></tr>

@@ -299,8 +299,8 @@ Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI se
 - `GET /mcp/oauth/authorize` — Leitet zum konfigurierten Upstream IdP weiter (GitHub / Microsoft / OIDC)
 - `GET /mcp/oauth/idp/callback` — IdP-Callback (interner Redirect-Endpunkt)
 - `POST /mcp/oauth/token` — Token-Austausch mit PKCE (S256)
-- **18 Tools** (Server-Name: `hecate`):
-  - Read-Only: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_sca_scan`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`
+- **30 Tools** (Server-Name: `hecate`):
+  - Read-Only: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`, `list_target_groups`, `list_scans`, `find_findings_by_cve`, `get_sca_scan`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`
   - Write (Quell-IP bei Authorize in `MCP_WRITE_IP_SAFELIST`): `trigger_scan`, `trigger_sync`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`
   - AI-Analyse über MCP erfolgt als **Prepare/Save-Paare** — die `prepare_*`-Tools liefern Hecates vordefinierte Prompts + Kontext, der aufrufende Assistent (Claude Desktop, Cursor, Codex) erzeugt die Analyse mit seinem eigenen Modell und speichert sie über das passende `save_*`-Tool. Die in `AI_API` konfigurierten Provider-Keys werden nur von den Web-UI-Flows genutzt.
 
