@@ -59,25 +59,3 @@ class CheckResponse(BaseModel):
     current_commit_sha: str | None = None
 
 
-class MalwareFeedEntry(BaseModel):
-    """One merged entry from the static + dynamic malware feed."""
-
-    source: str  # "static" | "dynamic"
-    ecosystem: str
-    name: str
-    versions: list[str] = Field(default_factory=list)
-    all_versions: bool = Field(
-        default=False, alias="allVersions", serialization_alias="allVersions"
-    )
-    description: str = ""
-    origin: str | None = None  # e.g. "LiteLLM v1.82.7"
-    static_index: int | None = Field(
-        default=None, alias="staticIndex", serialization_alias="staticIndex"
-    )
-
-    model_config = {"populate_by_name": True}
-
-
-class MalwareFeedResponse(BaseModel):
-    total: int
-    entries: list[MalwareFeedEntry]

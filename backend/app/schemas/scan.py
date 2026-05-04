@@ -123,6 +123,28 @@ class ScanTargetResponse(BaseModel):
         default=True, alias="autoScan", serialization_alias="autoScan"
     )
     scanners: list[str] = Field(default_factory=list)
+    # Last auto-scan /check probe — surfaces in the Scanner tab's
+    # diagnostics table so users can debug why a target isn't auto-scanning.
+    last_check_at: UtcDatetime | None = Field(
+        default=None, alias="lastCheckAt", serialization_alias="lastCheckAt"
+    )
+    last_check_verdict: str | None = Field(
+        default=None, alias="lastCheckVerdict", serialization_alias="lastCheckVerdict"
+    )
+    last_check_current_fingerprint: str | None = Field(
+        default=None,
+        alias="lastCheckCurrentFingerprint",
+        serialization_alias="lastCheckCurrentFingerprint",
+    )
+    last_check_error: str | None = Field(
+        default=None, alias="lastCheckError", serialization_alias="lastCheckError"
+    )
+    last_image_digest: str | None = Field(
+        default=None, alias="lastImageDigest", serialization_alias="lastImageDigest"
+    )
+    last_commit_sha: str | None = Field(
+        default=None, alias="lastCommitSha", serialization_alias="lastCommitSha"
+    )
 
     model_config = {"populate_by_name": True}
 

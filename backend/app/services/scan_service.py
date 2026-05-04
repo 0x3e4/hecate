@@ -1219,20 +1219,36 @@ class ScanService:
         return await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
 
     async def get_badge_counts(self) -> dict[str, int]:
-        """Return lightweight counts for tab badges (findings, SBOM, licenses, alerts)."""
+        """Return lightweight counts for tab badges (findings, SBOM, licenses, alerts).
+
+        The licenses badge counts SPDX **atoms**, not raw license strings —
+        a component declared as ``"MIT OR Apache-2.0"`` contributes two
+        atoms to the badge so the number matches the row count on the
+        Licenses tab (which does the same split via
+        ``LicenseComplianceService.get_license_overview`` →
+        ``split_spdx_expression``). Without this split, compound
+        expressions inflated the badge — observed mismatch was
+        524 (raw) vs 495 (atom) on production data.
+        """
+        from app.services.license_compliance_service import split_spdx_expression
+
         scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
         if not scan_ids:
             return {"findings": 0, "sbom": 0, "licenses": 0, "alerts": 0}
-        findings_count, sbom_count, license_count, alerts_count = await asyncio.gather(
+        findings_count, sbom_count, raw_licenses, alerts_count = await asyncio.gather(
             self.finding_repo.count_consolidated(scan_ids),
             self.sbom_repo.count_consolidated(scan_ids),
-            self.sbom_repo.count_distinct_licenses(scan_ids),
+            self.sbom_repo.list_distinct_raw_licenses(scan_ids),
             self.finding_repo.count_alerts_consolidated(scan_ids),
         )
+        license_atoms: set[str] = set()
+        for expr in raw_licenses:
+            for atom in split_spdx_expression(expr):
+                license_atoms.add(atom)
         return {
             "findings": findings_count,
             "sbom": sbom_count,
-            "licenses": license_count,
+            "licenses": len(license_atoms),
             "alerts": alerts_count,
         }
 
@@ -1618,9 +1634,14 @@ class ScanService:
         scanned is wasteful, and a transient /check failure is no evidence
         of change. Only fail-open (return True) when we have neither a
         current nor a previous fingerprint to compare against.
+
+        Side-effect: persists the result on the target via
+        ``ScanTargetRepository.update_last_check`` so the SCA Scans →
+        Scanner tab can show a per-target diagnostics table.
         """
         data: dict[str, Any] = {}
         check_failed = False
+        check_error: str | None = None
         try:
             url = f"{settings.sca_scanner_url}/check"
             async with httpx.AsyncClient(timeout=60) as client:
@@ -1629,8 +1650,8 @@ class ScanService:
                 data = resp.json()
         except Exception as exc:
             check_failed = True
-            error_msg = str(exc) or type(exc).__name__
-            log.warning("scan_service.change_check_failed", target=target, error=error_msg)
+            check_error = str(exc) or type(exc).__name__
+            log.warning("scan_service.change_check_failed", target=target, error=check_error)
 
         # Extract current and previous fingerprints
         if target_type == "container_image":
@@ -1642,9 +1663,12 @@ class ScanService:
         else:
             return True
 
+        verdict: str
+        result: bool
         # Happy path: both fingerprints available — compare directly
         if current and previous:
-            changed = current != previous
+            result = current != previous
+            verdict = "changed" if result else "unchanged"
             # Log the comparison at INFO so operators can verify the scanner is
             # returning a sensible current fingerprint. Without this, a bug where
             # ls-remote returns a stale SHA would silently skip every run.
@@ -1654,29 +1678,46 @@ class ScanService:
                 target_type=target_type,
                 current=current,
                 previous=previous,
-                changed=changed,
+                changed=result,
             )
-            return changed
-
         # Valid current fingerprint but no previous → first scan needed
-        if current and not previous:
-            return True
-
-        # /check failed or returned None for current fingerprint.
-        # If we have a stored fingerprint from a previous scan, treat as
-        # unchanged: we have no signal that anything changed, and rescanning
-        # the same SHA is wasteful. The user can always trigger a manual scan.
-        if previous:
+        elif current and not previous:
+            verdict = "first_scan"
+            result = True
+        # /check failed or returned None; previous fingerprint exists → skip
+        elif previous:
+            verdict = "check_failed_skipped"
+            result = False
             log.info(
                 "scan_service.change_check_fallback_unchanged",
                 target=target,
                 reason="check_failed_using_previous_fingerprint" if check_failed else "no_current_fingerprint",
             )
-            return False
-
         # No previous fingerprint at all → fail-open so the first scan can run
-        log.info("scan_service.change_check_fallback_changed", target=target, reason="no_previous_fingerprint")
-        return True
+        else:
+            verdict = "check_failed_scanned"
+            result = True
+            log.info(
+                "scan_service.change_check_fallback_changed",
+                target=target,
+                reason="no_previous_fingerprint",
+            )
+
+        try:
+            await self.target_repo.update_last_check(
+                target,
+                verdict=verdict,
+                current_fingerprint=current if isinstance(current, str) and current else None,
+                error=check_error,
+            )
+        except Exception as exc:  # noqa: BLE001 — diagnostics persist must never break the scheduler
+            log.warning(
+                "scan_service.update_last_check_failed",
+                target=target,
+                error=str(exc),
+            )
+
+        return result
 
     # --- Private helpers ---
 

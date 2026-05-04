@@ -513,6 +513,19 @@ export interface ScanTarget {
   runningScanStatus?: string | null;
   autoScan?: boolean;
   scanners?: string[];
+  // Last auto-scan /check probe (powers the Scanner-tab diagnostics table).
+  lastCheckAt?: string | null;
+  lastCheckVerdict?:
+    | "changed"
+    | "unchanged"
+    | "first_scan"
+    | "check_failed_skipped"
+    | "check_failed_scanned"
+    | null;
+  lastCheckCurrentFingerprint?: string | null;
+  lastCheckError?: string | null;
+  lastImageDigest?: string | null;
+  lastCommitSha?: string | null;
 }
 
 export interface ScanTargetListResponse {
@@ -934,7 +947,7 @@ export interface LicenseOverviewResponse {
 }
 
 export interface MalwareFeedEntry {
-  source: "static" | "dynamic";
+  source: "dynamic";
   ecosystem: string;
   name: string;
   versions: string[];
@@ -956,6 +969,5 @@ export interface MalwareFeedResponse {
   malTotal: number;
   offset: number;
   limit: number;
-  scannerAvailable: boolean;
   entries: MalwareFeedEntry[];
 }

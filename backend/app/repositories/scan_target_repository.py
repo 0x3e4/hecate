@@ -209,6 +209,40 @@ class ScanTargetRepository:
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_fingerprint_failed", target_id=target_id, error=str(exc))
 
+    async def update_last_check(
+        self,
+        target_id: str,
+        *,
+        verdict: str,
+        current_fingerprint: str | None,
+        error: str | None,
+    ) -> None:
+        """Persist the most recent /check probe result on the target doc.
+
+        Powers the auto-scan diagnostics table on the SCA Scans → Scanner
+        tab so users can see when a target was last probed, what fingerprint
+        the scanner returned, and why the scheduler decided to scan or skip.
+        Always called from ``ScanService.check_target_changed`` regardless
+        of verdict — including on /check failure — so the UI never goes blind.
+        """
+        try:
+            await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {
+                    "last_check_at": datetime.now(tz=UTC),
+                    "last_check_verdict": verdict,
+                    "last_check_current_fingerprint": current_fingerprint,
+                    "last_check_error": error,
+                    "updated_at": datetime.now(tz=UTC),
+                }},
+            )
+        except PyMongoError as exc:
+            log.warning(
+                "scan_target_repository.update_last_check_failed",
+                target_id=target_id,
+                error=str(exc),
+            )
+
     async def update_scan_state(
         self,
         target_id: str,

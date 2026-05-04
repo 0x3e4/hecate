@@ -104,12 +104,6 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
 
 Leichtgewichtiger Fingerprint-Check — holt das aktuelle Image-Digest (`skopeo inspect` / `docker inspect`) oder den HEAD-Commit-SHA (`git ls-remote`) ohne einen Scan durchzuführen. Wird vom Backend-Auto-Scan verwendet, um unveränderte Targets zu überspringen. `ls-remote` und `git clone` fallen automatisch auf einen anonymen Retry zurück, wenn `SCANNER_AUTH` für den Host injected wurde und die Credentials abgelehnt werden (ein stale Token für private Repos soll öffentliche Repos am selben Host nicht blockieren).
 
-### `GET /malware-feed`
-
-Gibt die merged statische + dynamische HEC-090-Liste als JSON zurück. Das Backend health-probed diesen Endpoint, um den `scannerAvailable`-Flag auf der `/v1/malware/malware-feed`-UI-Antwort zu setzen — die Einträge selbst werden seit dem Refactor nicht mehr in die UI gemerged (sie wiederholten sich auf jeder paginierten Seite und waren grossteils Duplikate der MAL-aliased Records aus der OSV-Ingestion). Der Endpoint bleibt aber für In-Scan-HEC-090-Detection und potenzielle künftige Threat-Intel-Konsumenten erhalten.
-
-**Response-Shape:** `{ total: int, entries: [MalwareFeedEntry] }`, wobei jedes `entry` die Felder `source` (`"static"` | `"dynamic"`), `ecosystem`, `name`, `versions[]`, `allVersions`, `description`, `origin`, `staticIndex` trägt. Serialisierung via `serialize_malware_feed()` in [`malware_detector/known_compromised.py`](app/malware_detector/known_compromised.py).
-
 ### `GET /stats`
 
 Cgroup-v1/v2 aware Memory- und tmpfs-Disk-Usage sowie Anzahl aktiver Scans. Wird vom Backend beim Ressourcen-Gating vor dem Scan-Start aufgerufen.
@@ -188,8 +182,7 @@ The malware detector implements 35 detection rules across 14 categories, informe
 | HEC-080 | Sandbox evasion with suspicious payload | high | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (CI env check + credential theft) |
 | HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (sys.platform + subprocess per OS) |
 | HEC-082 | Media file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
-| HEC-090 | Known compromised package version | critical | `known_compromised` | Blocklist: [LiteLLM 1.82.7/1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/), [nx + 7 @nx/* packages — 8 exact nx versions](https://github.com/nrwl/nx/security/advisories/GHSA-cxm3-wv7p-598c), [telnyx 4.87.1/4.87.2](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026), [axios 1.14.1/0.30.4](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan), [Shai-Hulud @ctrl/tinycolor + 37 packages](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/), [TeamPCP: trivy-action, setup-trivy, kics-github-action, ast-github-action](https://www.wiz.io/blog/tracking-teampcp-investigating-post-compromise-attacks-seen-in-the-wild), [prt-scan: @codfish/eslint-config, @codfish/actions](https://www.wiz.io/blog/six-accounts-one-actor-inside-the-prt-scan-supply-chain-campaign), [CanisterSprawl: @automagik/genie, pgserve, @fairwords/websocket, @fairwords/loopback-connector-es, @openwebconcept/design-tokens, @openwebconcept/theme-owc](https://socket.dev/blog/namastex-npm-packages-compromised-canisterworm), [@bitwarden/cli 2026.4.0](https://socket.dev/blog/bitwarden-cli-compromised) |
-| HEC-091 | Known malicious file hash | critical | `known_compromised` | SHA-256 hash matching for known malicious payload files (zero false positive detection) |
+| HEC-090 | Known malicious file hash | critical | `known_compromised` | SHA-256 hash matching for known malicious payload files (zero false positive detection). Renamed from HEC-091; the previous HEC-090 (static blocklist of compromised package versions) was removed because `osv-scanner` covers MAL-* findings dynamically against OSV's live feed and made the hard-coded snapshot redundant. |
 
 #### Kategorien-Zusammenfassung
 
@@ -208,7 +201,7 @@ The malware detector implements 35 detection rules across 14 categories, informe
 | `worm` | HEC-075–076 | Selbstverbreitung, destruktive Payloads |
 | `ai_abuse` | HEC-078 | KI-Tool-Missbrauch (Bypass-Flags) |
 | `sandbox_evasion` | HEC-079–080 | Bedingte Ausführung basierend auf Umgebungserkennung |
-| `known_compromised` | HEC-090–091 | Blocklist bekannter kompromittierter Paketversionen und GitHub Actions (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP, prt-scan, CanisterSprawl, Bitwarden) + SHA-256 Hash-Matching maliciöser Payload-Dateien |
+| `known_compromised` | HEC-090 | SHA-256 Hash-Matching maliciöser Payload-Dateien |
 
 #### Kombinations-Scoring
 
@@ -301,8 +294,7 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 | `unicode_obfuscation.py` | Unsichtbare Unicode-Payload-Erkennung (mit Cyrillic-Locale-Awareness) |
 | `worm_detection.py` | Selbstverbreitung, destruktive Payloads, KI-Tool-Missbrauch |
 | `sandbox_evasion.py` | Bedingte Sandbox-Erkennung |
-| `known_compromised.py` | Liste kompromittierter Paketversionen (LiteLLM, Nx, Telnyx, Axios, Shai-Hulud, TeamPCP, prt-scan, CanisterSprawl, Bitwarden). Statische `_BLOCKLIST` + runtime-refreshed `_DYNAMIC_BLOCKLIST` (via `update_dynamic_known_compromised()` aus der Backend-`/known-compromised`-API; aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Feeds); `serialize_malware_feed()` gibt die merged JSON-Form für den `/malware-feed`-Endpoint aus. |
-| `hash_matching.py` | SHA-256 Hash-Matching bekannter maliciöser Payload-Dateien |
+| `hash_matching.py` | SHA-256 Hash-Matching bekannter maliciöser Payload-Dateien (HEC-090). Vorgänger: HEC-091 (umbenannt). Die frühere statische Paketversions-Blocklist wurde entfernt — `osv-scanner` deckt MAL-* dynamisch ab. |
 | `sarif_formatter.py` | SARIF 2.1.0 Output-Formatter für GitHub/GitLab Code Scanning Integration (Severity: critical/high->error, medium->warning, low->note) |
 | `popular_packages.py` | Top-200 npm/PyPI-Pakete (Referenzlisten) |
 | `utils.py` | Shared Utilities (Package-Name-Auflösung aus Manifests/.git/config) |
@@ -333,10 +325,6 @@ Nach der SBOM-Extraktion prüft der Hecate Analyzer optional die Provenance (Her
 
 - **Source-Repos**: Git-Commit-SHA wird aus dem geklonten Repository extrahiert
 - **Container-Images**: Image-Digest via `docker inspect` oder `skopeo inspect`
-
-### Dynamischer Known-Compromised-Refresh
-
-`scanner/app/malware_intel_refresh.py` pollt beim Startup und danach alle 30 min (`MALWARE_INTEL_REFRESH_SECONDS`, default 1800) den Backend-Endpoint `GET /api/v1/malware/known-compromised`. Das Ergebnis wird via `update_dynamic_known_compromised()` in `_DYNAMIC_BLOCKLIST` gespiegelt. Fail-open: Network-/HTTP-/JSON-Fehler lassen die statische Liste unangetastet — der Scanner verweigert nie einen Scan wegen einer unerreichbaren Intel-Quelle. Backend-URL via `HECATE_BACKEND_URL` / `BACKEND_URL` (default `http://backend:8000`).
 
 ## Sandbox-Hardening
 

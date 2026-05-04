@@ -19,12 +19,12 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets inkl. Group-Filter, Target-Gruppen-Roll-up, History mit since-Filter, Findings inkl. ?includeDismissed, SBOM, SBOM-Export, SBOM-Import, Compare, VEX inkl. bulk-update-by-ids/import, Findings-Dismiss, License-Compliance)
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets inkl. Group-Filter + manueller /check-Trigger für Auto-Scan-Diagnose, Target-Gruppen-Roll-up, History mit since-Filter, Findings inkl. ?includeDismissed, SBOM, SBOM-Export, SBOM-Import, Compare, VEX inkl. bulk-update-by-ids/import, Findings-Dismiss, License-Compliance)
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
 │   ├── inventory.py         # Environment-Inventory (CRUD + /affected-vulnerabilities)
-│   ├── malware.py           # Malware-Intel (GET /known-compromised für Scanner-Refresh, GET /malware-feed für Frontend-Overview)
+│   ├── malware.py           # Malware-Intel (GET /malware-feed für Frontend-Overview)
 │   ├── config.py            # Public Runtime-Config (Feature-Flags aus Backend-Settings für das Frontend)
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
@@ -157,7 +157,7 @@ app/
 | `ingestion_state` | — | Sync-Job-Status (Running/Completed/Failed) |
 | `ingestion_logs` | — | Detaillierte Job-Logs mit Metadaten |
 | `saved_searches` | — | Gespeicherte Suchanfragen |
-| `scan_targets` | `ScanTargetDocument` | Scan-Ziele (Container-Images, Source-Repos) |
+| `scan_targets` | `ScanTargetDocument` | Scan-Ziele (Container-Images, Source-Repos). Trägt zusätzlich `last_check_at` / `last_check_verdict` / `last_check_current_fingerprint` / `last_check_error` für die Auto-Scan-Diagnose im Scanner-Tab — gesetzt von jedem `ScanService.check_target_changed`-Aufruf (Scheduler oder manueller `POST /v1/scans/targets/{id}/check`-Trigger), nie scan-blockierend bei Fehler. |
 | `scans` | `ScanDocument` | Scan-Durchläufe mit Status und Zusammenfassung |
 | `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
 | `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans (exportierbar als CycloneDX 1.5 / SPDX 2.3) |
@@ -167,7 +167,7 @@ app/
 | `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
 | `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
 | `environment_inventory` | `InventoryItemDocument` | Benutzerdeklariertes Produkt/Version-Inventory (Deployment, Environment, Instance-Count) |
-| `malware_intel` | `MalwareIntelDocument` | Dynamische Malware-Intel-Einträge; Upsert-Key `(source, ecosystem, package_name, version)`; speist die Scanner-Sidecar-Erweiterung der HEC-090-Liste und wird im `/v1/malware/malware-feed`-UI gemerged (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
+| `malware_intel` | `MalwareIntelDocument` | Dynamische Malware-Intel-Einträge; Upsert-Key `(source, ecosystem, package_name, version)`; wird im `/v1/malware/malware-feed`-UI gemerged (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
 
 ### OpenSearch Index (`hecate-vulnerabilities`)
 
