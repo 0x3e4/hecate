@@ -29,8 +29,8 @@ app/
 │   └── status.py            # Health Check
 ├── mcp/                         # MCP Server (Model Context Protocol)
 │   ├── server.py                # ASGI Sub-App Factory (FastMCP)
-│   ├── auth.py                  # Pfad-bewusste MCPAuthMiddleware (nur /mcp + /mcp/*), OAuth-Token-Validierung, Scope-basierte Write-Gatung
-│   ├── oauth.py                 # OAuth 2.0 AS-Endpoints (Metadata inkl. RFC 9728 Path-Suffix, DCR, Authorize, IdP-Callback, Token mit PKCE); get_dcr_client_name() für MCP-Attribution
+│   ├── auth.py                  # Pfad-bewusste MCPAuthMiddleware (nur /mcp + /mcp/*), OAuth-Token-Validierung, Scope-basierte Write-Gatung; honoriert MCP_PUBLIC_URL für die WWW-Authenticate-Resource-Hint und MCP_AUTH_DISABLED als Dev-Bypass (synthetische local-dev-Identität mit mcp:read mcp:write)
+│   ├── oauth.py                 # OAuth 2.0 AS-Endpoints (Metadata inkl. RFC 9728 Path-Suffix, DCR, Authorize, IdP-Callback, Token mit PKCE); get_dcr_client_name() für MCP-Attribution; _base_url() pinnt MCP_PUBLIC_URL wenn gesetzt
 │   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
 │   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events

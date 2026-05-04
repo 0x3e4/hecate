@@ -47,16 +47,50 @@ class MCPAuthMiddleware:
 
         headers_list = scope.get("headers", [])
         headers = dict(headers_list)
-        proto = "https"
-        host = ""
-        for k, v in headers_list:
-            if k == b"x-forwarded-proto":
-                proto = v.decode()
-            elif k == b"x-forwarded-host":
-                host = v.decode()
-        if not host:
-            host = headers.get(b"host", b"localhost").decode()
-        resource_metadata_url = f"{proto}://{host}/.well-known/oauth-protected-resource/mcp"
+        if settings.mcp_public_url:
+            base = settings.mcp_public_url.rstrip("/")
+        else:
+            proto = "https"
+            host = ""
+            for k, v in headers_list:
+                if k == b"x-forwarded-proto":
+                    proto = v.decode()
+                elif k == b"x-forwarded-host":
+                    host = v.decode()
+            if not host:
+                host = headers.get(b"host", b"localhost").decode()
+            base = f"{proto}://{host}"
+        resource_metadata_url = f"{base}/.well-known/oauth-protected-resource/mcp"
+
+        if settings.mcp_auth_disabled:
+            log.warning(
+                "mcp.auth_disabled_request_allowed",
+                path=path,
+                client_ip=self._get_client_ip(scope, headers_list),
+            )
+            if self._semaphore.locked():
+                await self._send_error(send, 503, "Too many concurrent connections")
+                return
+            async with self._semaphore:
+                client_ip = self._get_client_ip(scope, headers_list) or ""
+                tokens = [
+                    mcp_client_id.set("local-dev"),
+                    mcp_client_ip.set(client_ip),
+                    mcp_token_scope.set("mcp:read mcp:write"),
+                    mcp_token_email.set(""),
+                    mcp_token_issued_ip.set(client_ip),
+                    mcp_dcr_client_id.set("local-dev"),
+                ]
+                try:
+                    await self._app(scope, receive, send)
+                finally:
+                    mcp_dcr_client_id.reset(tokens[5])
+                    mcp_token_issued_ip.reset(tokens[4])
+                    mcp_token_email.reset(tokens[3])
+                    mcp_token_scope.reset(tokens[2])
+                    mcp_client_ip.reset(tokens[1])
+                    mcp_client_id.reset(tokens[0])
+            return
 
         auth_header = headers.get(b"authorization", b"").decode()
 
