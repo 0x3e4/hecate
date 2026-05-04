@@ -141,6 +141,62 @@ export const McpInfoPage = () => {
         </p>
       </section>
 
+      {/* Local: Claude Code CLI without OAuth */}
+      <section className="card" style={{ borderLeft: "3px solid #ffd43b" }}>
+        <h2>{t("Local setup: Claude Code CLI (no OAuth)", "Lokales Setup: Claude Code CLI (ohne OAuth)")}</h2>
+        <p className="muted">
+          {t(
+            "For a single-user local Hecate (no public exposure), you can skip the IdP entirely. Hecate ships with a dev-mode bypass that stamps every request with a synthetic ",
+            "Für eine lokale Single-User-Hecate-Instanz (nicht öffentlich erreichbar) kann der IdP komplett übersprungen werden. Hecate hat einen Dev-Mode-Bypass, der jeden Request mit einer synthetischen "
+          )}
+          <code>local-dev</code>
+          {t(
+            " identity carrying both mcp:read and mcp:write scopes. Every bypassed request still shows up in the audit log as a WARNING.",
+            "-Identität mit beiden Scopes (mcp:read + mcp:write) versieht. Jeder bypasste Request erscheint weiterhin im Audit-Log als WARNING."
+          )}
+        </p>
+
+        <h3 style={{ marginTop: "1rem", fontSize: "1rem" }}>{t("1. Enable dev mode on the backend", "1. Dev-Mode im Backend aktivieren")}</h3>
+        <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
+          {t("In your ", "In ")}<code>.env</code>{t(" (or compose env block), set:", " (oder im Compose-Env-Block):")}
+        </p>
+        <pre style={{ marginTop: "0.5rem" }}><code>{`MCP_ENABLED=true
+MCP_AUTH_DISABLED=true`}</code></pre>
+        <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+          {t(
+            "Restart the backend container. With MCP_AUTH_DISABLED=true, the OAuth env vars (MCP_OAUTH_PROVIDER / CLIENT_ID / CLIENT_SECRET) are not required.",
+            "Backend-Container neu starten. Mit MCP_AUTH_DISABLED=true sind die OAuth-Env-Variablen (MCP_OAUTH_PROVIDER / CLIENT_ID / CLIENT_SECRET) nicht erforderlich."
+          )}
+        </p>
+
+        <h3 style={{ marginTop: "1.25rem", fontSize: "1rem" }}>{t("2. Register the server with Claude Code", "2. Server in Claude Code registrieren")}</h3>
+        <pre style={{ marginTop: "0.5rem" }}><code>{`claude mcp add --transport http hecate ${mcpUrl}`}</code></pre>
+        <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+          {t(
+            "Default scope is local (this project only). Use --scope user to make Hecate available across every project, or --scope project to commit a shared .mcp.json.",
+            "Standard-Scope ist local (nur dieses Projekt). Mit --scope user wird Hecate in allen Projekten verfügbar; --scope project schreibt eine geteilte .mcp.json ins Repo."
+          )}
+        </p>
+
+        <h3 style={{ marginTop: "1.25rem", fontSize: "1rem" }}>{t("3. Verify", "3. Überprüfen")}</h3>
+        <pre style={{ marginTop: "0.5rem" }}><code>{`claude mcp list
+claude mcp get hecate`}</code></pre>
+        <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+          {t("Inside a Claude Code session, the slash command ", "Innerhalb einer Claude-Code-Sitzung zeigt der Slash-Befehl ")}
+          <code>/mcp</code>
+          {t(" shows live connection status and the list of registered tools.", " den Verbindungsstatus und die registrierten Tools live an.")}
+        </p>
+
+        <h3 style={{ marginTop: "1.25rem", fontSize: "1rem", color: "#ffd43b" }}>
+          {t("⚠ Security notes", "⚠ Sicherheitshinweise")}
+        </h3>
+        <ul style={{ paddingLeft: "1.5rem", lineHeight: 1.7, fontSize: "0.9rem" }}>
+          <li>{t("Never enable MCP_AUTH_DISABLED on a publicly reachable instance — every caller gets full read+write access.", "MCP_AUTH_DISABLED niemals auf einer öffentlich erreichbaren Instanz aktivieren — jeder Aufrufer erhält Voll-Zugriff (Read+Write).")}</li>
+          <li>{t("Bind the backend to localhost (or a private network) when running in this mode. There is no IP gate built into the bypass.", "Backend in diesem Modus an localhost (oder ein privates Netz) binden. Der Bypass selbst hat kein IP-Gate.")}</li>
+          <li>{t("Tool invocations are still recorded with identity ", "Tool-Aufrufe werden weiterhin mit Identität ")}<code>local-dev</code>{t(" in the audit log so you can see which tools were exercised.", " im Audit-Log protokolliert, sodass nachvollziehbar bleibt, welche Tools aufgerufen wurden.")}</li>
+        </ul>
+      </section>
+
       {/* AI analysis via your assistant */}
       <section className="card">
         <h2>{t("AI analysis via your assistant", "KI-Analyse über deinen Assistenten")}</h2>
@@ -237,6 +293,15 @@ export const McpInfoPage = () => {
             { en: "Search for log4j vulnerabilities with CRITICAL severity", de: "Suche nach log4j Schwachstellen mit Schweregrad CRITICAL" },
             { en: "Show me the latest SCA scan for target hecate-backend", de: "Zeig mir den neuesten SCA-Scan für das Target hecate-backend" },
             { en: "Summarize all scans in the group 'production'", de: "Fasse alle Scans der Gruppe 'production' zusammen" },
+            { en: "List my registered scan targets and their auto-scan status", de: "Liste meine registrierten Scan-Targets samt Auto-Scan-Status auf" },
+            { en: "Show me the scan history of target hecate-frontend over the last 30 days", de: "Zeige die Scan-History von Target hecate-frontend für die letzten 30 Tage" },
+            { en: "Compare the two latest scans of target hecate-backend and highlight regressions", de: "Vergleiche die zwei neuesten Scans von Target hecate-backend und zeige Regressionen" },
+            { en: "What malicious-package alerts came up across all my scans this week?", de: "Welche Malicious-Package-Alerts gab es diese Woche über alle Scans?" },
+            { en: "List all SBOM components of scan abc123 that ship under GPL-3.0", de: "Liste alle SBOM-Komponenten von Scan abc123 auf, die unter GPL-3.0 stehen" },
+            { en: "Show the ecosystem and license breakdown across all my latest scans", de: "Zeige Ökosystem- und Lizenz-Verteilung über alle neuesten Scans" },
+            { en: "Which of my scanned images are affected by CVE-2024-1234?", de: "Welche meiner gescannten Images sind von CVE-2024-1234 betroffen?" },
+            { en: "Show me the layer breakdown of my latest container image scan", de: "Zeig mir den Layer-Aufbau meines neuesten Container-Image-Scans" },
+            { en: "List the SAST findings of scan abc123 (semgrep results only)", de: "Liste die SAST-Findings von Scan abc123 (nur Semgrep-Ergebnisse)" },
             { en: "Analyze CVE-2024-1234 with your own reasoning and save the result to Hecate", de: "Analysiere CVE-2024-1234 mit deinem eigenen Reasoning und speichere das Ergebnis in Hecate" },
             { en: "Triage the latest scan of target frontend and write the summary back to the scan", de: "Mache eine Triage des neuesten Scans von Target frontend und schreibe die Zusammenfassung zurück an den Scan" },
           ].map((prompt, i) => (
@@ -270,6 +335,8 @@ export const McpInfoPage = () => {
             <tr><td><code>MCP_RATE_LIMIT_PER_MINUTE</code></td><td><code>60</code></td><td>{t("Max requests per minute per client", "Max. Anfragen pro Minute pro Client")}</td></tr>
             <tr><td><code>MCP_MAX_RESULTS</code></td><td><code>50</code></td><td>{t("Max results per query", "Max. Ergebnisse pro Abfrage")}</td></tr>
             <tr><td><code>MCP_MAX_CONCURRENT_CONNECTIONS</code></td><td><code>20</code></td><td>{t("Max concurrent connections", "Max. gleichzeitige Verbindungen")}</td></tr>
+            <tr><td><code>MCP_PUBLIC_URL</code></td><td>—</td><td>{t("Pin the base URL advertised in OAuth metadata (resource/issuer/endpoints) and in the 401 WWW-Authenticate hint. Set this when the reverse proxy doesn't reliably forward Host / X-Forwarded-Host or when multiple hostnames point to the same backend. Example: ", "Pinnt die Basis-URL, die in OAuth-Metadaten (resource/issuer/endpoints) und im 401-WWW-Authenticate-Hint angegeben wird. Setzen, wenn der Reverse-Proxy Host / X-Forwarded-Host nicht zuverlässig weitergibt oder mehrere Hostnames auf dasselbe Backend zeigen. Beispiel: ")}<code>https://sec.example.org</code></td></tr>
+            <tr><td><code>MCP_AUTH_DISABLED</code></td><td><code>false</code></td><td>{t("DEV ONLY: bypass OAuth completely and stamp every request with a synthetic local-dev identity carrying mcp:read + mcp:write. Logs every bypassed request as WARNING. Never enable on a publicly reachable instance.", "NUR DEV: bypasst OAuth komplett und versieht jeden Request mit einer synthetischen local-dev-Identität (mcp:read + mcp:write). Loggt jeden bypassten Request als WARNING. Niemals auf einer öffentlich erreichbaren Instanz aktivieren.")}</td></tr>
           </tbody>
         </table>
       </section>
