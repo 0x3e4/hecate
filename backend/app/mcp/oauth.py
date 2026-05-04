@@ -60,6 +60,8 @@ class TokenInfo:
 
 
 def _base_url(request: Request) -> str:
+    if settings.mcp_public_url:
+        return settings.mcp_public_url.rstrip("/")
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("x-forwarded-host") or request.headers.get("host", request.url.netloc)
     return f"{proto}://{host}"

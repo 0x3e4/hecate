@@ -217,6 +217,8 @@ class Settings(BaseSettings):
     mcp_rate_limit_per_minute: int = 60
     mcp_max_results: int = 50
     mcp_max_concurrent_connections: int = 20
+    mcp_public_url: str = ""  # e.g. "https://sec.is.ankoe.loc" — pins OAuth issuer/resource URL
+    mcp_auth_disabled: bool = False  # DEV ONLY: bypass OAuth, grant synthetic mcp:read mcp:write token
 
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"
