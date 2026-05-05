@@ -11,6 +11,8 @@ import { stripAiSummaryFooter } from "../utils/aiSummary";
 import { fetchScanLicenseCompliance, fetchLicensePolicies } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
+import { useServerConfig } from "../server-config/context";
+import { ScanFindingAttackPath } from "../components/ScanFindingAttackPath";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -306,6 +308,7 @@ const SBOM_PAGE_SIZE = 500;
 export const ScanDetailPage = () => {
   const { scanId } = useParams<{ scanId: string }>();
   const { t } = useI18n();
+  const { aiEnabled } = useServerConfig();
   const [scan, setScan] = useState<Scan | null>(null);
   const [findings, setFindings] = useState<ScanFinding[]>([]);
   const [findingsTotal, setFindingsTotal] = useState(0);
@@ -349,6 +352,7 @@ export const ScanDetailPage = () => {
   // VEX editing (single, expandable row)
   const [vexEditingId, setVexEditingId] = useState<string | null>(null);
   const [detailExpandedId, setDetailExpandedId] = useState<string | null>(null);
+  const [attackPathExpandedId, setAttackPathExpandedId] = useState<string | null>(null);
   const [vexEditStatus, setVexEditStatus] = useState("");
   const [vexEditJustification, setVexEditJustification] = useState("");
   const [vexEditDetail, setVexEditDetail] = useState("");
@@ -1472,6 +1476,43 @@ export const ScanDetailPage = () => {
                                   </>
                                 )}
                               </div>
+                              {f.vulnerabilityId && (
+                                <div style={{ marginTop: "0.5rem" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setAttackPathExpandedId(prev => prev === f.key ? null : f.key)
+                                    }
+                                    style={{
+                                      background: "rgba(151,117,250,0.12)",
+                                      color: "#c8b3ff",
+                                      border: "1px solid rgba(151,117,250,0.35)",
+                                      borderRadius: "4px",
+                                      padding: "0.3rem 0.65rem",
+                                      fontSize: "0.7rem",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {attackPathExpandedId === f.key
+                                      ? t("Hide attack path", "Angriffspfad ausblenden")
+                                      : t("Show attack path", "Angriffspfad anzeigen")}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                        {attackPathExpandedId === f.key && f.vulnerabilityId && (
+                          <tr style={{ background: "rgba(151,117,250,0.05)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td colSpan={9} style={{ padding: "0.75rem 1rem" }}>
+                              <ScanFindingAttackPath
+                                vulnerabilityId={f.vulnerabilityId}
+                                scanId={scanId}
+                                targetId={scan?.targetId}
+                                packageName={f.packageName}
+                                packageVersion={f.packageVersion}
+                                aiEnabled={aiEnabled}
+                              />
                             </td>
                           </tr>
                         )}

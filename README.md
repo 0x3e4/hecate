@@ -116,8 +116,9 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 ### Suche & Analyse
 - **OpenSearch-Volltext** mit DQL-Unterstützung (Domain-Specific Query Language) und Relevanzsortierung; `source:`-Abfragen suchen automatisch über alle Datenquellen (inkl. `sourceNames`-Alias)
 - **KI-Assessments** über OpenAI, Anthropic, Google Gemini oder einen generischen OpenAI-Compatible-Endpoint (Ollama, vLLM, OpenRouter, LocalAI, LM Studio), einzeln oder als Batch
+- **Attack Path Graph:** Per-CVE Mermaid-Visualisierung der Angriffskette (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) mit Likelihood-, Exploit-Maturity-, Reachability- und Business-Impact-Labels. Strukturlayer ist deterministisch aus EPSS / KEV / CWE / CAPEC / Inventory abgeleitet (keine AI-Halluzination); optionaler AI-generierter Prosa-Narrative liegt darüber. Eingebettet als neuer Tab auf der Vulnerability-Detail-Seite und als Inline-Expansion in den Scan-Findings.
 - **CVSS-Metriken** normalisiert über v2.0, v3.0, v3.1 und v4.0
-- **CWE/CAPEC-Anreicherung** mit 3-Tier-Cache (Memory -> MongoDB -> externe Quelle, 7 Tage TTL)
+- **CWE/CAPEC-Anreicherung** mit 3-Tier-Cache (Memory -> MongoDB -> externe Quelle, 7 Tage TTL); CAPEC serviert stale Mongo-Daten weiter, falls der Sync ausgefallen ist (mit einmaliger `catalog_stale`-WARNING pro Prozess) — und CWE/CAPEC-Sync läuft via wall-clock Cron statt Interval, damit Backend-Redeploys den 7-Tage-Refresh nicht resetten.
 - **EPSS-Scores** und KEV-Exploitation-Status
 
 ### Frontend-Ansichten
@@ -125,7 +126,7 @@ Schwachstellen-Management-Plattform zur automatisierten Aggregation, Anreicherun
 |---------|-------------|
 | Dashboard | Schwachstellensuche mit CVSS, EPSS, Exploitation-Status, Echtzeit-Refresh via SSE |
 | Schwachstellen-Liste | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
-| Detail-Seite | Vollständige Schwachstellendetails mit AI-Assessments, Referenzen, Change-History |
+| Detail-Seite | Vollständige Schwachstellendetails mit Tabs für CWE, CAPEC, References, Affected Products, **Attack Path** (Mermaid-Graph + optionaler AI-Narrative), AI Analysis, Change History und Raw |
 | Query Builder | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | KI-Analyse | Einzel- und Batch-Analyse über verschiedene AI-Provider |
 | Statistiken | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
@@ -225,6 +226,10 @@ Die UI-Sprache ist Deutsch oder Englisch (automatische Browser-Erkennung, umscha
 - `POST /api/v1/scans/{scan_id}/ai-analysis` — SCA-Scan-Triage (HTTP 202, Ergebnis wird als `ai_analysis` / `ai_analyses[]` auf dem Scan-Dokument persistiert)
 - `GET /api/v1/scans/ai-analyses` — Liste aller Scans mit mindestens einer gespeicherten AI-Analyse (neueste zuerst). Wird von der AI-Analyse-Seite in die kombinierte Timeline integriert.
 
+### Attack Path Graph
+- `GET /api/v1/vulnerabilities/{id}/attack-path` — Deterministischer Graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) plus persistierter AI-Narrative (falls vorhanden). **Nicht** AI-Password-gegated. Optionale Query-Parameter: `package`/`version`/`scanId`/`targetId` für Scan-Finding-Kontext, `language=en|de` für Disclaimer + Heuristik-Labels.
+- `POST /api/v1/vulnerabilities/{id}/attack-path` — Erzeugt eine AI-Narrative-Beschreibung passend zum Graph (HTTP 202, Ergebnis via SSE-Event `attack_path_{vulnId}`). Persistiert als `attack_path` / `attack_paths[]` in OpenSearch.
+
 Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI setzt es nicht, MCP-`save_*`-Tools setzen es auf `{client_name} - MCP` und der Server hängt das Label zusätzlich als Markdown-Fußzeile an die gespeicherte Zusammenfassung an. Die in `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_GEMINI_API_KEY` bzw. `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_MODEL` konfigurierten Provider werden ausschließlich von diesen HTTP-Endpunkten genutzt — MCP-AI-Flows rufen keinen serverseitigen Provider auf.
 
 ### Kataloge
@@ -299,9 +304,9 @@ Die Request-Schemas akzeptieren ein optionales `triggeredBy`-Feld; das Web-UI se
 - `GET /mcp/oauth/authorize` — Leitet zum konfigurierten Upstream IdP weiter (GitHub / Microsoft / OIDC)
 - `GET /mcp/oauth/idp/callback` — IdP-Callback (interner Redirect-Endpunkt)
 - `POST /mcp/oauth/token` — Token-Austausch mit PKCE (S256)
-- **30 Tools** (Server-Name: `hecate`):
-  - Read-Only: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`, `list_target_groups`, `list_scans`, `find_findings_by_cve`, `get_sca_scan`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`
-  - Write (Quell-IP bei Authorize in `MCP_WRITE_IP_SAFELIST`): `trigger_scan`, `trigger_sync`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`
+- **32 Tools** (Server-Name: `hecate`):
+  - Read-Only: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`, `list_target_groups`, `list_scans`, `find_findings_by_cve`, `get_sca_scan`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`, `prepare_attack_path_analysis`
+  - Write (Quell-IP bei Authorize in `MCP_WRITE_IP_SAFELIST`): `trigger_scan`, `trigger_sync`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`
   - AI-Analyse über MCP erfolgt als **Prepare/Save-Paare** — die `prepare_*`-Tools liefern Hecates vordefinierte Prompts + Kontext, der aufrufende Assistent (Claude Desktop, Cursor, Codex) erzeugt die Analyse mit seinem eigenen Modell und speichert sie über das passende `save_*`-Tool. Die in `AI_API` konfigurierten Provider-Keys werden nur von den Web-UI-Flows genutzt.
 
 ### Echtzeit-Events (SSE)
@@ -347,7 +352,7 @@ Alle Parameter werden über Umgebungsvariablen gesteuert (siehe `.env.example`):
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_VERIFY_CERTS`, `OPENSEARCH_CA_CERT` |
 | **KI-Provider** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `OPENAI_COMPATIBLE_LABEL` (Ollama / vLLM / OpenRouter / LocalAI / LM Studio — via `/v1/chat/completions`) |
 | **Datenquellen** | `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `NVD_TIMEOUT_SECONDS`, `NVD_MAX_RETRIES`, `NVD_RETRY_BACKOFF_SECONDS`, `KEV_FEED_URL`, `GHSA_TOKEN`, `GHSA_MAX_RETRIES`, `GHSA_RETRY_BACKOFF_SECONDS`, `CIRCL_MAX_RETRIES`, `CIRCL_RETRY_BACKOFF_SECONDS`, `OSV_BASE_URL`, `OSV_TIMEOUT_SECONDS`, `OSV_RATE_LIMIT_SECONDS`, `OSV_MAX_RETRIES`, `OSV_RETRY_BACKOFF_SECONDS`, `OSV_MAX_RECORDS_PER_RUN`, `OSV_INITIAL_SYNC_CONCURRENCY`, `OSV_INITIAL_SYNC_BATCH_SIZE` |
-| **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*` |
+| **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*`. CWE/CAPEC nutzen wall-clock Cron statt Interval — `SCHEDULER_CWE_CRON_DAY_OF_WEEK` (Default `mon`), `SCHEDULER_CWE_CRON_HOUR` (`3`), `SCHEDULER_CAPEC_CRON_DAY_OF_WEEK` (Default `tue`), `SCHEDULER_CAPEC_CRON_HOUR` (`3`). Stale-on-Startup-Catch-up via `SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (Default `1.5`) — wenn der letzte erfolgreiche Sync älter als `interval_days × multiplier` ist, läuft er beim Backend-Start sofort. |
 | **Frontend** | `VITE_API_BASE_URL` (feature flags are derived from backend settings and exposed via `GET /api/v1/config`) |
 | **SCA-Scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCA_AUTO_SCAN_ENABLED`, `SCA_MAX_CONCURRENT_SCANS`, `SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`, `SCANNER_AUTH`, `SEMGREP_RULES` |
 | **Benachrichtigungen** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |

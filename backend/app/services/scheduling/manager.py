@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -101,6 +101,15 @@ class SchedulerManager:
                     name="scheduler-bootstrap",
                 )
 
+        # Independent of the one-shot initial-sync bootstrap, kick off catch-up
+        # syncs for the slow weekly catalogs (CWE + CAPEC) when their on-disk
+        # data has drifted past the staleness threshold. Wall-clock CronTrigger
+        # handles the steady-state schedule, but if the backend was last
+        # restarted just before the cron fire-time and stays up past the next
+        # scheduled slot, this is the only way to guarantee a fresh catalog
+        # without waiting another full week.
+        asyncio.create_task(_run_catalog_catchup_jobs(), name="scheduler-catalog-catchup")
+
         # Bootstrap auto-scan after a short delay so services are ready
         if settings.sca_enabled and settings.sca_auto_scan_enabled:
             asyncio.create_task(
@@ -145,16 +154,29 @@ class SchedulerManager:
             replace_existing=True,
         )
 
+        # CWE + CAPEC use CronTrigger (wall-clock) instead of IntervalTrigger
+        # because IntervalTrigger resets to "now + N days" on every backend
+        # startup. Frequent redeploys inside the 7-day window silently kept
+        # the catalog frozen at its initial fetched_at — observed in prod with
+        # CAPEC stuck at 73 days old. Wall-clock cron survives restarts.
         self.scheduler.add_job(
             _scheduled_cwe_sync,
-            trigger=IntervalTrigger(days=settings.scheduler_cwe_interval_days),
+            trigger=CronTrigger(
+                day_of_week=settings.scheduler_cwe_cron_day_of_week,
+                hour=settings.scheduler_cwe_cron_hour,
+                timezone=settings.scheduler_timezone,
+            ),
             id="cwe_sync",
             replace_existing=True,
         )
 
         self.scheduler.add_job(
             _scheduled_capec_sync,
-            trigger=IntervalTrigger(days=settings.scheduler_capec_interval_days),
+            trigger=CronTrigger(
+                day_of_week=settings.scheduler_capec_cron_day_of_week,
+                hour=settings.scheduler_capec_cron_hour,
+                timezone=settings.scheduler_timezone,
+            ),
             id="capec_sync",
             replace_existing=True,
         )
@@ -453,6 +475,91 @@ async def _initial_sync_already_completed(job_name: str) -> bool:
     if not state:
         return False
     return state.get("status") == "completed"
+
+
+async def _run_catalog_catchup_jobs() -> None:
+    """Kick off CWE + CAPEC syncs at startup if the on-disk data has drifted.
+
+    Looks at the most recent successful sync (initial or scheduled) for each
+    catalog. If that timestamp is older than ``interval_days × multiplier``
+    or no successful run is recorded, runs the sync immediately. Logs the
+    decision either way so admins can see why a sync did or didn't fire.
+    """
+    multiplier = settings.scheduler_catalog_stale_catchup_multiplier
+    if multiplier <= 0:
+        return
+
+    catalogs = (
+        ("cwe", settings.scheduler_cwe_interval_days, _execute_cwe_sync),
+        ("capec", settings.scheduler_capec_interval_days, _execute_capec_sync),
+    )
+
+    for label, interval_days, executor in catalogs:
+        threshold = timedelta(days=interval_days * multiplier)
+        try:
+            latest = await _latest_successful_sync_finished_at(
+                f"{label}_sync", f"{label}_initial_sync"
+            )
+        except Exception as exc:  # noqa: BLE001 - never let one catalog block the other
+            log.warning(
+                "scheduler.catalog_catchup_state_check_failed",
+                catalog=label,
+                error=str(exc),
+            )
+            continue
+
+        if latest is None:
+            log.info(
+                "scheduler.catalog_catchup_no_history",
+                catalog=label,
+                action="bootstrap-will-run",
+            )
+            continue
+
+        age = datetime.now(UTC) - latest
+        if age <= threshold:
+            log.info(
+                "scheduler.catalog_catchup_skipped",
+                catalog=label,
+                age_days=round(age.total_seconds() / 86400, 1),
+                threshold_days=round(threshold.total_seconds() / 86400, 1),
+            )
+            continue
+
+        log.warning(
+            "scheduler.catalog_catchup_triggered",
+            catalog=label,
+            age_days=round(age.total_seconds() / 86400, 1),
+            threshold_days=round(threshold.total_seconds() / 86400, 1),
+        )
+        asyncio.create_task(
+            executor(initial_sync=False),  # type: ignore[arg-type]
+            name=f"catalog-catchup-{label}",
+        )
+
+
+async def _latest_successful_sync_finished_at(*job_names: str) -> datetime | None:
+    """Return the newest ``finished_at`` from successful runs of the given jobs."""
+
+    state_repo = await IngestionStateRepository.create()
+    newest: datetime | None = None
+    for job_name in job_names:
+        state = await state_repo.get_state(f"job:{job_name}")
+        if not state or state.get("status") != "completed":
+            continue
+        finished_at = state.get("finished_at")
+        if isinstance(finished_at, str):
+            try:
+                finished_at = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+        if not isinstance(finished_at, datetime):
+            continue
+        if finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=UTC)
+        if newest is None or finished_at > newest:
+            newest = finished_at
+    return newest
 
 
 async def _initial_cwe_sync() -> None:

@@ -496,6 +496,176 @@ def register(mcp: FastMCP) -> None:
             )
             return {"error": f"Save failed: {str(exc)[:200]}"}
 
+    @mcp.tool()
+    async def prepare_attack_path_analysis(
+        vulnerability_id: str,
+        language: str | None = None,
+        additional_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Return Hecate's deterministic attack-path graph + system/user prompts for a CVE.
+
+        The graph is built from the existing CWE/CAPEC/EPSS/KEV/inventory data and is treated as
+        ground truth. The calling assistant should read `systemPrompt` and `userPrompt`, produce
+        the prose narrative locally (no server-side AI call), and then save it via
+        `save_attack_path_analysis(vulnerability_id, summary)`. Read-only — no write scope needed.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {"vulnerability_id": vulnerability_id, "language": language}
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="prepare_attack_path_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        try:
+            vuln_id = vulnerability_id.strip()
+            if not vuln_id or len(vuln_id) > 100 or not _VULN_ID_PATTERN.match(vuln_id):
+                return {"error": "Invalid vulnerability ID format."}
+
+            from app.services.ai_service import build_attack_path_prompts
+            from app.services.attack_path_service import get_attack_path_service
+            from app.services.inventory_service import get_inventory_service
+            from app.services.vulnerability_service import VulnerabilityService
+
+            service = VulnerabilityService()
+            vulnerability = await service.get_by_id(vuln_id)
+            if vulnerability is None:
+                return {"error": f"Vulnerability '{vuln_id}' not found."}
+
+            inventory_service = await get_inventory_service()
+            try:
+                affected_items = await inventory_service.affected_inventory_for_vuln(vulnerability)
+            except Exception:
+                affected_items = []
+            affected_inventory = [a.model_dump(by_alias=True) for a in affected_items]
+
+            attack_path_service = get_attack_path_service()
+            graph = await attack_path_service.build_graph(
+                vulnerability,
+                affected_inventory=affected_inventory,
+                language=language or "en",
+            )
+            graph_payload = graph.model_dump(by_alias=True)
+
+            system_prompt, user_prompt = await build_attack_path_prompts(
+                vulnerability,
+                graph_payload,
+                language=language,
+                additional_context=additional_context,
+                affected_inventory=affected_inventory,
+            )
+
+            output = {
+                "vulnerabilityId": vuln_id,
+                "graph": graph_payload,
+                "systemPrompt": system_prompt,
+                "userPrompt": user_prompt,
+                "affectedInventory": affected_inventory,
+                "instructions": (
+                    "The deterministic graph above is ground truth. Read systemPrompt and userPrompt, "
+                    "produce a 4-6 step prose attack-path narrative locally, then call "
+                    "save_attack_path_analysis(vulnerability_id, summary). Do NOT cite CVE/CWE/CAPEC "
+                    "IDs that are not present in graph['nodes']. The server stamps the stored record "
+                    "with a triggeredBy attribution identifying your client."
+                ),
+                "saveTool": "save_attack_path_analysis",
+            }
+            await log_tool_invocation(
+                tool_name="prepare_attack_path_analysis", inputs=tool_inputs,
+                result_count=1, started_at=started_at,
+            )
+            return output
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="prepare_attack_path_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Prepare failed: {str(exc)[:200]}"}
+
+    @mcp.tool()
+    async def save_attack_path_analysis(
+        vulnerability_id: str,
+        summary: str,
+        language: str | None = None,
+        client_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist an attack-path narrative produced by the calling assistant.
+
+        Use this after `prepare_attack_path_analysis`. The server appends the narrative to the
+        vulnerability's `attack_paths[]` array (and mirrors `attack_path` as the latest), stamping
+        a triggeredBy attribution like "Claude - MCP". Requires write scope.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {
+            "vulnerability_id": vulnerability_id,
+            "language": language, "client_name": client_name,
+        }
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="save_attack_path_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        allowed, deny_reason = require_write_scope()
+        if not allowed:
+            await log_tool_invocation(
+                tool_name="save_attack_path_analysis", inputs=tool_inputs,
+                success=False, error=f"Write denied: {deny_reason}", started_at=started_at,
+            )
+            return {"error": f"Write access denied. {deny_reason}"}
+
+        try:
+            vuln_id = vulnerability_id.strip()
+            if not vuln_id or len(vuln_id) > 100 or not _VULN_ID_PATTERN.match(vuln_id):
+                return {"error": "Invalid vulnerability ID format."}
+            if not summary or not summary.strip():
+                return {"error": "summary must not be empty."}
+            if len(summary) > 200_000:
+                return {"error": "summary too large (200k char limit)."}
+
+            from app.services.ai_service import _append_attribution_footer, _normalize_language
+            from app.services.vulnerability_service import VulnerabilityService
+
+            triggered_by = _mcp_triggered_by(client_name)
+            stored_summary = _append_attribution_footer(summary.strip(), triggered_by)
+
+            narrative = {
+                "provider": "mcp-client",
+                "language": _normalize_language(language),
+                "summary": stored_summary,
+                "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
+                "triggeredBy": triggered_by,
+            }
+            service = VulnerabilityService()
+            ok = await service.save_attack_path(vuln_id, narrative)
+            if not ok:
+                return {"error": f"Vulnerability '{vuln_id}' not found or save failed."}
+
+            await log_tool_invocation(
+                tool_name="save_attack_path_analysis", inputs=tool_inputs,
+                result_count=1, started_at=started_at,
+            )
+            return {
+                "vulnerabilityId": vuln_id,
+                "triggeredBy": triggered_by,
+                "generatedAt": narrative["generatedAt"],
+                "status": "saved",
+            }
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="save_attack_path_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Save failed: {str(exc)[:200]}"}
+
 
 def _mcp_triggered_by(client_name: str | None) -> str:
     """Build the triggered_by attribution string for an MCP tool invocation."""

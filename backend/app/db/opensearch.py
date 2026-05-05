@@ -239,6 +239,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "ingested_at": {"type": "date"},
                 "first_seen_at": {"type": "date"},
                 "ai_assessment": {"type": "object"},
+                "attack_path": {"type": "object"},
             }
         },
     }

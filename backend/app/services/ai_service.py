@@ -24,6 +24,7 @@ from app.schemas.ai import (
     AIProviderLiteral,
     AIScanAnalysisResponse,
 )
+from app.schemas.attack_path import AttackPathNarrative
 from app.schemas.vulnerability import VulnerabilityDetail
 from app.services.cwe_service import get_cwe_service
 from app.services.http.ssl import get_http_verify
@@ -177,6 +178,60 @@ class AIClient:
             individualSummaries=individual_summaries,
             generatedAt=_isoformat_utc_now(),
             vulnerabilityCount=len(vulnerabilities),
+            tokenUsage=token_usage,
+            triggeredBy=triggered_by,
+        )
+
+    async def analyze_attack_path(
+        self,
+        provider: AIProviderLiteral,
+        vulnerability: VulnerabilityDetail,
+        graph: dict[str, Any],
+        *,
+        language: str | None = None,
+        additional_context: str | None = None,
+        triggered_by: str | None = None,
+        affected_inventory: list[dict[str, Any]] | None = None,
+    ) -> AttackPathNarrative:
+        """Generate a prose attack-path scenario aligned with the supplied deterministic graph.
+
+        The graph nodes/edges are produced by ``AttackPathService.build_graph`` and
+        treated as ground truth — the prompt forbids the model from inventing CVE/CAPEC
+        IDs not present in ``graph['nodes']``.
+        """
+        normalized_language = _normalize_language(language)
+        system_prompt, user_prompt = await build_attack_path_prompts(
+            vulnerability,
+            graph,
+            language=normalized_language,
+            additional_context=additional_context,
+            affected_inventory=affected_inventory,
+        )
+
+        if provider == "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OpenAI provider is not configured.")
+            summary, token_usage = await self._call_openai(system_prompt, user_prompt)
+        elif provider == "anthropic":
+            if not settings.anthropic_api_key:
+                raise ValueError("Anthropic provider is not configured.")
+            summary, token_usage = await self._call_anthropic(system_prompt, user_prompt)
+        elif provider == "gemini":
+            if not settings.google_gemini_api_key:
+                raise ValueError("Google Gemini provider is not configured.")
+            summary, token_usage = await self._call_gemini(system_prompt, user_prompt)
+        elif provider == "openai-compatible":
+            if not settings.openai_compatible_base_url or not settings.openai_compatible_model:
+                raise ValueError("OpenAI-compatible provider is not configured.")
+            summary, token_usage = await self._call_openai_compatible(system_prompt, user_prompt)
+        else:  # pragma: no cover - defensive
+            raise ValueError(f"Unsupported provider '{provider}'.")
+
+        return AttackPathNarrative(
+            provider=provider,
+            language=normalized_language,
+            summary=_append_attribution_footer(summary, triggered_by),
+            generatedAt=_isoformat_utc_now(),
             tokenUsage=token_usage,
             triggeredBy=triggered_by,
         )
@@ -818,6 +873,168 @@ def build_scan_prompts(
         additional_context,
         "openai",
     )
+
+
+async def build_attack_path_prompts(
+    vulnerability: VulnerabilityDetail,
+    graph: dict[str, Any],
+    *,
+    language: str | None = None,
+    additional_context: str | None = None,
+    affected_inventory: list[dict[str, Any]] | None = None,
+) -> tuple[str, str]:
+    """Public builder for the (system, user) prompt pair driving the attack-path narrative.
+
+    The deterministic graph is supplied as ``graph`` (already serialized via
+    ``AttackPathGraph.model_dump(by_alias=True)``). The model is instructed to
+    produce a prose 5-step scenario aligned with the graph nodes, and is forbidden
+    from inventing CVE/CAPEC/CWE IDs not present in ``graph['nodes']``.
+    """
+    normalized_language = _normalize_language(language)
+    de = normalized_language.lower().startswith("de")
+    language_instruction = (
+        f"Respond in the language identified by the ISO code '{normalized_language}'. "
+        "If you are unsure which language that is, default to English."
+    )
+
+    nodes = graph.get("nodes") or []
+    edges = graph.get("edges") or []
+    labels = graph.get("labels") or {}
+
+    node_lines: list[str] = []
+    allowed_ids: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        nid = str(node.get("id") or "")
+        ntype = str(node.get("type") or "")
+        nlabel = str(node.get("label") or "")
+        if nid:
+            allowed_ids.append(nlabel or nid)
+        node_lines.append(f"- [{nid}] type={ntype} label={nlabel}")
+
+    edge_lines: list[str] = []
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        src = str(edge.get("source") or "")
+        tgt = str(edge.get("target") or "")
+        elabel = str(edge.get("label") or "")
+        edge_lines.append(f"- {src} → {tgt}{(' (' + elabel + ')') if elabel else ''}")
+
+    label_lines: list[str] = []
+    for key, value in labels.items():
+        if value in (None, "", "unknown"):
+            continue
+        label_lines.append(f"- {key}: {value}")
+
+    inventory_block = _format_inventory_block(affected_inventory)
+
+    user_context_section = ""
+    if additional_context and additional_context.strip():
+        user_context_section = (
+            "\n\nADDITIONAL CONTEXT (provided by analyst):\n"
+            f"{additional_context.strip()}"
+        )
+
+    if de:
+        system_prompt = (
+            "Du bist ein erfahrener Sicherheitsanalyst und beschreibst plausible "
+            "Angriffspfade auf Basis bekannter Schwachstellenklassen. "
+            f"{language_instruction}\n\n"
+            "**KRITISCHE REGELN:**\n"
+            "- Verwende AUSSCHLIESSLICH die im Graphen aufgelisteten CVE-, CWE-, CAPEC- und "
+            "Paket-Identifikatoren. Erfinde KEINE weiteren IDs.\n"
+            "- Wenn ein Schritt nicht aus den Graphdaten ableitbar ist, kennzeichne ihn "
+            "als spekulativ.\n"
+            "- Liefere KEIN Beweis-of-Concept und KEINEN funktionsfähigen Exploit-Code.\n\n"
+            "Liefere ein zweiteiliges Ergebnis im Markdown-Format:\n"
+            "## Szenario\n"
+            "Ein 4-6 Schritte langer Ablauf in Prosa, der dem Graphfluss folgt "
+            "(`Eingang → Asset/Paket → CVE → CWE → CAPEC → Wirkung → Behebung`). "
+            "Maximal 250 Wörter.\n\n"
+            "## Voraussetzungen & Wahrscheinlichkeit\n"
+            "Stichpunkte zu: Erforderlichen Berechtigungen, Benutzerinteraktion, "
+            "Erreichbarkeit, EPSS/KEV-Status. "
+            "Schließe mit einer kurzen Wahrscheinlichkeitsbewertung "
+            "(very_low/low/medium/high/very_high) und benenne die geschäftlichen "
+            "Auswirkungen auf die im Inventar gelisteten Assets, falls vorhanden."
+        )
+    else:
+        system_prompt = (
+            "You are a senior security analyst describing plausible attack paths "
+            "based on known weakness classes. "
+            f"{language_instruction}\n\n"
+            "**HARD RULES:**\n"
+            "- Use ONLY the CVE, CWE, CAPEC and package identifiers listed in the supplied "
+            "graph. Do NOT invent or guess additional IDs.\n"
+            "- If a step cannot be derived from the graph data, mark it as speculative.\n"
+            "- Do NOT provide proof-of-concept exploit code or step-by-step attacker tooling.\n\n"
+            "Produce a two-part Markdown result:\n"
+            "## Scenario\n"
+            "A 4-6 step prose narrative that follows the graph flow "
+            "(`entry → asset/package → CVE → CWE → CAPEC → impact → fix`). "
+            "Stay under 250 words.\n\n"
+            "## Conditions & Likelihood\n"
+            "Bullet points covering: privileges required, user interaction, reachability, "
+            "EPSS / KEV status. Close with a short likelihood call "
+            "(very_low / low / medium / high / very_high) and name the business impact "
+            "for the inventory items listed (if any)."
+        )
+
+    user_prompt_parts: list[str] = []
+    user_prompt_parts.append(
+        "Build the attack-path narrative for the following vulnerability using the "
+        "graph below as ground truth. The graph nodes contain the only IDs you may cite."
+    )
+    user_prompt_parts.append("\n\n## VULNERABILITY")
+    title = vulnerability.title or vulnerability.vuln_id
+    user_prompt_parts.append(f"- ID: {vulnerability.vuln_id}")
+    if title and title != vulnerability.vuln_id:
+        user_prompt_parts.append(f"- Title: {title}")
+    if vulnerability.severity:
+        user_prompt_parts.append(f"- Severity: {vulnerability.severity}")
+    cvss = getattr(vulnerability, "cvss", None)
+    base_score = getattr(cvss, "base_score", None) if cvss else None
+    if base_score is not None:
+        user_prompt_parts.append(f"- CVSS Base Score: {base_score}")
+    if vulnerability.epss_score is not None:
+        user_prompt_parts.append(f"- EPSS: {vulnerability.epss_score:.1%}")
+    if vulnerability.exploitation is not None or vulnerability.exploited:
+        user_prompt_parts.append("- KEV: known-exploited")
+    if vulnerability.summary:
+        summary_short = (
+            vulnerability.summary[:600] + "..."
+            if len(vulnerability.summary) > 600
+            else vulnerability.summary
+        )
+        user_prompt_parts.append(f"- Summary: {summary_short}")
+
+    if node_lines:
+        user_prompt_parts.append("\n## GRAPH NODES (only these IDs may be cited)")
+        user_prompt_parts.extend(node_lines)
+    if edge_lines:
+        user_prompt_parts.append("\n## GRAPH EDGES")
+        user_prompt_parts.extend(edge_lines)
+    if label_lines:
+        user_prompt_parts.append("\n## DERIVED LABELS")
+        user_prompt_parts.extend(label_lines)
+
+    if inventory_block:
+        user_prompt_parts.append(f"\n{inventory_block}")
+
+    if user_context_section:
+        user_prompt_parts.append(user_context_section)
+
+    if allowed_ids:
+        user_prompt_parts.append(
+            "\n## ALLOWED IDENTIFIERS\n"
+            f"You may only reference these labels verbatim: {', '.join(allowed_ids[:20])}. "
+            "Do not introduce new identifiers."
+        )
+
+    user_prompt = "\n".join(user_prompt_parts)
+    return system_prompt, user_prompt
 
 
 def _append_attribution_footer(summary: str, triggered_by: str | None) -> str:

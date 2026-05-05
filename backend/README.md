@@ -8,7 +8,7 @@ FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninf
 app/
 ├── api/v1/                  # REST-Endpunkte
 │   ├── routes.py            # Router-Registrierung (19 Module)
-│   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse
+│   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse, Attack Path Graph (GET/POST /vulnerabilities/{id}/attack-path)
 │   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
 │   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
 │   ├── cpe.py               # CPE-Katalog (Entries, Vendors, Products)
@@ -34,8 +34,8 @@ app/
 │   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
 │   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events
-│   └── tools/                   # 30 MCP-Tools (6 Module)
-│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis
+│   └── tools/                   # 32 MCP-Tools (6 Module)
+│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis, prepare_attack_path_analysis, save_attack_path_analysis
 │       ├── cpe.py               # search_cpe
 │       ├── assets.py            # search_vendors, search_products
 │       ├── stats.py             # get_vulnerability_stats
@@ -81,6 +81,7 @@ app/
 │   ├── vex.py               # VEX API-Schemata (VexUpdate, VexBulkUpdate, VexBulkUpdateByIds, FindingsDismiss, VexImport)
 │   ├── license_policy.py    # License-Policy API-Schemata
 │   ├── inventory.py         # Environment-Inventory API-Schemata
+│   ├── attack_path.py       # Attack-Path-Graph-Schemata (Node, Edge, Labels, Graph, Narrative, Response, Request)
 │   └── saved_search.py
 ├── services/                # Business-Logik
 │   ├── vulnerability_service.py   # Suche, Refresh, Lookup
@@ -102,6 +103,7 @@ app/
 │   ├── license_compliance_service.py  # Lizenz-Policy-Auswertung
 │   ├── inventory_service.py       # Environment-Inventory CRUD + Matching (30s TTL-Cache)
 │   ├── inventory_matcher.py       # CPE-Versionsbereichs-Matcher (pure functions, selbst-enthaltener Version-Comparator)
+│   ├── attack_path_service.py     # Deterministischer Attack-Path-Graph-Builder (entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix); orchestriert CAPECService/CWEService/InventoryService und leitet Likelihood/Exploit-Maturity/Reachability-Labels aus EPSS/KEV/CVSS-Vektor ab
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
 │   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator mit optionalem `inventory_item_ids`-Filter)
 │   ├── http/
@@ -132,7 +134,7 @@ app/
 │   │   ├── manual_refresher.py    # On-Demand Refresh (Default-Dispatcher routet MAL-/PYSEC-/OSV-* → OSV; sonst würde der Placeholder-Fallback bestehende MAL-Dokumente überschreiben)
 │   │   └── startup_cleanup.py     # Zombie-Job Bereinigung
 │   └── scheduling/
-│       └── manager.py             # APScheduler (Bootstrap + Periodic)
+│       └── manager.py             # APScheduler (Bootstrap + Periodic). CWE/CAPEC laufen via `CronTrigger` (wall-clock, Default Mon/Tue 03:00 UTC) statt `IntervalTrigger`, damit Backend-Redeploys den Refresh-Timer nicht resetten. `_run_catalog_catchup_jobs()` läuft einmal pro Backend-Start parallel zum Bootstrap und dispatched einen Out-of-Band-Sync, wenn der jüngste erfolgreiche Lauf älter als `interval_days × SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (Default 1.5×) ist.
 ├── utils/
 │   ├── strings.py                 # Slugify etc.
 │   └── request.py                 # IP-Extraktion
@@ -217,7 +219,7 @@ Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
 ```
 EventBus (Singleton) → publish(event) → asyncio.Queue per Subscriber → SSE Stream
 ```
-Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker, SchedulerManager und AI-Analyse-Endpunkte publizieren automatisch. Frontend verbindet sich über `GET /api/v1/events`. AI-Analysen laufen asynchron via `asyncio.create_task()` und melden Ergebnisse über SSE (`ai_investigation_{vulnId}`, `ai_batch_investigation`).
+Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker, SchedulerManager und AI-Analyse-Endpunkte publizieren automatisch. Frontend verbindet sich über `GET /api/v1/events`. AI-Analysen laufen asynchron via `asyncio.create_task()` und melden Ergebnisse über SSE (`ai_investigation_{vulnId}`, `ai_batch_investigation`, `ai_scan_analysis_{scanId}`, `attack_path_{vulnId}`).
 
 ### API-Schema-Konvention
 ```python

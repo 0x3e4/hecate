@@ -22,11 +22,12 @@ src/
 │   ├── notifications.ts        # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── licensePolicy.ts        # Lizenz-Policy-Verwaltung (CRUD, Default, Gruppen)
 │   ├── inventory.ts            # Environment-Inventory (CRUD + affected-vulnerabilities)
+│   ├── attackPath.ts           # Attack Path Graph (`fetchAttackPath` mit optionalem scanId/targetId/package/version-Kontext + `triggerAttackPathNarrative` für AI-Narrative-Job)
 │   └── malware.ts              # Malware-Feed-Overview (`fetchMalwareFeed` → `GET /v1/malware/malware-feed`, server-paginiert)
 ├── views/                       # Seitenkomponenten (16 Ansichten)
 │   ├── DashboardPage.tsx        # Startseite mit Schwachstellensuche
 │   ├── VulnerabilityListPage.tsx # Paginierte Liste mit Filtern (inkl. erweiterte Filter)
-│   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht
+│   ├── VulnerabilityDetailPage.tsx # Vollständige Detailansicht mit Tabs für CWE, CAPEC, References, Affected Products, **Attack Path** (Mermaid-Graph + optionaler AI-Narrative — `useRef`-Guard für Lazy-Fetch um die Self-Cancel-Falle zu vermeiden), AI Analysis, Change History, Raw
 │   ├── QueryBuilderPage.tsx     # Interaktiver DQL-Editor
 │   ├── AIAnalysePage.tsx        # KI-Analyse-Historie: kombinierte Timeline aus Single-, Batch- und Scan-AI-Analysen (listScanAiAnalyses); Trigger-Form für neue Batch-Analysen
 │   ├── StatsPage.tsx            # Statistik-Dashboard
@@ -45,6 +46,8 @@ src/
 │   │   ├── BatchAnalysisDisplay.tsx   # Batch-Ergebnisanzeige (Markdown)
 │   │   └── VulnerabilitySelector.tsx  # Multi-Select für Batch-Analyse
 │   ├── AILoadingIndicator.tsx         # AI-Analyse Ladeindikator (Reasoning-Steps, Timer)
+│   ├── AttackPathGraph.tsx            # Mermaid-Graph-Renderer für die Attack-Path-Tab. Lazy-Loading via `import("mermaid")` mit Module-Promise-Cache; CSS-Vertikal-Chain als Fallback wenn der dynamische Import fehlschlägt. Severity-basiertes Color-Mapping pro Knoten, Label-Chips für Likelihood/Exploit-Maturity/Reachability/Privileges/User-Interaction/Business-Impact, Cross-Reference-Chips zu MITRE CWE/CAPEC, Markdown-Narrative mit `stripAiSummaryFooter` + Provider/timestamp/triggeredBy-Metadata.
+│   ├── ScanFindingAttackPath.tsx      # Inline-Wrapper für die Findings-Tab-Expansion auf `/scans/:scanId`. Fetched die Attack-Path mit `scanId`/`targetId`/`packageName`/`version`-Kontext, sodass der Entry-Knoten den Scan-Target-Kontext und der Package-Knoten die exakte Version aus dem Finding zeigt.
 │   ├── QueryBuilder/
 │   │   ├── QueryEditor.tsx      # DQL-Texteditor mit Operator-Buttons
 │   │   ├── FieldBrowser.tsx     # DQL-Feld-Browser nach Kategorien
@@ -97,7 +100,7 @@ src/
 |-------|-----------|-------------|
 | `/` | `DashboardPage` | Startseite mit Schwachstellensuche, aktuellen Einträgen und Echtzeit-Refresh via SSE |
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
-| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit AI-Assessments, Referenzen, Change-History, Refresh-Dropdown (inkl. OSV) |
+| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit Tabs (CWE / CAPEC / References / Affected Products / **Attack Path** mit Mermaid-Graph + optionalem AI-Narrative / AI Analysis / Change History / Raw), Refresh-Dropdown (inkl. OSV). Attack-Path-Tab ist lazy-fetched: das Backend liefert den deterministischen Graph immer, der AI-Narrative ist optional via "Generate scenario narrative"-Button (gegated über `aiEnabled`). |
 | `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
 | `/ai-analyse` | `AIAnalysePage` | KI-Analyse-Historie als kombinierte Timeline aus Single-CVE-, Batch- und Scan-AI-Analysen (neueste zuerst; Scan-Einträge linken zu `/scans/{id}` und tragen einen Commit/Image-Chip); Trigger-Form für neue Batch-Analysen. Origin-Chips (`API - Single`/`MCP - Single`/`API - Batch`/`MCP - Batch`/`API - Scan`/`MCP - Scan`) unterscheiden, ob eine Analyse über die HTTP-API oder über ein MCP-`save_*`-Tool gespeichert wurde. Bedingt via `aiEnabled`. |
 | `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
@@ -232,6 +235,7 @@ Manuelle Chunk-Aufteilung in `vite/chunk-split.ts`:
 - `react-select` → eigener Chunk
 - `react-icons` → eigener Chunk
 - `axios` → eigener Chunk
+- `mermaid` + alle exklusiven Sub-Deps (`@mermaid-js`, `cytoscape*`, `d3`/`d3-*`, `dagre`/`dagre-d3-es`, `katex`, `khroma`, `roughjs`, `langium`, `vscode-*`, `lodash-es`, `dayjs`, …) → `manualChunks` returnt `undefined`, sodass Rollup die `import("mermaid")` als async-Chunk auslagert. **Nicht** als `return 'mermaid'` markieren — das erzeugt einen `mermaid → vendor → mermaid`-Zirkel (z. B. `lodash-es` shared zwischen dagre-d3-es und vendor-Code) und Rollup preloadet mermaid dann beim Initial-Page-Load.
 - Restliche `node_modules` → `vendor` Chunk
 
 ### Warum package-lock.json wichtig ist
@@ -255,3 +259,4 @@ Committe `package-lock.json` immer in die Versionsverwaltung.
 | react-markdown | 10 | Markdown-Rendering (AI-Zusammenfassungen) |
 | react-icons | 5.5 | Icon-Bibliothek (Lucide) |
 | react-select | 5.10 | Async Multi-Select Dropdowns |
+| mermaid | 11.14 | Lazy-loaded für die Attack-Path-Tab; Rollup splittet sie automatisch in einen async-Chunk (siehe Code-Splitting unten) |
