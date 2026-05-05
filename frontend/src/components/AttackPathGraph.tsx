@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import { Link } from "react-router-dom";
+import { LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
@@ -34,8 +35,25 @@ interface MermaidModule {
   };
 }
 
+interface PanzoomController {
+  dispose: () => void;
+  zoomTo: (clientX: number, clientY: number, scaleMultiplier: number) => void;
+  zoomAbs: (clientX: number, clientY: number, zoomLevel: number) => void;
+  smoothZoom: (clientX: number, clientY: number, scaleMultiplier: number) => void;
+  moveTo: (x: number, y: number) => void;
+  getTransform: () => { x: number; y: number; scale: number };
+}
+
+interface PanzoomModule {
+  default: (
+    target: SVGElement | HTMLElement,
+    options?: Record<string, unknown>,
+  ) => PanzoomController;
+}
+
 let _mermaidPromise: Promise<MermaidModule | null> | null = null;
 let _mermaidInitialized = false;
+let _panzoomPromise: Promise<PanzoomModule | null> | null = null;
 
 const SEVERITY_COLORS: Record<string, { fill: string; stroke: string; color: string }> = {
   critical: { fill: "#7a1f2b", stroke: "#ff6b6b", color: "#ffe7e7" },
@@ -129,6 +147,14 @@ async function loadMermaid(): Promise<MermaidModule | null> {
   return _mermaidPromise;
 }
 
+async function loadPanzoom(): Promise<PanzoomModule | null> {
+  if (_panzoomPromise) return _panzoomPromise;
+  _panzoomPromise = import("panzoom")
+    .then((mod) => mod as unknown as PanzoomModule)
+    .catch(() => null);
+  return _panzoomPromise;
+}
+
 function escapeForMermaid(text: string): string {
   return text.replace(/"/g, "&quot;").replace(/\n/g, "<br/>");
 }
@@ -168,6 +194,20 @@ function buildMermaidSource(graph: AttackPathGraph): string {
   }
   return lines.join("\n");
 }
+
+const zoomButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "28px",
+  height: "28px",
+  background: "rgba(255, 255, 255, 0.06)",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
+  borderRadius: "0.35rem",
+  color: "rgba(220, 224, 235, 0.9)",
+  cursor: "pointer",
+  padding: 0,
+};
 
 function chipBackground(tone: "danger" | "warning" | "info" | "muted"): React.CSSProperties {
   switch (tone) {
@@ -355,6 +395,9 @@ export function AttackPathGraphView({
   const [renderId] = useState(() => `attack-path-${Math.random().toString(36).slice(2, 10)}`);
   const [selectedProvider, setSelectedProvider] = useState<string>(aiProviders[0]?.id ?? "");
   const [additionalContext, setAdditionalContext] = useState<string>("");
+  const svgContainerRef = useRef<HTMLDivElement | null>(null);
+  const panzoomRef = useRef<PanzoomController | null>(null);
+  const attachedSvgRef = useRef<SVGElement | null>(null);
 
   useEffect(() => {
     if (!selectedProvider && aiProviders[0]?.id) {
@@ -388,6 +431,111 @@ export function AttackPathGraphView({
       cancelled = true;
     };
   }, [mermaidSource, renderId]);
+
+  // Attach pan/zoom to the freshly rendered Mermaid SVG. The handler is
+  // idempotent — it only (re)attaches when the SVG DOM element identity has
+  // actually changed. A naive "dispose + attach" on every re-run was wiping
+  // the user's pan/zoom transform whenever an unrelated prop further up the
+  // tree changed (e.g. the AI providers list arriving ~1s after mount, or
+  // any state change in the parent), which manifested as "zoom resets and
+  // freezes after ~1s".
+  useEffect(() => {
+    if (renderState !== "ready" || !svgMarkup) return;
+    const container = svgContainerRef.current;
+    if (!container) return;
+    const svgEl = container.querySelector("svg") as SVGElement | null;
+    if (!svgEl) return;
+
+    // Already attached to this exact SVG node — keep the existing controller
+    // (and the user's zoom state) intact.
+    if (attachedSvgRef.current === svgEl && panzoomRef.current) return;
+
+    // Mermaid replaced the SVG (or this is the first attach) — tear down the
+    // previous controller and double-click listener if any, then attach fresh.
+    if (panzoomRef.current) {
+      panzoomRef.current.dispose();
+      panzoomRef.current = null;
+    }
+    const previousContainer = container;
+    const previousDblClick = (previousContainer as HTMLDivElement & { __apDbl?: () => void }).__apDbl;
+    if (previousDblClick) {
+      previousContainer.removeEventListener("dblclick", previousDblClick);
+    }
+
+    // Mermaid sets `max-width: 100%` inline which fights panzoom's transforms.
+    // Clear it so the SVG can grow when the user zooms in.
+    svgEl.style.maxWidth = "none";
+    svgEl.style.height = "auto";
+    attachedSvgRef.current = svgEl;
+
+    let disposed = false;
+    loadPanzoom().then((mod) => {
+      if (disposed || !mod) return;
+      // Make sure the SVG we captured is still the current one — a fast
+      // re-render between effect-run and promise-resolve could have replaced it.
+      if (attachedSvgRef.current !== svgEl) return;
+      const controller = mod.default(svgEl, {
+        maxZoom: 8,
+        minZoom: 0.2,
+        bounds: false,
+        zoomDoubleClickSpeed: 1, // we own dblclick → reset below
+        smoothScroll: false,
+      });
+      panzoomRef.current = controller;
+    });
+
+    const handleDoubleClick = () => {
+      const ctrl = panzoomRef.current;
+      if (!ctrl) return;
+      const rect = svgEl.getBoundingClientRect();
+      ctrl.zoomAbs(rect.left + rect.width / 2, rect.top + rect.height / 2, 1);
+      ctrl.moveTo(0, 0);
+    };
+    container.addEventListener("dblclick", handleDoubleClick);
+    (container as HTMLDivElement & { __apDbl?: () => void }).__apDbl = handleDoubleClick;
+
+    return () => {
+      disposed = true;
+      // Note: deliberately NOT disposing the controller here — that's done by
+      // the unmount effect below, OR by the next attach when the SVG element
+      // genuinely changes. Disposing on every effect re-run is what caused
+      // the original "freeze after 1s" bug.
+    };
+  }, [renderState, svgMarkup]);
+
+  // Final cleanup on unmount — safe because attachedSvgRef + panzoomRef are
+  // module-scope across re-renders.
+  useEffect(() => {
+    return () => {
+      if (panzoomRef.current) {
+        panzoomRef.current.dispose();
+        panzoomRef.current = null;
+      }
+      const container = svgContainerRef.current;
+      const dbl = container && (container as HTMLDivElement & { __apDbl?: () => void }).__apDbl;
+      if (container && dbl) {
+        container.removeEventListener("dblclick", dbl);
+      }
+      attachedSvgRef.current = null;
+    };
+  }, []);
+
+  const zoomBy = (factor: number) => {
+    const controller = panzoomRef.current;
+    const container = svgContainerRef.current;
+    if (!controller || !container) return;
+    const rect = container.getBoundingClientRect();
+    controller.smoothZoom(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+  };
+
+  const resetZoom = () => {
+    const controller = panzoomRef.current;
+    const container = svgContainerRef.current;
+    if (!controller || !container) return;
+    const rect = container.getBoundingClientRect();
+    controller.zoomAbs(rect.left + rect.width / 2, rect.top + rect.height / 2, 1);
+    controller.moveTo(0, 0);
+  };
 
   const labels = graph.labels;
   const likelihoodLabelPair = LIKELIHOOD_LABEL_KEYS[labels.likelihood] ?? LIKELIHOOD_LABEL_KEYS.unknown;
@@ -464,25 +612,99 @@ export function AttackPathGraphView({
 
       <div
         style={{
+          position: "relative",
           padding: "1rem",
           borderRadius: "0.65rem",
           background: "rgba(15, 18, 30, 0.55)",
           border: "1px solid rgba(255, 255, 255, 0.08)",
-          overflowX: "auto",
           textAlign: "center",
         }}
       >
         {renderState === "ready" && svgMarkup ? (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "flex-start",
-              minWidth: "fit-content",
-            }}
-            // eslint-disable-next-line react/no-danger -- mermaid output rendered in strict securityLevel
-            dangerouslySetInnerHTML={{ __html: svgMarkup }}
-          />
+          <>
+            <div
+              ref={svgContainerRef}
+              style={{
+                position: "relative",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-start",
+                minHeight: "320px",
+                maxHeight: "70vh",
+                overflow: "hidden",
+                cursor: "grab",
+                touchAction: "none",
+              }}
+              onMouseDown={(e) => {
+                (e.currentTarget as HTMLDivElement).style.cursor = "grabbing";
+              }}
+              onMouseUp={(e) => {
+                (e.currentTarget as HTMLDivElement).style.cursor = "grab";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.cursor = "grab";
+              }}
+              // eslint-disable-next-line react/no-danger -- mermaid output rendered in strict securityLevel
+              dangerouslySetInnerHTML={{ __html: svgMarkup }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: "0.6rem",
+                right: "0.6rem",
+                display: "flex",
+                gap: "0.25rem",
+                background: "rgba(15, 18, 30, 0.85)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+                borderRadius: "0.45rem",
+                padding: "0.2rem",
+              }}
+              // Stop pointer events from being swallowed by the panzoom drag handler
+              onMouseDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                title={t("Zoom out", "Verkleinern")}
+                onClick={() => zoomBy(0.8)}
+                style={zoomButtonStyle}
+              >
+                <LuMinus size={14} />
+              </button>
+              <button
+                type="button"
+                title={t("Reset zoom", "Zoom zurücksetzen")}
+                onClick={() => resetZoom()}
+                style={zoomButtonStyle}
+              >
+                <LuMaximize2 size={14} />
+              </button>
+              <button
+                type="button"
+                title={t("Zoom in", "Vergrößern")}
+                onClick={() => zoomBy(1.25)}
+                style={zoomButtonStyle}
+              >
+                <LuPlus size={14} />
+              </button>
+            </div>
+            <div
+              className="muted"
+              style={{
+                position: "absolute",
+                bottom: "0.5rem",
+                left: "0.75rem",
+                fontSize: "0.7rem",
+                opacity: 0.55,
+                pointerEvents: "none",
+              }}
+            >
+              {t(
+                "Drag to pan · scroll to zoom · double-click to reset",
+                "Ziehen zum Verschieben · Scrollen zum Zoomen · Doppelklick zum Zurücksetzen",
+              )}
+            </div>
+          </>
         ) : renderState === "fallback" ? (
           <FallbackChain graph={graph} />
         ) : (
