@@ -18,6 +18,12 @@ from app.schemas.ai import (
     AIInvestigationSubmitResponse,
     AIProviderInfo,
 )
+from app.schemas.attack_path import (
+    AttackPathNarrative,
+    AttackPathRequest,
+    AttackPathResponse,
+    AttackPathSubmitResponse,
+)
 from app.schemas.vulnerability import (
     DQLFieldAggregation,
     PagedVulnerabilityResponse,
@@ -30,6 +36,7 @@ from app.schemas.vulnerability import (
     VulnerabilityRefreshResponse,
 )
 from app.services.ai_service import AIClient, AIProviderError, get_ai_client
+from app.services.attack_path_service import AttackPathService, get_attack_path_service
 from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
 from app.services.inventory_service import InventoryService, get_inventory_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
@@ -692,3 +699,211 @@ async def list_single_ai_analyses(
     List vulnerabilities with single AI analyses, sorted by most recent.
     """
     return await service.list_single_ai_analyses(limit=limit, offset=offset)
+
+
+@router.get("/{identifier}/attack-path", response_model=AttackPathResponse)
+async def get_attack_path(
+    identifier: str,
+    package: str | None = Query(default=None, description="Package name from a scan finding."),
+    version: str | None = Query(default=None, description="Package version from a scan finding."),
+    scan_id: str | None = Query(default=None, alias="scanId"),
+    target_id: str | None = Query(default=None, alias="targetId"),
+    language: str = Query(default="en", description="UI language (en/de) for graph labels."),
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+    inventory_service: InventoryService = Depends(get_inventory_service),
+    attack_path_service: AttackPathService = Depends(get_attack_path_service),
+) -> AttackPathResponse:
+    """Compute the deterministic attack-path graph for a vulnerability and return the
+    persisted AI narrative (if any). The graph is always computed live from the latest
+    catalog data; the narrative is read-only here (use POST to (re)generate it).
+
+    The optional ``package``/``version``/``scanId``/``targetId`` query params enrich the
+    graph with scan-finding context (entry node + package node) when called from the
+    Scan Detail page; for the Vulnerability Detail tab they are omitted.
+    """
+    vulnerability = await service.get_by_id(identifier)
+    if vulnerability is None:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+    # Hydrate inventory so the graph (and any business-impact label) reflects user assets.
+    affected_inventory_payload: list[dict[str, Any]] = []
+    try:
+        affected = await inventory_service.affected_inventory_for_vuln(vulnerability)
+        affected_inventory_payload = [a.model_dump(by_alias=True) for a in affected]
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "attack_path.inventory_lookup_failed",
+            vuln_id=identifier,
+            error=str(exc),
+        )
+
+    scan_target = None
+    if scan_id or target_id:
+        scan_target = target_id or scan_id
+
+    graph = await attack_path_service.build_graph(
+        vulnerability,
+        package_name=package,
+        package_version=version,
+        scan_target=scan_target,
+        affected_inventory=affected_inventory_payload,
+        language=language,
+    )
+
+    narrative_payload = vulnerability.attack_path
+    narrative_obj: AttackPathNarrative | None = None
+    if isinstance(narrative_payload, dict) and narrative_payload.get("summary"):
+        try:
+            narrative_obj = AttackPathNarrative.model_validate(narrative_payload)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "attack_path.narrative_validate_failed",
+                vuln_id=identifier,
+                error=str(exc),
+            )
+
+    return AttackPathResponse(
+        vulnerabilityId=identifier,
+        graph=graph,
+        narrative=narrative_obj,
+    )
+
+
+@router.post(
+    "/{identifier}/attack-path",
+    response_model=AttackPathSubmitResponse,
+    status_code=202,
+)
+async def create_attack_path_analysis(
+    identifier: str,
+    payload: AttackPathRequest,
+    request: Request,
+    _: None = Depends(_require_ai_analysis_password),
+    service: VulnerabilityService = Depends(get_vulnerability_service),
+    ai_client: AIClient = Depends(get_ai_client),
+    audit_service: AuditService = Depends(get_audit_service),
+    inventory_service: InventoryService = Depends(get_inventory_service),
+    attack_path_service: AttackPathService = Depends(get_attack_path_service),
+) -> AttackPathSubmitResponse:
+    """Kick off AI generation of an attack-path narrative aligned with the deterministic
+    graph. The narrative is appended to ``attack_paths[]`` and mirrored on
+    ``attack_path``. Subscribe to SSE ``attack_path_{identifier}`` for completion.
+    """
+    vulnerability = await service.get_by_id(identifier)
+    if vulnerability is None:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+    # Validate provider before launching background task (mirror create_ai_investigation).
+    try:
+        if payload.provider == "openai" and not settings.openai_api_key:
+            raise ValueError("OpenAI provider is not configured.")
+        if payload.provider == "anthropic" and not settings.anthropic_api_key:
+            raise ValueError("Anthropic provider is not configured.")
+        if payload.provider == "gemini" and not settings.google_gemini_api_key:
+            raise ValueError("Google Gemini provider is not configured.")
+        if payload.provider == "openai-compatible" and (
+            not settings.openai_compatible_base_url or not settings.openai_compatible_model
+        ):
+            raise ValueError("OpenAI-compatible provider is not configured.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    affected_inventory_payload: list[dict[str, Any]] = []
+    try:
+        affected = await inventory_service.affected_inventory_for_vuln(vulnerability)
+        affected_inventory_payload = [a.model_dump(by_alias=True) for a in affected]
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "attack_path.inventory_lookup_failed",
+            vuln_id=identifier,
+            error=str(exc),
+        )
+
+    client_ip = get_client_ip(request)
+
+    asyncio.create_task(
+        _run_attack_path_background(
+            identifier=identifier,
+            vulnerability=vulnerability,
+            provider=payload.provider,
+            language=payload.language,
+            additional_context=payload.additional_context,
+            triggered_by=payload.triggered_by,
+            client_ip=client_ip,
+            ai_client=ai_client,
+            service=service,
+            audit_service=audit_service,
+            attack_path_service=attack_path_service,
+            affected_inventory=affected_inventory_payload,
+        )
+    )
+
+    return AttackPathSubmitResponse(status="running", vulnerabilityId=identifier)
+
+
+async def _run_attack_path_background(
+    *,
+    identifier: str,
+    vulnerability: VulnerabilityDetail,
+    provider: str,
+    language: str | None,
+    additional_context: str | None,
+    triggered_by: str | None,
+    client_ip: str | None,
+    ai_client: AIClient,
+    service: VulnerabilityService,
+    audit_service: AuditService,
+    attack_path_service: AttackPathService,
+    affected_inventory: list[dict[str, Any]] | None = None,
+) -> None:
+    job_name = f"attack_path_{identifier}"
+    started_at = datetime.now(tz=UTC)
+    publish_job_started(job_name, started_at, provider=provider, vulnerabilityId=identifier)
+
+    try:
+        graph = await attack_path_service.build_graph(
+            vulnerability,
+            affected_inventory=affected_inventory,
+            language=language or "en",
+        )
+
+        narrative = await ai_client.analyze_attack_path(
+            provider,
+            vulnerability,
+            graph.model_dump(by_alias=True),
+            language=language,
+            additional_context=additional_context,
+            triggered_by=triggered_by,
+            affected_inventory=affected_inventory,
+        )
+
+        narrative_payload = narrative.model_dump(by_alias=True)
+        await service.save_attack_path(identifier, narrative_payload)
+
+        metadata: dict[str, Any] = {
+            "label": "Attack Path narrative generated",
+            "clientIp": client_ip,
+            "provider": provider,
+        }
+        metadata = {k: v for k, v in metadata.items() if v}
+        result_payload: dict[str, Any] = {
+            "vulnerabilityId": identifier,
+            "language": narrative.language,
+            "summaryExcerpt": (narrative.summary or "")[:200],
+        }
+        if narrative.token_usage:
+            result_payload["tokenUsage"] = narrative.token_usage
+        await audit_service.record_event(
+            "attack_path_analysis",
+            metadata=metadata or None,
+            result=result_payload,
+        )
+
+        finished_at = datetime.now(tz=UTC)
+        publish_job_completed(
+            job_name, started_at, finished_at, provider=provider, vulnerabilityId=identifier
+        )
+    except Exception as exc:
+        finished_at = datetime.now(tz=UTC)
+        logger.error("Background attack-path analysis failed", identifier=identifier, error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc))

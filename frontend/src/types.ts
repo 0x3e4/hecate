@@ -294,6 +294,82 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   changeHistory?: VulnerabilityChangeEntry[];
   sources?: SourceEntry[];
   affectedInventory?: AffectedInventoryItem[];
+  attackPath?: AttackPathNarrative | null;
+}
+
+export type AttackPathNodeType =
+  | "entry"
+  | "asset"
+  | "package"
+  | "cve"
+  | "cwe"
+  | "capec"
+  | "exploit"
+  | "impact"
+  | "fix";
+
+export type AttackPathLikelihood =
+  | "very_low"
+  | "low"
+  | "medium"
+  | "high"
+  | "very_high"
+  | "unknown";
+
+export type AttackPathExploitMaturity =
+  | "theoretical"
+  | "poc"
+  | "functional"
+  | "high"
+  | "unknown";
+
+export type AttackPathReachability = "confirmed" | "likely" | "unknown" | "not_reachable";
+
+export interface AttackPathNode {
+  id: string;
+  type: AttackPathNodeType;
+  label: string;
+  description?: string | null;
+  severity?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AttackPathEdge {
+  source: string;
+  target: string;
+  label?: string | null;
+}
+
+export interface AttackPathLabels {
+  likelihood: AttackPathLikelihood;
+  exploitMaturity: AttackPathExploitMaturity;
+  reachability: AttackPathReachability;
+  privilegesRequired?: string | null;
+  userInteraction?: string | null;
+  businessImpact?: string | null;
+}
+
+export interface AttackPathGraph {
+  nodes: AttackPathNode[];
+  edges: AttackPathEdge[];
+  labels: AttackPathLabels;
+  disclaimer: string;
+  generatedAt: string;
+}
+
+export interface AttackPathNarrative {
+  provider: string;
+  language: string;
+  summary: string;
+  generatedAt: string;
+  tokenUsage?: Record<string, number> | null;
+  triggeredBy?: string | null;
+}
+
+export interface AttackPathResponse {
+  vulnerabilityId: string;
+  graph: AttackPathGraph;
+  narrative?: AttackPathNarrative | null;
 }
 
 export type InventoryDeployment = "onprem" | "cloud" | "hybrid";

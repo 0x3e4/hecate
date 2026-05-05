@@ -162,8 +162,21 @@ class Settings(BaseSettings):
     scheduler_cpe_interval_minutes: int = 1440
     scheduler_nvd_interval_minutes: int = 10
     scheduler_kev_interval_minutes: int = 60
+    # CWE and CAPEC sync use wall-clock CronTrigger (not IntervalTrigger) so the
+    # next-run time is preserved across backend restarts. The old
+    # `scheduler_{cwe,capec}_interval_days` settings are kept as a
+    # staleness-catch-up threshold: when the catalog is older than this on
+    # startup, the bootstrap path kicks off an out-of-band sync immediately.
     scheduler_cwe_interval_days: int = 7
     scheduler_capec_interval_days: int = 7
+    scheduler_cwe_cron_day_of_week: str = "mon"
+    scheduler_cwe_cron_hour: int = 3
+    scheduler_capec_cron_day_of_week: str = "tue"
+    scheduler_capec_cron_hour: int = 3
+    # If the last successful sync is older than (interval × this multiplier)
+    # at startup, kick off an immediate catch-up sync. Default 1.5×: covers a
+    # missed weekly slot without thrashing.
+    scheduler_catalog_stale_catchup_multiplier: float = 1.5
     scheduler_circl_interval_minutes: int = 120
     scheduler_ghsa_interval_minutes: int = 120
     scheduler_osv_interval_minutes: int = 120

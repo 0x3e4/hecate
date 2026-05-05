@@ -64,6 +64,9 @@ class CAPECService:
         self._repository: CAPECRepository | None = repository
         self._cache: dict[str, tuple[datetime, CAPECDescription]] = {}
         self._cache_ttl = timedelta(days=7)
+        # Emit "catalog is stale" exactly once per process so admins notice
+        # without flooding logs on every read.
+        self._stale_warning_emitted: bool = False
         # CWE→CAPEC mapping: built from CWE raw data's RelatedAttackPatterns
         # and from CAPEC raw data's Related_Weaknesses
         self._cwe_to_capec: dict[str, set[str]] = {}
@@ -250,7 +253,7 @@ class CAPECService:
     async def _get_capec_data(self, capec_id: str) -> CAPECDescription | None:
         normalized_id = self._normalize_capec_id(capec_id)
 
-        # 1. In-memory cache
+        # 1. In-memory cache (only honors fresh TTL — stale entries fall through to Mongo)
         if normalized_id in self._cache:
             cached_at, cached_data = self._cache[normalized_id]
             if self._is_cache_valid(cached_at):
@@ -258,16 +261,28 @@ class CAPECService:
             else:
                 del self._cache[normalized_id]
 
-        # 2. MongoDB
+        # 2. MongoDB. CAPEC content changes a few times per year and the only
+        #    refresh source is the bulk XML feed (no per-ID API). Serve whatever
+        #    is on disk and emit a single warning per process when the catalog
+        #    has drifted past the TTL — better than dropping the whole CAPEC
+        #    layer when the scheduler has been blocked from running.
         try:
             repo = await self._ensure_repository()
             db_entry = await repo.get_by_id(normalized_id)
             if db_entry:
                 age = datetime.now(UTC) - db_entry.fetched_at
-                if age < self._cache_ttl:
-                    capec_desc = CAPECDescription(db_entry.raw_data)
-                    self._cache[normalized_id] = (db_entry.fetched_at, capec_desc)
-                    return capec_desc
+                if age >= self._cache_ttl and not self._stale_warning_emitted:
+                    log.warning(
+                        "capec_service.catalog_stale",
+                        oldest_fetched_at=db_entry.fetched_at.isoformat(),
+                        age_days=age.days,
+                        ttl_days=self._cache_ttl.days,
+                        hint="Run `python -m app.cli sync-capec --initial` or wait for the scheduler.",
+                    )
+                    self._stale_warning_emitted = True
+                capec_desc = CAPECDescription(db_entry.raw_data)
+                self._cache[normalized_id] = (db_entry.fetched_at, capec_desc)
+                return capec_desc
         except Exception as exc:
             log.warning("capec_service.db_lookup_failed", capec_id=normalized_id, error=str(exc))
 
