@@ -666,6 +666,118 @@ def register(mcp: FastMCP) -> None:
             )
             return {"error": f"Save failed: {str(exc)[:200]}"}
 
+    @mcp.tool()
+    async def refine_attack_path_analysis(
+        vulnerability_id: str,
+        assumptions: dict[str, str] | None = None,
+        additional_context: str | None = None,
+        language: str | None = None,
+    ) -> dict[str, Any]:
+        """Re-render a vulnerability's attack path under hypothetical assumptions.
+
+        Call repeatedly with different `assumptions` to explore the path interactively
+        ("what if internet-facing?", "what if SSH key was leaked?"). Returns the same
+        prepare-shape as `prepare_attack_path_analysis` (graph + prompts + context) plus
+        an `assumptions` echo field. **Does NOT persist anything** — when you have the
+        scenario you want, call `save_attack_path_analysis(vulnerability_id, summary)`
+        with the final narrative.
+
+        Allowed `assumptions` keys (others silently dropped, values capped at 200 chars):
+        - `reachability`: "confirmed" | "likely" | "not_reachable"
+        - `entry_point`: free-form label for the entry node, e.g. "public Tomcat /api/login"
+        - `network_exposure`: "internet" | "intranet" | "isolated"
+        - `privileges_required`: e.g. "none", "low", "high"
+        - `user_interaction`: e.g. "N", "R"
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {
+            "vulnerability_id": vulnerability_id,
+            "language": language,
+            "assumption_keys": list(assumptions.keys()) if isinstance(assumptions, dict) else [],
+        }
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="refine_attack_path_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        try:
+            vuln_id = vulnerability_id.strip()
+            if not vuln_id or len(vuln_id) > 100 or not _VULN_ID_PATTERN.match(vuln_id):
+                return {"error": "Invalid vulnerability ID format."}
+
+            from app.services.ai_service import build_attack_path_prompts
+            from app.services.attack_path_service import get_attack_path_service
+            from app.services.inventory_service import get_inventory_service
+            from app.services.vulnerability_service import VulnerabilityService
+
+            service = VulnerabilityService()
+            vulnerability = await service.get_by_id(vuln_id)
+            if vulnerability is None:
+                return {"error": f"Vulnerability '{vuln_id}' not found."}
+
+            inventory_service = await get_inventory_service()
+            try:
+                affected_items = await inventory_service.affected_inventory_for_vuln(vulnerability)
+            except Exception:
+                affected_items = []
+            affected_inventory = [a.model_dump(by_alias=True) for a in affected_items]
+
+            # AttackPathService.build_graph applies the allow-list + length cap on
+            # the assumptions internally, so we can pass the raw dict through.
+            attack_path_service = get_attack_path_service()
+            graph = await attack_path_service.build_graph(
+                vulnerability,
+                affected_inventory=affected_inventory,
+                language=language or "en",
+                assumptions=assumptions or {},
+            )
+            graph_payload = graph.model_dump(by_alias=True)
+
+            system_prompt, user_prompt = await build_attack_path_prompts(
+                vulnerability,
+                graph_payload,
+                language=language,
+                additional_context=additional_context,
+                affected_inventory=affected_inventory,
+                assumptions=assumptions or {},
+            )
+
+            # Echo back only the keys we honoured so the client can confirm what
+            # actually changed vs what was silently dropped.
+            normalized = attack_path_service._normalize_assumptions(assumptions or {})
+
+            output = {
+                "vulnerabilityId": vuln_id,
+                "graph": graph_payload,
+                "systemPrompt": system_prompt,
+                "userPrompt": user_prompt,
+                "affectedInventory": affected_inventory,
+                "assumptions": normalized,
+                "instructions": (
+                    "This is a read-only refinement — no document was modified. Run again "
+                    "with different `assumptions` to keep exploring, or call "
+                    "`save_attack_path_analysis(vulnerability_id, summary)` to persist the "
+                    "narrative your model produces from this prompt set."
+                ),
+                "saveTool": "save_attack_path_analysis",
+            }
+            await log_tool_invocation(
+                tool_name="refine_attack_path_analysis", inputs=tool_inputs,
+                result_count=1, started_at=started_at,
+            )
+            return output
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="refine_attack_path_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Refine failed: {str(exc)[:200]}"}
+
 
 def _mcp_triggered_by(client_name: str | None) -> str:
     """Build the triggered_by attribution string for an MCP tool invocation."""

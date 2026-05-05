@@ -63,8 +63,19 @@ class AttackPathService:
         scan_target: str | None = None,
         affected_inventory: list[dict[str, Any]] | None = None,
         language: str = "en",
+        assumptions: dict[str, str] | None = None,
     ) -> AttackPathGraph:
-        """Build the structural graph. Pure-ish: no DB writes, only catalog reads."""
+        """Build the structural graph. Pure-ish: no DB writes, only catalog reads.
+
+        ``assumptions`` lets callers (typically the MCP ``refine_attack_path_analysis``
+        tool) override label heuristics or the entry node for hypothetical
+        exploration. Recognised keys (others are silently ignored): ``reachability``,
+        ``privileges_required``, ``user_interaction``, ``entry_point``,
+        ``network_exposure``. Caller must enforce length caps before passing in.
+        """
+        # Sanitise the assumption dict — drop unknown keys, lowercase enums for
+        # the labels-overrides, leave free-form strings (entry_point) intact.
+        assumptions = self._normalize_assumptions(assumptions)
         cwe_ids = self._normalize_cwes(vuln.cwes)
 
         cwe_service = get_cwe_service()
@@ -91,7 +102,9 @@ class AttackPathService:
         nodes: list[AttackPathNode] = []
         edges: list[AttackPathEdge] = []
 
-        entry_node = self._build_entry_node(vuln, scan_target=scan_target)
+        entry_node = self._build_entry_node(
+            vuln, scan_target=scan_target, assumptions=assumptions
+        )
         nodes.append(entry_node)
 
         asset_nodes = self._build_asset_nodes(affected_inventory)
@@ -200,7 +213,9 @@ class AttackPathService:
         nodes.append(fix_node)
         edges.append(AttackPathEdge(source=impact_node.id, target=fix_node.id, label="remediate"))
 
-        labels = self.derive_labels(vuln, affected_inventory=affected_inventory)
+        labels = self.derive_labels(
+            vuln, affected_inventory=affected_inventory, assumptions=assumptions
+        )
         disclaimer = DISCLAIMER_DE if (language or "").lower().startswith("de") else DISCLAIMER_EN
 
         return AttackPathGraph(
@@ -220,13 +235,24 @@ class AttackPathService:
         vuln: VulnerabilityDetail,
         *,
         affected_inventory: list[dict[str, Any]] | None = None,
+        assumptions: dict[str, str] | None = None,
     ) -> AttackPathLabels:
+        assumptions = self._normalize_assumptions(assumptions)
+        reachability = self._reachability(vuln)
+        if assumptions.get("reachability") in {"confirmed", "likely", "not_reachable"}:
+            reachability = assumptions["reachability"]  # type: ignore[assignment]
+        privileges_required = self._cvss_metric(vuln, ("PR", "privilegesRequired"))
+        if assumptions.get("privileges_required"):
+            privileges_required = assumptions["privileges_required"]
+        user_interaction = self._cvss_metric(vuln, ("UI", "userInteraction"))
+        if assumptions.get("user_interaction"):
+            user_interaction = assumptions["user_interaction"]
         return AttackPathLabels(
             likelihood=self._likelihood(vuln),
             exploitMaturity=self._exploit_maturity(vuln),
-            reachability=self._reachability(vuln),
-            privilegesRequired=self._cvss_metric(vuln, ("PR", "privilegesRequired")),
-            userInteraction=self._cvss_metric(vuln, ("UI", "userInteraction")),
+            reachability=reachability,
+            privilegesRequired=privileges_required,
+            userInteraction=user_interaction,
             businessImpact=self._business_impact(vuln, affected_inventory),
         )
 
@@ -328,8 +354,32 @@ class AttackPathService:
 
     @staticmethod
     def _build_entry_node(
-        vuln: VulnerabilityDetail, *, scan_target: str | None
+        vuln: VulnerabilityDetail,
+        *,
+        scan_target: str | None,
+        assumptions: dict[str, str] | None = None,
     ) -> AttackPathNode:
+        assumptions = assumptions or {}
+        # Caller-supplied entry override (e.g. from MCP refine_attack_path_analysis).
+        entry_point = assumptions.get("entry_point")
+        network_exposure = assumptions.get("network_exposure")
+        if entry_point:
+            label = entry_point
+            if network_exposure == "internet":
+                label = f"{label} (internet-exposed)"
+            elif network_exposure == "intranet":
+                label = f"{label} (internal network)"
+            return AttackPathNode(
+                id="entry",
+                type="entry",
+                label=label,
+                description="Caller-supplied entry point (assumption).",
+                metadata={
+                    "entryPoint": entry_point,
+                    "networkExposure": network_exposure or None,
+                    "assumed": True,
+                },
+            )
         if scan_target:
             return AttackPathNode(
                 id="entry",
@@ -564,6 +614,36 @@ class AttackPathService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    _ASSUMPTION_KEYS = {
+        "reachability",
+        "privileges_required",
+        "user_interaction",
+        "entry_point",
+        "network_exposure",
+    }
+    _ASSUMPTION_VALUE_CAP = 200
+
+    @classmethod
+    def _normalize_assumptions(
+        cls, assumptions: dict[str, str] | None
+    ) -> dict[str, str]:
+        """Allow-list filter + length cap. Drops unknown keys silently and
+        truncates each value to 200 chars so an MCP client can't smuggle a
+        huge string into the prompt context."""
+        if not assumptions or not isinstance(assumptions, dict):
+            return {}
+        out: dict[str, str] = {}
+        for key, value in assumptions.items():
+            if key not in cls._ASSUMPTION_KEYS:
+                continue
+            if not isinstance(value, str):
+                continue
+            stripped = value.strip()
+            if not stripped:
+                continue
+            out[key] = stripped[: cls._ASSUMPTION_VALUE_CAP]
+        return out
 
     @staticmethod
     def _normalize_cwes(cwes: list[str] | None) -> list[str]:

@@ -372,6 +372,46 @@ export interface AttackPathResponse {
   narrative?: AttackPathNarrative | null;
 }
 
+export type AttackStage =
+  | "foothold"
+  | "credential_access"
+  | "priv_escalation"
+  | "lateral_movement"
+  | "impact";
+
+export interface ChainFindingRef {
+  vulnerabilityId: string;
+  packageName: string;
+  packageVersion?: string | null;
+  severity?: string | null;
+  cvssScore?: number | null;
+  primaryCwe?: string | null;
+  title?: string | null;
+}
+
+export interface ScanAttackChainStage {
+  stage: AttackStage;
+  label: string;
+  findings: ChainFindingRef[];
+  capecTechniques: string[];
+}
+
+export interface ScanAttackChainNarrative {
+  provider: string;
+  language: string;
+  summary: string;
+  generatedAt: string;
+  tokenUsage?: Record<string, number> | null;
+  triggeredBy?: string | null;
+}
+
+export interface ScanAttackChainResponse {
+  scanId: string;
+  graph: AttackPathGraph;
+  stages: ScanAttackChainStage[];
+  narrative?: ScanAttackChainNarrative | null;
+}
+
 export type InventoryDeployment = "onprem" | "cloud" | "hybrid";
 /** Free-form environment label. Common values: prod, staging, dev, test, dr. */
 export type InventoryEnvironment = string;
@@ -652,6 +692,8 @@ export interface Scan {
   layerAnalysisAvailable?: boolean;
   aiAnalysis?: ScanAiAnalysis | null;
   aiAnalyses?: ScanAiAnalysis[] | null;
+  attackChain?: ScanAttackChainNarrative | null;
+  attackChains?: ScanAttackChainNarrative[] | null;
 }
 
 export interface ScanListResponse {

@@ -469,10 +469,17 @@ export function AttackPathGraphView({
           background: "rgba(15, 18, 30, 0.55)",
           border: "1px solid rgba(255, 255, 255, 0.08)",
           overflowX: "auto",
+          textAlign: "center",
         }}
       >
         {renderState === "ready" && svgMarkup ? (
           <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "flex-start",
+              minWidth: "fit-content",
+            }}
             // eslint-disable-next-line react/no-danger -- mermaid output rendered in strict securityLevel
             dangerouslySetInnerHTML={{ __html: svgMarkup }}
           />
@@ -487,7 +494,7 @@ export function AttackPathGraphView({
 
       <CrossReferences nodes={graph.nodes} t={t} />
 
-      <div style={{ marginTop: "1.5rem" }}>
+      <div className="ai-analysis" style={{ marginTop: "1.5rem" }}>
         <h4 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem 0" }}>
           {t("Scenario narrative", "Szenario-Beschreibung")}
         </h4>
@@ -501,78 +508,80 @@ export function AttackPathGraphView({
           </div>
         ) : null}
 
-        {aiEnabled && !narrative && !loading ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.6rem",
-              padding: "0.85rem 1rem",
-              background: "rgba(255, 255, 255, 0.03)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              borderRadius: "0.55rem",
-            }}
-          >
-            <div className="muted" style={{ fontSize: "0.85rem" }}>
-              {t(
-                "Use an AI provider to generate a 4-6 step prose scenario aligned with the graph above.",
-                "Erzeuge mit einem AI-Provider eine 4-6-Schritte-Beschreibung passend zum Graph oben.",
-              )}
+        {aiEnabled && canTriggerNarrative ? (
+          <>
+            <div className="ai-analysis__controls">
+              <label htmlFor="attack-path-provider" className="muted" style={{ fontSize: "0.9rem" }}>
+                {t("Provider", "Anbieter")}
+              </label>
+              <select
+                id="attack-path-provider"
+                value={selectedProvider}
+                onChange={(event) => setSelectedProvider(event.target.value)}
+                disabled={loading}
+              >
+                {aiProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() =>
+                  void onTriggerNarrative?.(selectedProvider, additionalContext.trim())
+                }
+                disabled={loading || !selectedProvider}
+              >
+                {loading
+                  ? t("Generating...", "Erzeuge...")
+                  : t("Generate scenario narrative", "Szenario-Beschreibung erzeugen")}
+              </button>
             </div>
-            {canTriggerNarrative ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-                <select
-                  value={selectedProvider}
-                  onChange={(event) => setSelectedProvider(event.target.value)}
-                  disabled={loading}
-                >
-                  {aiProviders.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={additionalContext}
-                  onChange={(event) => setAdditionalContext(event.target.value)}
-                  disabled={loading}
-                  placeholder={t(
-                    "Optional context (e.g., we run this on Kubernetes)",
-                    "Optionaler Kontext (z. B. wir betreiben dies auf Kubernetes)",
-                  )}
-                  style={{
-                    flex: "1 1 220px",
-                    padding: "0.4rem 0.6rem",
-                    background: "rgba(15, 18, 30, 0.85)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    borderRadius: "6px",
-                    color: "#f5f7fa",
-                    fontSize: "0.9rem",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    void onTriggerNarrative?.(selectedProvider, additionalContext.trim())
-                  }
-                  disabled={loading || !selectedProvider}
-                >
-                  {t("Generate scenario narrative", "Szenario-Beschreibung erzeugen")}
-                </button>
-              </div>
-            ) : null}
+            <div style={{ marginTop: "1rem" }}>
+              <label
+                htmlFor="attack-path-context"
+                className="muted"
+                style={{ fontSize: "0.9rem", display: "block", marginBottom: "0.5rem" }}
+              >
+                {t("Additional information (optional)", "Zusätzliche Informationen (optional)")}
+              </label>
+              <textarea
+                id="attack-path-context"
+                value={additionalContext}
+                onChange={(event) => setAdditionalContext(event.target.value)}
+                disabled={loading}
+                placeholder={t(
+                  "Enter additional context (e.g., we run this on Kubernetes)...",
+                  "Geben Sie zusätzlichen Kontext ein (z. B. wir betreiben dies auf Kubernetes)...",
+                )}
+                style={{
+                  width: "100%",
+                  minHeight: "80px",
+                  padding: "0.6rem 0.75rem",
+                  background: "rgba(15, 18, 30, 0.85)",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  borderRadius: "8px",
+                  color: "#f5f7fa",
+                  fontSize: "0.95rem",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                  lineHeight: 1.5,
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+          </>
+        ) : null}
+
+        {error ? (
+          <div className="ai-analysis__error">
+            {error}
           </div>
         ) : null}
 
         {loading ? (
           <AILoadingIndicator compact startedAt={loadingStartedAt ?? undefined} />
-        ) : null}
-
-        {error ? (
-          <div className="ai-analysis__error" style={{ marginTop: "0.5rem" }}>
-            {error}
-          </div>
         ) : null}
 
         {narrative ? (
@@ -601,7 +610,9 @@ export function AttackPathGraphView({
               {narrative.triggeredBy ? <span>· {narrative.triggeredBy}</span> : null}
               <span>· {new Date(narrative.generatedAt).toLocaleString(language === "de" ? "de-DE" : "en-US")}</span>
             </div>
-            <Markdown>{narrativeText}</Markdown>
+            <div className="ai-analysis__text">
+              <Markdown>{narrativeText}</Markdown>
+            </div>
           </div>
         ) : null}
       </div>

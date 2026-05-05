@@ -13,6 +13,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { useServerConfig } from "../server-config/context";
 import { ScanFindingAttackPath } from "../components/ScanFindingAttackPath";
+import { ScanAttackChainView } from "../components/ScanAttackChainView";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -38,7 +39,7 @@ import type {
   LicenseComplianceResult,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "ai-analysis" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance";
+type Tab = "findings" | "sbom" | "history" | "ai-analysis" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance" | "attack-chain";
 
 /** Format bytes to human-readable string */
 function formatBytes(bytes: number): string {
@@ -825,6 +826,20 @@ export const ScanDetailPage = () => {
           >
             {t("Findings", "Ergebnisse")}
             <TabBadge count={findings.length > 0 ? vulnFindings.length : (scan.findingsCount || findingsTotal)} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("attack-chain")}
+            style={{
+              ...tabStyle(tab === "attack-chain"),
+              ...{
+                borderColor: tab === "attack-chain" ? "rgba(151,117,250,0.55)" : "rgba(151,117,250,0.3)",
+                background: tab === "attack-chain" ? "rgba(151,117,250,0.18)" : "rgba(151,117,250,0.05)",
+                color: tab === "attack-chain" ? "#c8b3ff" : "#a78bfa",
+              },
+            }}
+          >
+            {t("Attack Chain", "Angriffskette")}
           </button>
           <button
             type="button"
@@ -1971,6 +1986,17 @@ export const ScanDetailPage = () => {
               </>
             )}
           </>
+        )}
+
+        {/* Attack Chain tab */}
+        {tab === "attack-chain" && scanId && (
+          <ScanAttackChainView
+            scanId={scanId}
+            aiEnabled={aiEnabled}
+            onPersistedNarrativeChange={() => {
+              fetchScan(scanId).then(setScan).catch(() => {});
+            }}
+          />
         )}
 
         {/* AI Analysis tab */}

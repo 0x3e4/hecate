@@ -333,6 +333,32 @@ export const triggerScanAiAnalysis = async (
   return response.data;
 };
 
+export const fetchScanAttackChain = async (
+  scanId: string,
+  options?: { language?: string },
+): Promise<import("../types").ScanAttackChainResponse> => {
+  const params = new URLSearchParams();
+  if (options?.language) params.set("language", options.language);
+  const response = await api.get<import("../types").ScanAttackChainResponse>(
+    `/v1/scans/${encodeURIComponent(scanId)}/attack-chain`,
+    { params: params.toString() ? params : undefined },
+  );
+  return response.data;
+};
+
+export const triggerScanAttackChainNarrative = async (
+  scanId: string,
+  payload: { provider: string; language?: string; additionalContext?: string; triggeredBy?: string },
+  password?: string,
+): Promise<{ status: string; scanId: string }> => {
+  const response = await api.post<{ status: string; scanId: string }>(
+    `/v1/scans/${encodeURIComponent(scanId)}/attack-chain`,
+    payload,
+    password ? { headers: { "X-AI-Analysis-Password": password } } : undefined,
+  );
+  return response.data;
+};
+
 export interface ScanAiAnalysisHistoryItem {
   type: "scan";
   scan_id: string;
