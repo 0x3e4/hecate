@@ -2,7 +2,7 @@
 // — letting `manualChunks` return undefined for these IDs lets Rollup pull
 // them into the async chunk created by `import("mermaid")`, which keeps them
 // out of the initial modulepreload list.
-const MERMAID_EXCLUSIVE = /node_modules\/(?:\.pnpm\/)?(?:mermaid|@mermaid-js|cytoscape(?:-cose-bilkent|-fcose)?|cose-base|d3|d3-[^/]+|dagre|dagre-d3-es|katex|khroma|roughjs|ts-dedent|@braintree\/sanitize-url|@iconify[^/]*|@upsetjs[^/]*|dompurify|marked|chevrotain|chevrotain-allstar|@chevrotain[^/]*|robust-predicates|delaunator|internmap|fflate|kdbush|debounce|hachure-fill|points-on-curve|points-on-path|path-data-parser|path-browserify|lodash-es|dayjs|langium|vscode-(?:languageserver|jsonrpc|uri))(?:@|\/)/;
+const MERMAID_EXCLUSIVE = /node_modules\/(?:\.pnpm\/)?(?:mermaid|@mermaid-js|cytoscape(?:-cose-bilkent|-fcose)?|cose-base|d3|d3-[^/]+|dagre|dagre-d3-es|katex|khroma|roughjs|ts-dedent|@braintree\/sanitize-url|@iconify[^/]*|@upsetjs[^/]*|dompurify|marked|chevrotain|chevrotain-allstar|@chevrotain[^/]*|robust-predicates|delaunator|internmap|fflate|kdbush|debounce|hachure-fill|points-on-curve|points-on-path|path-data-parser|path-browserify|lodash-es|dayjs|langium|vscode-(?:languageserver|jsonrpc|uri)|panzoom|amator|wheel|ngraph\.events)(?:@|\/)/;
 
 export function manualChunks(id: string) {
   if (id.includes('node_modules')) {
