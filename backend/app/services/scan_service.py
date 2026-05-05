@@ -1106,6 +1106,34 @@ class ScanService:
         )
         return result.modified_count > 0
 
+    async def save_attack_chain(self, scan_id: str, narrative: dict[str, Any]) -> bool:
+        """Append a Cross-CVE Attack Chain narrative to the scan's attack_chains array and
+        mirror it into attack_chain (latest). Same MongoDB pattern as save_scan_ai_analysis.
+        """
+        from app.db.mongo import get_database
+        db = await get_database()
+        try:
+            oid = ObjectId(scan_id)
+        except Exception:
+            return False
+        result = await db[settings.mongo_scans_collection].update_one(
+            {"_id": oid},
+            [
+                {
+                    "$set": {
+                        "attack_chains": {
+                            "$concatArrays": [
+                                {"$cond": [{"$isArray": "$attack_chains"}, "$attack_chains", []]},
+                                [narrative],
+                            ]
+                        },
+                        "attack_chain": narrative,
+                    }
+                }
+            ],
+        )
+        return result.modified_count > 0
+
     async def get_scan_findings(
         self,
         scan_id: str,

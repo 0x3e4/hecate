@@ -192,6 +192,7 @@ class AIClient:
         additional_context: str | None = None,
         triggered_by: str | None = None,
         affected_inventory: list[dict[str, Any]] | None = None,
+        assumptions: dict[str, str] | None = None,
     ) -> AttackPathNarrative:
         """Generate a prose attack-path scenario aligned with the supplied deterministic graph.
 
@@ -206,6 +207,7 @@ class AIClient:
             language=normalized_language,
             additional_context=additional_context,
             affected_inventory=affected_inventory,
+            assumptions=assumptions,
         )
 
         if provider == "openai":
@@ -273,6 +275,57 @@ class AIClient:
 
         return AIScanAnalysisResponse(
             scanId=str(scan.get("_id") or scan.get("scan_id") or ""),
+            provider=provider,
+            language=normalized_language,
+            summary=_append_attribution_footer(summary, triggered_by),
+            generatedAt=_isoformat_utc_now(),
+            tokenUsage=token_usage,
+            triggeredBy=triggered_by,
+        )
+
+    async def analyze_scan_attack_chain(
+        self,
+        provider: AIProviderLiteral,
+        scan: dict[str, Any],
+        stages: list[dict[str, Any]],
+        graph: dict[str, Any],
+        *,
+        language: str | None = None,
+        additional_context: str | None = None,
+        triggered_by: str | None = None,
+    ) -> "ScanAttackChainNarrative":
+        """Generate a prose multi-step attacker scenario aligned with the supplied chain graph."""
+        from app.schemas.scan_attack_chain import ScanAttackChainNarrative
+
+        normalized_language = _normalize_language(language)
+        system_prompt, user_prompt = build_scan_attack_chain_prompts(
+            scan,
+            stages,
+            graph,
+            language=normalized_language,
+            additional_context=additional_context,
+        )
+
+        if provider == "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OpenAI provider is not configured.")
+            summary, token_usage = await self._call_openai(system_prompt, user_prompt)
+        elif provider == "anthropic":
+            if not settings.anthropic_api_key:
+                raise ValueError("Anthropic provider is not configured.")
+            summary, token_usage = await self._call_anthropic(system_prompt, user_prompt)
+        elif provider == "gemini":
+            if not settings.google_gemini_api_key:
+                raise ValueError("Google Gemini provider is not configured.")
+            summary, token_usage = await self._call_gemini(system_prompt, user_prompt)
+        elif provider == "openai-compatible":
+            if not settings.openai_compatible_base_url or not settings.openai_compatible_model:
+                raise ValueError("OpenAI-compatible provider is not configured.")
+            summary, token_usage = await self._call_openai_compatible(system_prompt, user_prompt)
+        else:  # pragma: no cover - defensive
+            raise ValueError(f"Unsupported provider '{provider}'.")
+
+        return ScanAttackChainNarrative(
             provider=provider,
             language=normalized_language,
             summary=_append_attribution_footer(summary, triggered_by),
@@ -875,6 +928,142 @@ def build_scan_prompts(
     )
 
 
+def build_scan_attack_chain_prompts(
+    scan: dict[str, Any],
+    stages: list[dict[str, Any]],
+    graph: dict[str, Any],
+    *,
+    language: str | None = None,
+    additional_context: str | None = None,
+) -> tuple[str, str]:
+    """Public builder for the (system, user) prompt pair driving the cross-CVE chain narrative.
+
+    ``stages`` is the list-of-dict serialisation of ``ScanAttackChainStage`` (each
+    stage carries `stage`, `label`, `findings`, `capec_techniques`); ``graph`` is the
+    serialised ``AttackPathGraph``. The model is hardened against fabricating IDs not
+    present in the supplied stage findings or graph nodes — same pattern as
+    ``_build_scan_prompts`` and ``build_attack_path_prompts``.
+    """
+    normalized_language = _normalize_language(language)
+    de = normalized_language.lower().startswith("de")
+    language_instruction = (
+        f"Respond in the language identified by the ISO code '{normalized_language}'. "
+        "If you are unsure which language that is, default to English."
+    )
+
+    nodes = graph.get("nodes") or []
+    allowed_ids: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        ntype = str(node.get("type") or "")
+        if ntype not in {"cve", "capec"}:
+            continue
+        nlabel = str(node.get("label") or "").split("\\n")[0]
+        if nlabel:
+            allowed_ids.append(nlabel)
+
+    if de:
+        system_prompt = (
+            "Du bist ein erfahrener Sicherheitsanalyst. Beschreibe einen verketteten "
+            "Angriffspfad über mehrere CVEs basierend auf den ATT&CK-Stufen aus den "
+            "Scan-Findings.\n\n"
+            f"{language_instruction}\n\n"
+            "**KRITISCHE REGELN:**\n"
+            "- Verwende AUSSCHLIESSLICH die unten in den Stufen aufgeführten CVE-/CAPEC-IDs. "
+            "Erfinde KEINE weiteren Identifier.\n"
+            "- Folge der Reihenfolge: Erstzugang → Anmeldedaten-Zugriff → Rechteausweitung → "
+            "Querbewegung → Auswirkung. Überspringe leere Stufen.\n"
+            "- Markiere jeden Schritt der nicht direkt aus den Findings ableitbar ist als "
+            "spekulativ.\n"
+            "- KEIN Proof-of-Concept-Code.\n\n"
+            "Liefere ein zweiteiliges Ergebnis im Markdown-Format:\n"
+            "## Angriffsablauf\n"
+            "Eine zusammenhängende Prosa-Beschreibung (max. 350 Wörter), die die "
+            "verfügbaren Stufen verkettet. Pro Stufe: 1-2 Sätze, die einen konkreten "
+            "Angreiferschritt beschreiben und die zitierten CVE-/CAPEC-IDs verwenden.\n\n"
+            "## Priorisierung\n"
+            "Stichpunkte: Welche Stufe ist der Engpass für den Angreifer? Welche CVE "
+            "sollte zuerst gepatcht werden, um die Kette zu brechen? Welche kompensierende "
+            "Kontrolle (z. B. Netzwerksegmentierung) reduziert das Risiko sofort?"
+        )
+    else:
+        system_prompt = (
+            "You are a senior security analyst. Describe a chained multi-CVE attack path "
+            "based on the ATT&CK kill-chain stages derived from this scan's findings.\n\n"
+            f"{language_instruction}\n\n"
+            "**HARD RULES:**\n"
+            "- Use ONLY the CVE / CAPEC identifiers listed in the stages below. Do NOT "
+            "invent or guess additional IDs.\n"
+            "- Follow the order: Foothold → Credential Access → Privilege Escalation → "
+            "Lateral Movement → Impact. Skip stages with no findings.\n"
+            "- Mark any step that doesn't follow directly from the findings as speculative.\n"
+            "- Do NOT provide proof-of-concept exploit code.\n\n"
+            "Produce a two-part Markdown result:\n"
+            "## Attack flow\n"
+            "A single prose narrative (≤350 words) chaining the available stages. For each "
+            "stage: 1-2 sentences describing a concrete attacker step that cites the listed "
+            "CVE / CAPEC IDs.\n\n"
+            "## Prioritisation\n"
+            "Bullet points: which stage is the bottleneck for the attacker? Which CVE should "
+            "be patched first to break the chain? Which compensating control (e.g. network "
+            "segmentation, WAF rule) reduces risk immediately?"
+        )
+
+    user_prompt_parts: list[str] = []
+    user_prompt_parts.append(
+        "Build the chained attacker narrative for the following SCA scan. The stages "
+        "below are deterministic; treat them as ground truth and cite only the IDs they list."
+    )
+    user_prompt_parts.append("\n## SCAN")
+    target = scan.get("target_name") or scan.get("targetName") or scan.get("target_id") or "unknown target"
+    user_prompt_parts.append(f"- Target: {target}")
+    if scan.get("commit_sha"):
+        user_prompt_parts.append(f"- Commit: {scan.get('commit_sha')}")
+    if scan.get("image_digest"):
+        user_prompt_parts.append(f"- Image digest: {scan.get('image_digest')}")
+
+    user_prompt_parts.append("\n## ATT&CK STAGES (only IDs listed here may be cited)")
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        stage_label = stage.get("label") or stage.get("stage") or "Stage"
+        findings = stage.get("findings") or []
+        capec = stage.get("capec_techniques") or stage.get("capecTechniques") or []
+        user_prompt_parts.append(f"\n### {stage_label} ({len(findings)} CVEs)")
+        if capec:
+            user_prompt_parts.append(f"CAPEC patterns: {', '.join(capec)}")
+        for f in findings[:5]:
+            if not isinstance(f, dict):
+                continue
+            vid = f.get("vulnerability_id") or f.get("vulnerabilityId") or "?"
+            pkg = f.get("package_name") or f.get("packageName") or ""
+            ver = f.get("package_version") or f.get("packageVersion") or ""
+            sev = f.get("severity") or "?"
+            cvss = f.get("cvss_score") or f.get("cvssScore")
+            cwe = f.get("primary_cwe") or f.get("primaryCwe") or "?"
+            line = f"- {vid} ({pkg} {ver}, severity={sev}"
+            if cvss is not None:
+                line += f", cvss={cvss}"
+            line += f", weakness={cwe})"
+            user_prompt_parts.append(line)
+
+    if additional_context and additional_context.strip():
+        user_prompt_parts.append(
+            f"\n## ADDITIONAL CONTEXT (provided by analyst)\n{additional_context.strip()}"
+        )
+
+    if allowed_ids:
+        # Cap explicit ID list to keep the prompt compact.
+        user_prompt_parts.append(
+            "\n## ALLOWED IDENTIFIERS\n"
+            f"You may only reference these labels verbatim: {', '.join(allowed_ids[:30])}. "
+            "Do not introduce new identifiers."
+        )
+
+    return system_prompt, "\n".join(user_prompt_parts)
+
+
 async def build_attack_path_prompts(
     vulnerability: VulnerabilityDetail,
     graph: dict[str, Any],
@@ -882,6 +1071,7 @@ async def build_attack_path_prompts(
     language: str | None = None,
     additional_context: str | None = None,
     affected_inventory: list[dict[str, Any]] | None = None,
+    assumptions: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     """Public builder for the (system, user) prompt pair driving the attack-path narrative.
 
@@ -983,6 +1173,30 @@ async def build_attack_path_prompts(
         )
 
     user_prompt_parts: list[str] = []
+    if assumptions:
+        # Allow-list filter so the prompt only ever surfaces sanctioned keys.
+        allowed_keys = {
+            "reachability",
+            "privileges_required",
+            "user_interaction",
+            "entry_point",
+            "network_exposure",
+        }
+        assumption_lines = [
+            f"- {key}: {value}"
+            for key, value in assumptions.items()
+            if key in allowed_keys and isinstance(value, str) and value.strip()
+        ]
+        if assumption_lines:
+            user_prompt_parts.append(
+                "## HYPOTHETICAL ASSUMPTIONS (analyst-supplied; treat as ground truth)"
+            )
+            user_prompt_parts.extend(assumption_lines)
+            user_prompt_parts.append(
+                "Reason about the path under these assumptions. State explicitly when a "
+                "step is contingent on an assumption rather than the vulnerability data."
+            )
+            user_prompt_parts.append("")
     user_prompt_parts.append(
         "Build the attack-path narrative for the following vulnerability using the "
         "graph below as ground truth. The graph nodes contain the only IDs you may cite."

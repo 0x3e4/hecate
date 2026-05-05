@@ -62,7 +62,16 @@ from app.schemas.vex import (
 )
 from app.api.v1.vulnerabilities import _require_ai_analysis_password
 from app.schemas.ai import AIScanAnalysisRequest, AIScanAnalysisSubmitResponse
+from app.schemas.scan_attack_chain import (
+    ScanAttackChainRequest,
+    ScanAttackChainResponse,
+    ScanAttackChainSubmitResponse,
+)
 from app.services.ai_service import AIClient, get_ai_client
+from app.services.scan_attack_chain_service import (
+    ScanAttackChainService,
+    get_scan_attack_chain_service,
+)
 from app.services.license_compliance_service import LicenseComplianceService
 from app.services.scan_service import ScanService, get_scan_service
 from app.services.vex_service import VexService
@@ -784,6 +793,138 @@ async def _run_scan_ai_analysis_background(
         await service.save_scan_ai_analysis(scan_id, result.model_dump(by_alias=True))
     except Exception as exc:
         _ai_scan_logger.error("scan_ai_analysis_failed", scan_id=scan_id, error=str(exc))
+
+
+_scan_attack_chain_tasks: set[asyncio.Task[Any]] = set()
+
+
+@router.get("/{scan_id}/attack-chain", response_model=ScanAttackChainResponse)
+async def get_scan_attack_chain(
+    scan_id: str,
+    language: str = Query(default="en", description="UI language (en/de) for stage labels."),
+    service: ScanService = Depends(get_scan_service),
+    chain_service: ScanAttackChainService = Depends(get_scan_attack_chain_service),
+) -> ScanAttackChainResponse:
+    """Compute the deterministic Cross-CVE Attack Chain for a scan and return the
+    persisted AI narrative (if any). The graph is always computed live; the
+    narrative is read-only here (use POST to (re)generate it).
+    """
+    scan = await service.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    _, findings = await service.finding_repo.list_by_scan(
+        scan_id, limit=2000, include_dismissed=False
+    )
+    graph, stages = await chain_service.build_chain(
+        {**scan, "_id": scan_id}, findings, language=language
+    )
+
+    narrative_payload = scan.get("attack_chain")
+    narrative_obj = None
+    if isinstance(narrative_payload, dict) and narrative_payload.get("summary"):
+        try:
+            from app.schemas.scan_attack_chain import ScanAttackChainNarrative
+
+            narrative_obj = ScanAttackChainNarrative.model_validate(narrative_payload)
+        except Exception as exc:  # pragma: no cover - defensive
+            _ai_scan_logger.warning(
+                "scan_attack_chain.narrative_validate_failed",
+                scan_id=scan_id,
+                error=str(exc),
+            )
+
+    return ScanAttackChainResponse(
+        scanId=scan_id,
+        graph=graph,
+        stages=stages,
+        narrative=narrative_obj,
+    )
+
+
+@router.post(
+    "/{scan_id}/attack-chain",
+    response_model=ScanAttackChainSubmitResponse,
+    status_code=202,
+)
+async def create_scan_attack_chain_analysis(
+    scan_id: str,
+    payload: ScanAttackChainRequest,
+    _: None = Depends(_require_ai_analysis_password),
+    service: ScanService = Depends(get_scan_service),
+    ai_client: AIClient = Depends(get_ai_client),
+    chain_service: ScanAttackChainService = Depends(get_scan_attack_chain_service),
+) -> ScanAttackChainSubmitResponse:
+    """Kick off AI-narrative generation for the Cross-CVE Attack Chain. HTTP 202.
+    Mirrors `create_scan_ai_analysis` (poll-based, no SSE event)."""
+    scan = await service.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    if payload.provider == "openai" and not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="OpenAI provider is not configured.")
+    if payload.provider == "anthropic" and not settings.anthropic_api_key:
+        raise HTTPException(status_code=400, detail="Anthropic provider is not configured.")
+    if payload.provider == "gemini" and not settings.google_gemini_api_key:
+        raise HTTPException(status_code=400, detail="Gemini provider is not configured.")
+    if payload.provider == "openai-compatible" and (
+        not settings.openai_compatible_base_url or not settings.openai_compatible_model
+    ):
+        raise HTTPException(status_code=400, detail="OpenAI-compatible provider is not configured.")
+
+    _, findings = await service.finding_repo.list_by_scan(
+        scan_id, limit=2000, include_dismissed=False
+    )
+
+    task = asyncio.create_task(
+        _run_scan_attack_chain_background(
+            scan_id=scan_id,
+            scan=scan,
+            findings=findings,
+            provider=payload.provider,
+            language=payload.language,
+            additional_context=payload.additional_context,
+            triggered_by=payload.triggered_by,
+            ai_client=ai_client,
+            service=service,
+            chain_service=chain_service,
+        )
+    )
+    _scan_attack_chain_tasks.add(task)
+    task.add_done_callback(_scan_attack_chain_tasks.discard)
+
+    return ScanAttackChainSubmitResponse(status="running", scanId=scan_id)
+
+
+async def _run_scan_attack_chain_background(
+    *,
+    scan_id: str,
+    scan: dict[str, Any],
+    findings: list[dict[str, Any]],
+    provider: str,
+    language: str | None,
+    additional_context: str | None,
+    triggered_by: str | None,
+    ai_client: AIClient,
+    service: ScanService,
+    chain_service: ScanAttackChainService,
+) -> None:
+    try:
+        graph, stages = await chain_service.build_chain(
+            {**scan, "_id": scan_id}, findings, language=language or "en"
+        )
+        narrative = await ai_client.analyze_scan_attack_chain(
+            provider,  # type: ignore[arg-type]
+            {**scan, "_id": scan_id},
+            [s.model_dump(by_alias=True) for s in stages],
+            graph.model_dump(by_alias=True),
+            language=language,
+            additional_context=additional_context,
+            triggered_by=triggered_by,
+        )
+        await service.save_attack_chain(scan_id, narrative.model_dump(by_alias=True))
+    except Exception as exc:
+        _ai_scan_logger.error("scan_attack_chain_failed", scan_id=scan_id, error=str(exc))
 
 
 @router.get("/{scan_id}/findings", response_model=ScanFindingListResponse)

@@ -96,6 +96,14 @@ class ScanDocument(BaseModel):
     ai_analysis: dict[str, Any] | None = Field(
         default=None, description="Latest AI analysis (mirror of ai_analyses[-1] for convenience)"
     )
+    attack_chains: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Full history of Cross-CVE Attack Chain narratives for this scan",
+    )
+    attack_chain: dict[str, Any] | None = Field(
+        default=None,
+        description="Latest Cross-CVE Attack Chain narrative (mirror of attack_chains[-1])",
+    )
 
 
 class ScanFindingDocument(BaseModel):

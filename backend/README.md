@@ -19,7 +19,7 @@ app/
 │   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
 │   ├── audit.py             # Ingestion-Logs
 │   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets inkl. Group-Filter + manueller /check-Trigger für Auto-Scan-Diagnose, Target-Gruppen-Roll-up, History mit since-Filter, Findings inkl. ?includeDismissed, SBOM, SBOM-Export, SBOM-Import, Compare, VEX inkl. bulk-update-by-ids/import, Findings-Dismiss, License-Compliance)
+│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets inkl. Group-Filter + manueller /check-Trigger für Auto-Scan-Diagnose, Target-Gruppen-Roll-up, History mit since-Filter, Findings inkl. ?includeDismissed, SBOM, SBOM-Export, SBOM-Import, Compare, VEX inkl. bulk-update-by-ids/import, Findings-Dismiss, License-Compliance, Cross-CVE Attack Chain via GET/POST /scans/{id}/attack-chain)
 │   ├── events.py            # Server-Sent Events (SSE) Stream
 │   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
 │   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
@@ -34,13 +34,13 @@ app/
 │   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
 │   ├── security.py              # Rate-Limiting, Input-Sanitisierung
 │   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events
-│   └── tools/                   # 32 MCP-Tools (6 Module)
-│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis, prepare_attack_path_analysis, save_attack_path_analysis
+│   └── tools/                   # 35 MCP-Tools (6 Module)
+│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis, prepare_attack_path_analysis, save_attack_path_analysis, refine_attack_path_analysis
 │       ├── cpe.py               # search_cpe
 │       ├── assets.py            # search_vendors, search_products
 │       ├── stats.py             # get_vulnerability_stats
 │       ├── cwe_capec.py         # get_cwe, get_capec
-│       └── scans.py             # get_scan_findings, get_scan_findings_by_scan, get_security_alerts, get_scan_sbom, get_sbom_components, get_sbom_facets, get_target_scan_history, compare_scans, get_layer_analysis, list_scan_targets, list_target_groups, list_scans, find_findings_by_cve, get_sca_scan, trigger_scan, trigger_sync, prepare_scan_ai_analysis, save_scan_ai_analysis
+│       └── scans.py             # get_scan_findings, get_scan_findings_by_scan, get_security_alerts, get_scan_sbom, get_sbom_components, get_sbom_facets, get_target_scan_history, compare_scans, get_layer_analysis, list_scan_targets, list_target_groups, list_scans, find_findings_by_cve, get_sca_scan, trigger_scan, trigger_sync, prepare_scan_ai_analysis, save_scan_ai_analysis, prepare_scan_attack_chain_analysis, save_scan_attack_chain_analysis
 ├── core/
 │   ├── config.py            # Pydantic Settings (alle Env-Variablen)
 │   └── logging_config.py    # structlog-Konfiguration
@@ -82,6 +82,7 @@ app/
 │   ├── license_policy.py    # License-Policy API-Schemata
 │   ├── inventory.py         # Environment-Inventory API-Schemata
 │   ├── attack_path.py       # Attack-Path-Graph-Schemata (Node, Edge, Labels, Graph, Narrative, Response, Request)
+│   ├── scan_attack_chain.py # Cross-CVE Attack Chain Schemata (AttackStage Literal, ChainFindingRef, ScanAttackChainStage, Narrative, Response, Request)
 │   └── saved_search.py
 ├── services/                # Business-Logik
 │   ├── vulnerability_service.py   # Suche, Refresh, Lookup
@@ -103,7 +104,9 @@ app/
 │   ├── license_compliance_service.py  # Lizenz-Policy-Auswertung
 │   ├── inventory_service.py       # Environment-Inventory CRUD + Matching (30s TTL-Cache)
 │   ├── inventory_matcher.py       # CPE-Versionsbereichs-Matcher (pure functions, selbst-enthaltener Version-Comparator)
-│   ├── attack_path_service.py     # Deterministischer Attack-Path-Graph-Builder (entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix); orchestriert CAPECService/CWEService/InventoryService und leitet Likelihood/Exploit-Maturity/Reachability-Labels aus EPSS/KEV/CVSS-Vektor ab
+│   ├── attack_path_service.py     # Deterministischer Attack-Path-Graph-Builder (entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix); orchestriert CAPECService/CWEService/InventoryService und leitet Likelihood/Exploit-Maturity/Reachability-Labels aus EPSS/KEV/CVSS-Vektor ab. Akzeptiert optional `assumptions=` für die MCP `refine_attack_path_analysis`-Tool-Workflow (Allow-list `reachability`/`entry_point`/`network_exposure`/`privileges_required`/`user_interaction`, 200-char-cap pro Wert)
+│   ├── attack_chain_stages.py     # CWE → ATT&CK-Kill-Chain-Stage-Map (foothold/credential_access/priv_escalation/lateral_movement/impact); `categorize_cve(cwes, severity)` mit severity-Fallback
+│   ├── scan_attack_chain_service.py # Cross-CVE Attack Chain-Builder für die Scan-Detail-Tab. Filter+dedup Findings → bulk-fetch CWEs → bucket per Stage → top-5/Stufe nach CVSS sortiert → top-2 CAPECs/Stufe via CAPECService → `AttackPathGraph` (entry → stage anchors → CVE leaves)
 │   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
 │   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator mit optionalem `inventory_item_ids`-Filter)
 │   ├── http/

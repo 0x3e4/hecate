@@ -1144,6 +1144,169 @@ def register(mcp: FastMCP) -> None:
             )
             return {"error": f"CVE lookup failed: {str(exc)[:200]}"}
 
+    @mcp.tool()
+    async def prepare_scan_attack_chain_analysis(
+        scan_id: str,
+        language: str | None = None,
+        additional_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Return Hecate's deterministic Cross-CVE Attack Chain graph + prompts for one scan.
+
+        The chain buckets the scan's findings into ATT&CK kill-chain stages
+        (foothold → credential access → privilege escalation → lateral movement → impact)
+        and is fully deterministic — call this tool, run the prompt locally, then persist
+        the resulting prose narrative via `save_scan_attack_chain_analysis`. Read-only.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {"scan_id": scan_id, "language": language}
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="prepare_scan_attack_chain_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        try:
+            sid = (scan_id or "").strip()
+            if not sid or len(sid) > 100:
+                return {"error": "Invalid scan_id."}
+
+            from app.services.ai_service import build_scan_attack_chain_prompts
+            from app.services.scan_attack_chain_service import (
+                get_scan_attack_chain_service,
+            )
+            from app.services.scan_service import get_scan_service
+
+            scan_service = await get_scan_service()
+            scan = await scan_service.get_scan(sid)
+            if not scan:
+                return {"error": f"Scan '{sid}' not found."}
+
+            _, findings = await scan_service.finding_repo.list_by_scan(
+                sid, limit=2000, include_dismissed=False
+            )
+            chain_service = get_scan_attack_chain_service()
+            graph, stages = await chain_service.build_chain(
+                {**scan, "_id": sid}, findings, language=language or "en"
+            )
+            graph_payload = graph.model_dump(by_alias=True)
+            stages_payload = [s.model_dump(by_alias=True) for s in stages]
+
+            system_prompt, user_prompt = build_scan_attack_chain_prompts(
+                {**scan, "_id": sid},
+                stages_payload,
+                graph_payload,
+                language=language,
+                additional_context=additional_context,
+            )
+
+            output = {
+                "scanId": sid,
+                "graph": graph_payload,
+                "stages": stages_payload,
+                "systemPrompt": system_prompt,
+                "userPrompt": user_prompt,
+                "instructions": (
+                    "The chain stages above are deterministic. Read systemPrompt and userPrompt, "
+                    "produce a chained attacker narrative locally (≤350 words), then call "
+                    "save_scan_attack_chain_analysis(scan_id, summary). Do NOT cite CVE/CAPEC IDs "
+                    "absent from `stages` or `graph['nodes']`."
+                ),
+                "saveTool": "save_scan_attack_chain_analysis",
+            }
+            await log_tool_invocation(
+                tool_name="prepare_scan_attack_chain_analysis", inputs=tool_inputs,
+                result_count=len(stages_payload), started_at=started_at,
+            )
+            return output
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="prepare_scan_attack_chain_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Prepare failed: {str(exc)[:200]}"}
+
+    @mcp.tool()
+    async def save_scan_attack_chain_analysis(
+        scan_id: str,
+        summary: str,
+        language: str | None = None,
+        client_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist a Cross-CVE Attack Chain narrative produced by the calling assistant.
+
+        Use this after `prepare_scan_attack_chain_analysis`. Appends the narrative to the
+        scan's `attack_chains[]` array and mirrors it on `attack_chain` (latest). Stamps a
+        triggeredBy attribution like "Claude - MCP". Requires write scope.
+        """
+        started_at = datetime.now(tz=UTC)
+        tool_inputs = {"scan_id": scan_id, "language": language, "client_name": client_name}
+
+        rate_limiter = get_rate_limiter()
+        if not rate_limiter.check(mcp_client_id.get()):
+            await log_tool_invocation(
+                tool_name="save_scan_attack_chain_analysis", inputs=tool_inputs,
+                success=False, error="Rate limit exceeded", started_at=started_at,
+            )
+            return {"error": "Rate limit exceeded."}
+
+        allowed, deny_reason = require_write_scope()
+        if not allowed:
+            await log_tool_invocation(
+                tool_name="save_scan_attack_chain_analysis", inputs=tool_inputs,
+                success=False, error=f"Write denied: {deny_reason}", started_at=started_at,
+            )
+            return {"error": f"Write access denied. {deny_reason}"}
+
+        try:
+            sid = (scan_id or "").strip()
+            if not sid or len(sid) > 100:
+                return {"error": "Invalid scan_id."}
+            if not summary or not summary.strip():
+                return {"error": "summary must not be empty."}
+            if len(summary) > 200_000:
+                return {"error": "summary too large (200k char limit)."}
+
+            from app.mcp.tools.vulnerabilities import _mcp_triggered_by
+            from app.services.ai_service import _append_attribution_footer, _normalize_language
+            from app.services.scan_service import get_scan_service
+
+            triggered_by = _mcp_triggered_by(client_name)
+            stored_summary = _append_attribution_footer(summary.strip(), triggered_by)
+
+            narrative = {
+                "provider": "mcp-client",
+                "language": _normalize_language(language),
+                "summary": stored_summary,
+                "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
+                "triggeredBy": triggered_by,
+            }
+            scan_service = await get_scan_service()
+            ok = await scan_service.save_attack_chain(sid, narrative)
+            if not ok:
+                return {"error": f"Scan '{sid}' not found or save failed."}
+
+            await log_tool_invocation(
+                tool_name="save_scan_attack_chain_analysis", inputs=tool_inputs,
+                result_count=1, started_at=started_at,
+            )
+            return {
+                "scanId": sid,
+                "triggeredBy": triggered_by,
+                "generatedAt": narrative["generatedAt"],
+                "status": "saved",
+            }
+
+        except Exception as exc:
+            await log_tool_invocation(
+                tool_name="save_scan_attack_chain_analysis", inputs=tool_inputs,
+                success=False, error=str(exc)[:300], started_at=started_at,
+            )
+            return {"error": f"Save failed: {str(exc)[:200]}"}
+
 
 def _serialize_scan(scan: dict[str, Any]) -> dict[str, Any]:
     """Compact representation of a scan document for MCP output."""
