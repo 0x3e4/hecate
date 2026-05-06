@@ -1,75 +1,75 @@
 # Hecate Scanner Sidecar
 
-Scanner-Sidecar für die SCA-Funktionalität (Software Composition Analysis) von Hecate. Führt Schwachstellen-Scans und SBOM-Generierung für Container-Images und Source-Repositories durch.
+> Sidecar that powers the SCA (Software Composition Analysis) features of Hecate. Runs vulnerability scans, SBOM generation, and supply-chain malware detection against container images and source repositories.
 
-## Installierte Scanner-Tools
+![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-served-009688?logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/runs%20in-Docker-2496ED?logo=docker&logoColor=white)
 
-| Tool | Zweck | Output-Format |
-|------|-------|---------------|
-| [Trivy](https://github.com/aquasecurity/trivy) | Schwachstellen-Scan + SBOM | `trivy-json` |
-| [Grype](https://github.com/anchore/grype) | Schwachstellen-Scan | `grype-json` |
-| [Syft](https://github.com/anchore/syft) | SBOM-Generierung | `cyclonedx-json` |
-| [OSV Scanner](https://github.com/google/osv-scanner) | Schwachstellen-Scan (OSV DB) | `osv-json` |
-| Hecate Analyzer | SBOM-Extraktion (28 Parser, 12 Ökosysteme) + Malware-Erkennung | `hecate-json` |
-| [Dockle](https://github.com/goodwithtech/dockle) | CIS Docker Benchmark Linter (nur Container-Images) | `dockle-json` |
-| [Dive](https://github.com/wagoodman/dive) | Docker-Image-Schichtanalyse (nur Container-Images) | `dive-json` |
-| [Semgrep](https://github.com/semgrep/semgrep) | SAST-Scanner (nur Source-Repos) | `semgrep-json` |
-| [TruffleHog](https://github.com/trufflesecurity/trufflehog) | Secret-Scanner (nur Source-Repos) | `trufflehog-json` |
+---
 
-Trivy, Grype, Syft, Dockle und OSV Scanner werden als Binaries im Docker-Image installiert. Dive und TruffleHog werden als GitHub-Releases heruntergeladen. Semgrep wird via pip installiert. Der Hecate Analyzer ist ein nativer Python-Scanner ohne externe Abhängigkeiten.
+## Installed scanner tools
 
-**Hinweis:** Dockle und Dive sind nur für Container-Image-Scans verfügbar. Semgrep, TruffleHog, OSV Scanner und Hecate Analyzer sind nur für Source-Repo-Scans verfügbar.
+| Tool | Purpose | Output format |
+| --- | --- | --- |
+| [Trivy](https://github.com/aquasecurity/trivy) | Vulnerability scan + SBOM | `trivy-json` |
+| [Grype](https://github.com/anchore/grype) | Vulnerability scan | `grype-json` |
+| [Syft](https://github.com/anchore/syft) | SBOM generation | `cyclonedx-json` |
+| [OSV Scanner](https://github.com/google/osv-scanner) | Vulnerability scan (OSV DB) | `osv-json` |
+| Hecate Analyzer | SBOM extraction (28 parsers, 12 ecosystems) + malware detection | `hecate-json` |
+| [Dockle](https://github.com/goodwithtech/dockle) | CIS Docker Benchmark linter (container images only) | `dockle-json` |
+| [Dive](https://github.com/wagoodman/dive) | Docker image-layer analysis (container images only) | `dive-json` |
+| [Semgrep](https://github.com/semgrep/semgrep) | SAST scanner (source repos only) | `semgrep-json` |
+| [TruffleHog](https://github.com/trufflesecurity/trufflehog) | Secret scanner (source repos only) | `trufflehog-json` |
 
-### Erweiterte Erkennung
-- **Trivy:** `--list-all-pkgs` für vollständige Paketlistung (inkl. nicht-vulnerabler Pakete)
-- **Syft:** `SYFT_DEFAULT_CATALOGERS=all` aktiviert alle Katalogisierer inkl. Binary-Erkennung (erkennt Binaries wie Trivy, Grype etc. die via Dockerfile `COPY --from=` installiert wurden)
+Trivy, Grype, Syft, Dockle, and OSV Scanner are installed as binaries inside the Docker image. Dive and TruffleHog come in as GitHub releases. Semgrep is installed via pip. The Hecate Analyzer is a native Python scanner with no external dependencies.
 
-## Einbindung in das Gesamtsystem
+> [!NOTE]
+> Dockle and Dive are container-image-only. Semgrep, TruffleHog, OSV Scanner, and the Hecate Analyzer are source-repo-only.
 
-```
-CI/CD oder Frontend
-        │
-        v
-  +-----------+          +-----------+
-  |  Backend  |  ------> |  Scanner  |
-  |  :8000    |  POST    |  :8080    |
-  |           |  /scan   |           |
-  |  Scan-    | <------  |  Trivy    |
-  |  Service  |  JSON    |  Grype    |
-  |           |  Results |  Syft     |
-  +-----------+          |  OSV      |
-        │                |  Hecate   |
-        │                |  Dockle   |
-        │                |  Dive     |
-        │                |  Semgrep  |
-        │                |  TruffleH.|
-        │                +-----------+
-        v
-  +-----------+
-  |  MongoDB  |
-  |  Findings |
-  |  SBOM     |
-  +-----------+
+### Enhanced detection
+
+- **Trivy** — `--list-all-pkgs` for complete package listing (incl. non-vulnerable packages)
+- **Syft** — `SYFT_DEFAULT_CATALOGERS=all` enables every cataloger including binary detection (so it picks up binaries like Trivy or Grype that are installed via Dockerfile `COPY --from=`)
+
+---
+
+## Integration into the wider system
+
+```mermaid
+flowchart LR
+    Trigger[CI/CD or frontend]
+    Backend["Backend :8000<br/>Scan service"]
+    Sidecar["Scanner sidecar :8080<br/>Trivy · Grype · Syft · OSV<br/>Hecate · Dockle · Dive<br/>Semgrep · TruffleHog"]
+    Mongo[(MongoDB<br/>Findings · SBOM)]
+
+    Trigger --> Backend
+    Backend -- "POST /scan" --> Sidecar
+    Sidecar -- "JSON results" --> Backend
+    Backend --> Mongo
 ```
 
-1. Ein Scan wird über die Backend-API eingereicht (`POST /api/v1/scans` oder `/scans/manual`).
-2. Der `ScanService` im Backend leitet die Anfrage an den Scanner-Sidecar weiter (`POST /scan`).
-3. Der Sidecar führt die angeforderten Scanner aus und gibt die Rohergebnisse zurück.
-4. Der `ScanParser` im Backend normalisiert die Ergebnisse und speichert Findings und SBOM-Komponenten in MongoDB.
+1. A scan is submitted through the backend API (`POST /api/v1/scans` or `/scans/manual`).
+2. The backend `ScanService` forwards the request to the sidecar (`POST /scan`).
+3. The sidecar runs the requested scanners and returns the raw results.
+4. The backend `ScanParser` normalises the results and stores findings + SBOM components in MongoDB.
+
+---
 
 ## API
 
 ### `GET /health`
 
-Health Check.
+Health check.
 
 **Response:** `{"status": "ok"}`
 
 ### `POST /scan`
 
-Führt einen oder mehrere Scanner gegen ein Ziel aus.
+Run one or more scanners against a target.
 
 **Request:**
+
 ```json
 {
   "target": "git.nohub.lol/rk/hecate-backend:latest",
@@ -78,13 +78,14 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
 }
 ```
 
-| Feld | Typ | Beschreibung |
-|------|-----|-------------|
-| `target` | string | Container-Image-Referenz oder Source-Repo-URL |
-| `type` | string | `container_image` oder `source_repo` |
-| `scanners` | string[] | Liste der Scanner (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`) |
+| Field | Type | Description |
+| --- | --- | --- |
+| `target` | string | Container-image reference or source-repo URL |
+| `type` | string | `container_image` or `source_repo` |
+| `scanners` | string[] | Scanners to run (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`, `semgrep`, `trufflehog`) |
 
 **Response:**
+
 ```json
 {
   "target": "git.nohub.lol/rk/hecate-backend:latest",
@@ -93,7 +94,7 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
     {
       "scanner": "trivy",
       "format": "trivy-json",
-      "report": { ... },
+      "report": { "...": "..." },
       "error": null
     }
   ]
@@ -102,164 +103,170 @@ Führt einen oder mehrere Scanner gegen ein Ziel aus.
 
 ### `POST /check`
 
-Leichtgewichtiger Fingerprint-Check — holt das aktuelle Image-Digest (`skopeo inspect` / `docker inspect`) oder den HEAD-Commit-SHA (`git ls-remote`) ohne einen Scan durchzuführen. Wird vom Backend-Auto-Scan verwendet, um unveränderte Targets zu überspringen. `ls-remote` und `git clone` fallen automatisch auf einen anonymen Retry zurück, wenn `SCANNER_AUTH` für den Host injected wurde und die Credentials abgelehnt werden (ein stale Token für private Repos soll öffentliche Repos am selben Host nicht blockieren).
+Lightweight fingerprint check — fetches the current image digest (`skopeo inspect` / `docker inspect`) or the HEAD commit SHA (`git ls-remote`) without running a scan. Used by the backend's auto-scan to skip unchanged targets.
+
+> [!TIP]
+> `ls-remote` and `git clone` automatically fall back to an anonymous retry if `SCANNER_AUTH` was injected for the host and the credentials are rejected. A stale token for a private repo should not block public repos on the same host.
 
 ### `GET /stats`
 
-Cgroup-v1/v2 aware Memory- und tmpfs-Disk-Usage sowie Anzahl aktiver Scans. Wird vom Backend beim Ressourcen-Gating vor dem Scan-Start aufgerufen.
+cgroup-v1 / v2-aware memory and tmpfs disk usage plus the number of active scans. Called by the backend during resource gating before a scan starts.
 
-## Hecate Analyzer & Malware-Erkennung
+---
 
-### SBOM-Extraktion
+## Hecate Analyzer & malware detection
 
-Der Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extrahiert SBOM-Komponenten aus 28 Manifest-Typen über 12 Ökosysteme. Lockfiles und Manifeste werden parallel gelesen — exakte aufgelöste Versionen aus Lockfiles plus deklarierte Abhängigkeiten aus Manifests. Überlappungen werden downstream durch `_filter_and_merge_sbom` (`backend/app/services/scan_parser.py`) über `name:version` zusammengeführt.
+### SBOM extraction
 
-| Ökosystem | Manifest-Dateien | PURL-Typ |
-|-----------|-----------------|----------|
+The Hecate Analyzer (`scanner/app/hecate_analyzer.py`) extracts SBOM components from 28 manifest types across 12 ecosystems. Lockfiles and manifests are read in parallel — exact resolved versions from lockfiles plus declared dependencies from manifests. Overlap is merged downstream by `_filter_and_merge_sbom` (`backend/app/services/scan_parser.py`) on `name:version`.
+
+| Ecosystem | Manifest files | PURL type |
+| --- | --- | --- |
 | Docker | `Dockerfile*`, `docker-compose*.yml` | `pkg:docker` |
 | npm | `package.json`, `package-lock.json`, `yarn.lock` (v1 + Berry YAML), `pnpm-lock.yaml`, `bun.lock` | `pkg:npm` |
 | Python | `requirements*.txt`, `pyproject.toml` (PEP 621 + Poetry), `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.cfg` | `pkg:pypi` |
 | Go | `go.mod`, `go.sum` | `pkg:golang` |
 | Rust | `Cargo.toml`, `Cargo.lock` | `pkg:cargo` |
-| Ruby | `Gemfile.lock` (bevorzugt), `Gemfile` | `pkg:gem` |
-| PHP | `composer.lock` (bevorzugt), `composer.json` | `pkg:composer` |
-| Java | `pom.xml` (inkl. Property-Auflösung), `build.gradle(.kts)`, `gradle.lockfile` | `pkg:maven` |
-| .NET | `*.csproj`/`*.fsproj`/`*.vbproj` (PackageReference), `Directory.Packages.props` (Central Package Management), `packages.config`, `packages.lock.json`, `project.assets.json` | `pkg:nuget` |
-| Swift | `Package.resolved` (v1/v2/v3) | `pkg:swift` |
+| Ruby | `Gemfile.lock` (preferred), `Gemfile` | `pkg:gem` |
+| PHP | `composer.lock` (preferred), `composer.json` | `pkg:composer` |
+| Java | `pom.xml` (incl. property resolution), `build.gradle(.kts)`, `gradle.lockfile` | `pkg:maven` |
+| .NET | `*.csproj` / `*.fsproj` / `*.vbproj` (PackageReference), `Directory.Packages.props` (Central Package Management), `packages.config`, `packages.lock.json`, `project.assets.json` | `pkg:nuget` |
+| Swift | `Package.resolved` (v1 / v2 / v3) | `pkg:swift` |
 | Elixir | `mix.lock` | `pkg:hex` |
-| Dart/Flutter | `pubspec.lock` (bevorzugt), `pubspec.yaml` | `pkg:pub` |
+| Dart / Flutter | `pubspec.lock` (preferred), `pubspec.yaml` | `pkg:pub` |
 | CocoaPods | `Podfile.lock` | `pkg:cocoapods` |
 
-**Besonderheiten:**
-- Dockerfiles: ARG-Variablen-Auflösung (`${VAR:-default}`), unauflösbare Platzhalter werden übersprungen
-- Java/Maven: `${property}`-Platzhalter in Versionen werden über `<properties>` aufgelöst
-- .NET Central Package Management: `<PackageReference Include="X" />` ohne `Version` wird gegen `Directory.Packages.props`/`<PackageVersion>` aufgelöst
-- Lockfiles additiv zum Manifest: derselbe Pfad kann sowohl `package.json` als auch `package-lock.json` produzieren — Duplikate werden downstream über `name:version` gemergt
-- Deduplizierung über PURL (Package URL) — identische Pakete aus verschiedenen Manifests werden nur einmal erfasst
-- Übersprungene Verzeichnisse: `node_modules/`, `.git/`, `vendor/`, `dist/`, `build/`, `__pycache__/`, `.venv/`
+**Notable behaviours**
 
-### Malware-Erkennung
+- **Dockerfiles** — ARG variable resolution (`${VAR:-default}`); unresolvable placeholders are skipped.
+- **Java / Maven** — `${property}` placeholders in versions are resolved via `<properties>`.
+- **.NET CPM** — `<PackageReference Include="X" />` without `Version` is resolved against `Directory.Packages.props` / `<PackageVersion>`.
+- **Lockfiles additive to manifests** — the same path can yield both `package.json` and `package-lock.json`; duplicates are merged downstream on `name:version`.
+- **PURL deduplication** — identical packages from different manifests are recorded once.
+- **Skipped directories** — `node_modules/`, `.git/`, `vendor/`, `dist/`, `build/`, `__pycache__/`, `.venv/`.
 
-Der Malware-Detektor (`scanner/app/malware_detector/`) erkennt potenziell bösartige Pakete über statische Heuristiken. Keine externen Abhängigkeiten — alles in reinem Python implementiert.
+### Malware detection
 
-#### Detection Rules (35 Rules)
+The malware detector (`scanner/app/malware_detector/`) flags potentially malicious packages using static heuristics. No external dependencies — pure Python.
 
-The malware detector implements 35 detection rules across 14 categories, informed by real-world supply chain attacks from 2020-2026.
+#### Detection rules (35 rules)
 
-| Regel-ID | Name | Severity | Kategorie | Quelle / Angriff |
-|----------|------|----------|-----------|-----------------|
-| HEC-001 | npm install script detected | medium | `install_hook` | — (Standard-Heuristik) |
-| HEC-002 | npm install script with suspicious payload | critical | `install_hook` | — (Standard-Heuristik) |
-| HEC-003 | Python setup.py cmdclass override | medium | `install_hook` | — (Standard-Heuristik) |
-| HEC-004 | Python setup.py cmdclass with suspicious payload | critical | `install_hook` | — (Standard-Heuristik) |
-| HEC-010 | Potential credential exfiltration | critical | `exfiltration` | — (Standard-Heuristik) |
-| HEC-011 | Dynamic code execution with network access | high | `suspicious_api` | — (Standard-Heuristik) |
-| HEC-012 | Encoded payload with network access | high | `suspicious_api` | — (Standard-Heuristik) |
-| HEC-013 | Suspicious API usage | low | `suspicious_api` | — (Standard-Heuristik) |
-| HEC-020 | Obfuscated code detected | medium | `obfuscation` | — (Standard-Heuristik) |
-| HEC-021 | Heavily obfuscated code | high | `obfuscation` | — (Standard-Heuristik) |
-| HEC-022 | Multi-layer encoded payload | high | `obfuscation` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (double-base64), [s1ngularity/Nx](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) (triple-base64) |
+The malware detector implements 35 detection rules across 14 categories, informed by real-world supply-chain attacks from 2020 to 2026.
+
+| Rule ID | Name | Severity | Category | Source / attack |
+| --- | --- | --- | --- | --- |
+| HEC-001 | npm install script detected | medium | `install_hook` | — (standard heuristic) |
+| HEC-002 | npm install script with suspicious payload | critical | `install_hook` | — (standard heuristic) |
+| HEC-003 | Python `setup.py` `cmdclass` override | medium | `install_hook` | — (standard heuristic) |
+| HEC-004 | Python `setup.py` `cmdclass` with suspicious payload | critical | `install_hook` | — (standard heuristic) |
+| HEC-010 | Potential credential exfiltration | critical | `exfiltration` | — (standard heuristic) |
+| HEC-011 | Dynamic code execution with network access | high | `suspicious_api` | — (standard heuristic) |
+| HEC-012 | Encoded payload with network access | high | `suspicious_api` | — (standard heuristic) |
+| HEC-013 | Suspicious API usage | low | `suspicious_api` | — (standard heuristic) |
+| HEC-020 | Obfuscated code detected | medium | `obfuscation` | — (standard heuristic) |
+| HEC-021 | Heavily obfuscated code | high | `obfuscation` | — (standard heuristic) |
+| HEC-022 | Multi-layer encoded payload | high | `obfuscation` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (double-base64), [s1ngularity / Nx](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) (triple-base64) |
 | HEC-023 | Invisible Unicode characters in source code | high | `unicode_obfuscation` | [Glassworm](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/) (151+ packages, Variation Selectors, PUA) |
-| HEC-024 | Invisible Unicode payload with code execution | critical | `unicode_obfuscation` | [Glassworm](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/) (eval + .codePointAt decoder) |
-| HEC-030 | Potential typosquatting package | high | `typosquatting` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (61% of malicious packages) |
-| HEC-031 | Potential scope squatting | medium | `typosquatting` | — (Standard-Heuristik) |
-| HEC-040 | Python .pth file with executable code | medium | `pth_backdoor` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (.pth fires on every python startup) |
-| HEC-041 | Python .pth file with suspicious payload | critical | `pth_backdoor` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (34KB .pth, credential theft + systemd C2) |
-| HEC-050 | GitHub Action pinned to mutable tag | high | `cicd` | [tj-actions/changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (tag poisoning, 23K repos) |
-| HEC-051 | Dangerous pull_request_target workflow | critical | `cicd` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (PAT theft via misconfigured workflow) |
-| HEC-052 | Process memory access in CI workflow | critical | `cicd` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/), [tj-actions](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (/proc/mem harvesting) |
-| HEC-053 | curl/wget piped to shell in CI workflow | high | `cicd` | — (CI-Security Best Practice) |
-| HEC-054 | Unpinned third-party GitHub Action | medium | `cicd` | [tj-actions/changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
-| HEC-055 | Direct process memory access | critical | `suspicious_api` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (/proc/pid/mem, bypasses log masking) |
-| HEC-060 | System persistence mechanism detected | high | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (blockchain canister C2), [LiteLLM](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (sysmon.service), [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (Windows Startup folder) |
+| HEC-024 | Invisible Unicode payload with code execution | critical | `unicode_obfuscation` | [Glassworm](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/) (`eval` + `.codePointAt` decoder) |
+| HEC-030 | Potential typosquatting package | high | `typosquatting` | [DIMVA 2020 study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (61 % of malicious packages) |
+| HEC-031 | Potential scope squatting | medium | `typosquatting` | — (standard heuristic) |
+| HEC-040 | Python `.pth` file with executable code | medium | `pth_backdoor` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (`.pth` fires on every Python startup) |
+| HEC-041 | Python `.pth` file with suspicious payload | critical | `pth_backdoor` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (34 KB `.pth`, credential theft + systemd C2) |
+| HEC-050 | GitHub Action pinned to mutable tag | high | `cicd` | [tj-actions / changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (tag poisoning, 23 K repos) |
+| HEC-051 | Dangerous `pull_request_target` workflow | critical | `cicd` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (PAT theft via misconfigured workflow) |
+| HEC-052 | Process-memory access in CI workflow | critical | `cicd` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/), [tj-actions](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (`/proc/mem` harvesting) |
+| HEC-053 | `curl` / `wget` piped to shell in CI workflow | high | `cicd` | — (CI security best practice) |
+| HEC-054 | Unpinned third-party GitHub Action | medium | `cicd` | [tj-actions / changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
+| HEC-055 | Direct process-memory access | critical | `suspicious_api` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (`/proc/pid/mem`, bypasses log masking) |
+| HEC-060 | System persistence mechanism detected | high | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (blockchain canister C2), [LiteLLM](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (`sysmon.service`), [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (Windows Startup folder) |
 | HEC-061 | Persistence mechanism with suspicious payload | critical | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/), [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (systemd + network C2) |
-| HEC-070 | Kubernetes privilege escalation | critical | `kubernetes` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (privileged pods in kube-system) |
-| HEC-075 | Package self-propagation detected | critical | `worm` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (npm publish worm, 47+ packages in <60s) |
-| HEC-076 | Destructive file operations detected | critical | `worm` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (dead man's switch: shred, cipher /W:, del) |
-| HEC-077 | External runtime/tool download in install script | high | `install_hook` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (Bun installer disguise, weaponized Trufflehog) |
-| HEC-078 | AI tool bypass flags detected | critical | `ai_abuse` | [s1ngularity/Nx](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) (first AI CLI tool abuse: --yolo, --trust-all-tools) |
-| HEC-079 | Conditional execution based on environment detection | medium | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (41% of malicious packages use conditional execution) |
-| HEC-080 | Sandbox evasion with suspicious payload | high | `sandbox_evasion` | [DIMVA 2020 Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (CI env check + credential theft) |
-| HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (sys.platform + subprocess per OS) |
-| HEC-082 | Media file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
-| HEC-090 | Known malicious file hash | critical | `known_compromised` | SHA-256 hash matching for known malicious payload files (zero false positive detection). Renamed from HEC-091; the previous HEC-090 (static blocklist of compromised package versions) was removed because `osv-scanner` covers MAL-* findings dynamically against OSV's live feed and made the hard-coded snapshot redundant. |
+| HEC-070 | Kubernetes privilege escalation | critical | `kubernetes` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (privileged pods in `kube-system`) |
+| HEC-075 | Package self-propagation detected | critical | `worm` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (npm-publish worm, 47+ packages in <60 s) |
+| HEC-076 | Destructive file operations detected | critical | `worm` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (dead man's switch: `shred`, `cipher /W:`, `del`) |
+| HEC-077 | External runtime / tool download in install script | high | `install_hook` | [Shai-Hulud V2](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) (Bun installer disguise, weaponised TruffleHog) |
+| HEC-078 | AI tool bypass flags detected | critical | `ai_abuse` | [s1ngularity / Nx](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) (first AI CLI tool abuse: `--yolo`, `--trust-all-tools`) |
+| HEC-079 | Conditional execution based on environment detection | medium | `sandbox_evasion` | [DIMVA 2020 study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (41 % of malicious packages use conditional execution) |
+| HEC-080 | Sandbox evasion with suspicious payload | high | `sandbox_evasion` | [DIMVA 2020 study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) (CI env check + credential theft) |
+| HEC-081 | Platform-specific payload delivery | high | `suspicious_api` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (`sys.platform` + subprocess per OS) |
+| HEC-082 | Media-file steganography pattern | high | `obfuscation` | [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (WAV steganography C2, XOR decode) |
+| HEC-090 | Known malicious file hash | critical | `known_compromised` | SHA-256 hash matching for known malicious payload files (zero-false-positive detection). Renamed from HEC-091; the previous HEC-090 (a static blocklist of compromised package versions) was removed because `osv-scanner` covers MAL-* findings dynamically against OSV's live feed and made the hard-coded snapshot redundant. |
 
-#### Kategorien-Zusammenfassung
+#### Category summary
 
-| Kategorie | Regel-IDs | Beschreibung |
-|-----------|-----------|-------------|
-| `install_hook` | HEC-001–004, HEC-077 | npm preinstall/postinstall-Skripte, Python setup.py cmdclass, Runtime-Downloads |
-| `suspicious_api` | HEC-010–013, HEC-055 | Gefährliche API-Kombinationen, Prozessspeicher-Zugriff |
-| `exfiltration` | HEC-010 | Credential-Zugriff + Network-Calls |
-| `obfuscation` | HEC-020–022 | Base64-Blöcke, Hex-Strings, Multi-Layer-Encoding |
-| `unicode_obfuscation` | HEC-023–024 | Unsichtbare Unicode-Zeichen (Variation Selectors, PUA, Homoglyphen) |
-| `typosquatting` | HEC-030–031 | Levenshtein-Distanz gegen Top-200 npm/PyPI + Scope-Squatting |
-| `pth_backdoor` | HEC-040–041 | Python .pth-Dateien mit ausführbarem Code |
-| `cicd` | HEC-050–054 | GitHub Actions, CI/CD-Pipeline-Sicherheit |
-| `persistence` | HEC-060–061 | systemd, cron, launchd, Windows Startup/Registry Run Keys, xdg-autostart |
-| `kubernetes` | HEC-070 | Privilegierte Pods, kube-system, RBAC-Eskalation |
-| `worm` | HEC-075–076 | Selbstverbreitung, destruktive Payloads |
-| `ai_abuse` | HEC-078 | KI-Tool-Missbrauch (Bypass-Flags) |
-| `sandbox_evasion` | HEC-079–080 | Bedingte Ausführung basierend auf Umgebungserkennung |
-| `known_compromised` | HEC-090 | SHA-256 Hash-Matching maliciöser Payload-Dateien |
+| Category | Rule IDs | Description |
+| --- | --- | --- |
+| `install_hook` | HEC-001–004, HEC-077 | npm preinstall / postinstall scripts, Python `setup.py` `cmdclass`, runtime downloads |
+| `suspicious_api` | HEC-010–013, HEC-055, HEC-081 | Dangerous API combinations, process-memory access |
+| `exfiltration` | HEC-010 | Credential access + network calls |
+| `obfuscation` | HEC-020–022, HEC-082 | Base64 blocks, hex strings, multi-layer encoding, media steganography |
+| `unicode_obfuscation` | HEC-023–024 | Invisible Unicode characters (Variation Selectors, PUA, homoglyphs) |
+| `typosquatting` | HEC-030–031 | Levenshtein distance against the top 200 npm / PyPI + scope squatting |
+| `pth_backdoor` | HEC-040–041 | Python `.pth` files with executable code |
+| `cicd` | HEC-050–054 | GitHub Actions, CI/CD pipeline security |
+| `persistence` | HEC-060–061 | systemd, cron, launchd, Windows Startup / Registry Run keys, xdg-autostart |
+| `kubernetes` | HEC-070 | Privileged pods, `kube-system`, RBAC escalation |
+| `worm` | HEC-075–076 | Self-propagation, destructive payloads |
+| `ai_abuse` | HEC-078 | AI tool abuse (bypass flags) |
+| `sandbox_evasion` | HEC-079–080 | Conditional execution based on environment detection |
+| `known_compromised` | HEC-090 | SHA-256 hash matching of malicious payload files |
 
-#### Kombinations-Scoring
+#### Combination scoring
 
-Einzelne Pattern-Matches erzeugen `low`/`medium`-Severity. Kombinationen im selben File eskalieren:
+Single pattern matches yield `low` / `medium` severity. Combinations within the same file escalate:
 
-| Kombination | Severity |
-|-------------|----------|
-| Credential-Zugriff + Network-Zugriff | `critical` |
-| Code-Execution + Network-Zugriff | `high` |
-| Data-Encoding + Network-Zugriff | `high` |
-| .pth-Datei + Netzwerk/Credentials/Encoding | `critical` |
-| Persistenz + Network/Encoding | `critical` |
-| Unsichtbares Unicode + eval/Function/exec | `critical` |
-| CI-Umgebungserkennung + Payload | `high` |
-| Platform-Detection + Subprocess/Network | `high` |
-| Media-Download + XOR-Decode + Network | `high` |
+| Combination | Severity |
+| --- | --- |
+| Credential access + network access | `critical` |
+| Code execution + network access | `high` |
+| Data encoding + network access | `high` |
+| `.pth` file + network / credentials / encoding | `critical` |
+| Persistence + network / encoding | `critical` |
+| Invisible Unicode + `eval` / `Function` / `exec` | `critical` |
+| CI environment detection + payload | `high` |
+| Platform detection + subprocess / network | `high` |
+| Media download + XOR decode + network | `high` |
 
-#### Confidence-Level
+#### Confidence levels
 
-- **high**: Kombination mehrerer verdächtiger Patterns, bekannte kompromittierte Version, oder Typosquatting mit Levenshtein-Distanz 1
-- **medium**: Install-Hook mit verdächtigem Payload, einzelne gefährliche API-Kombination, oder unsichtbare Unicode-Zeichen ohne Code-Execution
-- **low**: Einzelnes verdächtiges Pattern ohne Kontext
+- **high** — multiple suspicious patterns, known compromised version, or typosquatting with Levenshtein distance 1
+- **medium** — install hook with suspicious payload, single dangerous API combination, or invisible Unicode without code execution
+- **low** — single suspicious pattern without context
 
-#### False-Positive-Schutz
+#### False-positive guards
 
-- Übersprungene Verzeichnisse: `node_modules/`, `.git/`, `vendor/`, `dist/`, `build/`, `__pycache__/`, `.venv/`
-- Übersprungene Dateien: minifizierte Dateien (durchschnittliche Zeilenlänge > 500), Dateien > 1MB
-- Paket-Allowlist via `HECATE_MALWARE_ALLOWLIST` Env-Var (kommagetrennt)
-- Typosquatting: 3-Tier-Validierung (Lockfile → Registry → Levenshtein)
-- Unicode: BOM am Dateianfang wird ignoriert, Schwellenwert ≥ 5 unsichtbare Zeichen
-- Unicode/Homoglyphen: Locale-Awareness — Dateien in locale/i18n/translations-Verzeichnissen und Dateien mit >1% Cyrillic-Dichte werden übersprungen
-- Credentials: Generische Env-Variablen (SECRET_KEY, DATABASE_URL, PRIVATE_KEY) werden nicht mehr als Credential-Zugriff gewertet
+- Skipped directories: `node_modules/`, `.git/`, `vendor/`, `dist/`, `build/`, `__pycache__/`, `.venv/`
+- Skipped files: minified files (average line length > 500), files > 1 MB
+- Package allow-list via `HECATE_MALWARE_ALLOWLIST` env var (comma-separated)
+- Typosquatting: 3-tier validation (lockfile → registry → Levenshtein)
+- Unicode: BOM at file start is ignored; threshold ≥ 5 invisible characters
+- Unicode / homoglyphs: locale awareness — files in `locale/`, `i18n/`, `translations/` directories and files with > 1 % Cyrillic density are skipped
+- Credentials: generic env vars (`SECRET_KEY`, `DATABASE_URL`, `PRIVATE_KEY`) are no longer counted as credential access
 
-#### Quellen und Referenzen
+#### Sources & references
 
-Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angriffe:
+The detection rules are based on analysis of these real supply-chain attacks:
 
-| Angriff | Datum | Hauptvektor | Referenz |
-|---------|-------|-------------|----------|
-| Trivy v0.69.4 (TeamPCP) | März 2026 | pull_request_target, /proc/mem, systemd C2 via Blockchain | [Palo Alto Unit 42](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) |
-| LiteLLM v1.82.7/1.82.8 | März 2026 | .pth-Backdoor, double-base64, K8s Lateral Movement | [Snyk](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) |
-| Glassworm | Okt 2025 – März 2026 | Unsichtbares Unicode, LLM-generierte Cover-Commits | [Ars Technica](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/) |
-| Shai-Hulud V2 | Nov 2025 | npm-Wurm, Bun-Tarnung, Dead Man's Switch | [GitLab](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) |
-| s1ngularity/Nx | Aug 2025 | AI-Tool-Missbrauch, Triple-Base64 | [Orca Security](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) |
-| tj-actions/changed-files (CVE-2025-30066) | März 2025 | Tag-Poisoning, Runner-Memory-Dump | [CISA](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
-| Telnyx SDK v4.87.1/4.87.2 (TeamPCP) | März 2026 | WAV-Steganografie, plattformspezifische Payloads, Windows Startup Persistence | [Telnyx](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
-| Axios v1.14.1/v0.30.4 | März 2026 | Gestohlene Maintainer-Credentials, RAT-Dropper via plain-crypto-js, Self-Cleaning | [StepSecurity](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan) |
-| Shai-Hulud (V1 + V2) | Sep–Nov 2025 | npm-Wurm, preinstall credential theft, self-propagation via npm publish, destructive fallback | [Unit 42](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/) |
-| TeamPCP/KICS GitHub Actions | März 2026 | GitHub Action Tag-Hijacking, Credential Harvesting | [Checkmarx](https://checkmarx.com/blog/checkmarx-security-update/), [Wiz](https://www.wiz.io/blog/tracking-teampcp-investigating-post-compromise-attacks-seen-in-the-wild) |
-| prt-scan | März–April 2026 | pull_request_target Exploitation, CI-Secret-Diebstahl, npm-Token-Missbrauch | [Wiz](https://www.wiz.io/blog/six-accounts-one-actor-inside-the-prt-scan-supply-chain-campaign) |
-| Backstabber's Knife Collection | 2020 (Studie) | Taxonomie von 174 bösartigen Paketen | [PMC/DIMVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) |
+| Attack | Date | Primary vector | Reference |
+| --- | --- | --- | --- |
+| Trivy v0.69.4 (TeamPCP) | Mar 2026 | `pull_request_target`, `/proc/mem`, systemd C2 via blockchain | [Palo Alto Unit 42](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) |
+| LiteLLM v1.82.7 / 1.82.8 | Mar 2026 | `.pth` backdoor, double-base64, K8s lateral movement | [Snyk](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) |
+| Glassworm | Oct 2025 – Mar 2026 | Invisible Unicode, LLM-generated cover commits | [Ars Technica](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/) |
+| Shai-Hulud V2 | Nov 2025 | npm worm, Bun camouflage, dead man's switch | [GitLab](https://about.gitlab.com/blog/gitlab-discovers-widespread-npm-supply-chain-attack/) |
+| s1ngularity / Nx | Aug 2025 | AI tool abuse, triple-base64 | [Orca Security](https://orca.security/resources/blog/s1ngularity-supply-chain-attack/) |
+| tj-actions / changed-files (CVE-2025-30066) | Mar 2025 | Tag poisoning, runner memory dump | [CISA](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
+| Telnyx SDK v4.87.1 / 4.87.2 (TeamPCP) | Mar 2026 | WAV steganography, platform-specific payloads, Windows Startup persistence | [Telnyx](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) |
+| Axios v1.14.1 / v0.30.4 | Mar 2026 | Stolen maintainer credentials, RAT dropper via `plain-crypto-js`, self-cleaning | [StepSecurity](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan) |
+| Shai-Hulud (V1 + V2) | Sep – Nov 2025 | npm worm, preinstall credential theft, self-propagation via `npm publish`, destructive fallback | [Unit 42](https://unit42.paloaltonetworks.com/npm-supply-chain-attack/) |
+| TeamPCP / KICS GitHub Actions | Mar 2026 | GitHub Action tag hijacking, credential harvesting | [Checkmarx](https://checkmarx.com/blog/checkmarx-security-update/), [Wiz](https://www.wiz.io/blog/tracking-teampcp-investigating-post-compromise-attacks-seen-in-the-wild) |
+| `prt-scan` | Mar – Apr 2026 | `pull_request_target` exploitation, CI secret theft, npm-token abuse | [Wiz](https://www.wiz.io/blog/six-accounts-one-actor-inside-the-prt-scan-supply-chain-campaign) |
+| Backstabber's Knife Collection | 2020 (study) | Taxonomy of 174 malicious packages | [PMC / DIMVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC7338168/) |
 
-#### Output-Format (`hecate-json`)
+#### Output format (`hecate-json`)
 
 ```json
 {
   "components": [
-    {"type": "container", "name": "python", "version": "3.13-slim", ...}
+    {"type": "container", "name": "python", "version": "3.13-slim", "...": "..."}
   ],
   "findings": [
     {
@@ -280,55 +287,57 @@ Die Detection Rules basieren auf der Analyse folgender realer Supply-Chain-Angri
 }
 ```
 
-#### Malware-Detektor Module
+#### Malware-detector modules
 
-| Modul | Zweck |
-|-------|-------|
-| `rules.py` | 35 DetectionRule-Definitionen |
-| `install_hooks.py` | npm + Python Install-Hook-Erkennung |
-| `suspicious_patterns.py` | API-Kombos, Obfuscation, Prozessspeicher, Multi-Layer-Encoding, Platform-Payload, Steganography |
-| `typosquatting.py` | Levenshtein + Registry-Verifikation |
-| `pth_files.py` | Python .pth-Backdoor-Erkennung |
-| `cicd_analysis.py` | GitHub Actions + CI/CD-Pipeline-Analyse |
-| `persistence.py` | systemd/cron/launchd/Windows Startup/Registry Run Keys/xdg-autostart-Persistenz |
-| `unicode_obfuscation.py` | Unsichtbare Unicode-Payload-Erkennung (mit Cyrillic-Locale-Awareness) |
-| `worm_detection.py` | Selbstverbreitung, destruktive Payloads, KI-Tool-Missbrauch |
-| `sandbox_evasion.py` | Bedingte Sandbox-Erkennung |
-| `hash_matching.py` | SHA-256 Hash-Matching bekannter maliciöser Payload-Dateien (HEC-090). Vorgänger: HEC-091 (umbenannt). Die frühere statische Paketversions-Blocklist wurde entfernt — `osv-scanner` deckt MAL-* dynamisch ab. |
-| `sarif_formatter.py` | SARIF 2.1.0 Output-Formatter für GitHub/GitLab Code Scanning Integration (Severity: critical/high->error, medium->warning, low->note) |
-| `popular_packages.py` | Top-200 npm/PyPI-Pakete (Referenzlisten) |
-| `utils.py` | Shared Utilities (Package-Name-Auflösung aus Manifests/.git/config) |
+| Module | Purpose |
+| --- | --- |
+| `rules.py` | 35 `DetectionRule` definitions |
+| `install_hooks.py` | npm + Python install-hook detection |
+| `suspicious_patterns.py` | API combinations, obfuscation, process memory, multi-layer encoding, platform payload, steganography |
+| `typosquatting.py` | Levenshtein + registry verification |
+| `pth_files.py` | Python `.pth` backdoor detection |
+| `cicd_analysis.py` | GitHub Actions + CI/CD pipeline analysis |
+| `persistence.py` | systemd / cron / launchd / Windows Startup / Registry Run keys / xdg-autostart persistence |
+| `unicode_obfuscation.py` | Invisible Unicode payload detection (with Cyrillic locale awareness) |
+| `worm_detection.py` | Self-propagation, destructive payloads, AI tool abuse |
+| `sandbox_evasion.py` | Conditional sandbox detection |
+| `hash_matching.py` | SHA-256 hash matching of known malicious payload files (HEC-090). Predecessor: HEC-091 (renamed). The earlier static package-version blocklist was removed — `osv-scanner` covers MAL-* dynamically. |
+| `sarif_formatter.py` | SARIF 2.1.0 output formatter for GitHub / GitLab Code Scanning integration (severity: critical / high → error, medium → warning, low → note) |
+| `popular_packages.py` | Top 200 npm / PyPI packages (reference lists) |
+| `utils.py` | Shared utilities (package-name resolution from manifests / `.git/config`) |
 
-### Provenance-Verifikation
+### Provenance verification
 
-Nach der SBOM-Extraktion prüft der Hecate Analyzer optional die Provenance (Herkunft/Attestierung) jeder Komponente über Registry-APIs. Unterstützte Ökosysteme:
+After SBOM extraction, the Hecate Analyzer optionally checks the provenance / attestation of every component via registry APIs.
 
-| Ökosystem | Registry | Prüfung |
-|-----------|----------|---------|
-| npm | `registry.npmjs.org` | Sigstore-Attestierungen, GitHub Actions Build-Provenance |
-| PyPI | `pypi.org/integrity/` | PEP 740 Attestations (Trusted Publishers, Sigstore) |
-| Go | `sum.golang.org` | Go Checksum Database (Transparency Log) |
-| Maven | `search.maven.org` | PGP-Signaturen, Sigstore |
-| RubyGems | `rubygems.org/api/v2/` | SHA-Checksums, Sigstore |
-| Cargo | `crates.io/api/v1/` | Checksum-Verifikation |
-| NuGet | `api.nuget.org/v3/` | Package-Signatur-Validierung |
-| Docker | Registry v2 API | Cosign-Signaturen, Content Trust |
+| Ecosystem | Registry | Check |
+| --- | --- | --- |
+| npm | `registry.npmjs.org` | Sigstore attestations, GitHub Actions build provenance |
+| PyPI | `pypi.org/integrity/` | PEP 740 attestations (Trusted Publishers, Sigstore) |
+| Go | `sum.golang.org` | Go Checksum Database (transparency log) |
+| Maven | `search.maven.org` | PGP signatures, Sigstore |
+| RubyGems | `rubygems.org/api/v2/` | SHA checksums, Sigstore |
+| Cargo | `crates.io/api/v1/` | Checksum verification |
+| NuGet | `api.nuget.org/v3/` | Package signature validation |
+| Docker | Registry v2 API | Cosign signatures, Content Trust |
 
-- Inspiriert von [who-touched-my-packages](https://github.com/Point-Wild/who-touched-my-packages)
-- Async httpx mit 5s Timeout pro Request, `asyncio.Semaphore(10)` für Concurrency
-- In-Memory Cache pro Scan (keine doppelten Lookups)
-- Best-effort: Fehler werden ignoriert, unterbrechen nie den Scan
-- Ergebnisse werden als `provenance`-Objekt auf SBOM-Komponenten gespeichert (verified, source_repo, build_system, attestation_type)
-- Frontend zeigt Provenance-Status in SBOM-Tabelle: ✓ (verified), ⚠ (unverified), — (unknown)
+- Inspired by [who-touched-my-packages](https://github.com/Point-Wild/who-touched-my-packages)
+- Async httpx with 5 s timeout per request, `asyncio.Semaphore(10)` for concurrency
+- In-memory cache per scan (no duplicate lookups)
+- Best-effort: errors are ignored and never break a scan
+- Results stored as a `provenance` object on SBOM components (verified, source_repo, build_system, attestation_type)
+- Frontend shows the provenance status in the SBOM table (verified / unverified / unknown)
 
-### Scan-Metadaten
+### Scan metadata
 
-- **Source-Repos**: Git-Commit-SHA wird aus dem geklonten Repository extrahiert
-- **Container-Images**: Image-Digest via `docker inspect` oder `skopeo inspect`
+- **Source repos** — Git commit SHA extracted from the cloned repository
+- **Container images** — image digest via `docker inspect` or `skopeo inspect`
 
-## Sandbox-Hardening
+---
 
-Der Scanner-Container ist gehärtet, da er beliebigen Code (geklonte Repos) verarbeitet:
+## Sandbox hardening
+
+The scanner container is hardened because it processes arbitrary code (cloned repos):
 
 ```yaml
 scanner:
@@ -346,38 +355,47 @@ scanner:
         memory: 12G
 ```
 
-- Scans laufen in temporären Verzeichnissen unter `/tmp`
-- Kein Docker-Socket-Mounting — Image-Pulls erfolgen über die Registry-API
-- Ressourcen-Limit: 12 GB Memory, 10 GB tmpfs (notwendig für große Container-Images wenn Trivy DB + Grype DB + Dive tar + Schicht-Extraktion gleichzeitig laufen)
+- Scans run in temporary directories under `/tmp`
+- No Docker-socket mounting — image pulls go through the registry API
+- Resource limits: 12 GB memory, 10 GB tmpfs (needed for large container images when Trivy DB + Grype DB + Dive tar + layer extraction run concurrently)
 
-## Authentifizierung
+---
 
-Für private Container-Registries und Git-Repositories wird die Authentifizierung über die Umgebungsvariable `SCANNER_AUTH` konfiguriert:
+## Authentication
 
+Authentication for private container registries and Git repositories is configured via the `SCANNER_AUTH` environment variable:
+
+```text
+SCANNER_AUTH=git.nohub.lol:my-api-token
 ```
-SCANNER_AUTH=git.nohub.lol:mein-api-token
-```
 
-Mehrere Hosts kommagetrennt:
-```
+Multiple hosts are comma-separated:
+
+```text
 SCANNER_AUTH=git.nohub.lol:token1,ghcr.io:ghp_abc
 ```
 
-Der Sidecar konfiguriert beim Start:
-- `~/.docker/config.json` — für Container-Image-Pulls (Trivy, Grype, Syft)
-- `~/.git-credentials` — für HTTPS-Clones privater Repositories (Fallback)
+At startup the sidecar configures:
 
-Für `git clone` / `ls-remote` injiziert der Scanner die Credentials zusätzlich als `-c http.extraHeader=Authorization: Basic <b64>`-Argument direkt in den `git`-Aufruf. Das umgeht die WWW-Authenticate-Aushandlung, die vor allem bei **Azure DevOps Server** (URL-Muster `/<Collection>/<Project>/_git/<Repo>`) den Credential-Helper an git vorbeiführen und dann mit "Authentication failed" scheitern lässt. Für die 2-teilige `host:token`-Form wird `PersonalAccessToken` als Basic-Auth-User verwendet — kompatibel mit ADO Server, Gitea und GitHub PATs. Wer einen spezifischen User braucht (z. B. Docker Hub), nutzt die 3-teilige `host:user:token`-Form.
+- `~/.docker/config.json` — for container-image pulls (Trivy, Grype, Syft)
+- `~/.git-credentials` — fallback for HTTPS clones of private repositories
 
-**Wichtig:** Kein Docker-Socket-Mounting. Die Scanner-Tools ziehen Container-Images direkt über die Registry-API.
+For `git clone` / `ls-remote`, the scanner additionally injects credentials as `-c http.extraHeader=Authorization: Basic <b64>` directly into the `git` invocation. This sidesteps the WWW-Authenticate negotiation that, especially for **Azure DevOps Server** (URL pattern `/<Collection>/<Project>/_git/<Repo>`), bypasses the credential helper and ends up failing with "Authentication failed". For the two-segment `host:token` form, `PersonalAccessToken` is used as the basic-auth user — compatible with ADO Server, Gitea, and GitHub PATs. If you need a specific user (e.g. Docker Hub), use the three-segment `host:user:token` form.
 
-## Source-Repository-Scans
+> [!IMPORTANT]
+> No Docker-socket mounting. Scanner tools pull container images directly from the registry API.
 
-Bei `type: "source_repo"` klont der Sidecar das Repository über `git clone --depth 1` in ein temporäres Verzeichnis und führt die Scanner darauf aus (`trivy fs`, `grype dir:`, `osv-scanner -r`).
+---
 
-## Ressourcen
+## Source-repository scans
 
-Der Scanner-Sidecar benötigt ausreichend Speicher für das Scannen großer Images:
+For `type: "source_repo"` the sidecar clones the repository via `git clone --depth 1` into a temporary directory and runs the scanners against it (`trivy fs`, `grype dir:`, `osv-scanner -r`).
+
+---
+
+## Resources
+
+The scanner sidecar needs enough memory to scan large images:
 
 ```yaml
 deploy:
@@ -386,58 +404,65 @@ deploy:
       memory: 12G
 ```
 
-## Konfiguration
+---
 
-| Variable | Default | Beschreibung |
-|----------|---------|-------------|
-| `SCANNER_AUTH` | — | Authentifizierung für Registries und Git-Repos (`host:token`, kommagetrennt) |
-| `SYFT_DEFAULT_CATALOGERS` | `all` | Syft-Katalogisierer (im Dockerfile gesetzt, aktiviert Binary-Erkennung) |
-| `HECATE_MALWARE_ALLOWLIST` | — | Kommagetrennte Paketnamen, die bei der Malware-Erkennung ignoriert werden |
+## Configuration
 
-Die Backend-seitige Konfiguration des Sidecar erfolgt über:
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SCANNER_AUTH` | — | Authentication for registries and Git repos (`host:token`, comma-separated) |
+| `SYFT_DEFAULT_CATALOGERS` | `all` | Syft catalogers (set in the Dockerfile, enables binary detection) |
+| `HECATE_MALWARE_ALLOWLIST` | — | Comma-separated package names ignored by the malware detector |
 
-| Variable | Default | Beschreibung |
-|----------|---------|-------------|
-| `SCA_SCANNER_URL` | `http://scanner:8080` | URL des Scanner-Sidecar |
-| `SCA_SCANNER_TIMEOUT_SECONDS` | `600` | Timeout für Scan-Anfragen |
+Backend-side configuration of the sidecar:
 
-## Entwicklung
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SCA_SCANNER_URL` | `http://scanner:8080` | URL of the scanner sidecar |
+| `SCA_SCANNER_TIMEOUT_SECONDS` | `600` | Timeout for scan requests |
 
-### Abhängigkeiten (Poetry)
+---
 
-```bash
+## Development
+
+### Dependencies (Poetry)
+
+```sh
 cd scanner
 poetry install
 ```
 
-### Lokaler Start
+### Run locally
 
-```bash
+```sh
 uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-**Voraussetzung:** Trivy, Grype, Syft und OSV Scanner müssen lokal installiert sein, oder der Scanner wird im Docker-Container betrieben.
+> [!NOTE]
+> Trivy, Grype, Syft, and OSV Scanner must be installed locally — or you run the scanner from its Docker container.
 
-### Docker Build
+### Docker build
 
-Basierend auf `python:3.13-slim`. Scanner-Binaries werden aus den offiziellen Container-Images kopiert (Trivy, Grype, Syft). OSV Scanner wird als GitHub-Release heruntergeladen.
+Based on `python:3.13-slim`. Scanner binaries are copied from the official container images (Trivy, Grype, Syft). OSV Scanner is downloaded as a GitHub release.
 
-```bash
+```sh
 docker build -t hecate-scanner ./scanner
 docker run -p 8080:8080 hecate-scanner
 ```
 
-## Technologie-Stack
+---
 
-| Technologie | Zweck |
-|------------|-------|
-| Python 3.13 | Laufzeitumgebung |
-| FastAPI | HTTP-API |
-| Uvicorn | ASGI-Server |
-| Trivy | Schwachstellen-Scanner |
-| Grype | Schwachstellen-Scanner |
-| Syft | SBOM-Generator (CycloneDX) |
-| OSV Scanner | Schwachstellen-Scanner (OSV DB) |
-| Hecate Analyzer | SBOM-Extraktor + Malware-Detektor |
-| Dockle | CIS Docker Benchmark Linter |
-| Dive | Docker-Image-Schichtanalyse |
+## Tech stack
+
+| Technology | Purpose |
+| --- | --- |
+| Python 3.13 | Runtime |
+| FastAPI | HTTP API |
+| Uvicorn | ASGI server |
+| Trivy | Vulnerability scanner |
+| Grype | Vulnerability scanner |
+| Syft | SBOM generator (CycloneDX) |
+| OSV Scanner | Vulnerability scanner (OSV DB) |
+| Hecate Analyzer | SBOM extractor + malware detector |
+| Dockle | CIS Docker Benchmark linter |
+| Dive | Docker image-layer analysis |

@@ -1,359 +1,379 @@
-# Hecate Architektur
+# Hecate Architecture
 
-## Überblick
+## Overview
 
-Hecate ist eine Schwachstellen-Management-Plattform, die Daten aus 9 externen Quellen aggregiert, normalisiert und über eine REST-API sowie ein React-Frontend bereitstellt. Ergänzend können Container-Images und Source-Repositories aktiv auf Schwachstellen gescannt werden (SCA).
+Hecate is a vulnerability management platform that aggregates data from 9 external sources, normalises it, and exposes it through a REST API and a React frontend. On top of that, container images and source repositories can be actively scanned for vulnerabilities (SCA).
 
-### Systemkontext
+### System context
 
-- React Single-Page-Application konsumiert REST-APIs des FastAPI-Backends.
-- FastAPI orchestriert Ingestion, Persistenz, KI-Aufrufe und liefert Daten an das Frontend.
-- OpenSearch dient als performanter Query-Index, MongoDB hält Normalformdaten und Jobzustand.
-- Externe Feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) sowie optionale AI-Provider (OpenAI, Anthropic, Gemini, OpenAI-Compatible für Ollama/vLLM/OpenRouter/LocalAI/LM Studio) stellen Rohdaten bereit.
-- Ein Scanner-Sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog) führt aktive SCA-Scans für Container-Images und Source-Repositories durch.
+- A React Single-Page-Application consumes the REST API of the FastAPI backend.
+- FastAPI orchestrates ingestion, persistence, and AI calls, and serves data to the frontend.
+- OpenSearch is the performant query index; MongoDB holds normalised data and job state.
+- External feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) plus optional AI providers (OpenAI, Anthropic, Gemini, OpenAI-compatible for Ollama / vLLM / OpenRouter / LocalAI / LM Studio) provide the raw data.
+- A scanner sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog) executes active SCA scans against container images and source repositories.
 
-## Deployment-Topologie
+## Deployment topology
 
-```
-                    +-----------+
-                    |  Frontend |  React 19 / Vite / TypeScript
-                    |  :4173    |  Dark-Theme SPA (serve)
-                    +-----+-----+
-                          | /api
-                    +-----v-----+
-                    |  Backend  |  FastAPI / Python 3.13 / Poetry
-                    |  :8000    |  REST-API, Scheduler, Pipelines
-                    +--+--+--+--+
-                       |  |  |
-                       |  |  +--------+
-                       |  |           |
-                       |  |     +-----v-----+
-                       |  |     |  Scanner  |  Trivy, Grype, Syft, OSV, Hecate,
-                       |  |     |  :8080    |  Dockle, Dive, Semgrep, TruffleHog
-                       |  |     +-----------+
-                       |  |
-                       |  +--+
-                       |     |
-                       |  +--v--------+
-                       |  |  Apprise  |  Notification Gateway
-                       |  |  :8000    |  Slack, Discord, E-Mail, etc.
-                       |  +-----------+
-                       |
-              +--------+  +--------+
-              |                    |
-        +-----v-----+      +------v------+
-        |  MongoDB   |      | OpenSearch  |
-        |  :27017    |      |  :9200      |
-        +------------+      +-------------+
-         Persistenz          Volltext-Index
+```mermaid
+flowchart TB
+    User([User / Browser])
+    CICD([CI/CD])
+
+    subgraph FE["Frontend :4173 — React 19 / Vite / TypeScript"]
+        SPA[Dark-theme SPA]
+    end
+
+    subgraph BE["Backend :8000 — FastAPI / Python 3.13 / Poetry"]
+        API[REST API + SSE]
+        Sched[Scheduler]
+        Pipe[Pipelines]
+        MCP[MCP server]
+    end
+
+    Scanner["Scanner :8080<br/>Trivy · Grype · Syft · OSV<br/>Hecate · Dockle · Dive · Semgrep · TruffleHog"]
+    Apprise["Apprise<br/>Slack · Discord · Email · …"]
+
+    Mongo[("MongoDB :27017<br/>persistence")]
+    OS[("OpenSearch :9200<br/>full-text index")]
+
+    User -- "/api" --> FE
+    FE --> BE
+    CICD -- "POST /api/v1/scans" --> BE
+    BE --> Scanner
+    BE --> Apprise
+    BE --> Mongo
+    BE --> OS
 ```
 
-- Docker Compose Orchestrierung: backend, frontend, scanner, mongo, opensearch, apprise
-- Container Registry: `git.nohub.lol/rk/hecate-{backend,frontend,scanner}:latest`
-- CI/CD: Gitea Actions (`ci.yml` Build + Hecate Scan + SonarQube), externe Composite Action [`0x3e4/hecate-scan-action`](https://github.com/0x3e4/hecate-scan-action)
-- Corporate-MITM-Unterstützung: Backend- und Scanner-Container laden `HTTP_CA_BUNDLE` beim Start über identische Entrypoint-Skripte ([backend/entrypoint.sh](../backend/entrypoint.sh), [scanner/entrypoint.sh](../scanner/entrypoint.sh)), konkatenieren die mounted PEM mit `/etc/ssl/certs/ca-certificates.crt` zu `/tmp/hecate-trust-bundle.pem` und re-exportieren `HTTP_CA_BUNDLE`/`SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE` — das PEM muss daher nur die Corporate-/MITM-CA enthalten und wird additiv zum System-Store verwendet statt als Ersatz (ohne die Konkatenation wären nicht-MITM-proxierte Egress-Ziele mit `CERTIFICATE_VERIFY_FAILED` gebrochen).
+- Docker Compose orchestration: backend, frontend, scanner, mongo, opensearch, apprise.
+- Container registry: `git.nohub.lol/rk/hecate-{backend,frontend,scanner}:latest`.
+- CI/CD: Gitea Actions (`ci.yml` build + Hecate scan + SonarQube), external composite action [`0x3e4/hecate-scan-action`](https://github.com/0x3e4/hecate-scan-action).
+- Corporate-MITM support: backend and scanner containers load `HTTP_CA_BUNDLE` at startup via identical entrypoint scripts ([backend/entrypoint.sh](../backend/entrypoint.sh), [scanner/entrypoint.sh](../scanner/entrypoint.sh)). The mounted PEM is concatenated with `/etc/ssl/certs/ca-certificates.crt` into `/tmp/hecate-trust-bundle.pem`, and `HTTP_CA_BUNDLE` / `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` are re-exported to that combined path. The PEM therefore only has to contain the corporate / MITM CA and is used additively to the system store, not as a replacement (without the concatenation, every non-MITM-proxied egress destination would break with `CERTIFICATE_VERIFY_FAILED`).
 
-## Backend-Architektur
+## Backend architecture
 
-### API-Schicht
+### API layer
 
-19 Router-Module unter `app/api/v1` kapseln funktionale Bereiche:
-- `status.py` — Health Check / Liveness Probe, Scanner-Health
-- `config.py` — Public Runtime-Config (`GET /api/v1/config`): leitet `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` aus den Backend-Settings ab und ersetzt die früheren `VITE_*`-Feature-Flags
-- `vulnerabilities.py` — Suche, Lookup, Refresh, AI-Analyse, Attack Path Graph (`GET/POST /vulnerabilities/{id}/attack-path`)
-- `cwe.py` — CWE-Abfragen (einzeln & bulk)
-- `capec.py` — CAPEC-Abfragen, CWE→CAPEC Mapping
-- `cpe.py` — CPE-Katalog (Entries, Vendors, Products)
-- `assets.py` — Asset-Katalog (Vendoren, Produkte, Versionen)
-- `stats.py` — Statistik-Aggregationen
-- `backup.py` — Streaming Export/Import
-- `sync.py` — Manuelle Sync-Trigger für alle 9 Datenquellen
-- `saved_searches.py` — Gespeicherte Suchen (CRUD)
-- `audit.py` — Ingestion-Logs
-- `changelog.py` — Letzte Änderungen
-- `scans.py` — SCA-Scan-Verwaltung (Submit, Targets inkl. Group-Filter, Target-Gruppen-Roll-up, Findings, SBOM, SBOM-Export, SBOM-Import, Layer-Analyse, VEX, License-Compliance, AI-Analyse via `POST /scans/{id}/ai-analysis` + Listing via `GET /scans/ai-analyses` — letzterer ist vor der dynamischen `/{scan_id}`-Route registriert, sonst würde die Route `ai-analyses` als Scan-ID interpretieren)
-- `notifications.py` — Benachrichtigungsstatus, Channels, Regeln, Nachrichtenvorlagen
-- `events.py` — Server-Sent Events (SSE) Stream
-- `license_policies.py` — Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
-- `inventory.py` — Environment-Inventory (CRUD + `/affected-vulnerabilities` pro Eintrag)
+19 router modules under `app/api/v1` group functional areas:
 
-Zusätzlich: MCP Server (`app/mcp/`) als separate ASGI Sub-App unter `/mcp` mit **35 Tools** (CVE-Suche/-Detail, Asset-Katalog, CWE/CAPEC, Stats; SCA-Scan-Lookups inkl. per-Scan-Findings, Security Alerts, SBOM-Komponenten + Facets, Target-Scan-History, Scan-Compare, Dive-Layer-Analysis, Target/Group-Discovery, `list_scans`, `find_findings_by_cve`; AI-Analyse-Prepare/Save-Paare; Scan/Sync-Trigger), Rate-Limiting und Audit-Logging. Der Server wird als `FastMCP("hecate", ...)` initialisiert; die `MCPAuthMiddleware` ist pfad-bewusst und verarbeitet nur Pfade unter `/mcp` bzw. `/mcp/*` — alles andere wird mit 404 abgewiesen, damit fehlgeleitete SPA-Routen wie `/info/mcp` keine 401-Responses erzeugen. Die Authentifizierung erfolgt via delegated OAuth: Hecate agiert als Authorization Server gegenüber dem MCP-Client (Dynamic Client Registration + Auth Code + PKCE/S256) und delegiert die User-Authentifizierung an einen Upstream-IdP (GitHub OAuth App, Microsoft Entra ID oder generischen OIDC-Provider wie Authentik/Keycloak/Auth0/Zitadel). Statische API-Keys gibt es nicht mehr. Write-Tools (`trigger_scan`, `trigger_sync`, alle `save_*_ai_analysis`) sind scope-gated: nur Sessions, deren Browser-IP zur Authorize-Zeit in `MCP_WRITE_IP_SAFELIST` liegt, erhalten den `mcp:write`-Scope. Beim Tool-Call wird ausschließlich der Token-Scope verifiziert (keine zweite IP-Prüfung), weil proxied Transports wie Claude Desktop Tool-Calls aus der Vendor-Infrastruktur zustellen — der Token-Scope ist autoritativ. Provider-Abstraktion in `app/mcp/oauth_providers.py`. Zwei Deployment-Schalter: `MCP_PUBLIC_URL` pinnt die in OAuth-Metadaten (resource/issuer/endpoints) und im 401-`WWW-Authenticate`-Hint advertisierte Basis-URL — nötig, wenn der Reverse-Proxy `Host`/`X-Forwarded-Host` nicht zuverlässig durchreicht oder mehrere Hostnames auf dasselbe Backend zeigen. `MCP_AUTH_DISABLED=true` bypasst OAuth komplett (synthetische `local-dev`-Identität mit `mcp:read mcp:write`, WARNING-Log pro Request) — nur für lokale Single-User-Deployments; Mount-Gating in `app/main.py` erlaubt das Mounten bereits mit `MCP_ENABLED=true` + Bypass, ohne IdP-Konfiguration.
+- `status.py` — health check / liveness probe, scanner health
+- `config.py` — public runtime config (`GET /api/v1/config`): derives `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` from backend settings and replaces the former `VITE_*` feature flags
+- `vulnerabilities.py` — search, lookup, refresh, AI analysis, attack-path graph (`GET/POST /vulnerabilities/{id}/attack-path`)
+- `cwe.py` — CWE queries (single + bulk)
+- `capec.py` — CAPEC queries, CWE→CAPEC mapping
+- `cpe.py` — CPE catalogue (entries, vendors, products)
+- `assets.py` — asset catalogue (vendors, products, versions)
+- `stats.py` — statistics aggregations
+- `backup.py` — streaming export / import
+- `sync.py` — manual sync triggers for all 9 data sources
+- `saved_searches.py` — saved searches (CRUD)
+- `audit.py` — ingestion logs
+- `changelog.py` — recent changes
+- `scans.py` — SCA scan management (submit, targets incl. group filter, target-group roll-up, findings, SBOM, SBOM export, SBOM import, layer analysis, VEX, license compliance, AI analysis via `POST /scans/{id}/ai-analysis` + listing via `GET /scans/ai-analyses` — the latter is registered before the dynamic `/{scan_id}` route, otherwise the path `ai-analyses` would be interpreted as a scan ID)
+- `notifications.py` — notification status, channels, rules, message templates
+- `events.py` — Server-Sent Events (SSE) stream
+- `license_policies.py` — license-policy management (CRUD, default policy, license groups)
+- `inventory.py` — environment inventory (CRUD + `/affected-vulnerabilities` per item)
 
-AI-Analyse über MCP läuft als **Prepare/Save-Paare** ohne serverseitigen AI-Provider-Aufruf: die `prepare_*`-Tools (`prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`, `prepare_attack_path_analysis`, `prepare_scan_attack_chain_analysis`) liefern die in `app/services/ai_service.py` definierten System-/User-Prompts + den vollständigen Kontext (Schwachstelle / Batch / Scan-Findings / Attack-Path-Graph / Cross-CVE Attack Chain). Der aufrufende MCP-Client erzeugt die Analyse mit seinem eigenen Modell und schreibt sie über das passende `save_*`-Tool zurück (`save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`, `save_scan_attack_chain_analysis`). Zusätzlich erlaubt `refine_attack_path_analysis` einem MCP-Client, einen Attack-Path-Graph wiederholt unter hypothetischen `assumptions` zu re-rendern ("what if internet-facing?") — read-only, schreibt nichts; persistiert wird ausschließlich über das passende `save_*`-Tool. Dabei wird ein Attribution-Footer `{client_name} - MCP` angehängt. Die serverseitigen `AI_API`-Keys werden nur von den Web-UI-Flows verwendet (`POST /api/v1/vulnerabilities/{id}/ai-investigation`, `/ai-investigation/batch`, `/scans/{scan_id}/ai-analysis`). SCA-Scan-Lookups (`get_sca_scan`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`/`get_sbom_components`/`get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`/`list_target_groups`/`list_scans`, `find_findings_by_cve`) erlauben es Assistenten, komplette Scan-Kontexte ohne Web-UI abzuholen.
+In addition, the MCP server (`app/mcp/`) is mounted as a separate ASGI sub-app under `/mcp` with **35 tools** (CVE search and detail, asset catalogue, CWE / CAPEC, stats; SCA scan lookups including per-scan findings, security alerts, SBOM components + facets, target scan history, scan compare, Dive layer analysis, target / group discovery, `list_scans`, `find_findings_by_cve`; AI-analysis prepare / save pairs; scan / sync triggers), plus rate limiting and audit logging. The server is initialised as `FastMCP("hecate", ...)`; the `MCPAuthMiddleware` is path-aware and only processes paths under `/mcp` and `/mcp/*` — anything else is rejected with 404 so misrouted SPA routes such as `/info/mcp` cannot produce 401 responses. Authentication uses delegated OAuth: Hecate acts as an authorisation server toward the MCP client (Dynamic Client Registration + Auth Code + PKCE/S256) and delegates user authentication to an upstream IdP (GitHub OAuth App, Microsoft Entra ID, or a generic OIDC provider such as Authentik / Keycloak / Auth0 / Zitadel). There are no static API keys any more. Write tools (`trigger_scan`, `trigger_sync`, all `save_*_ai_analysis`) are scope-gated: only sessions whose browser IP at authorize time was inside `MCP_WRITE_IP_SAFELIST` get the `mcp:write` scope. At tool-call time only the token scope is verified (no second IP check), because proxied transports such as Claude Desktop deliver tool calls from vendor infrastructure — the token scope is authoritative. Provider abstraction lives in `app/mcp/oauth_providers.py`. Two deployment switches: `MCP_PUBLIC_URL` pins the base URL advertised in OAuth metadata (resource / issuer / endpoints) and the 401 `WWW-Authenticate` hint — needed when the reverse proxy doesn't reliably forward `Host` / `X-Forwarded-Host`, or when several hostnames point at the same backend. `MCP_AUTH_DISABLED=true` bypasses OAuth entirely (synthetic `local-dev` identity with `mcp:read mcp:write`, WARNING log per request) — for local single-user deployments only; mount gating in `app/main.py` allows mounting with `MCP_ENABLED=true` plus the bypass, without any IdP configuration.
 
-Standardpräfix `/api/v1` (konfigurierbar) und CORS für lokale Integration. Responses basieren auf Pydantic-Schemas; Validierung auf Eingabe- und Ausgabeseite. Schema-Konvention: Snake-Case in Python, camelCase auf dem Wire (`Field(alias="fieldName", serialization_alias="fieldName")`). Datetime-Felder verwenden den gemeinsamen `UtcDatetime`-Alias aus `app/schemas/_utc.py` (`Annotated[datetime, BeforeValidator(_coerce_utc)]`), der naive Werte (OpenSearch `_source`-Reads, Legacy-Dokumente) auf UTC-aware normalisiert, sodass die JSON-Ausgabe immer ein `+00:00`-Suffix trägt und der Frontend sie nicht als Browser-Local-Time fehlinterpretiert. Der Motor-Client in `app/db/mongo.py` läuft mit `tz_aware=True`, damit auch MongoDB-Reads UTC-aware zurückkommen.
+AI analysis over MCP runs as **prepare / save pairs** without any server-side AI provider call: the `prepare_*` tools (`prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`, `prepare_attack_path_analysis`, `prepare_scan_attack_chain_analysis`) return the system / user prompts defined in `app/services/ai_service.py` plus the full context (vulnerability / batch / scan findings / attack-path graph / cross-CVE attack chain). The calling MCP client generates the analysis with its own model and writes it back via the matching `save_*` tool (`save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`, `save_scan_attack_chain_analysis`). In addition, `refine_attack_path_analysis` lets a client re-render an attack-path graph repeatedly under hypothetical `assumptions` ("what if internet-facing?") — read-only, writes nothing; persistence still goes exclusively through the matching `save_*` tool. An attribution footer `{client_name} - MCP` is appended. The server-side `AI_API` keys are used only by the web-UI flows (`POST /api/v1/vulnerabilities/{id}/ai-investigation`, `/ai-investigation/batch`, `/scans/{scan_id}/ai-analysis`). SCA scan lookups (`get_sca_scan`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom` / `get_sbom_components` / `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets` / `list_target_groups` / `list_scans`, `find_findings_by_cve`) let assistants pull complete scan context without the web UI.
 
-### Services & Domain
+The default prefix is `/api/v1` (configurable) and CORS is enabled for local integration. Responses are based on Pydantic schemas with input + output validation. Schema convention: snake_case in Python, camelCase on the wire (`Field(alias="fieldName", serialization_alias="fieldName")`). Datetime fields use the shared `UtcDatetime` alias from `app/schemas/_utc.py` (`Annotated[datetime, BeforeValidator(_coerce_utc)]`), which normalises naive values (OpenSearch `_source` reads, legacy documents) to UTC-aware so the JSON output always carries a `+00:00` suffix and the frontend doesn't misinterpret it as browser-local time. The Motor client in `app/db/mongo.py` runs with `tz_aware=True` so MongoDB reads come back UTC-aware too.
 
-Service-Klasse je Anwendungsfall:
-- `VulnerabilityService` — Suche, Refresh, Lookup
-- `CWEService` — 3-Tier-Cache (Memory → MongoDB → MITRE API)
-- `CAPECService` — 3-Tier-Cache + CWE→CAPEC Mapping
-- `CPEService` — CPE-Katalog
-- `AIService` — OpenAI, Anthropic, Gemini, OpenAI-Compatible Wrapper (httpx für OpenAI/Anthropic/OpenAI-Compatible, google-genai SDK für Gemini)
-- `StatsService` — OpenSearch-Aggregationen (Mongo-Fallback)
-- `BackupService` — Streaming Export/Import
-- `SyncService` — Sync-Koordination
-- `AuditService` — Audit-Logging
-- `ChangelogService` — Change-Tracking
-- `SavedSearchService` — Gespeicherte Suchen
-- `AssetCatalogService` — Asset-Katalog aus ingestierten Daten
-- `ScanService` — SCA-Scan-Orchestrierung (Scanner-Sidecar, Ergebnisverarbeitung, SBOM-Import)
-- `VexService` — VEX-Export/Import (CycloneDX VEX), VEX + Dismissal Carry-Forward zwischen Scans
-- `LicenseComplianceService` — Lizenz-Policy-Auswertung, automatische Evaluierung nach Scans
-- `NotificationService` — Apprise-Anbindung, Regeln, Channels, Nachrichtenvorlagen mit Template-Engine
-- `AttackPathService` — deterministischer Graph-Builder für die `Attack Path`-Tab (entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix), orchestriert `CAPECService`, `CWEService` und `InventoryService`; leitet die Label-Set (likelihood, exploit_maturity, reachability, privileges_required, user_interaction, business_impact) deterministisch aus EPSS, KEV und CVSS-Vektor ab. Optionale AI-Narrative wird über `AIClient.analyze_attack_path()` (Web-UI) oder MCP `prepare_/save_attack_path_analysis` (Client-side) erzeugt und via OpenSearch-Update-Script (`attack_path` latest + `attack_paths[]` history) persistiert — gleiches Pattern wie `ai_assessment`. **MCP `refine_attack_path_analysis`-Tool** rendert denselben Graph unter benutzergelieferten `assumptions` (`reachability`/`entry_point`/`network_exposure`/`privileges_required`/`user_interaction`) für iteratives "what-if"-Erkunden — read-only, kein Persist.
-- `ScanAttackChainService` — Cross-CVE Attack Chain-Builder für die `/scans/:scanId` `Attack Chain`-Tab. Synthesisiert eine mehrstufige Angreifer-Erzählung aus den Findings eines einzelnen SCA-Scans, gebucketet nach ATT&CK-Kill-Chain-Stufen (Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact). CWE→Stage-Mapping ist hardcodiert in [backend/app/services/attack_chain_stages.py](../backend/app/services/attack_chain_stages.py) (Phase 3 ersetzt das durch das `Taxonomy_Mapping[Taxonomy_Name="ATT&CK"]`-Block aus den CAPEC-Rohdaten). Joined per-Finding CWEs aus dem Vulnerability-Repo, fetched top-2 CAPEC-Patterns pro Stufe, baut einen `AttackPathGraph` (gleicher Shape wie der per-CVE Graph, sodass die bestehende Mermaid-Komponente ihn ohne Modifikation rendert). AI-Narrative wird via `AIClient.analyze_scan_attack_chain()` oder MCP `prepare_/save_scan_attack_chain_analysis` erzeugt; Persistenz via `ScanService.save_attack_chain()` in MongoDB (`attack_chain` latest + `attack_chains[]` history auf `ScanDocument` — Scans sind Mongo-primary, nicht OpenSearch-primary).
+### Services & domain
 
-Services kapseln Datenbankzugriff (Repositories) und koordinieren OpenSearch + Mongo Operationen. Der Asset-Katalog wird aus ingestierten Daten abgeleitet (Vendor-/Produkt-/Versions-Slugs) und füttert die Filter-UI.
+One service class per use case:
 
-### Ingestion-Pipelines
+- `VulnerabilityService` — search, refresh, lookup
+- `CWEService` — 3-tier cache (memory → MongoDB → MITRE API)
+- `CAPECService` — 3-tier cache + CWE→CAPEC mapping
+- `CPEService` — CPE catalogue
+- `AIService` — OpenAI, Anthropic, Gemini, OpenAI-compatible wrapper (httpx for OpenAI / Anthropic / OpenAI-compatible, google-genai SDK for Gemini)
+- `StatsService` — OpenSearch aggregations (MongoDB fallback)
+- `BackupService` — streaming export / import
+- `SyncService` — sync coordination
+- `AuditService` — audit logging
+- `ChangelogService` — change tracking
+- `SavedSearchService` — saved searches
+- `AssetCatalogService` — asset catalogue from ingested data
+- `ScanService` — SCA scan orchestration (scanner sidecar, result processing, SBOM import)
+- `VexService` — VEX export / import (CycloneDX VEX), VEX + dismissal carry-forward across scans
+- `LicenseComplianceService` — license-policy evaluation, automatic evaluation after scans
+- `NotificationService` — Apprise integration, rules, channels, message templates with template engine
+- `AttackPathService` — deterministic graph builder for the Attack Path tab (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`); orchestrates `CAPECService`, `CWEService`, `InventoryService`; derives the label set (likelihood, exploit_maturity, reachability, privileges_required, user_interaction, business_impact) deterministically from EPSS, KEV, and CVSS vector. The optional AI narrative is generated through `AIClient.analyze_attack_path()` (web UI) or MCP `prepare/save_attack_path_analysis` (client side) and persisted via an OpenSearch update script (`attack_path` latest + `attack_paths[]` history) — same pattern as `ai_assessment`. The MCP `refine_attack_path_analysis` tool re-renders the same graph under user-supplied `assumptions` (`reachability` / `entry_point` / `network_exposure` / `privileges_required` / `user_interaction`) for iterative "what-if" exploration — read-only, no persistence.
+- `ScanAttackChainService` — cross-CVE attack-chain builder for the `/scans/:scanId` Attack Chain tab. Synthesises a multi-stage attacker narrative from the findings of a single SCA scan, bucketed by ATT&CK kill-chain stages (Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact). The CWE → stage mapping is hard-coded in [backend/app/services/attack_chain_stages.py](../backend/app/services/attack_chain_stages.py) (Phase 3 will replace it with the `Taxonomy_Mapping[Taxonomy_Name="ATT&CK"]` block from CAPEC raw data). Joins per-finding CWEs from the vulnerability repo, fetches top-2 CAPEC patterns per stage, and builds an `AttackPathGraph` (same shape as the per-CVE graph so the existing Mermaid component renders it without modification). The AI narrative is generated via `AIClient.analyze_scan_attack_chain()` or MCP `prepare/save_scan_attack_chain_analysis`; persistence via `ScanService.save_attack_chain()` in MongoDB (`attack_chain` latest + `attack_chains[]` history on `ScanDocument` — scans are MongoDB-primary, not OpenSearch-primary).
 
-| Pipeline | Quelle | Intervall (Default) | Beschreibung |
-|----------|--------|---------------------|-------------|
-| EUVD | ENISA REST-API | 60 min | Schwachstellen mit Change-History, inkrementell + wöchentlicher Full-Sync (So 2 Uhr UTC) |
-| NVD | NIST REST-API | 10 min | CVSS, EPSS, CPE-Konfigurationen, optionaler API-Key, Full-Sync (Mi 2 Uhr UTC) |
-| KEV | CISA JSON-Feed | 60 min | Exploitation-Status |
-| CPE | NVD CPE 2.0 API | 1440 min (täglich) | Produkt-/Versions-Katalog |
-| CWE | MITRE REST-API | 7 Tage | Schwäche-Definitionen |
-| CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
-| CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
-| GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories (Hybrid: reichert CVEs an + erstellt GHSA-only-Einträge) |
-| OSV | OSV.dev GCS Bucket + REST-API | 120 min + wöchentlicher Full-Sync (Fr 2 Uhr UTC) | OSV-Schwachstellen (Hybrid: reichert CVEs an + erstellt MAL-/PYSEC-/OSV-Einträge, 11 Ökosysteme; Cursor-Advancement-Fix gegen Cap-Hit-Datenverlust) |
+Services encapsulate database access (repositories) and coordinate OpenSearch + MongoDB operations. The asset catalogue is derived from ingested data (vendor / product / version slugs) and feeds the filter UI.
 
-- Alle Pipelines unterstützen inkrementelle und initiale Syncs.
-- **Gemeinsamer HTTP-Retry-Layer** ([backend/app/services/http/retry.py](../backend/app/services/http/retry.py)): Alle Ingestion-Clients (NVD, EUVD, CPE, CIRCL, GHSA, OSV) retry-en transiente `httpx.HTTPError`, 5xx und 429 (honoriert `Retry-After`) mit Exponential-Backoff. Pro Quelle konfigurierbar via `{SOURCE}_MAX_RETRIES` / `{SOURCE}_RETRY_BACKOFF_SECONDS`. NVD ist fail-hard (Pagination läuft rückwärts, eine stille Sprung-über-2000-CVEs wäre schlimmer als ein klarer Abbruch); CIRCL/OSV/GHSA sind fail-soft (skippen Record / Ecosystem / Seite). GHSA setzt zusätzlich einen `_last_fetch_failed`-Flag, damit `iter_all_advisories` Retry-Exhaustion als `ghsa_client.iteration_aborted_on_failure` loggt statt als "Seitenende" zu verstummen.
-- **EUVD Pipeline:** Liest paginiert, gleicht CVE-IDs ab, reichert mit NVD- und KEV-Daten an, pflegt Change-Historie, aktualisiert OpenSearch-Index + Mongo-Dokumente.
-- **NVD Pipeline:** Aktualisiert CVSS/EPSS/Referenzen für bestehende Datensätze, optional begrenzt über `modifiedSince`. Read-Timeout 60s (vorher 30s) — zu kurz für 2000-per-page JSON-Responses.
-- **CPE Pipeline:** Synchronisiert NVD-CPE-Katalog, erzeugt Vendor-/Produkt-/Versionseinträge und legt Slug-Metadaten in Mongo ab. Mid-Run-Progress-Reporting (alle 500 Records oder 60s).
-- **KEV Pipeline:** Hält CISA Known-Exploited-Catalog aktuell und stellt Exploitation-Metadaten für EUVD/NVD bereit.
-- **CWE Pipeline:** Synchronisiert MITRE CWE-Katalog über REST-API mit 7-Tage TTL-Cache. Wall-clock-`CronTrigger` (Default Mon 03:00 UTC), nicht Interval-Trigger — überlebt Backend-Redeploys ohne Drift. Stale-on-Startup-Catch-up läuft den Sync sofort, wenn der letzte erfolgreiche Lauf älter als 1.5× TTL ist.
-- **CAPEC Pipeline:** Parst MITRE CAPEC XML, erstellt Angriffsmuster-Einträge mit CWE-Zuordnung. Wall-clock-`CronTrigger` (Default Tue 03:00 UTC) + Stale-on-Startup-Catch-up (gleicher Mechanismus wie CWE). `CAPECService._get_capec_data` serviert stale Mongo-Daten mit einer einmaligen `capec_service.catalog_stale`-Warnung pro Prozess, statt None zurückzugeben — sonst hätte ein verpasster Sync die `Attack Path`-Tab und CAPEC-Anzeige komplett dunkel geschaltet.
-- **CIRCL Pipeline:** Liest zusätzliche Schwachstelleninformationen von CIRCL und reichert bestehende Datensätze an. Ist **Source of Truth für EPSS**: `CirclClient.fetch_cve` ruft parallel `/api/cve/{id}` und `/api/epss/{id}` auf, normalisiert den FIRST-Wert auf die 0..1-Skala und überschreibt damit `epss_score` unkonditional. `_find_vulns_needing_enrichment` zieht zusätzlich Dokumente mit `epss_score > 1` zurück in die Queue, damit Altdaten (z. B. aus EUVD in 0..100-Form) beim nächsten Lauf repariert werden.
-- **GHSA Pipeline:** Synchronisiert GitHub Security Advisories. Hybrid: Advisories mit CVE-ID enrichen bestehende CVE-Dokumente oder erstellen neue CVE-Dokumente (Pre-Fill). Advisories ohne CVE-ID erstellen eigenständige GHSA-Einträge. Aliases stammen nur aus `identifiers`-Array, nicht aus Referenz-URLs.
-- **OSV Pipeline:** Synchronisiert OSV.dev-Schwachstellen. Initial-Sync über GCS Bucket ZIP-Exporte, inkrementeller Sync über `modified_id.csv` + REST-API. Hybrid wie GHSA: Records mit CVE-Alias enrichen CVE-Dokumente, Records ohne CVE-Alias (MAL-*, PYSEC-*, etc.) erstellen eigenständige OSV-Einträge. **MAL-als-primäre-ID:** MAL-*-Records sind immer die primäre `_id` — existierende EUVD-/GHSA-Dokumente für dasselbe Paket werden via `_absorb_aliased_docs()` in das MAL-Dokument gemerged und die Original-Docs aus Mongo + OpenSearch gelöscht. Restliche ID-Priorität: CVE > GHSA > Raw-OSV-ID. 11 Ökosysteme (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions). Mid-Run-Progress-Reporting (alle 500 Records oder 60s). **Initial-Sync-Concurrency:** Records werden in Batches (`OSV_INITIAL_SYNC_BATCH_SIZE=32`) durch eine `asyncio.Semaphore`-bounded `asyncio.gather` (`OSV_INITIAL_SYNC_CONCURRENCY=16`) dispatcht; intra-Batch-Dedup auf `vuln_id` (Kollisionen rutschen in den nächsten Batch) verhindert konkurrente Writes auf dieselbe `_id`. Unveränderte Records (~95 % der Last) kurzschließen über das `_osv_would_change()`-Predikat in [vulnerability_repository.py](../backend/app/repositories/vulnerability_repository.py) **vor** dem Deep-Copy. `find_docs_aliasing` nutzt einen `$in`-Lookup über die kanonischen Case-Varianten (vorher `$regex` mit `$options:"i"`, das den Multikey-Index nicht nutzen konnte). Inkrementeller Sync läuft mit `concurrency=1` weil der OSV-REST-Limiter ohnehin dominiert.
-- **deps.dev-Anreicherung (MAL-*/GHSA-*):** [backend/app/services/ingestion/mal_enrichment.py](../backend/app/services/ingestion/mal_enrichment.py) fragt deps.dev Package API für Dokumente mit broad `>=0`-Ranges auf `impactedProducts[].versions` und ersetzt das Range mit der tatsächlichen Versionsliste. Ausgelöst (a) inline nach jedem OSV-MAL-/GHSA-Upsert via `maybe_enrich_by_id()`, (b) bei Manual-Refresh für MAL-/GHSA-IDs auch wenn OSV nichts liefert, (c) als CLI-Backfill via `poetry run python -m app.cli enrich-mal`. Schreibt `impactedProducts`, `product_versions`, `last_change_job="deps_dev_enrichment"`/`last_change_at`, Change-History-Entry mit `job_label="deps.dev Enrichment"`, und **reindext das fertige Dokument in OpenSearch** (notwendig weil `VulnerabilityService.get_by_id()` OpenSearch und nicht Mongo liest). Idempotent via `_is_broad_range()`-Gate.
-- **Manual Refresher:** Ermöglicht gezielte Reingestion einzelner IDs (API + CLI). Erkennt ID-Typ automatisch (CVE → NVD+EUVD+CIRCL+GHSA+OSV, EUVD → EUVD, GHSA → GHSA-API, MAL-/PYSEC-/OSV- → OSV). OSV-Refresh für alle ID-Typen verfügbar. Ohne den OSV-Short-Circuit-Branch für MAL-/PYSEC-/OSV- würde der Default-Flow auf den `_build_reserved_document()`-Pfad durchfallen und bestehende MAL-Dokumente mit einem Placeholder (`source="EUVD"`, `summary="reserved…"`) überschreiben. Antwort enthält `resolvedId` wenn finale Dokument-ID abweicht. Re-Sync (`POST /api/v1/sync/resync`) unterstützt mehrere IDs (`vulnIds: list[str]`), Wildcard-Patterns (z.B. `CVE-2024-*`) und Delete-Only-Modus.
+### Ingestion pipelines
 
-### Datenbeziehungen
-- CVE → CWE: Aus NVD `weaknesses`-Array, gespeichert auf `VulnerabilityDocument`.
-- CWE → CAPEC: Bidirektionales Mapping aus CWE-Rohdaten + CAPEC-XML.
-- CAPEC-IDs werden NICHT auf `VulnerabilityDocument` gespeichert; Auflösung erfolgt zur Anzeigezeit.
+| Pipeline | Source | Default interval | Description |
+| --- | --- | --- | --- |
+| EUVD | ENISA REST API | 60 min | Vulnerabilities with change history; incremental + weekly full sync (Sun 02:00 UTC) |
+| NVD | NIST REST API | 10 min | CVSS, EPSS, CPE configurations, optional API key, full sync (Wed 02:00 UTC) |
+| KEV | CISA JSON feed | 60 min | Exploitation status |
+| CPE | NVD CPE 2.0 API | 1440 min (daily) | Product / version catalogue |
+| CWE | MITRE REST API | 7 days | Weakness definitions |
+| CAPEC | MITRE XML download | 7 days | Attack patterns |
+| CIRCL | CIRCL REST API | 120 min | Additional enrichment |
+| GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories (hybrid: enriches CVEs + creates GHSA-only entries) |
+| OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems; cursor-advancement fix against cap-hit data loss) |
 
-### Scheduler & Job-Tracking
-- `SchedulerManager` initialisiert APScheduler (AsyncIO) mit Intervallen für alle 9 Datenquellen + optionalem SCA Auto-Scan. Hochfrequente Pipelines (NVD/EUVD/KEV/OSV/GHSA/CIRCL/CPE) nutzen `IntervalTrigger`; **CWE und CAPEC nutzen `CronTrigger`** (wall-clock), weil Backend-Redeploys innerhalb des 7-Tage-Fensters den Interval-Timer auf `now + N days` zurücksetzen würden und der Sync nie mehr feuert (beobachteter Fall: Catalog 73 Tage stale).
-- Initial-Bootstrap läuft beim Start einmalig (EUVD, CPE, NVD, KEV, CWE, CAPEC, GHSA, OSV) und wird in `IngestionStateRepository` (Mongo) als abgeschlossen markiert. Parallel dazu läuft `_run_catalog_catchup_jobs()` einmal pro Backend-Start: prüft den jüngsten erfolgreichen `finished_at` für CWE und CAPEC und dispatched einen Out-of-Band-Sync, wenn dieser älter als `interval_days × SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (Default 1.5×) ist.
-- CIRCL hat keinen Bootstrap-Job, da es nur bestehende Datensätze anreichert.
-- `JobTracker` aktualisiert Laufzeitstatus, setzt Overdue-Flags und persistiert Fortschritt im Audit-Log.
-- Startup-Cleanup markiert Zombie-Jobs (Running-Status bei Neustart) als abgebrochen.
-- Audit-Service schreibt Ereignisse in `ingestion_logs` inklusive Dauer, Ergebnis und Metadaten.
-- Konfigurierbare `INGESTION_RUNNING_TIMEOUT_MINUTES` markiert Jobs als Overdue, ohne sie abzubrechen.
+- All pipelines support both incremental and initial syncs.
+- **Shared HTTP retry layer** ([backend/app/services/http/retry.py](../backend/app/services/http/retry.py)): every ingestion client (NVD, EUVD, CPE, CIRCL, GHSA, OSV) retries transient `httpx.HTTPError`, 5xx, and 429 (honours `Retry-After`) with exponential backoff. Per-source tuning via `{SOURCE}_MAX_RETRIES` / `{SOURCE}_RETRY_BACKOFF_SECONDS`. NVD is fail-hard (pagination runs backwards; silently jumping over a page of 2000 CVEs would be worse than a clear abort); CIRCL / OSV / GHSA are fail-soft (skip record / ecosystem / page). GHSA additionally sets a `_last_fetch_failed` flag so `iter_all_advisories` logs retry exhaustion as `ghsa_client.iteration_aborted_on_failure` instead of falling silent as "end of pages".
+- **EUVD pipeline** — paginated read, matches CVE IDs, enriches with NVD and KEV data, maintains change history, updates the OpenSearch index + MongoDB documents.
+- **NVD pipeline** — refreshes CVSS / EPSS / references for existing records, optionally bounded by `modifiedSince`. Read timeout 60 s (was 30 s) — too short for 2000-per-page JSON responses.
+- **CPE pipeline** — synchronises the NVD CPE catalogue, creates vendor / product / version entries, and stores slug metadata in MongoDB. Mid-run progress reporting (every 500 records or 60 s).
+- **KEV pipeline** — keeps the CISA known-exploited catalogue current and provides exploitation metadata for EUVD / NVD.
+- **CWE pipeline** — synchronises the MITRE CWE catalogue via REST API with a 7-day TTL cache. Wall-clock `CronTrigger` (default Mon 03:00 UTC), not interval trigger — survives backend redeploys without drift. The stale-on-startup catch-up runs the sync immediately if the latest successful run is older than 1.5× TTL.
+- **CAPEC pipeline** — parses MITRE CAPEC XML, creates attack-pattern entries with CWE mapping. Wall-clock `CronTrigger` (default Tue 03:00 UTC) + stale-on-startup catch-up (same mechanism as CWE). `CAPECService._get_capec_data` serves stale MongoDB data with a one-off `capec_service.catalog_stale` warning per process instead of returning `None` — otherwise a missed sync would black out the Attack Path tab and CAPEC display entirely.
+- **CIRCL pipeline** — pulls additional vulnerability information from CIRCL and enriches existing records. **Source of truth for EPSS:** `CirclClient.fetch_cve` calls `/api/cve/{id}` and `/api/epss/{id}` in parallel, normalises the FIRST value to the `0..1` scale, and overwrites `epss_score` unconditionally. `_find_vulns_needing_enrichment` additionally pulls documents with `epss_score > 1` back into the queue so legacy data (e.g. EUVD `0..100` form) is repaired on the next run.
+- **GHSA pipeline** — synchronises GitHub Security Advisories. Hybrid: advisories with a CVE ID enrich existing CVE documents or create new ones (pre-fill); advisories without a CVE ID create standalone GHSA entries. Aliases come exclusively from the `identifiers` array, not from reference URLs.
+- **OSV pipeline** — synchronises OSV.dev vulnerabilities. Initial sync via GCS bucket ZIP exports, incremental sync via `modified_id.csv` + REST API. Hybrid like GHSA: records with a CVE alias enrich CVE documents; records without (MAL-*, PYSEC-*, …) create standalone OSV entries. **MAL as primary ID:** MAL-* records are always the primary `_id` — existing EUVD / GHSA documents for the same package are merged into the MAL document via `_absorb_aliased_docs()` and the original docs are deleted from MongoDB + OpenSearch. Remaining ID priority: CVE > GHSA > raw OSV ID. 11 ecosystems (npm, PyPI, Go, Maven, RubyGems, crates.io, NuGet, Packagist, Pub, Hex, GitHub Actions). Mid-run progress reporting (every 500 records or 60 s). **Initial-sync concurrency:** records are dispatched in batches (`OSV_INITIAL_SYNC_BATCH_SIZE=32`) through an `asyncio.Semaphore`-bounded `asyncio.gather` (`OSV_INITIAL_SYNC_CONCURRENCY=16`); intra-batch dedup on `vuln_id` (collisions slip into the next batch) avoids concurrent writes to the same `_id`. Unchanged records (~95 % of the load) short-circuit through the `_osv_would_change()` predicate in [vulnerability_repository.py](../backend/app/repositories/vulnerability_repository.py) **before** the deep copy. `find_docs_aliasing` uses an `$in` lookup over the canonical case variants (was `$regex` with `$options:"i"`, which couldn't use the multikey index). Incremental sync runs with `concurrency=1` because the OSV REST limiter dominates anyway.
+- **deps.dev enrichment (MAL-* / GHSA-*):** [backend/app/services/ingestion/mal_enrichment.py](../backend/app/services/ingestion/mal_enrichment.py) queries the deps.dev Package API for documents with broad `>=0` ranges in `impactedProducts[].versions` and replaces the range with the actual version list. Triggered (a) inline after every OSV MAL / GHSA upsert via `maybe_enrich_by_id()`, (b) on manual refresh for MAL / GHSA IDs even when OSV returns nothing, and (c) as a CLI backfill via `poetry run python -m app.cli enrich-mal`. Writes `impactedProducts`, `product_versions`, `last_change_job="deps_dev_enrichment"` / `last_change_at`, a change-history entry with `job_label="deps.dev Enrichment"`, and **reindexes the resulting document into OpenSearch** (necessary because `VulnerabilityService.get_by_id()` reads OpenSearch, not MongoDB). Idempotent via the `_is_broad_range()` gate.
+- **Manual refresher** — targeted reingestion of individual IDs (API + CLI). Auto-detects ID type (CVE → NVD + EUVD + CIRCL + GHSA + OSV, EUVD → EUVD, GHSA → GHSA API, MAL- / PYSEC- / OSV- → OSV). OSV refresh available for all ID types. Without the OSV short-circuit branch for MAL- / PYSEC- / OSV-, the default flow would fall through to `_build_reserved_document()` and overwrite existing MAL documents with a placeholder (`source="EUVD"`, `summary="reserved…"`). The response includes `resolvedId` if the final document ID differs. Re-sync (`POST /api/v1/sync/resync`) supports multiple IDs (`vulnIds: list[str]`), wildcard patterns (e.g. `CVE-2024-*`), and a delete-only mode.
 
-### Persistenz
+### Data relationships
 
-#### MongoDB (22 Collections)
+- CVE → CWE: from the NVD `weaknesses` array, stored on `VulnerabilityDocument`.
+- CWE → CAPEC: bidirectional mapping from CWE raw data + CAPEC XML.
+- CAPEC IDs are **not** stored on `VulnerabilityDocument`; resolution happens at display time.
 
-| Collection | Beschreibung |
-|-----------|-------------|
-| `vulnerabilities` | Schwachstellen mit CVSS, EPSS, CWEs, CPEs, Quell-Rohdaten |
-| `cwe_catalog` | CWE-Schwächen (7-Tage TTL-Cache) |
-| `capec_catalog` | CAPEC-Angriffsmuster (7-Tage TTL-Cache) |
-| `known_exploited_vulnerabilities` | CISA KEV-Einträge |
-| `cpe_catalog` | CPE-Einträge (Vendor, Product, Version) |
-| `asset_vendors` | Vendoren mit Slug und Produkt-Anzahl |
-| `asset_products` | Produkte mit Vendor-Zuordnung |
-| `asset_versions` | Versionen mit Produkt-Zuordnung |
-| `ingestion_state` | Sync-Job-Status (Running/Completed/Failed) |
-| `ingestion_logs` | Detaillierte Job-Logs mit Metadaten |
-| `saved_searches` | Gespeicherte Suchanfragen |
-| `scan_targets` | Scan-Ziele (Container-Images, Source-Repos) |
-| `scans` | Scan-Durchläufe mit Status und Zusammenfassung |
-| `scan_findings` | Schwachstellen-Funde aus SCA-Scans |
-| `scan_sbom_components` | SBOM-Komponenten aus SCA-Scans |
-| `scan_layer_analysis` | Image-Schichtanalyse aus Dive-Scans |
-| `notification_rules` | Benachrichtigungsregeln (Event, Watch, DQL, Scan, Inventory) |
-| `notification_channels` | Apprise-Channels (URL + Tag) |
-| `notification_templates` | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
-| `license_policies` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
-| `environment_inventory` | Benutzerdeklariertes Produkt/Version-Inventory mit Deployment/Environment/Instance-Count |
-| `malware_intel` | Dynamische Malware-Intel-Einträge; wird im `/v1/malware/malware-feed`-UI gemerged (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
+### Scheduler & job tracking
 
-- Repositories auf Basis von Motor (async) kapseln Abfragen und Updates.
-- Repository-Pattern: `create()` Classmethod erstellt Indexes, `_id` = Entity-ID, `upsert()` gibt `"inserted"` / `"updated"` / `"unchanged"` zurück.
-- TTL-Indizes (z. B. `expires_at`) sichern optionales Aufräumen von Zustandsdokumenten.
+- `SchedulerManager` initialises APScheduler (AsyncIO) with intervals for all 9 data sources + an optional SCA auto-scan. High-frequency pipelines (NVD / EUVD / KEV / OSV / GHSA / CIRCL / CPE) use `IntervalTrigger`; **CWE and CAPEC use `CronTrigger`** (wall-clock), because backend redeploys within the 7-day window would reset the interval timer to `now + N days` and the sync would never fire (observed: catalogue 73 days stale).
+- The initial bootstrap runs once at startup (EUVD, CPE, NVD, KEV, CWE, CAPEC, GHSA, OSV) and is marked complete in `IngestionStateRepository` (MongoDB). In parallel, `_run_catalog_catchup_jobs()` runs once per backend start: it checks the latest successful `finished_at` for CWE and CAPEC and dispatches an out-of-band sync if it is older than `interval_days × SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (default `1.5`).
+- CIRCL has no bootstrap job because it only enriches existing records.
+- `JobTracker` updates runtime status, sets overdue flags, and persists progress in the audit log.
+- Startup cleanup marks zombie jobs (Running status at restart) as cancelled.
+- The audit service writes events to `ingestion_logs` including duration, result, and metadata.
+- Configurable `INGESTION_RUNNING_TIMEOUT_MINUTES` marks jobs as overdue without aborting them.
+
+### Persistence
+
+#### MongoDB (22 collections)
+
+| Collection | Description |
+| --- | --- |
+| `vulnerabilities` | Vulnerabilities with CVSS, EPSS, CWEs, CPEs, source raw data |
+| `cwe_catalog` | CWE weaknesses (7-day TTL cache) |
+| `capec_catalog` | CAPEC attack patterns (7-day TTL cache) |
+| `known_exploited_vulnerabilities` | CISA KEV entries |
+| `cpe_catalog` | CPE entries (vendor, product, version) |
+| `asset_vendors` | Vendors with slug and product count |
+| `asset_products` | Products with vendor mapping |
+| `asset_versions` | Versions with product mapping |
+| `ingestion_state` | Sync-job status (Running / Completed / Failed) |
+| `ingestion_logs` | Detailed job logs with metadata |
+| `saved_searches` | Saved queries |
+| `scan_targets` | Scan targets (container images, source repos) |
+| `scans` | Scan runs with status and summary |
+| `scan_findings` | Vulnerability findings from SCA scans |
+| `scan_sbom_components` | SBOM components from SCA scans |
+| `scan_layer_analysis` | Image-layer analysis from Dive scans |
+| `notification_rules` | Notification rules (event, watch, DQL, scan, inventory) |
+| `notification_channels` | Apprise channels (URL + tag) |
+| `notification_templates` | Title / body templates per event type |
+| `license_policies` | License policies (allowed, denied, review-required) |
+| `environment_inventory` | User-declared product / version inventory with deployment / environment / instance count |
+| `malware_intel` | Dynamic malware-intel entries; merged into the `/v1/malware/malware-feed` UI (currently unused, reserved for future threat-intel pipelines) |
+
+- Repositories on top of Motor (async) encapsulate queries and updates.
+- Repository pattern: `create()` classmethod creates indexes, `_id` = entity ID, `upsert()` returns `"inserted"` / `"updated"` / `"unchanged"`.
+- TTL indexes (e.g. `expires_at`) handle optional cleanup of state documents.
 
 #### OpenSearch
-- Index `hecate-vulnerabilities` mit normalisierten Dokumenten (IDs als CVE oder EUVD-ID).
-- Text-Felder für Volltext-Suche, `.keyword`-Felder für Aggregationen, nested `sources`-Pfad.
-- DQL (Domain-Specific Query Language) für erweiterte Suchanfragen.
-- Konfiguration: `max_result_window` = 200.000, `total_fields.limit` = 2.000.
 
-### SCA-Scanning (Software Composition Analysis)
-- **Scanner-Sidecar:** Separater Docker-Container mit 9 Scannern: Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep (SAST) und TruffleHog (Secret Detection).
-- **Scan-Ablauf:** CI/CD oder manuelle Anfrage → Backend → Scanner-Sidecar → Ergebnisse parsen → MongoDB speichern → Antwort.
-- **Image-Pull:** Scanner-Tools ziehen Container-Images direkt über Registry-APIs (kein Docker-Socket). Dive nutzt Skopeo zum Image-Pull als docker-archive.
-- **Registry-Auth:** Konfigurierbar über `SCANNER_AUTH` Umgebungsvariable.
-- **Parser:** Trivy-JSON, Grype-JSON, CycloneDX-SBOM (Syft), OSV-JSON, Hecate-JSON, Dockle-JSON, Dive-JSON, Semgrep-JSON, TruffleHog-JSON werden in einheitliche Modelle überführt.
-- **Hecate Analyzer:** Eigener SBOM-Extraktor (28 Parser, 12 Ökosysteme: Docker, npm, Python, Go, Rust, Ruby, PHP, Java, .NET, Swift, Elixir, Dart, CocoaPods) + Malware-Detektor (34 Regeln, HEC-001 bis HEC-090) + Provenance-Verifikation (8 Ökosysteme: npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Lockfiles werden additiv zum Manifest gelesen (npm: `package-lock.json`/`yarn.lock`/`pnpm-lock.yaml`/`bun.lock`; Python: `Pipfile.lock`/`poetry.lock`/`uv.lock`; Rust: `Cargo.lock`; Go: `go.sum`; Java/Kotlin: `gradle.lockfile`; .NET: `Directory.Packages.props` + `packages.lock.json` + `project.assets.json`).
-- **Dockle:** CIS Docker Benchmark Linter — prüft Container-Images auf Best Practices (~21 Checkpoints). Ergebnisse als `ScanFindingDocument` mit `package_type="compliance-check"`, werden nicht in Vulnerability-Summary gezählt. Nur für Container-Images, opt-in.
-- **Dive:** Docker-Image-Schichtanalyse — Effizienz, verschwendeter Speicher, Layer-Aufschlüsselung. Ergebnisse in separater `scan_layer_analysis` Collection. Nur für Container-Images, opt-in.
-- **Semgrep:** SAST-Scanner für Code-Schwachstellen (SQLi, XSS, Command Injection etc.). Ergebnisse als `ScanFindingDocument` mit `package_type="sast-finding"`. Konfigurierbare Rulesets via `SEMGREP_RULES` (Default: `p/security-audit`). Nur für Source-Repos.
-- **TruffleHog:** Secret-Scanner für exponierte Credentials (API-Keys, Tokens, Passwörter). Ergebnisse als `ScanFindingDocument` mit `package_type="secret-finding"`. Verifizierte Secrets = `critical`, unverifizierte = `high`. Nur für Source-Repos.
-- **Scanner-Auswahl pro Target:** Beim Erst-Scan gewählte Scanner werden auf dem `ScanTargetDocument` gespeichert und für Auto-Scans wiederverwendet.
-- **Scan-Vergleich:** Findings können zwischen zwei Scans verglichen werden (Added, Removed, Changed). "Changed" gruppiert Findings mit gleichem Paket aber unterschiedlicher Schwachstelle.
-- **SBOM-Export:** CycloneDX 1.5 JSON und SPDX 2.3 JSON Export über `GET /api/v1/scans/{scan_id}/sbom/export?format=cyclonedx-json|spdx-json`. Pure-Function-Builder in `sbom_export.py` (keine externen Bibliotheken). Download mit `Content-Disposition: attachment` Header. EU Cyber Resilience Act (CRA) Compliance.
-- **SBOM-Import:** Externes CycloneDX- und SPDX-SBOM-Upload über `POST /api/v1/scans/import-sbom` (JSON) oder `/import-sbom/upload` (Multipart-Datei). Automatische Format-Erkennung. Importierte Komponenten werden gegen die Vulnerability-DB gematcht. Erstellt Targets mit `type="sbom-import"` und Scans mit `source="sbom-import"`.
-- **VEX (Vulnerability Exploitability Exchange):** VEX-Status-Annotationen auf Findings (`not_affected`, `affected`, `fixed`, `under_investigation`) mit Justification und Detail. Im Frontend per Klick auf das VEX-Badge **expandierbarer Inline-Editor** (Status, Justification, Detail-Textarea). Multi-Select-Toolbar für Bulk-Updates auf beliebige Selektionen (`POST /api/v1/scans/vex/bulk-update-by-ids`). CycloneDX VEX Export/Import (Import-Button in der Findings-Toolbar). Automatischer VEX Carry-Forward nach jedem Scan auf übereinstimmende neue Findings (Match: `vulnerability_id` + `package_name`).
-- **Findings-Dismissal:** Persönlicher Anzeigefilter (separat von VEX) zum Verbergen irrelevanter Findings über `POST /api/v1/scans/findings/dismiss`. Verworfene Findings werden standardmäßig ausgeblendet und mit `?includeDismissed=true` wieder eingeblendet (UI: "Show dismissed"-Toggle, persistiert via localStorage). `dismissed*`-Flags auf `ScanFindingDocument`. Carry-Forward analog zu VEX nach jedem Scan (`carry_forward_dismissed`).
-- **SBOM-Import-Targets (UI-Beschränkungen):** Targets vom Typ `sbom-import` haben kein Auto-Scan, keinen Rescan-Button und kein Scanner-Edit-Pencil auf der Target-Card. `auto_scan=False` wird bereits beim Import gesetzt; Frontend-Hides verhindern sinnlose Aktionen.
-- **Target-Gruppierung (Applications):** Mehrere Scan-Targets können über das optionale `group`-Feld auf `ScanTargetDocument` zu einer Anwendung zusammengefasst werden. Keine eigenständige `applications`-Collection — Gruppen werden zur Laufzeit per distinct-Aggregation abgeleitet. `GET /api/v1/scans/targets/groups` liefert die Gruppen mit aggregierten Severity-Roll-ups (Summe der `latest_summary`-Werte aller Targets); `GET /api/v1/scans/targets?group=<name>` filtert; `PATCH /api/v1/scans/targets/{id}` setzt/löscht das Feld. Frontend rendert den Targets-Tab als kollabierbare Sektionen pro Gruppe; jede Target-Card hat einen Inline-Editor mit `<datalist>`-Vorschlägen aus existierenden Gruppen.
-- **License Compliance:** Lizenz-Policy-Management über `license_policies` Collection. Policies definieren erlaubte, verbotene und Review-pflichtige Lizenzen. Eine Default-Policy kann gesetzt werden. Nach jedem Scan wird die License-Compliance automatisch evaluiert und als `license_compliance_summary` auf dem Scan-Dokument gespeichert. License-Compliance-Übersicht über alle Scans via `GET /api/v1/scans/license-overview`.
-- **Environment Inventory:** Benutzerdeklarierte Produkte und Versionen (`environment_inventory` Collection) mit Deployment (onprem/cloud/hybrid), Environment (frei-form, mit Datalist-Vorschlägen prod/staging/dev/test/dr), Instance-Count und Owner. Der pure-function Matcher `inventory_matcher.py` führt **zwei Lookup-Richtungen** aus und evaluiert Treffer in einer **3-Stufen-Priorität** (`impacted_products` → `cpe_configurations` → flache `cpes` als Last-Resort-Fallback). Jede Stufe terminiert die Suche sofort, wenn sie das Vendor/Product-Slug-Paar findet — auch dann, wenn keine Version matcht ("kein Match" ist eine autoritative Antwort). Das verhindert zwei Regressionsklassen: Graylog 7.0.6 wurde vom alten 2-Stufen-Matcher fälschlich als betroffen von CVE-2023-41041 markiert, weil `cpe_configurations` die Ranges korrekt ablehnte, die Fallback-Schleife dann aber blind eine Wildcard-CPE (`cpe:2.3:a:graylog:graylog:*`) traf; .NET 8.0.25 wurde fälschlich als **nicht** betroffen von CVE-2026-33116 markiert, weil die autoritativen Ranges dort nur als `">= 8.0.0, < 8.0.26"`-Strings unter dem **camelCase** `impactedProducts`-Feld liegen (nicht unter snake_case `impacted_products`), das der alte Matcher nie las.
-  - **Inventar → CVE** (Inventory-Detail, Notification-Watch-Rule): MongoDB-Query `{$and: [{$or: [vendor_slugs, vendors]}, {$or: [product_slugs, products]}]}` + Python-seitige 3-Stufen-Auswertung. Einzelfeld-Indexe auf `vendor_slugs` und `product_slugs` (kein Compound-Index — MongoDB lehnt parallele Multikey-Indexe ab: "cannot index parallel arrays"). Die `$or`-Erweiterung auf die Rohwert-Arrays (`vendors`, `products`) fängt historische CPE-Tags ab, deren Slug vom Asset-Katalog abweicht (z. B. `graylog2`/`graylog2-server` vs. `graylog`/`graylog`). Die Projection enthält `impacted_products` **und** `impactedProducts`. Keine `$or`-Klauseln auf Nested-Pfade wie `impacted_products.vendor.slug` — dafür gibt es keinen Index, und eine einzige unindizierte `$or`-Klausel zwingt MongoDBs Query-Planner in einen Full-Scan (gemessen: 70 s auf 770k Dokumenten statt ~50 ms).
-  - **CVE → Inventar** (Vulnerability-Detail, AI-Analyse-Prompts): `items_for_vuln(vuln, inventory)` baut eine Union-Set-Membership aus `vendor_slugs ∪ vendors ∪ impacted_products[*].vendor.{slug,name}` (und analog für Product), filtert das Inventar vor und läuft dann den vollen 3-Stufen-Matcher auf den Überlebenden. Der Microsoft/.NET-Fall ergänzt Graylog: dort hat die CVE leere `cpe_configurations` und keine snake_case `impacted_products`, sodass der `impactedProducts`-Read im Pre-Filter-Set unverzichtbar ist, um den Eintrag überhaupt in die Kandidatenliste zu ziehen.
-  - **Versionsvergleich:** selbst-enthaltener `parse_version()`/`_compare_versions()` ohne `packaging`-Dependency. Dotted-numeric-Releases, Pre-Release-Suffixe (`8.0.25-preview.1 < 8.0.25`), `v`-Prefix-Strip, Längen-Padding (`8.0` == `8.0.0`), Wildcards (`8.0.*` → halboffene Range `[8.0, 8.1)`). Nicht-parsbare Strings fallen fail-closed auf case-insensitive Equality zurück. Die Slug-Normalisierung (`_slug()`) delegiert an `app.utils.strings.slugify()` — dieselbe Funktion, die der Asset-Katalog verwendet —, damit CPE-Tokens wie `.net_8.0` und Katalog-Slugs wie `net-8-0` übereinstimmen (reine `str.lower()`-Normalisierung würde .NET-Matches still droppen, weil `_` und `-` anders behandelt werden).
-  - **Range-String-Parser:** `_version_in_range_string()` parst die EUVD-Format-Strings aus `impacted_products[].versions`: exakte Versionen (`1.2.3`), AND-verkettete Bounds (`>= 8.0.0, < 8.0.26`), einseitige Bounds (`< 5.0.9`). Unconstrained-Werte (`*`, `-`, `ANY`, `""`) liefern **False** (fail-closed). Unterstützt `>=`, `>`, `<=`, `<`, `=`/`==`; `!=` wird ignoriert.
-  - **Notifications:** Rule-Typ `inventory` in `notification_service.py` mit optionalem `inventory_item_ids`-Filter (leer/`null` = global, gesetzt = nur gewählte Item-`_id`s). `_evaluate_inventory_rule` reicht `item_ids` an `InventoryService.new_vulns_for_watch_rule(since=prev, item_ids=...)` durch, das den Inventar-Pool vorfiltert und dann Mongo direkt mit `published >= prev` abfragt und CPE-Matches post-validiert. Wiederverwendet die CAS-`claim_evaluation`-Watermark und Bootstrap-Semantik. API-seitig erlauben `valid_types` und `VALID_EVENT_KEYS` (`notifications.py`) `"inventory"` bzw. `"inventory_match"`; Frontend-SystemPage rendert bei Rule-Typ `inventory` einen nativen Multi-Select über alle Inventar-Items.
-  - **AI-Prompts:** `_format_inventory_block()` in `ai_service.py` fügt einen `## YOUR ENVIRONMENT IMPACT`-Block in Single- und Batch-Prompts (und MCP `prepare_*`-Tools) ein. Der Vulnerability-Detail-Endpoint hängt `affectedInventory` an die Response und die `POST .../ai-investigation{,/batch}`-Endpoints resolven Inventory-Impact vor dem Hintergrund-Task.
-- **Deduplizierung:** Gleiche CVE + Paket-Kombination über mehrere Scanner wird in der Findings-Tabelle zu einer Zeile zusammengeführt. **Severity-Summaries** (Target-Karten, Scan-Header, History-Chart) zählen zusätzlich per **CVE-ID-only** — dieselbe CVE in mehreren Paketen (z. B. busybox, busybox-binsh, ssl_client) zählt als 1 Vulnerability, nicht 3. Bei unterschiedlichen Severities pro Paket gewinnt die höchste. Findings ohne CVE-ID werden weiterhin per `package_name:version` dedupliziert. Die Findings-Tab-Badge zeigt die Zeilenanzahl (nach Scanner-Merge), nicht die CVE-Anzahl.
-- **Provenance-Verifikation:** Nach SBOM-Extraktion prüft der Hecate Analyzer die Herkunft/Attestierung jeder Komponente über Registry-APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Ergebnisse werden auf SBOM-Komponenten gespeichert und im Frontend als Provenance-Spalte angezeigt.
-- **Scan-Concurrency:** Gleichzeitige Scans werden über `SCA_MAX_CONCURRENT_SCANS` (Default: 2) begrenzt. Überschüssige Scans bleiben als `pending` in der Warteschlange. Vor dem Start wird die Ressourcenverfügbarkeit des Scanner-Sidecars geprüft (`SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`); bei unzureichenden Ressourcen wird gewartet, bei keinem anderen aktiven Scan trotzdem gestartet.
-- **Auto-Scan:** Optionales periodisches Scannen registrierter Ziele mit den beim Erst-Scan gewählten Scannern (konfigurierbar über `SCA_AUTO_SCAN_INTERVAL_MINUTES`). Change-Detection via Scanner-Sidecar `/check`-Endpoint (Image-Digest / Commit-SHA Vergleich); bei fehlgeschlagenem Check wird der Scan übersprungen wenn `last_scan_at` innerhalb des Intervalls liegt und ein gespeicherter Fingerprint existiert. **Diagnose:** `ScanService.check_target_changed` persistiert bei jedem Probe-Lauf `last_check_at` / `last_check_verdict` / `last_check_current_fingerprint` / `last_check_error` auf dem Target-Dokument. Die SCA Scans → Scanner-Tab `AutoScanDiagnosticsTable` rendert eine Zeile pro Auto-Scan-Target mit klickbarer Verdict-Pill, die `POST /v1/scans/targets/{id}/check` triggert (out-of-band Probe ohne Scan-Submission).
-- **Audit-Integration:** Scan-Ereignisse werden im Ingestion-Log protokolliert.
+- Index `hecate-vulnerabilities` with normalised documents (IDs as CVE or EUVD ID).
+- Text fields for full-text search, `.keyword` fields for aggregations, nested `sources` path.
+- DQL (Domain-Specific Query Language) for advanced search.
+- Configuration: `max_result_window` = 200 000, `total_fields.limit` = 2 000.
 
-### KI & Analyse
-- `AIClient` verwaltet verfügbare Provider anhand gesetzter API-Schlüssel bzw. Basis-URLs (OpenAI, Anthropic, Google Gemini, OpenAI-Compatible).
-- **OpenAI:** Responses API (`POST /v1/responses`) mit Reasoning (`reasoning.effort`) und Web-Suche (`web_search_preview` Tool). Konfigurierbar über `OPENAI_REASONING_EFFORT` (Default: `medium`) und `OPENAI_MAX_OUTPUT_TOKENS` (Default: 16000).
+### SCA scanning (Software Composition Analysis)
+
+- **Scanner sidecar** — separate Docker container with 9 scanners: Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep (SAST), and TruffleHog (secret detection).
+- **Scan flow** — CI/CD or manual request → backend → scanner sidecar → parse results → store in MongoDB → response.
+- **Image pull** — scanner tools pull container images directly through registry APIs (no Docker socket). Dive uses Skopeo to pull the image as a docker-archive.
+- **Registry auth** — configurable via the `SCANNER_AUTH` environment variable.
+- **Parsers** — Trivy JSON, Grype JSON, CycloneDX SBOM (Syft), OSV JSON, Hecate JSON, Dockle JSON, Dive JSON, Semgrep JSON, TruffleHog JSON are all converted into a common model.
+- **Hecate Analyzer** — own SBOM extractor (28 parsers, 12 ecosystems: Docker, npm, Python, Go, Rust, Ruby, PHP, Java, .NET, Swift, Elixir, Dart, CocoaPods) + malware detector (34 rules, HEC-001 through HEC-090) + provenance verification (8 ecosystems: npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Lockfiles are read additively to manifests (npm: `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock`; Python: `Pipfile.lock` / `poetry.lock` / `uv.lock`; Rust: `Cargo.lock`; Go: `go.sum`; Java / Kotlin: `gradle.lockfile`; .NET: `Directory.Packages.props` + `packages.lock.json` + `project.assets.json`).
+- **Dockle** — CIS Docker Benchmark linter — checks container images for best practices (~21 checkpoints). Results as `ScanFindingDocument` with `package_type="compliance-check"`, not counted toward the vulnerability summary. Container images only, opt-in.
+- **Dive** — Docker image-layer analysis — efficiency, wasted space, layer breakdown. Results in a separate `scan_layer_analysis` collection. Container images only, opt-in.
+- **Semgrep** — SAST scanner for code vulnerabilities (SQLi, XSS, command injection, …). Results as `ScanFindingDocument` with `package_type="sast-finding"`. Configurable rulesets via `SEMGREP_RULES` (default: `p/security-audit`). Source repos only.
+- **TruffleHog** — secret scanner for exposed credentials (API keys, tokens, passwords). Results as `ScanFindingDocument` with `package_type="secret-finding"`. Verified secrets = `critical`, unverified = `high`. Source repos only.
+- **Per-target scanner choice** — the scanners selected at first scan are stored on `ScanTargetDocument` and reused for auto-scans.
+- **Scan compare** — findings can be compared between two scans (added, removed, changed). "Changed" groups findings with the same package but a different vulnerability.
+- **SBOM export** — CycloneDX 1.5 JSON and SPDX 2.3 JSON via `GET /api/v1/scans/{scan_id}/sbom/export?format=cyclonedx-json|spdx-json`. Pure-function builder in `sbom_export.py` (no external libraries). Download with `Content-Disposition: attachment` header. EU Cyber Resilience Act (CRA) compliance.
+- **SBOM import** — external CycloneDX or SPDX upload via `POST /api/v1/scans/import-sbom` (JSON) or `/import-sbom/upload` (multipart file). Automatic format detection. Imported components are matched against the vulnerability DB. Creates targets with `type="sbom-import"` and scans with `source="sbom-import"`.
+- **VEX (Vulnerability Exploitability Exchange)** — VEX status annotations on findings (`not_affected`, `affected`, `fixed`, `under_investigation`) with justification and detail. The frontend exposes an **expandable inline editor** when a VEX badge is clicked (status, justification, detail textarea). A multi-select toolbar applies bulk updates to arbitrary selections (`POST /api/v1/scans/vex/bulk-update-by-ids`). CycloneDX VEX export / import (import button in the findings toolbar). Automatic VEX carry-forward after every scan onto matching new findings (match: `vulnerability_id` + `package_name`).
+- **Findings dismissal** — personal display filter (separate from VEX) to hide irrelevant findings via `POST /api/v1/scans/findings/dismiss`. Dismissed findings are hidden by default and revealed again with `?includeDismissed=true` (UI: "Show dismissed" toggle, persisted via `localStorage`). `dismissed*` flags on `ScanFindingDocument`. Carry-forward analogous to VEX after every scan (`carry_forward_dismissed`).
+- **SBOM-import-target UI restrictions** — targets of type `sbom-import` have no auto-scan, no rescan button, and no scanner-edit pencil on the target card. `auto_scan=False` is set at import; the UI hides the controls to prevent meaningless actions.
+- **Target grouping (applications)** — multiple scan targets can be combined into a single application via the optional `group` field on `ScanTargetDocument`. There is no `applications` collection — groups are derived at runtime via a distinct aggregation. `GET /api/v1/scans/targets/groups` returns groups with aggregated severity roll-ups (sum of `latest_summary` across all targets); `GET /api/v1/scans/targets?group=<name>` filters; `PATCH /api/v1/scans/targets/{id}` sets / clears the field. The frontend renders the Targets tab as collapsible sections per group; each target card has an inline editor with `<datalist>` suggestions from existing groups.
+- **License compliance** — license-policy management via the `license_policies` collection. Policies define allowed, denied, and review-required licenses. A default policy can be set. After every scan, license compliance is evaluated automatically and stored as `license_compliance_summary` on the scan document. License-compliance overview across all scans via `GET /api/v1/scans/license-overview`.
+- **Environment inventory** — user-declared products and versions (`environment_inventory` collection) with deployment (onprem / cloud / hybrid), environment (free-form, with datalist suggestions prod / staging / dev / test / dr), instance count, and owner. The pure-function matcher `inventory_matcher.py` performs **two lookup directions** and evaluates hits in a **three-tier priority** (`impacted_products` → `cpe_configurations` → flat `cpes` as last-resort fallback). Each tier terminates the search immediately when it finds the vendor / product slug pair — even when no version matches ("no match" is an authoritative answer). This prevents two regression classes: Graylog 7.0.6 was incorrectly marked as affected by CVE-2023-41041 by the old two-tier matcher because `cpe_configurations` rejected the ranges correctly but the fallback loop then blindly hit a wildcard CPE (`cpe:2.3:a:graylog:graylog:*`); .NET 8.0.25 was incorrectly marked as **not** affected by CVE-2026-33116 because the authoritative ranges only live there as `">= 8.0.0, < 8.0.26"` strings under the **camelCase** `impactedProducts` field (not under snake_case `impacted_products`), which the old matcher never read.
+  - **Inventory → CVE** (inventory detail, notification watch rule): MongoDB query `{$and: [{$or: [vendor_slugs, vendors]}, {$or: [product_slugs, products]}]}` + Python-side three-tier evaluation. Single-field indexes on `vendor_slugs` and `product_slugs` (no compound index — MongoDB rejects parallel multikey indexes: "cannot index parallel arrays"). The `$or` extension over the raw-value arrays (`vendors`, `products`) catches historical CPE tags whose slug differs from the asset catalogue (e.g. `graylog2` / `graylog2-server` vs. `graylog` / `graylog`). The projection contains both `impacted_products` **and** `impactedProducts`. No `$or` clauses on nested paths like `impacted_products.vendor.slug` — there is no index for that, and a single unindexed `$or` clause forces MongoDB's query planner into a full scan (measured: 70 s on 770 k documents instead of ~50 ms).
+  - **CVE → inventory** (vulnerability detail, AI-analysis prompts): `items_for_vuln(vuln, inventory)` builds union-set membership from `vendor_slugs ∪ vendors ∪ impacted_products[*].vendor.{slug,name}` (and analogously for product), pre-filters the inventory, then runs the full three-tier matcher on the survivors. The Microsoft / .NET case complements Graylog: the CVE has empty `cpe_configurations` and no snake_case `impacted_products`, so the `impactedProducts` read in the pre-filter set is essential to even pull the entry into the candidate list.
+  - **Version comparison:** self-contained `parse_version()` / `_compare_versions()` without a `packaging` dependency. Dotted-numeric releases, pre-release suffixes (`8.0.25-preview.1 < 8.0.25`), `v` prefix strip, length padding (`8.0` == `8.0.0`), wildcards (`8.0.*` → half-open range `[8.0, 8.1)`). Non-parsable strings fall fail-closed onto case-insensitive equality. Slug normalisation (`_slug()`) delegates to `app.utils.strings.slugify()` — the same function the asset catalogue uses — so CPE tokens like `.net_8.0` and catalogue slugs like `net-8-0` match (plain `str.lower()` would silently drop .NET matches because `_` and `-` are treated differently).
+  - **Range-string parser:** `_version_in_range_string()` parses the EUVD-format strings from `impacted_products[].versions`: exact versions (`1.2.3`), AND-chained bounds (`>= 8.0.0, < 8.0.26`), single-sided bounds (`< 5.0.9`). Unconstrained values (`*`, `-`, `ANY`, `""`) return **False** (fail-closed). Supports `>=`, `>`, `<=`, `<`, `=` / `==`; `!=` is ignored.
+  - **Notifications:** rule type `inventory` in `notification_service.py` with optional `inventory_item_ids` filter (empty / `null` = global, set = only the chosen item `_id`s). `_evaluate_inventory_rule` passes `item_ids` to `InventoryService.new_vulns_for_watch_rule(since=prev, item_ids=...)`, which pre-filters the inventory pool, then queries MongoDB directly with `published >= prev` and post-validates CPE matches. Reuses the CAS `claim_evaluation` watermark and bootstrap semantics. On the API side, `valid_types` and `VALID_EVENT_KEYS` (`notifications.py`) allow `"inventory"` and `"inventory_match"`; the System page renders a native multi-select over all inventory items when the rule type is `inventory`.
+  - **AI prompts:** `_format_inventory_block()` in `ai_service.py` adds a `## YOUR ENVIRONMENT IMPACT` block to single and batch prompts (and the MCP `prepare_*` tools). The vulnerability-detail endpoint attaches `affectedInventory` to the response, and the `POST .../ai-investigation{,/batch}` endpoints resolve inventory impact before the background task.
+- **Deduplication** — the same CVE + package combination across multiple scanners is merged into a single row in the findings table. **Severity summaries** (target cards, scan header, history chart) additionally count by **CVE-ID only** — the same CVE in multiple packages (e.g. `busybox`, `busybox-binsh`, `ssl_client`) counts as 1 vulnerability, not 3. With different severities per package, the highest wins. Findings without a CVE ID are still deduplicated by `package_name:version`. The findings tab badge shows the row count (after scanner merge), not the CVE count.
+- **Provenance verification** — after SBOM extraction the Hecate Analyzer checks the origin / attestation of every component via registry APIs (npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker). Results are stored on SBOM components and shown as a provenance column in the frontend.
+- **Scan concurrency** — `SCA_MAX_CONCURRENT_SCANS` (default 2) caps simultaneous scans. Excess scans wait as `pending`. Resource availability is checked against the scanner sidecar (`SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`) before each start; insufficient resources trigger a wait, but if no other scan is active the run proceeds anyway.
+- **Auto-scan** — optional periodic scanning of registered targets with the scanners chosen at first scan (configurable via `SCA_AUTO_SCAN_INTERVAL_MINUTES`). Change detection via the scanner sidecar `/check` endpoint (image digest / commit SHA comparison); on check failure the scan is skipped if `last_scan_at` is within the interval and a stored fingerprint exists. **Diagnostics:** `ScanService.check_target_changed` persists `last_check_at` / `last_check_verdict` / `last_check_current_fingerprint` / `last_check_error` on the target document for every probe. The Scanner-tab `AutoScanDiagnosticsTable` renders a row per auto-scan target with a clickable verdict pill that triggers `POST /v1/scans/targets/{id}/check` (out-of-band probe without a scan submission).
+- **Audit integration** — scan events are recorded in the ingestion log.
+
+### AI & analysis
+
+- `AIClient` discovers available providers from configured API keys / base URLs (OpenAI, Anthropic, Google Gemini, OpenAI-compatible).
+- **OpenAI:** Responses API (`POST /v1/responses`) with reasoning (`reasoning.effort`) and web search (`web_search_preview` tool). Configurable via `OPENAI_REASONING_EFFORT` (default `medium`) and `OPENAI_MAX_OUTPUT_TOKENS` (default `16000`).
 - **Anthropic:** Messages API via httpx.
-- **Google Gemini:** `google-genai` SDK mit optionaler Google-Suche.
-- **OpenAI-Compatible:** Generischer `POST {base_url}/v1/chat/completions`-Client für lokale bzw. Drittanbieter-Endpoints (Ollama, vLLM, OpenRouter, LocalAI, LM Studio). Aktiviert sobald `OPENAI_COMPATIBLE_BASE_URL` und `OPENAI_COMPATIBLE_MODEL` gesetzt sind; `OPENAI_COMPATIBLE_API_KEY` ist optional (Bearer-Auth), `OPENAI_COMPATIBLE_LABEL` überschreibt den UI-Anzeigenamen. `AI_WEB_SEARCH_ENABLED` wirkt nur auf OpenRouter (hängt `:online` an den Modellnamen); Ollama/vLLM ignorieren den Toggle. `HTTP_CA_BUNDLE` gilt auch hier via `get_http_verify()`.
-- Prompt-Builder erstellt Kontexte inkl. Asset- und Historieninformationen in frei wählbarer Sprache.
-- **Asynchrone Verarbeitung:** Einzel- und Batch-Analyse-Endpunkte geben sofort HTTP 202 zurück. Die eigentliche Analyse läuft als `asyncio.create_task()` im Hintergrund. Fortschritt und Ergebnis werden über SSE-Events (`job_started`, `job_completed`, `job_failed`) an das Frontend geliefert.
-- Ergebnisse werden in MongoDB gespeichert und als Audit-Event protokolliert.
-- Fehlerbehandlung liefert 4xx bei Konfigurationsfehlern, SSE `job_failed` bei Provider-Ausfällen.
+- **Google Gemini:** `google-genai` SDK with optional Google Search.
+- **OpenAI-compatible:** generic `POST {base_url}/v1/chat/completions` client for local or third-party endpoints (Ollama, vLLM, OpenRouter, LocalAI, LM Studio). Activated as soon as `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_MODEL` are set; `OPENAI_COMPATIBLE_API_KEY` is optional (bearer auth), `OPENAI_COMPATIBLE_LABEL` overrides the UI display name. `AI_WEB_SEARCH_ENABLED` only affects OpenRouter (appends `:online` to the model name); Ollama / vLLM ignore the toggle. `HTTP_CA_BUNDLE` applies here too via `get_http_verify()`.
+- A prompt builder constructs context including asset and history information in the chosen language.
+- **Asynchronous processing:** the single and batch analysis endpoints return HTTP 202 immediately. The actual analysis runs as `asyncio.create_task()` in the background. Progress and results are delivered to the frontend via SSE events (`job_started`, `job_completed`, `job_failed`).
+- Results are stored in MongoDB and recorded as audit events.
+- Error handling returns 4xx for configuration errors and SSE `job_failed` for provider outages.
 
-### Benachrichtigungen (Apprise)
-- `NotificationService` kommuniziert via HTTP mit der Apprise REST-API (fire-and-forget).
-- **Channels:** Apprise-URLs mit Tags, gespeichert in MongoDB, konfigurierbar über System-Seite.
-- **Regeln:** Event-basiert (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`), Watch-basiert (`saved_search`, `vendor`, `product`, `dql`) und Scan-basiert (`scan` mit optionalem Severity-Schwellenwert und Ziel-Filter).
-- **Nachrichtenvorlagen:** Anpassbare Titel/Body-Templates pro Event-Typ mit `{placeholder}`-Variablen und `{#each}...{/each}`-Schleifen (z.B. `{#each findings_list}` für Top-Scan-Findings, `{#each vulnerabilities}` für Watch-Rule-Matches). Auflösung: exakter Tag-Match → `all`-Fallback → hardcodierter Default.
-- **Watch-Auswertung:** Nach jeder Ingestion werden Watch-Regeln automatisch gegen neue Einträge in OpenSearch evaluiert (Lucene-Range-Filter `first_seen_at:[<seit> TO *]`). Der Filter nutzt das `first_seen_at`-Feld, das einmalig beim Insert gesetzt und von Enrichment-Pässen (CIRCL, GHSA, OSV, KEV) nie überschrieben wird — dadurch lösen Anreicherungen bereits bekannter CVEs keine Notifications erneut aus. Zusätzlich erfolgt 30s nach Backend-Start eine einmalige Auswertung, um die Lücke bis zum ersten Scheduler-Lauf abzudecken. Pipeline-Concurrency-Schutz: Der Zeitfilter nutzt `min(last_evaluated_at, pipeline_started_at)`, sodass langlaufende Pipelines (OSV, GHSA) ihre eigenen Updates auch dann finden, wenn parallele kurze Pipelines die Watermark vorschieben. Fehlt eine referenzierte Saved Search oder schlägt die Query-Konstruktion fehl, wird eine Warnung geloggt und die Watermark NICHT vorgeschoben, damit der nächste Lauf erneut versucht.
-- **Scan-Benachrichtigungen:** Erweiterte Template-Variablen inkl. Severity-Aufschlüsselung (`{critical}`, `{high}`, `{medium}`, `{low}`), Scan-Metadaten (`{scanners}`, `{source}`, `{branch}`, `{commit_sha}`, `{image_ref}`, `{error}`) und Top-Findings-Loop (`{#each findings_list}`).
-- Partial Delivery (HTTP 424 von Apprise) wird als Erfolg gewertet.
+### Notifications (Apprise)
 
-### Backup & Restore
-- Backup-Service exportiert JSON-Snapshots für drei Datasets: **Schwachstellen** (quellenweise: EUVD/NVD/Alle — gestreamt, um Timeouts auf großen Datenmengen zu vermeiden), **gespeicherte Suchen**, und **Environment-Inventory** (inkl. `_id`, Timestamps, Deployment-Metadaten).
-- Metadaten pro Snapshot: `dataset`, `exportedAt`, `itemCount` (+ `source` für Vulnerabilities). Das Restore-Endpoint validiert das Dataset-Feld und bricht bei Typ-Mismatch mit 400 ab.
-- Inventory-Restore ist Upsert per `_id`: Items mit bekannter ID werden in-place aktualisiert, unbekannte IDs werden unter genau dieser ID neu angelegt, und Items ohne `id`-Feld bekommen eine frische UUID. Das erlaubt einen idempotenten Round-Trip (Export → Mutate → Restore setzt den Original-Zustand ohne Duplikate wiederher).
-- Schwachstellen-Restore geht über `VulnerabilityRepository.upsert` mit `change_context={"job_name": "backup_restore_<source>"}`, sodass die Change-History den Backup-Import als Job ausweist.
-- Frontend-Systemseite (General-Tab) nutzt diese Endpunkte für Self-Service-Backups; der Datensatz-Picker zeigt alle drei Zeilen mit Export-Button + Datei-Upload-Restore.
+- `NotificationService` talks to the Apprise REST API over HTTP (fire-and-forget).
+- **Channels:** Apprise URLs with tags, stored in MongoDB, configurable via the System page.
+- **Rules:** event-based (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`), watch-based (`saved_search`, `vendor`, `product`, `dql`), and scan-based (`scan` with optional severity threshold and target filter).
+- **Message templates:** customisable title / body templates per event type with `{placeholder}` variables and `{#each}...{/each}` loops (e.g. `{#each findings_list}` for top scan findings, `{#each vulnerabilities}` for watch-rule matches). Resolution: exact tag match → `all` fallback → hard-coded default.
+- **Watch evaluation:** after every ingestion, watch rules are evaluated automatically against new entries in OpenSearch (Lucene range filter `first_seen_at:[<since> TO *]`). The filter uses the `first_seen_at` field, which is set once on insert and never overwritten by enrichment passes (CIRCL, GHSA, OSV, KEV) — enrichment of already-known CVEs therefore does not retrigger notifications. An additional one-shot evaluation runs 30 s after backend start to cover the gap until the first scheduler pass. Pipeline concurrency safeguard: the time filter uses `min(last_evaluated_at, pipeline_started_at)` so long-running pipelines (OSV, GHSA) still find their own updates even when parallel short pipelines have advanced the watermark. If a referenced saved search is missing or the query construction fails, a warning is logged and the watermark is **not** advanced, so the next run retries.
+- **Scan notifications:** extended template variables including severity breakdown (`{critical}`, `{high}`, `{medium}`, `{low}`), scan metadata (`{scanners}`, `{source}`, `{branch}`, `{commit_sha}`, `{image_ref}`, `{error}`), and a top-findings loop (`{#each findings_list}`).
+- Partial delivery (HTTP 424 from Apprise) is treated as success.
+
+### Backup & restore
+
+- The backup service exports JSON snapshots for three datasets: **vulnerabilities** (per source: EUVD / NVD / All — streamed to avoid timeouts on large datasets), **saved searches**, and **environment inventory** (incl. `_id`, timestamps, deployment metadata).
+- Per-snapshot metadata: `dataset`, `exportedAt`, `itemCount` (+ `source` for vulnerabilities). The restore endpoint validates the dataset field and aborts with 400 on type mismatch.
+- Inventory restore is upsert by `_id`: items with a known ID are updated in place; unknown IDs are inserted under exactly that ID; items without an `id` field receive a fresh UUID. This allows an idempotent round-trip (export → mutate → restore restores the original state without duplicates).
+- Vulnerability restore goes through `VulnerabilityRepository.upsert` with `change_context={"job_name": "backup_restore_<source>"}`, so the change history flags the backup import as a job.
+- The frontend System page (General tab) uses these endpoints for self-service backups; the dataset picker shows all three rows with an export button + file-upload restore.
 
 ### Observability
-- `structlog` für strukturierte Logs, konsistent in Pipelines und Services verwendet.
-- Audit-Log dient als Betriebsführer (Status, Fehlergründe, Dauer, Overdue-Hinweise).
+
+- `structlog` for structured logs, used consistently across pipelines and services.
+- The audit log doubles as an operations cockpit (status, error reasons, duration, overdue hints).
 
 ### CLI
-```
-poetry run python -m app.cli ingest [--since ISO] [--limit N] [--initial]
-poetry run python -m app.cli sync-euvd [--since ISO] [--initial]
-poetry run python -m app.cli sync-cpe [--limit N] [--initial]
-poetry run python -m app.cli sync-nvd [--since ISO | --initial]
-poetry run python -m app.cli sync-kev [--initial]
-poetry run python -m app.cli sync-cwe [--initial]
-poetry run python -m app.cli sync-capec [--initial]
-poetry run python -m app.cli sync-circl [--limit N]
-poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
-poetry run python -m app.cli sync-osv [--limit N] [--initial]
+
+```sh
+poetry run python -m app.cli ingest         [--since ISO] [--limit N] [--initial]
+poetry run python -m app.cli sync-euvd      [--since ISO] [--initial]
+poetry run python -m app.cli sync-cpe       [--limit N]   [--initial]
+poetry run python -m app.cli sync-nvd       [--since ISO | --initial]
+poetry run python -m app.cli sync-kev       [--initial]
+poetry run python -m app.cli sync-cwe       [--initial]
+poetry run python -m app.cli sync-capec     [--initial]
+poetry run python -m app.cli sync-circl     [--limit N]
+poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
+poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
 poetry run python -m app.cli reindex-opensearch
 ```
 
-## Frontend-Architektur
+## Frontend architecture
 
-### Technologie-Stack
+### Tech stack
+
 - React 19, TypeScript 5.9, Vite 7, React Router 7
-- Axios (HTTP-Client, 60s Timeout), react-markdown (AI-Zusammenfassungen), react-select (Async Multi-Select), react-icons (Lucide)
+- Axios (HTTP client, 60 s timeout), react-markdown (AI summaries), react-select (async multi-select), react-icons (Lucide)
 
-### Seiten & Routing
+### Pages & routing
 
-| Route | Komponente | Beschreibung |
-|-------|-----------|-------------|
-| `/` | `DashboardPage` | Startseite mit Schwachstellensuche und aktuellen Einträgen |
-| `/vulnerabilities` | `VulnerabilityListPage` | Paginierte Liste mit Freitext-, Vendor-, Produkt-, Version- und erweiterten Filtern (Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum) |
-| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detailansicht mit Tabs für CWE, CAPEC, References, Affected Products, **Attack Path** (Mermaid-Graph + optionaler AI-Narrative), AI Analysis, Change History, Raw |
-| `/query-builder` | `QueryBuilderPage` | Interaktiver DQL-Editor mit Field-Browser und Aggregationen |
-| `/ai-analyse` | `AIAnalysePage` | KI-Analyse-Historie als kombinierte Timeline aus Vulnerability-Single, Vulnerability-Batch und Scan-AI-Analysen (neueste zuerst). Origin-Chips unterscheiden zwischen `API - …` und `MCP - …`. Bietet zusätzlich die Trigger-Form für neue Batch-Analysen. Sichtbarkeit aus `GET /api/v1/config`, aktiv wenn mindestens ein AI-Provider-Key gesetzt ist. |
-| `/stats` | `StatsPage` | Trenddiagramme, Top-Vendoren/-Produkte, Severity-Verteilung |
-| `/audit` | `AuditLogPage` | Ingestion-Job-Protokolle mit Status und Metadaten |
-| `/changelog` | `ChangelogPage` | Letzte Änderungen an Schwachstellen (erstellt/aktualisiert) |
-| `/inventory` | `InventoryPage` | Environment-Inventory: Produkte und Versionen, die der Benutzer betreibt (Deployment, Environment, Instance-Count). Vendor/Product via `AsyncSelect` (gleicher Look wie AdvancedFilters), Deployment als Chip-Button-Gruppe, Environment als freies Textfeld mit `<datalist>`-Vorschlägen. Item-Karten mit expandierbarer "Show CVEs"-Liste (`GET /api/v1/inventory/{id}/affected-vulnerabilities`). Sidebar-Gruppe **Environment** (eigene Sektion unterhalb von *Security*). |
-| `/system` | `SystemPage` | Single-Card-Layout mit Header. 4 Tabs: General (Sprache, Dienste, Backup), Notifications (Kanäle, Regeln inkl. `inventory`-Typ, Vorlagen), Data (Sync-Status, Re-Sync mit Multi-ID/Wildcards/Delete-Only, Suchen), Policies (Lizenzrichtlinien) |
-| `/scans` | `ScansPage` | SCA-Scan-Verwaltung mit 7 Haupt-Tabs (Targets, Scans, Findings mit Links-Spalte + expandierbarer Detail-Row, SBOM mit dynamischem Type-Filter aus Facets, Security Alerts mit Category-Filter, Licenses, Scanner). Findings- und SBOM-Zeilen zeigen eine Links-Spalte mit deps.dev, Snyk, Registry, socket.dev, bundlephobia (npm-only), npmgraph (npm-only). Targets-Tab gruppiert Karten in kollabierbare Application-Sektionen mit Severity-Roll-up. |
-| `/malware-feed` | `MalwareFeedPage` | Übersicht aller MAL-aliased OSV-Advisories (~417k Records) für die Sidebar-Gruppe **Security** (Geschwister von SCA Scans). `/blocklist` ist Legacy-Redirect. Server-paginiert via `offset`/`limit` (100/Page, max 500), Substring-Suche und ID-Lookup laufen via OpenSearch (~50–100ms), unfiltered/filtered Pages aus MongoDB via compound `(vendors, modified -1)`-Index (~30ms). Ecosystem-Filter mit hardgecodetem Slug-Liste (sonst zeigt das Dropdown nur newest-modified-Ökosysteme = npm/pypi). Backend-Endpoint `GET /api/v1/malware/malware-feed` liest ausschließlich aus MongoDB (MAL-aliased + optional `malware_intel`); kompromittierte Pakete im Scan werden über `osv-scanner` dynamisch gegen OSVs Live-Feed erkannt. |
-| `/scans/:scanId` | `ScanDetailPage` | Scan-Details mit Findings (Multi-Select-Toolbar, expandierbarer VEX-Editor mit Detail-Feld, Show-Dismissed-Toggle, VEX-Import-Button), **Attack Chain** (Cross-CVE-Kette aus den Findings dieses Scans, gebucketet nach ATT&CK-Kill-Chain-Stufen mit Stage-Pills + Mermaid-Graph + optionalem AI-Narrative), SBOM (sortierbare Spalten, klickbare Summary-Cards, Provenance-Filter), History (Zeitbereichs-Filter, Commit-SHA-Links), **AI Analysis** (Inline Trigger-Form mit Provider-Select und Additional-Context-Textarea, ruft `POST /api/v1/scans/{id}/ai-analysis` und pollt den Scan bis der neue Eintrag erscheint; Historie mit Commit-/Image-Digest-Chip, `triggeredBy`-Badge und Origin-Chip `API - Scan` / `MCP - Scan`), Compare (bis zu 200 Scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance (nur wenn mindestens eine License-Policy konfiguriert ist), VEX-Export. Tab-Optik verwendet die gleiche Pill-Komponente wie `VulnerabilityDetailPage` (`frontend/src/ui/TabPill.tsx`, `tabPillStyle()` + `TabBadge`). |
-| `/info/cicd` | `CiCdInfoPage` | CI/CD-Integrations-Anleitung (Pipeline-Beispiele, Scanner-Referenz, Quality Gates) |
-| `/info/api` | `ApiInfoPage` | API-Dokumentation mit eingebetteter Swagger-UI und Endpunkt-Übersicht |
-| `/info/mcp` | `McpInfoPage` | MCP-Server-Info (IdP-Setup GitHub/Microsoft/OIDC, Claude-Desktop-Anleitung, Tools inkl. `prepare_*`/`save_*`-AI-Tool-Paare + `get_sca_scan`, Beispiel-Prompts, Konfiguration) |
+| Route | Component | Description |
+| --- | --- | --- |
+| `/` | `DashboardPage` | Home with vulnerability search and recent entries |
+| `/vulnerabilities` | `VulnerabilityListPage` | Paginated list with full-text, vendor, product, version filters and an advanced filter set (severity, CVSS vector, EPSS, CWE, sources, time range) |
+| `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detail view with tabs for CWE, CAPEC, references, affected products, **Attack Path** (Mermaid graph + optional AI narrative), AI analysis, change history, raw |
+| `/query-builder` | `QueryBuilderPage` | Interactive DQL editor with field browser and aggregations |
+| `/ai-analyse` | `AIAnalysePage` | AI-analysis history as a combined timeline of single, batch, and scan analyses (newest first). Origin chips distinguish `API - …` from `MCP - …`. Also offers the trigger form for new batch analyses. Visibility from `GET /api/v1/config`, active when at least one AI provider key is set. |
+| `/stats` | `StatsPage` | Trend charts, top vendors / products, severity distribution |
+| `/audit` | `AuditLogPage` | Ingestion-job logs with status and metadata |
+| `/changelog` | `ChangelogPage` | Recent changes (created / updated) |
+| `/inventory` | `InventoryPage` | Environment inventory: products and versions the user runs (deployment, environment, instance count). Vendor / Product via `AsyncSelect` (same look as AdvancedFilters), deployment as a chip-button group, environment as a free text field with `<datalist>` suggestions. Item cards have an expandable *Show CVEs* list (`GET /api/v1/inventory/{id}/affected-vulnerabilities`). Sidebar group **Environment** (own section beneath *Security*). |
+| `/system` | `SystemPage` | Single-card layout. 4 tabs: General (language, services, backup), Notifications (channels, rules incl. `inventory` type, templates), Data (sync status, re-sync with multi-ID / wildcards / delete-only, searches), Policies (license policies) |
+| `/scans` | `ScansPage` | SCA scan management with 7 main tabs (Targets, Scans, Findings with links column + expandable detail row, SBOM with dynamic type filter from facets, Security Alerts with category filter, Licenses, Scanner). Findings and SBOM rows show a links column with deps.dev, Snyk, Registry, socket.dev, bundlephobia (npm-only), npmgraph (npm-only). The Targets tab groups cards into collapsible application sections with severity roll-up. |
+| `/malware-feed` | `MalwareFeedPage` | Overview of all MAL-aliased OSV advisories (~417 k records) for the **Security** sidebar group (sibling of SCA Scans). `/blocklist` is a legacy redirect. Server-paginated via `offset` / `limit` (100/page, max 500); substring search and ID lookups go to OpenSearch (~50–100 ms); unfiltered / filtered pages from MongoDB via the compound `(vendors, modified -1)` index (~30 ms cold with a warm count cache). The ecosystem filter has a hard-coded slug list (otherwise the dropdown shows only newest-modified ecosystems = npm / pypi). The backend endpoint `GET /api/v1/malware/malware-feed` reads exclusively from MongoDB (MAL-aliased + optional `malware_intel`); compromised packages in scans are detected dynamically against OSV's live feed via `osv-scanner`. |
+| `/scans/:scanId` | `ScanDetailPage` | Scan details with findings (multi-select toolbar, expandable VEX editor with detail field, Show Dismissed toggle, VEX import button), **Attack Chain** (cross-CVE chain bucketed by ATT&CK kill-chain stages with stage pills + Mermaid graph + optional AI narrative), SBOM (sortable columns, clickable summary cards, provenance filter), History (time-range filter, commit-SHA links), **AI Analysis** (inline trigger form with provider select and additional-context textarea, calls `POST /api/v1/scans/{id}/ai-analysis` and polls the scan until the new entry appears; history with commit / image-digest chip, `triggeredBy` badge, and origin chip `API - Scan` / `MCP - Scan`), Compare (up to 200 scans), Security Alerts, SAST (Semgrep), Secrets (TruffleHog), Best Practices (Dockle), Layer Analysis (Dive), License Compliance (only when at least one license policy is configured), VEX export. The tab styling uses the same pill component as `VulnerabilityDetailPage` (`frontend/src/ui/TabPill.tsx`, `tabPillStyle()` + `TabBadge`). |
+| `/info/cicd` | `CiCdInfoPage` | CI/CD integration guide (pipeline examples, scanner reference, quality gates) |
+| `/info/api` | `ApiInfoPage` | API documentation with embedded Swagger UI and endpoint overview |
+| `/info/mcp` | `McpInfoPage` | MCP server info (IdP setup GitHub / Microsoft / OIDC, Claude Desktop guide, tools incl. `prepare_*` / `save_*` AI-tool pairs + `get_sca_scan`, example prompts, configuration) |
 
-Die Info-Seiten liegen bewusst unter `/info/*`, damit ihre Pfade nicht mit den Backend-Präfixen `/api*` und `/mcp*` kollidieren, wenn ein Reverse-Proxy diese Präfixe präfix-basiert ans Backend weiterleitet. Die alten Pfade `/cicd`, `/api-docs` und `/mcp-info` sind client-seitige React-Router-Redirects auf die neuen Pfade (Bookmark-Kompatibilität).
+The info pages live deliberately under `/info/*` so their paths cannot collide with the backend prefixes `/api*` and `/mcp*` when a reverse proxy forwards those by prefix. The legacy paths `/cicd`, `/api-docs`, and `/mcp-info` are client-side React Router redirects to the new paths (bookmark compatibility).
 
-### State-Management
-- Kein Redux/Zustand — basiert auf Reacts eingebauten Mechanismen:
-  - **Context API:** `SavedSearchesContext` für globale gespeicherte Suchen
-  - **useState:** Lokaler Komponentenstate (Loading, Error, Daten)
-  - **URL-Parameter:** Filter, Pagination, Query-Modus (bookmarkbar)
-  - **localStorage:** Sidebar-Zustand, Asset-Filter-Auswahl (`usePersistentState` Hook)
-- Datenlademuster: `useEffect → setLoading(true) → API-Aufruf → setData/setError → setLoading(false)` mit Skeleton-Platzhaltern.
+### State management
+
+- No Redux / Zustand — built on React's own primitives:
+  - **Context API:** `SavedSearchesContext` for global saved searches
+  - **`useState`:** local component state (loading, error, data)
+  - **URL parameters:** filters, pagination, query mode (bookmarkable)
+  - **`localStorage`:** sidebar state, asset filter selection (`usePersistentState` hook)
+- Data-loading pattern: `useEffect → setLoading(true) → API call → setData / setError → setLoading(false)` with skeleton placeholders.
 
 ### Styling
-- Custom CSS Dark-Theme in `styles.css` (~800+ Zeilen), kein CSS-Framework.
-- CSS-Variablen: `#080a12` Hintergrund, `#f5f7fa` Text.
-- Severity-Farben: Critical (`#ff6b6b`), High (`#ffa3a3`), Medium (`#ffcc66`), Low (`#8fffb0`).
-- Responsive Design mit CSS Grid/Flexbox, mobile Sidebar als Overlay.
 
-### Lokalisierung
-- Sprache: Deutsch und Englisch (einfaches i18n via Context API mit `t(english, german)` Pattern, Browser-Spracherkennung, localStorage-Persistenz).
-- Kein externes i18n-Framework (kein i18next o. ä.).
-- Datumsformat: `DD.MM.YYYY HH:mm` (de-DE) bzw. `MM/DD/YYYY` (en-US).
-- Zeitzone: Benutzer-Einstellung auf der System-Seite (`/system` → General → Timezone); persistiert in `localStorage` (`hecate.ui_timezone`), Standard ist die Browser-Zeitzone (`Intl.DateTimeFormat().resolvedOptions().timeZone`). Implementierung in `frontend/src/timezone/`.
+- Custom CSS dark theme in `styles.css` (~800+ lines), no CSS framework.
+- CSS variables: `#080a12` background, `#f5f7fa` text.
+- Severity colours: Critical (`#ff6b6b`), High (`#ffa3a3`), Medium (`#ffcc66`), Low (`#8fffb0`).
+- Responsive design via CSS Grid / Flexbox; mobile sidebar as overlay.
 
-### Code-Splitting
-- Manuelle Chunk-Aufteilung in `vite/chunk-split.ts`:
-  - `react-select`, `react-icons`, `axios` jeweils als eigener Chunk
-  - Restliche `node_modules` als `vendor` Chunk
+### Localisation
 
-## Design-Patterns
+- Languages: German + English (simple i18n via Context API with the `t(english, german)` pattern, browser language detection, `localStorage` persistence).
+- No external i18n framework (no i18next or similar).
+- Date format: `DD.MM.YYYY HH:mm` (de-DE) / `MM/DD/YYYY` (en-US).
+- Timezone: user setting on the System page (`/system` → General → Timezone); persisted in `localStorage` (`hecate.ui_timezone`); default is the browser timezone (`Intl.DateTimeFormat().resolvedOptions().timeZone`). Implementation in `frontend/src/timezone/`.
 
-### Repository-Pattern
-- `create()` Classmethod erstellt Indexes.
-- `_id` = Entity-ID in MongoDB.
-- `upsert()` gibt `"inserted"`, `"updated"` oder `"unchanged"` zurück.
+### Code splitting
 
-### 3-Tier-Cache (CWE, CAPEC)
+- Manual chunk split in `vite/chunk-split.ts`:
+  - `react-select`, `react-icons`, `axios` each as a separate chunk
+  - All other `node_modules` as a `vendor` chunk
+
+## Design patterns
+
+### Repository pattern
+
+- `create()` classmethod creates indexes
+- `_id` = entity ID in MongoDB
+- `upsert()` returns `"inserted"`, `"updated"`, or `"unchanged"`
+
+### 3-tier cache (CWE, CAPEC)
+
+```text
+Memory dict → MongoDB collection → External API / XML
+                  (7-day TTL)
 ```
-Memory-Dict → MongoDB Collection → Externe API/XML
-                  (7 Tage TTL)
-```
-Singleton via `@lru_cache`, Lazy Repository-Loading.
 
-### Job-Tracking
-```
+Singleton via `@lru_cache`, lazy repository loading.
+
+### Job tracking
+
+```text
 start(job_name) → Running in MongoDB → finish(ctx, result) → Completed + Log
 ```
-Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
 
-### Normalizer
-Alle Quellen werden über `normalizer.py` in ein einheitliches `VulnerabilityDocument`-Schema überführt. CVSS-Metriken normalisiert über v2.0, v3.0, v3.1 und v4.0. EUVD-Aliases werden sanitisiert: fremde CVE-IDs und GHSA-IDs werden entfernt (EUVD hat Prefix-Kollisionen bei Aliases). GHSA-zu-CVE-Zuordnung erfolgt ausschließlich über die GHSA-Pipeline.
+Startup cleanup marks zombie jobs as cancelled.
 
-### Priority-gated NVD ↔ EUVD Upserts (Version-Identification-Felder)
-`INGESTION_PRIORITY_VULN_DB` (Default `NVD`, Alternative `EUVD`) entscheidet pro Feld, welche Quelle **überschreiben** und welche nur noch **anreichern** darf. Die Prioritätsquelle schreibt unkonditional; die Nicht-Prioritätsquelle schreibt ein Feld nur, wenn der aktuelle Wert leer ist (`None` / `""` / `[]` / `{}`). Gated: `cpe_configurations`, `impactedProducts` (inkl. legacy `impacted_products`), `vendors`, `products`, `product_versions`, `vendor_slugs`, `product_slugs`, `product_version_ids`, `cvss` (gated am `base_score`), sowie das Paar `published`/`modified` (paired: nur schreibbar wenn BEIDE leer, damit die Timeline nicht zwischen Quellen interleavt wird). **Nicht** gated und weiterhin unkonditional: `title`, `summary`, `assigner` (EUVD ist alleiniger Writer — Gating würde legitime Korrekturen blockieren), `epss_score` (CIRCL ist autoritativ), sowie alle merge-additiven Felder (`references`, `aliases`, `cpes`, `cwes`, `cvss_metrics`, `cpe_version_tokens`). Helper `_is_priority_source()` und `_allow_overwrite()` in `backend/app/repositories/vulnerability_repository.py` werden von `upsert_from_nvd` und `upsert_from_euvd` aufgerufen. Hintergrund: zuvor gated nur die zwei Timestamps — Version-Identification-Felder flappten bei jedem Ingestion-Zyklus hin und her, weil NVD und EUVD unterschiedliche vulnerable-version-Daten liefern (Motivating Case: CVE-2026-32147). `_is_empty()` behandelt numerische Nullwerte (`base_score=0.0`) bewusst nicht als leer.
+### Normaliser
 
-## Datenfluss
+All sources are funnelled through `normalizer.py` into a unified `VulnerabilityDocument` schema. CVSS metrics are normalised across v2.0, v3.0, v3.1, and v4.0. EUVD aliases are sanitised: foreign CVE IDs and GHSA IDs are removed (EUVD has prefix collisions in aliases). GHSA-to-CVE mapping happens exclusively through the GHSA pipeline.
 
-```
+### Priority-gated NVD ↔ EUVD upserts (version-identification fields)
+
+`INGESTION_PRIORITY_VULN_DB` (default `NVD`, alternative `EUVD`) decides per field which source may **overwrite** and which may only **enrich**. The priority source writes unconditionally; the non-priority source only writes a field when the current value is empty (`None` / `""` / `[]` / `{}`). Gated: `cpe_configurations`, `impactedProducts` (incl. legacy `impacted_products`), `vendors`, `products`, `product_versions`, `vendor_slugs`, `product_slugs`, `product_version_ids`, `cvss` (gated on `base_score`), and the pair `published` / `modified` (paired: only writable when **both** are empty so the timeline doesn't interleave between sources). **Not** gated and still unconditional: `title`, `summary`, `assigner` (EUVD is the sole writer — gating would block legitimate corrections), `epss_score` (CIRCL is authoritative), and all merge-additive fields (`references`, `aliases`, `cpes`, `cwes`, `cvss_metrics`, `cpe_version_tokens`). Helpers `_is_priority_source()` and `_allow_overwrite()` in `backend/app/repositories/vulnerability_repository.py` are called from `upsert_from_nvd` and `upsert_from_euvd`. Background: previously only the two timestamps were gated — version-identification fields flapped on every ingestion cycle because NVD and EUVD ship different vulnerable-version data (motivating case: CVE-2026-32147). `_is_empty()` deliberately does not treat numeric zero (`base_score=0.0`) as empty.
+
+## Data flow
+
+```text
 Scheduler / CLI
       │
       v
-Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
+Pipeline (EUVD / NVD / KEV / CPE / CWE / CAPEC / CIRCL / GHSA / OSV)
       │
       ├──> Normalizer ──> VulnerabilityDocument
       │                         │
@@ -362,45 +382,45 @@ Pipeline (EUVD/NVD/KEV/CPE/CWE/CAPEC/CIRCL/GHSA/OSV)
       │                    v         v
       │               MongoDB   OpenSearch
       │
-      └──> AssetCatalogService ──> Vendor/Produkt/Versions-Slugs
+      └──> AssetCatalogService ──> vendor / product / version slugs
 ```
 
-1. Scheduler oder CLI löst einen Ingestion-Job aus.
-2. Pipeline zieht Daten von der externen Quelle, normalisiert sie (`build_document`), aktualisiert Mongo und OpenSearch.
-3. AssetCatalogService leitet Vendor-/Produkt-/Versionsdaten ab und aktualisiert Slugs für Filter.
-4. Frontend ruft Listen- und Detailendpunkte ab, optional startet AI-Assessments oder Backups.
-5. Audit-Service protokolliert alle relevanten Aktionen, Stats-Service aggregiert Kennzahlen aus OpenSearch (Fallback Mongo).
+1. The scheduler or CLI triggers an ingestion job.
+2. The pipeline pulls data from the external source, normalises it (`build_document`), and updates MongoDB and OpenSearch.
+3. `AssetCatalogService` derives vendor / product / version data and updates filter slugs.
+4. The frontend calls list and detail endpoints; AI assessments or backups can be started optionally.
+5. The audit service records every relevant action; the stats service aggregates KPIs from OpenSearch (with MongoDB fallback).
 
-## Externe Integrationen
+## External integrations
 
-| Integration | Typ | Beschreibung |
-|------------|-----|-------------|
-| EUVD (ENISA) | REST-API | Primäre Schwachstellendatenquelle |
-| NVD (NIST) | REST-API | CVE-Detail- und CPE-Katalog-Synchronisation |
-| CISA KEV | JSON-Feed | Exploitation-Metadaten |
-| CPE (NVD) | REST-API | CPE 2.0 Produkt-Katalog |
-| CWE (MITRE) | REST-API | Schwäche-Definitionen (`cwe-api.mitre.org`) |
-| CAPEC (MITRE) | XML-Download | Angriffsmuster (`capec.mitre.org`) |
-| CIRCL | REST-API | Zusätzliche Schwachstelleninformationen (`vulnerability.circl.lu`) |
-| GHSA (GitHub) | REST-API | GitHub Security Advisories (`api.github.com`) |
-| OSV (OSV.dev) | GCS Bucket + REST-API | OSV-Schwachstellen (`storage.googleapis.com/osv-vulnerabilities`, 11 Ökosysteme) |
-| OpenAI | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
-| Anthropic | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
-| Google Gemini | API | Optionaler KI-Provider für Zusammenfassungen und Risikohinweise |
-| OpenAI-Compatible | HTTP (`/v1/chat/completions`) | Optionaler generischer Provider für lokale/Drittanbieter-Endpoints (Ollama, vLLM, OpenRouter, LocalAI, LM Studio) |
+| Integration | Type | Description |
+| --- | --- | --- |
+| EUVD (ENISA) | REST API | Primary vulnerability data source |
+| NVD (NIST) | REST API | CVE detail and CPE catalogue sync |
+| CISA KEV | JSON feed | Exploitation metadata |
+| CPE (NVD) | REST API | CPE 2.0 product catalogue |
+| CWE (MITRE) | REST API | Weakness definitions (`cwe-api.mitre.org`) |
+| CAPEC (MITRE) | XML download | Attack patterns (`capec.mitre.org`) |
+| CIRCL | REST API | Additional vulnerability information (`vulnerability.circl.lu`) |
+| GHSA (GitHub) | REST API | GitHub Security Advisories (`api.github.com`) |
+| OSV (OSV.dev) | GCS bucket + REST API | OSV vulnerabilities (`storage.googleapis.com/osv-vulnerabilities`, 11 ecosystems) |
+| OpenAI | API | Optional AI provider for summaries and risk hints |
+| Anthropic | API | Optional AI provider for summaries and risk hints |
+| Google Gemini | API | Optional AI provider for summaries and risk hints |
+| OpenAI-compatible | HTTP (`/v1/chat/completions`) | Optional generic provider for local / third-party endpoints (Ollama, vLLM, OpenRouter, LocalAI, LM Studio) |
 
-## Technologie-Stack
+## Tech stack
 
-| Komponente | Technologie |
-|-----------|------------|
+| Component | Technology |
+| --- | --- |
 | Backend | Python 3.13, FastAPI 0.128, Uvicorn, Poetry |
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
-| Datenbank | MongoDB 8 (Motor async), OpenSearch 3 |
+| Database | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |
-| HTTP-Client | httpx 0.28 (async), Axios 1.13 (Frontend) |
+| HTTP client | httpx 0.28 (async), Axios 1.13 (frontend) |
 | Logging | structlog 25 |
-| KI | OpenAI, Anthropic, Google Gemini, OpenAI-Compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) |
-| Scanner-Sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
-| Benachrichtigungen | Apprise (caronc/apprise) |
-| MCP Server | mcp SDK, OAuth 2.0 (DCR + PKCE/S256), delegated auth via GitHub/Microsoft Entra/OIDC, Streamable HTTP |
+| AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) |
+| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
+| Notifications | Apprise (caronc/apprise) |
+| MCP server | mcp SDK, OAuth 2.0 (DCR + PKCE/S256), delegated auth via GitHub / Microsoft Entra / OIDC, Streamable HTTP |
 | CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |

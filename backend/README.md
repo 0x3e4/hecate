@@ -1,317 +1,358 @@
 # Hecate Backend
 
-FastAPI-Service zum Erfassen, Anreichern und Bereitstellen von Schwachstelleninformationen. Die Dokumentation für das Gesamtprojekt befindet sich in der [README im Repository-Root](../README.md).
+> FastAPI service that ingests, enriches, and exposes vulnerability information. Whole-project documentation lives in the [repository root README](../README.md).
 
-## Architektur
+![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
+![Poetry](https://img.shields.io/badge/Poetry-managed-60A5FA?logo=poetry&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-8-47A248?logo=mongodb&logoColor=white)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-3-005EB8?logo=opensearch&logoColor=white)
 
-```
+---
+
+## Architecture
+
+<details>
+<summary><strong><code>app/</code> directory layout</strong> (click to expand)</summary>
+
+```text
 app/
-├── api/v1/                  # REST-Endpunkte
-│   ├── routes.py            # Router-Registrierung (19 Module)
-│   ├── vulnerabilities.py   # Suche, Lookup, Refresh, AI-Analyse, Attack Path Graph (GET/POST /vulnerabilities/{id}/attack-path)
-│   ├── cwe.py               # CWE-Abfragen (einzeln & bulk)
-│   ├── capec.py             # CAPEC-Abfragen, CWE->CAPEC Mapping
-│   ├── cpe.py               # CPE-Katalog (Entries, Vendors, Products)
-│   ├── assets.py            # Asset-Katalog (Vendoren, Produkte, Versionen)
-│   ├── stats.py             # Statistik-Aggregationen
-│   ├── backup.py            # Export/Import (Streaming): Vulnerabilities, Saved Searches, Environment Inventory
-│   ├── sync.py              # Manuelle Sync-Trigger
-│   ├── saved_searches.py    # Gespeicherte Suchen (CRUD)
-│   ├── audit.py             # Ingestion-Logs
-│   ├── changelog.py         # Letzte Änderungen (Pagination, Datum-/Source-Filter)
-│   ├── scans.py             # SCA-Scan-Verwaltung (Submit, Targets inkl. Group-Filter + manueller /check-Trigger für Auto-Scan-Diagnose, Target-Gruppen-Roll-up, History mit since-Filter, Findings inkl. ?includeDismissed, SBOM, SBOM-Export, SBOM-Import, Compare, VEX inkl. bulk-update-by-ids/import, Findings-Dismiss, License-Compliance, Cross-CVE Attack Chain via GET/POST /scans/{id}/attack-chain)
-│   ├── events.py            # Server-Sent Events (SSE) Stream
-│   ├── notifications.py     # Benachrichtigungen (Channels, Regeln, Templates)
-│   ├── license_policies.py  # Lizenz-Policy-Verwaltung (CRUD, Default-Policy, Lizenzgruppen)
-│   ├── inventory.py         # Environment-Inventory (CRUD + /affected-vulnerabilities)
-│   ├── malware.py           # Malware-Intel (GET /malware-feed für Frontend-Overview)
-│   ├── config.py            # Public Runtime-Config (Feature-Flags aus Backend-Settings für das Frontend)
-│   └── status.py            # Health Check
-├── mcp/                         # MCP Server (Model Context Protocol)
-│   ├── server.py                # ASGI Sub-App Factory (FastMCP)
-│   ├── auth.py                  # Pfad-bewusste MCPAuthMiddleware (nur /mcp + /mcp/*), OAuth-Token-Validierung, Scope-basierte Write-Gatung; honoriert MCP_PUBLIC_URL für die WWW-Authenticate-Resource-Hint und MCP_AUTH_DISABLED als Dev-Bypass (synthetische local-dev-Identität mit mcp:read mcp:write)
-│   ├── oauth.py                 # OAuth 2.0 AS-Endpoints (Metadata inkl. RFC 9728 Path-Suffix, DCR, Authorize, IdP-Callback, Token mit PKCE); get_dcr_client_name() für MCP-Attribution; _base_url() pinnt MCP_PUBLIC_URL wenn gesetzt
-│   ├── oauth_providers.py       # Upstream-IdP-Abstraktion (GitHub / Microsoft Entra / generisches OIDC)
-│   ├── security.py              # Rate-Limiting, Input-Sanitisierung
-│   ├── audit.py                 # Dual Audit (structlog + MongoDB) für Tool-Invocations und OAuth-Events
-│   └── tools/                   # 35 MCP-Tools (6 Module)
-│       ├── vulnerabilities.py   # search_vulnerabilities, get_vulnerability, prepare_vulnerability_ai_analysis, save_vulnerability_ai_analysis, prepare_vulnerabilities_ai_batch_analysis, save_vulnerabilities_ai_batch_analysis, prepare_attack_path_analysis, save_attack_path_analysis, refine_attack_path_analysis
-│       ├── cpe.py               # search_cpe
-│       ├── assets.py            # search_vendors, search_products
-│       ├── stats.py             # get_vulnerability_stats
-│       ├── cwe_capec.py         # get_cwe, get_capec
-│       └── scans.py             # get_scan_findings, get_scan_findings_by_scan, get_security_alerts, get_scan_sbom, get_sbom_components, get_sbom_facets, get_target_scan_history, compare_scans, get_layer_analysis, list_scan_targets, list_target_groups, list_scans, find_findings_by_cve, get_sca_scan, trigger_scan, trigger_sync, prepare_scan_ai_analysis, save_scan_ai_analysis, prepare_scan_attack_chain_analysis, save_scan_attack_chain_analysis
+├── api/v1/                  REST endpoints
+│   ├── routes.py            Router registration (19 modules)
+│   ├── vulnerabilities.py   Search · lookup · refresh · AI analysis · attack-path graph (GET/POST /vulnerabilities/{id}/attack-path)
+│   ├── cwe.py               CWE queries (single + bulk)
+│   ├── capec.py             CAPEC queries · CWE→CAPEC mapping
+│   ├── cpe.py               CPE catalogue (entries · vendors · products)
+│   ├── assets.py            Asset catalogue (vendors · products · versions)
+│   ├── stats.py             Statistics aggregations
+│   ├── backup.py            Streaming export / import: vulnerabilities · saved searches · environment inventory
+│   ├── sync.py              Manual sync triggers
+│   ├── saved_searches.py    Saved searches (CRUD)
+│   ├── audit.py             Ingestion logs
+│   ├── changelog.py         Recent changes (pagination, date / source filters)
+│   ├── scans.py             SCA scan management — submit, targets (group filter + manual /check trigger for auto-scan diagnostics),
+│   │                          target-group roll-up, history (since filter), findings (?includeDismissed), SBOM, SBOM export,
+│   │                          SBOM import, compare, VEX (incl. bulk-update-by-ids and import), findings dismiss,
+│   │                          license compliance, cross-CVE attack chain (GET/POST /scans/{id}/attack-chain)
+│   ├── events.py            Server-Sent Events (SSE) stream
+│   ├── notifications.py     Notifications (channels, rules, templates)
+│   ├── license_policies.py  License-policy management (CRUD, default policy, license groups)
+│   ├── inventory.py         Environment inventory (CRUD + /affected-vulnerabilities)
+│   ├── malware.py           Malware intelligence (GET /malware-feed for the frontend overview)
+│   ├── config.py            Public runtime config (feature flags from backend settings for the frontend)
+│   └── status.py            Health check
+├── mcp/                     MCP server (Model Context Protocol)
+│   ├── server.py            ASGI sub-app factory (FastMCP)
+│   ├── auth.py              Path-aware MCPAuthMiddleware (only /mcp + /mcp/*) · OAuth token validation · scope-based write gating;
+│   │                          honours MCP_PUBLIC_URL for the WWW-Authenticate resource hint and MCP_AUTH_DISABLED as the dev bypass
+│   │                          (synthetic local-dev identity with mcp:read mcp:write)
+│   ├── oauth.py             OAuth 2.0 AS endpoints (metadata incl. RFC 9728 path suffix, DCR, authorize, IdP callback,
+│   │                          token with PKCE) · get_dcr_client_name() for MCP attribution · _base_url() pins MCP_PUBLIC_URL when set
+│   ├── oauth_providers.py   Upstream IdP abstraction (GitHub / Microsoft Entra / generic OIDC)
+│   ├── security.py          Rate limiting · input sanitisation
+│   ├── audit.py             Dual audit (structlog + MongoDB) for tool invocations and OAuth events
+│   └── tools/               35 MCP tools (6 modules)
+│       ├── vulnerabilities.py   search_vulnerabilities · get_vulnerability · prepare/save_vulnerability_ai_analysis ·
+│       │                          prepare/save_vulnerabilities_ai_batch_analysis · prepare/save_attack_path_analysis ·
+│       │                          refine_attack_path_analysis
+│       ├── cpe.py               search_cpe
+│       ├── assets.py            search_vendors · search_products
+│       ├── stats.py             get_vulnerability_stats
+│       ├── cwe_capec.py         get_cwe · get_capec
+│       └── scans.py             get_scan_findings · get_scan_findings_by_scan · get_security_alerts · get_scan_sbom ·
+│                                  get_sbom_components · get_sbom_facets · get_target_scan_history · compare_scans ·
+│                                  get_layer_analysis · list_scan_targets · list_target_groups · list_scans ·
+│                                  find_findings_by_cve · get_sca_scan · trigger_scan · trigger_sync ·
+│                                  prepare/save_scan_ai_analysis · prepare/save_scan_attack_chain_analysis
 ├── core/
-│   ├── config.py            # Pydantic Settings (alle Env-Variablen)
-│   └── logging_config.py    # structlog-Konfiguration
+│   ├── config.py            Pydantic Settings (all env variables)
+│   └── logging_config.py    structlog configuration
 ├── db/
-│   ├── mongo.py             # Motor (async MongoDB) Verbindung
-│   └── opensearch.py        # OpenSearch Verbindung & Operationen
-├── models/                  # MongoDB-Dokument-Schemata (Pydantic)
-│   ├── vulnerability.py     # VulnerabilityDocument (Hauptschema)
-│   ├── cwe.py               # CWEEntry
-│   ├── capec.py             # CAPECEntry
-│   ├── scan.py              # SCA-Scan-Modelle (Target, Scan, Finding, SBOM)
-│   ├── license_policy.py    # LicensePolicyDocument
-│   ├── inventory_item.py    # InventoryItemDocument (Environment Inventory)
-│   └── kev.py               # CisaKevEntry, CisaKevCatalog
-├── repositories/            # Datenzugriffsschicht (15 Repositories)
-│   ├── vulnerability_repository.py
-│   ├── cwe_repository.py
-│   ├── capec_repository.py
-│   ├── kev_repository.py
-│   ├── cpe_repository.py
-│   ├── asset_repository.py
-│   ├── saved_search_repository.py
-│   ├── ingestion_state_repository.py
-│   ├── ingestion_log_repository.py
-│   ├── scan_target_repository.py
-│   ├── scan_repository.py
-│   ├── scan_finding_repository.py
-│   ├── scan_sbom_repository.py  # list_by_scan: $group {name, version} + $facet-Aggregation (deduped Total + paginierte Items); count_by_scan_consolidated für Backfill
-│   ├── license_policy_repository.py
-│   └── inventory_repository.py
-├── schemas/                 # API Request/Response Schemata
-│   ├── _utc.py              # Shared `UtcDatetime` Annotated-Type (BeforeValidator) — normalisiert alle ausgehenden datetime-Felder auf UTC-aware, damit der Frontend sie nicht als local time parst
-│   ├── vulnerability.py     # VulnerabilityQuery (inkl. Advanced Filters: Severity, CVSS-Vektor, EPSS, CWE, Quellen, Zeitraum), VulnerabilityDetail
-│   ├── cwe.py, capec.py, cpe.py, assets.py
-│   ├── ai.py                # AI-Analyse Schemata
-│   ├── backup.py, sync.py, audit.py, changelog.py
-│   ├── scan.py              # SCA-Scan API-Schemata (inkl. ImportSbomRequest)
-│   ├── vex.py               # VEX API-Schemata (VexUpdate, VexBulkUpdate, VexBulkUpdateByIds, FindingsDismiss, VexImport)
-│   ├── license_policy.py    # License-Policy API-Schemata
-│   ├── inventory.py         # Environment-Inventory API-Schemata
-│   ├── attack_path.py       # Attack-Path-Graph-Schemata (Node, Edge, Labels, Graph, Narrative, Response, Request)
-│   ├── scan_attack_chain.py # Cross-CVE Attack Chain Schemata (AttackStage Literal, ChainFindingRef, ScanAttackChainStage, Narrative, Response, Request)
+│   ├── mongo.py             Motor (async MongoDB) connection
+│   └── opensearch.py        OpenSearch connection + operations
+├── models/                  MongoDB document schemas (Pydantic)
+├── repositories/            Data-access layer (15 repositories)
+├── schemas/                 API request / response schemas
+│   ├── _utc.py              Shared `UtcDatetime` annotated type (BeforeValidator) — normalises every outgoing datetime field
+│   │                          to UTC-aware so the frontend never parses it as local time
+│   ├── vulnerability.py     VulnerabilityQuery (incl. advanced filters: severity, CVSS vector, EPSS, CWE, sources, time range),
+│   │                          VulnerabilityDetail
+│   ├── cwe.py · capec.py · cpe.py · assets.py
+│   ├── ai.py                AI-analysis schemas
+│   ├── backup.py · sync.py · audit.py · changelog.py
+│   ├── scan.py              SCA scan API schemas (incl. ImportSbomRequest)
+│   ├── vex.py               VEX API schemas (VexUpdate, VexBulkUpdate, VexBulkUpdateByIds, FindingsDismiss, VexImport)
+│   ├── license_policy.py
+│   ├── inventory.py
+│   ├── attack_path.py       Attack-path-graph schemas (Node, Edge, Labels, Graph, Narrative, Response, Request)
+│   ├── scan_attack_chain.py Cross-CVE attack-chain schemas (AttackStage literal, ChainFindingRef, ScanAttackChainStage,
+│   │                          Narrative, Response, Request)
 │   └── saved_search.py
-├── services/                # Business-Logik
-│   ├── vulnerability_service.py   # Suche, Refresh, Lookup
-│   ├── cwe_service.py             # 3-Tier-Cache (Memory->Mongo->API)
-│   ├── capec_service.py           # 3-Tier-Cache + CWE->CAPEC Mapping
-│   ├── ai_service.py              # OpenAI, Anthropic, Gemini, OpenAI-Compatible Wrapper (lokale/Drittanbieter-Endpoints)
-│   ├── stats_service.py           # OpenSearch-Aggregationen (Mongo-Fallback)
-│   ├── backup_service.py          # Streaming Export/Import für Vulnerabilities (NVD/EUVD/ALL), Saved Searches und Environment Inventory (Inventory-Restore = Upsert per `_id`)
-│   ├── sync_service.py            # Sync-Koordination
-│   ├── audit_service.py           # Audit-Logging
-│   ├── changelog_service.py       # Change-Tracking
-│   ├── saved_search_service.py    # Gespeicherte Suchen
-│   ├── cpe_service.py             # CPE-Katalog
-│   ├── asset_catalog_service.py   # Asset-Katalog
-│   ├── scan_service.py            # SCA-Scan-Orchestrierung (Concurrency-Limiting, Ressourcen-Gating, SBOM-Import, AI-Analyse, SBOM-Dedup per Scan via unique_component_keys → sbom_component_count, Startup-Backfill backfill_sbom_component_count_v2)
-│   ├── scan_parser.py             # Scanner-Output-Parser (Trivy, Grype, Syft, OSV, SPDX-SBOM)
-│   ├── sbom_export.py             # SBOM-Export-Builder (CycloneDX 1.5, SPDX 2.3)
-│   ├── vex_service.py             # VEX-Export/Import (CycloneDX VEX), Carry-Forward (VEX + Dismissal)
-│   ├── license_compliance_service.py  # Lizenz-Policy-Auswertung
-│   ├── inventory_service.py       # Environment-Inventory CRUD + Matching (30s TTL-Cache)
-│   ├── inventory_matcher.py       # CPE-Versionsbereichs-Matcher (pure functions, selbst-enthaltener Version-Comparator)
-│   ├── attack_path_service.py     # Deterministischer Attack-Path-Graph-Builder (entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix); orchestriert CAPECService/CWEService/InventoryService und leitet Likelihood/Exploit-Maturity/Reachability-Labels aus EPSS/KEV/CVSS-Vektor ab. Akzeptiert optional `assumptions=` für die MCP `refine_attack_path_analysis`-Tool-Workflow (Allow-list `reachability`/`entry_point`/`network_exposure`/`privileges_required`/`user_interaction`, 200-char-cap pro Wert)
-│   ├── attack_chain_stages.py     # CWE → ATT&CK-Kill-Chain-Stage-Map (foothold/credential_access/priv_escalation/lateral_movement/impact); `categorize_cve(cwes, severity)` mit severity-Fallback
-│   ├── scan_attack_chain_service.py # Cross-CVE Attack Chain-Builder für die Scan-Detail-Tab. Filter+dedup Findings → bulk-fetch CWEs → bucket per Stage → top-5/Stufe nach CVSS sortiert → top-2 CAPECs/Stufe via CAPECService → `AttackPathGraph` (entry → stage anchors → CVE leaves)
-│   ├── event_bus.py               # In-Memory Async Event-Bus für SSE
-│   ├── notification_service.py    # Apprise-Benachrichtigungen (inkl. inventory-Watch-Rule-Evaluator mit optionalem `inventory_item_ids`-Filter)
-│   ├── http/
-│   │   ├── rate_limiter.py        # HTTP Rate-Limiting (minimum interval between requests)
-│   │   ├── retry.py               # `request_with_retry()` — geteilter Exponential-Backoff-Helper (transient httpx-Errors, 5xx, 429 mit Retry-After)
-│   │   └── ssl.py                 # `get_http_verify()` — TLS-Trust-Store (`HTTP_CA_BUNDLE` oder certifi)
-│   ├── ingestion/                 # Datenpipelines
-│   │   ├── euvd_pipeline.py       # EUVD (ENISA)
-│   │   ├── nvd_pipeline.py        # NVD (NIST)
-│   │   ├── kev_pipeline.py        # CISA KEV
-│   │   ├── cpe_pipeline.py        # CPE (NVD, Mid-Run-Progress-Reporting)
-│   │   ├── circl_pipeline.py      # CIRCL
-│   │   ├── ghsa_pipeline.py       # GHSA (GitHub Advisory)
-│   │   ├── euvd_client.py         # EUVD API-Client (eigener Retry-Loop, skippt Seiten nach 3 consecutive failures)
-│   │   ├── nvd_client.py          # NVD API-Client (shared `request_with_retry`, fail-hard nach Exhaustion)
-│   │   ├── cisa_client.py         # KEV API-Client
-│   │   ├── cpe_client.py          # CPE API-Client (Retry mit Exponential-Backoff)
-│   │   ├── cwe_client.py          # CWE MITRE API-Client
-│   │   ├── capec_client.py        # CAPEC XML-Parser
-│   │   ├── circl_client.py        # CIRCL API-Client (shared `request_with_retry`, fail-soft per Record)
-│   │   ├── ghsa_client.py         # GHSA API-Client (shared `request_with_retry` + `iter_all_advisories`-Guard: loggt `iteration_aborted_on_failure` bei Retry-Exhaustion, statt "Seitenende" vorzutäuschen)
-│   │   ├── osv_client.py          # OSV.dev GCS Bucket + REST-API-Client (shared `request_with_retry` — auch für 100–300 MB Ecosystem-ZIPs; `query_by_package` für GHSA-für-MAL-Fallback)
-│   │   ├── osv_pipeline.py        # OSV (OSV.dev, Mid-Run-Progress-Reporting; MAL-als-primäre-ID, absorbs aliased EUVD/GHSA-Dokumente, triggered deps.dev-Enrichment post-Upsert)
-│   │   ├── deps_dev_client.py     # deps.dev Package API-Client (`api.deps.dev/v3`, shared `request_with_retry`; maps OSV-Ecosystem → deps.dev-System: NPM, PYPI, GO, MAVEN, NUGET, CARGO)
-│   │   ├── mal_enrichment.py      # deps.dev-Anreicherung für MAL-*/GHSA-*-Dokumente mit broad `>=0`-Ranges; patched `impactedProducts` + `product_versions` + reindext OpenSearch; writes `change_history` mit `job_name="deps_dev_enrichment"`
-│   │   ├── normalizer.py          # Normalisierung aller Quellen
-│   │   ├── job_tracker.py         # Job-Lifecycle & Audit
-│   │   ├── manual_refresher.py    # On-Demand Refresh (Default-Dispatcher routet MAL-/PYSEC-/OSV-* → OSV; sonst würde der Placeholder-Fallback bestehende MAL-Dokumente überschreiben)
-│   │   └── startup_cleanup.py     # Zombie-Job Bereinigung
-│   └── scheduling/
-│       └── manager.py             # APScheduler (Bootstrap + Periodic). CWE/CAPEC laufen via `CronTrigger` (wall-clock, Default Mon/Tue 03:00 UTC) statt `IntervalTrigger`, damit Backend-Redeploys den Refresh-Timer nicht resetten. `_run_catalog_catchup_jobs()` läuft einmal pro Backend-Start parallel zum Bootstrap und dispatched einen Out-of-Band-Sync, wenn der jüngste erfolgreiche Lauf älter als `interval_days × SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (Default 1.5×) ist.
+├── services/                Business logic (see "Services" below)
 ├── utils/
-│   ├── strings.py                 # Slugify etc.
-│   └── request.py                 # IP-Extraktion
-├── main.py                        # FastAPI App-Initialisierung
-└── cli.py                         # CLI-Einstiegspunkt (13 Befehle)
+│   ├── strings.py
+│   └── request.py
+├── main.py                  FastAPI app initialisation
+└── cli.py                   CLI entrypoint (13 commands)
+```
+</details>
+
+### Services
+
+| Service | Responsibility |
+| --- | --- |
+| `VulnerabilityService` | Search, refresh, lookup. |
+| `CWEService` | 3-tier cache (memory → MongoDB → MITRE API). |
+| `CAPECService` | 3-tier cache + CWE→CAPEC mapping. |
+| `CPEService` | CPE catalogue. |
+| `AIService` | OpenAI / Anthropic / Gemini / OpenAI-compatible wrapper (httpx for OpenAI, Anthropic, OpenAI-compatible; google-genai SDK for Gemini). |
+| `StatsService` | OpenSearch aggregations with MongoDB fallback. |
+| `BackupService` | Streaming export / import for vulnerabilities (NVD / EUVD / ALL), saved searches, and environment inventory (inventory restore is upsert by `_id`). |
+| `SyncService` | Sync coordination. |
+| `AuditService` | Audit logging. |
+| `ChangelogService` | Change tracking. |
+| `SavedSearchService` | Saved searches. |
+| `AssetCatalogService` | Asset catalogue from ingested data. |
+| `ScanService` | SCA scan orchestration (concurrency limiting, resource gating, SBOM import, AI analysis, per-scan SBOM dedup via `unique_component_keys → sbom_component_count`, `backfill_sbom_component_count_v2` startup backfill). |
+| `ScanParser` | Scanner-output parsers (Trivy, Grype, Syft, OSV, SPDX SBOM). |
+| `SbomExport` | SBOM export builder (CycloneDX 1.5, SPDX 2.3). |
+| `VexService` | VEX export / import (CycloneDX VEX), VEX + dismissal carry-forward across scans. |
+| `LicenseComplianceService` | License-policy evaluation, automatic evaluation after scans. |
+| `InventoryService` / `inventory_matcher` | CRUD + matching with a pure-function CPE version-range matcher (self-contained version comparator). |
+| `AttackPathService` | Deterministic attack-path graph builder (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`); orchestrates `CAPECService`, `CWEService`, `InventoryService`; derives the label set (likelihood, exploit_maturity, reachability, privileges_required, user_interaction, business_impact) deterministically from EPSS, KEV, and CVSS vector. Optionally accepts `assumptions=` for the MCP `refine_attack_path_analysis` workflow (allow-list `reachability` / `entry_point` / `network_exposure` / `privileges_required` / `user_interaction`, 200-char cap per value). |
+| `attack_chain_stages` | CWE → ATT&CK kill-chain stage map (`foothold` / `credential_access` / `priv_escalation` / `lateral_movement` / `impact`); `categorize_cve(cwes, severity)` with severity fallback. |
+| `ScanAttackChainService` | Cross-CVE attack-chain builder for the scan-detail tab. Filter + dedup findings → bulk-fetch CWEs → bucket per stage → top-5 per stage by CVSS → top-2 CAPECs per stage via `CAPECService` → `AttackPathGraph` (entry → stage anchors → CVE leaves). |
+| `EventBus` | In-memory async event bus for SSE. |
+| `NotificationService` | Apprise notifications (incl. inventory watch-rule evaluator with optional `inventory_item_ids` filter). |
+
+### HTTP helpers
+
+- `services/http/rate_limiter.py` — minimum interval between requests
+- `services/http/retry.py` — `request_with_retry()`: shared exponential-backoff helper (transient httpx errors, 5xx, 429 with `Retry-After`)
+- `services/http/ssl.py` — `get_http_verify()`: TLS trust store (`HTTP_CA_BUNDLE` or certifi)
+
+### Ingestion clients & pipelines
+
+```text
+services/ingestion/
+├── normalizer.py           Source-agnostic normalisation
+├── job_tracker.py          Job lifecycle + audit
+├── manual_refresher.py     On-demand refresh — default dispatcher routes MAL-/PYSEC-/OSV-* → OSV
+├── startup_cleanup.py      Zombie-job cleanup
+├── deps_dev_client.py      deps.dev Package API client (api.deps.dev/v3)
+├── mal_enrichment.py       deps.dev enrichment for MAL-* / GHSA-* with broad >=0 ranges
+├── euvd_pipeline.py + euvd_client.py
+├── nvd_pipeline.py + nvd_client.py
+├── kev_pipeline.py + cisa_client.py
+├── cpe_pipeline.py + cpe_client.py
+├── circl_pipeline.py + circl_client.py
+├── ghsa_pipeline.py + ghsa_client.py
+├── osv_pipeline.py + osv_client.py
+├── cwe_client.py
+└── capec_client.py
 ```
 
-## Datenmodell
+### Scheduling
 
-### MongoDB Collections
+- `services/scheduling/manager.py` — APScheduler (bootstrap + periodic).
+- CWE / CAPEC use `CronTrigger` (wall-clock, default Mon / Tue 03:00 UTC) instead of `IntervalTrigger`, so backend redeploys cannot reset the refresh timer.
+- `_run_catalog_catchup_jobs()` runs once per backend start in parallel with the bootstrap path and dispatches an out-of-band sync if the latest successful run is older than `interval_days × SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (default `1.5`).
 
-| Collection | Modell | Beschreibung |
-|-----------|--------|-------------|
-| `vulnerabilities` | `VulnerabilityDocument` | Schwachstellen mit CVSS, EPSS, CWEs, CPEs, Quell-Rohdaten |
-| `cwe_catalog` | `CWEEntry` | CWE-Schwächen (7-Tage TTL-Cache) |
-| `capec_catalog` | `CAPECEntry` | CAPEC-Angriffsmuster (7-Tage TTL-Cache) |
-| `known_exploited_vulnerabilities` | `CisaKevEntry` | CISA KEV-Einträge |
-| `cpe_catalog` | — | CPE-Einträge (Vendor, Product, Version) |
-| `asset_vendors` | — | Vendoren mit Slug und Produkt-Anzahl |
-| `asset_products` | — | Produkte mit Vendor-Zuordnung |
-| `asset_versions` | — | Versionen mit Produkt-Zuordnung |
-| `ingestion_state` | — | Sync-Job-Status (Running/Completed/Failed) |
-| `ingestion_logs` | — | Detaillierte Job-Logs mit Metadaten |
-| `saved_searches` | — | Gespeicherte Suchanfragen |
-| `scan_targets` | `ScanTargetDocument` | Scan-Ziele (Container-Images, Source-Repos). Trägt zusätzlich `last_check_at` / `last_check_verdict` / `last_check_current_fingerprint` / `last_check_error` für die Auto-Scan-Diagnose im Scanner-Tab — gesetzt von jedem `ScanService.check_target_changed`-Aufruf (Scheduler oder manueller `POST /v1/scans/targets/{id}/check`-Trigger), nie scan-blockierend bei Fehler. |
-| `scans` | `ScanDocument` | Scan-Durchläufe mit Status und Zusammenfassung |
-| `scan_findings` | `ScanFindingDocument` | Schwachstellen-Funde aus SCA-Scans |
-| `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM-Komponenten aus SCA-Scans (exportierbar als CycloneDX 1.5 / SPDX 2.3) |
-| `scan_layer_analysis` | `ScanLayerAnalysisDocument` | Image-Schichtanalyse aus Dive-Scans |
-| `notification_rules` | — | Benachrichtigungsregeln (Event, Watch, DQL, Scan, Inventory) |
-| `notification_channels` | — | Apprise-Channels (URL + Tag) |
-| `notification_templates` | — | Nachrichtenvorlagen (Titel/Body-Templates pro Event-Typ) |
-| `license_policies` | `LicensePolicyDocument` | Lizenz-Policies (erlaubt, verboten, Review-erforderlich) |
-| `environment_inventory` | `InventoryItemDocument` | Benutzerdeklariertes Produkt/Version-Inventory (Deployment, Environment, Instance-Count) |
-| `malware_intel` | `MalwareIntelDocument` | Dynamische Malware-Intel-Einträge; Upsert-Key `(source, ecosystem, package_name, version)`; wird im `/v1/malware/malware-feed`-UI gemerged (aktuell ungenutzt, reserviert für zukünftige Threat-Intel-Pipelines) |
+---
 
-### OpenSearch Index (`hecate-vulnerabilities`)
+## Data model
 
-Volltext-Index mit Text-Feldern für Suche und `.keyword`-Feldern für Aggregationen. Nested `sources`-Pfad für Quell-Aggregationen. Flaches `sourceNames`-Keyword-Array für DQL-Source-Alias-Suche (`source:X` sucht automatisch in `source` und `sourceNames`).
+### MongoDB collections
 
-**Konfiguration:** `max_result_window` = 200.000, `total_fields.limit` = 2.000, `OPENSEARCH_VERIFY_CERTS` (SSL-Zertifikatsüberprüfung, Default: false), `OPENSEARCH_CA_CERT` (Pfad zum CA-Zertifikat, optional)
+| Collection | Model | Description |
+| --- | --- | --- |
+| `vulnerabilities` | `VulnerabilityDocument` | Vulnerabilities with CVSS, EPSS, CWEs, CPEs, source raw data |
+| `cwe_catalog` | `CWEEntry` | CWE weaknesses (7-day TTL cache) |
+| `capec_catalog` | `CAPECEntry` | CAPEC attack patterns (7-day TTL cache) |
+| `known_exploited_vulnerabilities` | `CisaKevEntry` | CISA KEV entries |
+| `cpe_catalog` | — | CPE entries (vendor, product, version) |
+| `asset_vendors` | — | Vendors with slug and product count |
+| `asset_products` | — | Products with vendor mapping |
+| `asset_versions` | — | Versions with product mapping |
+| `ingestion_state` | — | Sync-job status (Running / Completed / Failed) |
+| `ingestion_logs` | — | Detailed job logs with metadata |
+| `saved_searches` | — | Saved queries |
+| `scan_targets` | `ScanTargetDocument` | Scan targets (container images, source repos). Carries `last_check_at`, `last_check_verdict`, `last_check_current_fingerprint`, `last_check_error` for the auto-scan diagnostics shown in the Scanner tab — set by every `ScanService.check_target_changed` call (scheduler or manual `POST /v1/scans/targets/{id}/check`); never blocks a scan on error. |
+| `scans` | `ScanDocument` | Scan runs with status and summary |
+| `scan_findings` | `ScanFindingDocument` | Vulnerability findings from SCA scans |
+| `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM components from SCA scans (exportable as CycloneDX 1.5 / SPDX 2.3) |
+| `scan_layer_analysis` | `ScanLayerAnalysisDocument` | Image-layer analysis from Dive scans |
+| `notification_rules` | — | Notification rules (event, watch, DQL, scan, inventory) |
+| `notification_channels` | — | Apprise channels (URL + tag) |
+| `notification_templates` | — | Title / body templates per event type |
+| `license_policies` | `LicensePolicyDocument` | License policies (allowed, denied, review-required) |
+| `environment_inventory` | `InventoryItemDocument` | User-declared product / version inventory (deployment, environment, instance count) |
+| `malware_intel` | `MalwareIntelDocument` | Dynamic malware-intel entries; upsert key `(source, ecosystem, package_name, version)`; merged into the `/v1/malware/malware-feed` UI (currently unused, reserved for future threat-intel pipelines) |
 
-## Ingestion-Pipelines
+### OpenSearch index (`hecate-vulnerabilities`)
 
-| Pipeline | Quelle | Intervall (Default) | Beschreibung |
-|----------|--------|---------------------|-------------|
-| EUVD | ENISA REST-API | 60 min | Schwachstellen mit Change-History |
-| NVD | NIST REST-API | 10 min | CVSS, CPE-Konfigurationen |
-| KEV | CISA JSON-Feed | 60 min | Exploitation-Status |
-| CPE | NVD CPE 2.0 API | 1440 min (täglich) | Produkt-/Versions-Katalog |
-| CWE | MITRE REST-API | 7 Tage | Schwäche-Definitionen |
-| CAPEC | MITRE XML-Download | 7 Tage | Angriffsmuster |
-| CIRCL | CIRCL REST-API | 120 min | Zusätzliche Anreicherung |
+Full-text index with text fields for search and `.keyword` fields for aggregations. Nested `sources` path for per-source aggregations. Flat `sourceNames` keyword array for DQL source-alias search (`source:X` automatically searches both `source` and `sourceNames`).
+
+**Configuration:** `max_result_window = 200000`, `total_fields.limit = 2000`, `OPENSEARCH_VERIFY_CERTS` (SSL certificate verification, default `false`), `OPENSEARCH_CA_CERT` (path to a CA certificate, optional).
+
+---
+
+## Ingestion pipelines
+
+| Pipeline | Source | Default interval | Description |
+| --- | --- | --- | --- |
+| EUVD | ENISA REST API | 60 min | Vulnerabilities with change history |
+| NVD | NIST REST API | 10 min | CVSS, CPE configurations |
+| KEV | CISA JSON feed | 60 min | Exploitation status |
+| CPE | NVD CPE 2.0 API | 1440 min (daily) | Product / version catalogue |
+| CWE | MITRE REST API | 7 days | Weakness definitions |
+| CAPEC | MITRE XML download | 7 days | Attack patterns |
+| CIRCL | CIRCL REST API | 120 min | Additional enrichment |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
-| OSV | OSV.dev GCS Bucket + REST-API | 120 min + wöchentlicher Full-Sync (Fr 2 Uhr UTC) | OSV-Schwachstellen (Hybrid: CVE-Enrichment + MAL/PYSEC/OSV-Einträge, 11 Ökosysteme; per-Run Cursor-Advancement gegen Cap-Hit-Datenverlust) |
+| OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems; per-run cursor advancement against cap-hit data loss) |
 
-Alle Pipelines unterstützen inkrementelle und initiale Syncs. Wöchentliche Full-Syncs: EUVD Sonntag 2 Uhr UTC, NVD Mittwoch 2 Uhr UTC, OSV Freitag 2 Uhr UTC. Bulk-Pipelines wrappen ihre `pipeline.sync(...)`-Calls in `opensearch_bulk_mode()` (siehe `app/db/opensearch.py`), wodurch OpenSearch-Writes auf `refresh=false` umgeschaltet werden — Initial-Syncs schreiben mit ~5–9ms/PUT statt ~1s/PUT (`wait_for`) und blockieren keine konkurrierenden Manual-Refreshes mehr. User-initiierte Writes (Manual-Refresh, Scan-Completion, deps.dev-Enrichment via Manual-Refresh) bleiben auf `refresh=wait_for` für read-after-write-Konsistenz. **OSV Initial Sync** dispatcht Records zusätzlich in Batches (`OSV_INITIAL_SYNC_BATCH_SIZE=32`) durch eine `asyncio.Semaphore`-bounded `asyncio.gather` (`OSV_INITIAL_SYNC_CONCURRENCY=16`) und kurzschließt unveränderte Records vor dem Deep-Copy via `_osv_would_change()`-Predikat — ~100 Records/s statt vorher ~0.085 Records/s.
+All pipelines support both incremental and initial syncs. Weekly full syncs: EUVD Sun 02:00 UTC, NVD Wed 02:00 UTC, OSV Fri 02:00 UTC.
 
-**Hinweis:** Die Intervalle in `.env.example` können von den Code-Defaults abweichen. Die autoritativen Defaults stehen in `app/core/config.py`.
+> [!IMPORTANT]
+> Bulk pipelines wrap their `pipeline.sync(...)` calls in `opensearch_bulk_mode()` (see `app/db/opensearch.py`), switching OpenSearch writes to `refresh=false`. Initial syncs go from ~1 s/PUT (`wait_for`) down to ~5–9 ms/PUT and stop blocking concurrent manual refreshes. User-initiated writes (manual refresh, scan completion, deps.dev enrichment via manual refresh) keep `refresh=wait_for` for read-after-write consistency. **OSV initial sync** additionally dispatches records in batches (`OSV_INITIAL_SYNC_BATCH_SIZE=32`) through an `asyncio.Semaphore`-bounded `asyncio.gather` (`OSV_INITIAL_SYNC_CONCURRENCY=16`) and short-circuits unchanged records before deep-copy via the `_osv_would_change()` predicate — ~100 records/s instead of ~0.085 records/s.
 
-## Design-Patterns
+> [!NOTE]
+> Intervals in `.env.example` may differ from code defaults. The authoritative defaults live in `app/core/config.py`.
 
-### Repository-Pattern
-- `create()` Classmethod erstellt Indexes
-- `_id` = Entity-ID in MongoDB
-- `upsert()` gibt `"inserted"`, `"updated"` oder `"unchanged"` zurück
+---
 
-### 3-Tier-Cache (CWE, CAPEC)
+## Design patterns
+
+### Repository pattern
+
+- `create()` classmethod creates indexes
+- `_id` = entity ID in MongoDB
+- `upsert()` returns `"inserted"`, `"updated"`, or `"unchanged"`
+
+### 3-tier cache (CWE, CAPEC)
+
+```text
+Memory dict → MongoDB collection → External API / XML
+                  (7-day TTL)
 ```
-Memory-Dict → MongoDB Collection → Externe API/XML
-                  (7 Tage TTL)
-```
-Singleton via `@lru_cache`, Lazy Repository-Loading.
 
-### Job-Tracking
-```
+Singleton via `@lru_cache`, lazy repository loading.
+
+### Job tracking
+
+```text
 start(job_name) → Running in MongoDB → finish(ctx, result) → Completed + Log
 ```
-Startup-Cleanup markiert Zombie-Jobs als abgebrochen.
+
+Startup cleanup marks zombie jobs as cancelled.
 
 ### Server-Sent Events (SSE)
-```
-EventBus (Singleton) → publish(event) → asyncio.Queue per Subscriber → SSE Stream
-```
-Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker, SchedulerManager und AI-Analyse-Endpunkte publizieren automatisch. Frontend verbindet sich über `GET /api/v1/events`. AI-Analysen laufen asynchron via `asyncio.create_task()` und melden Ergebnisse über SSE (`ai_investigation_{vulnId}`, `ai_batch_investigation`, `ai_scan_analysis_{scanId}`, `attack_path_{vulnId}`).
 
-### API-Schema-Konvention
+```text
+EventBus (singleton) → publish(event) → asyncio.Queue per subscriber → SSE stream
+```
+
+Events: `job_started`, `job_completed`, `job_failed`, `new_vulnerabilities`. JobTracker, SchedulerManager, and the AI-analysis endpoints publish automatically. The frontend connects via `GET /api/v1/events`. AI analyses run asynchronously through `asyncio.create_task()` and report results over SSE (`ai_investigation_{vulnId}`, `ai_batch_investigation`, `ai_scan_analysis_{scanId}`, `attack_path_{vulnId}`).
+
+### API schema convention
+
 ```python
 field_name: str = Field(alias="fieldName", serialization_alias="fieldName")
 ```
-Snake-Case in Python, camelCase auf dem Wire.
 
-### UTC-aware Datetime-Serialisierung
-Alle nach außen exponierten `datetime`-Felder verwenden den `UtcDatetime`-Alias aus `app/schemas/_utc.py` (ein `Annotated[datetime, BeforeValidator(_coerce_utc)]`). Der Validator hängt an jedes eingehende naive datetime / ISO-String ein `tzinfo=UTC` an, sodass die JSON-Ausgabe immer ein `+00:00`-Suffix enthält. Hintergrund: OpenSearch `_source`-Reads von als naive String indizierten Date-Feldern liefern Werte ohne Zeitzone; der Frontend würde sie via `new Date()` als local time parsen und um den Offset des Benutzers verschoben anzeigen. Zusätzlich öffnet `app/db/mongo.py` den Motor-Client mit `tz_aware=True`, damit auch MongoDB-Reads UTC-aware zurückkommen. Alle Writes nutzen `datetime.now(UTC)`.
+snake_case in Python, camelCase on the wire.
+
+### UTC-aware datetime serialisation
+
+All outgoing `datetime` fields use the `UtcDatetime` alias from `app/schemas/_utc.py` (`Annotated[datetime, BeforeValidator(_coerce_utc)]`). The validator attaches `tzinfo=UTC` to every incoming naive datetime / ISO string, so the JSON output always carries a `+00:00` suffix.
+
+> [!WARNING]
+> OpenSearch `_source` reads of fields indexed as naive strings return values without a time zone. The frontend would parse them with `new Date()` as local time and shift them by the user's offset. `app/db/mongo.py` additionally opens the Motor client with `tz_aware=True` so MongoDB reads are also UTC-aware. All writes use `datetime.now(UTC)`.
+
+---
 
 ## CLI
 
 ```sh
-poetry run python -m app.cli ingest [--since ISO] [--limit N] [--initial]
-poetry run python -m app.cli sync-euvd [--since ISO] [--initial]
-poetry run python -m app.cli sync-cpe [--limit N] [--initial]
-poetry run python -m app.cli sync-nvd [--since ISO | --initial]
-poetry run python -m app.cli sync-kev [--initial]
-poetry run python -m app.cli sync-cwe [--initial]
-poetry run python -m app.cli sync-capec [--initial]
-poetry run python -m app.cli sync-circl [--limit N]
-poetry run python -m app.cli sync-ghsa [--limit N] [--initial]
-poetry run python -m app.cli sync-osv [--limit N] [--initial]
-poetry run python -m app.cli enrich-mal [--limit N]              # deps.dev-Anreicherung bestehender MAL-*-Dokumente
-poetry run python -m app.cli purge-malware --ecosystem <eco> [--dry-run]  # Löscht ein Ökosystem aus malware_intel + MAL-* vulnerabilities
+poetry run python -m app.cli ingest         [--since ISO] [--limit N] [--initial]
+poetry run python -m app.cli sync-euvd      [--since ISO] [--initial]
+poetry run python -m app.cli sync-cpe       [--limit N]   [--initial]
+poetry run python -m app.cli sync-nvd       [--since ISO | --initial]
+poetry run python -m app.cli sync-kev       [--initial]
+poetry run python -m app.cli sync-cwe       [--initial]
+poetry run python -m app.cli sync-capec     [--initial]
+poetry run python -m app.cli sync-circl     [--limit N]
+poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
+poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
+poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs
+poetry run python -m app.cli purge-malware  --ecosystem <eco> [--dry-run] # delete an ecosystem from malware_intel + MAL-* vulnerabilities
 poetry run python -m app.cli reindex-opensearch
 ```
 
-## Entwicklung
+---
 
-### Abhängigkeiten verwalten
+## Development
 
-Dieses Projekt verwendet [Poetry](https://python-poetry.org/) für die Verwaltung von Abhängigkeiten.
+### Dependency management
 
-#### Neue Abhängigkeit hinzufügen
+This project uses [Poetry](https://python-poetry.org/).
 
-```bash
-# pyproject.toml manuell bearbeiten und dann die Lock-Datei aktualisieren:
+#### Add a new dependency
+
+```sh
+# Edit pyproject.toml manually, then refresh the lock file:
 poetry lock
 
-# Oder direkt mit Poetry hinzufügen:
-poetry add <paket-name>
+# Or add it directly:
+poetry add <package-name>
 
-# Dann beide Dateien committen:
+# Then commit both files:
 git add pyproject.toml poetry.lock
-git commit -m "Add <paket-name> dependency"
+git commit -m "Add <package-name> dependency"
 ```
 
-#### Abhängigkeiten aktualisieren
+#### Update dependencies
 
-```bash
-# Alle Abhängigkeiten auf die neuesten kompatiblen Versionen aktualisieren:
+```sh
+# Update everything to the latest compatible versions:
 poetry update
 
-# Ein bestimmtes Paket aktualisieren:
-poetry update <paket-name>
+# Or a single package:
+poetry update <package-name>
 
-# Dann die Änderungen committen:
+# Then commit:
 git add poetry.lock
 git commit -m "Update dependencies"
 ```
 
-#### Abhängigkeiten lokal installieren
+#### Install dependencies locally
 
-```bash
+```sh
 poetry install
 ```
 
-### Tests und Linting
+### Tests and linting
 
-```bash
+```sh
 poetry run pytest
 poetry run ruff check app
 ```
 
-### Docker Build
+### Docker build
 
-Multi-Stage Build (Builder → Runtime) basierend auf `python:3.13-slim`. Port 8000.
+Multi-stage build (builder → runtime) on top of `python:3.13-slim`. Port 8000.
 
-```bash
+```sh
 docker build -t hecate-backend ./backend
 docker run -p 8000:8000 --env-file .env hecate-backend
 ```
 
-### Warum poetry.lock wichtig ist
+### Why `poetry.lock` matters
 
-Die Datei `poetry.lock` stellt sicher:
-- **Reproduzierbare Builds** — Alle verwenden die gleichen Abhängigkeitsversionen
-- **Sicherheitsprüfung** — Trivy scannt diese Datei auf Schwachstellen
-- **Supply-Chain-Sicherheit** — Fixiert exakte Versionen zur Verhinderung von Angriffen
+The lock file ensures:
 
-Committe `poetry.lock` immer in die Versionsverwaltung.
+- **Reproducible builds** — everyone uses the same dependency versions
+- **Security scanning** — Trivy scans this file for vulnerabilities
+- **Supply-chain safety** — pins exact versions to mitigate substitution attacks
+
+Always commit `poetry.lock` to version control.
