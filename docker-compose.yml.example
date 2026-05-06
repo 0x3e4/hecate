@@ -1,6 +1,6 @@
 services:
   backend:
-    image: git.nohub.lol/rk/hecate-backend:latest
+    image: ghcr.io/0x3e4/hecate-backend:latest
     restart: unless-stopped
     env_file: ".env"
     ports:
@@ -18,7 +18,7 @@ services:
     #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro
 
   frontend:
-    image: git.nohub.lol/rk/hecate-frontend:latest
+    image: ghcr.io/0x3e4/hecate-frontend:latest
     restart: unless-stopped
     env_file: ".env"
     ports:
@@ -49,7 +49,7 @@ services:
       - db
 
   scanner:
-    image: git.nohub.lol/rk/hecate-scanner:latest
+    image: ghcr.io/0x3e4/hecate-scanner:latest
     restart: unless-stopped
     env_file: ".env"
     security_opt:
