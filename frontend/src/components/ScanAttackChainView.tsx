@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchScanAttackChain, triggerScanAttackChainNarrative, fetchScan } from "../api/scans";
 import { getAiProviders } from "../api/vulnerabilities";
@@ -136,61 +136,68 @@ export function ScanAttackChainView({
     [stages],
   );
 
-  const handleTriggerNarrative = async (provider: string, additionalContext: string) => {
-    setError(null);
-    setNarrativeLoading(true);
-    setNarrativeStartedAt(Date.now());
-    try {
-      await triggerScanAttackChainNarrative(
-        scanId,
-        {
-          provider,
-          language: locale,
-          additionalContext: additionalContext || undefined,
-        },
-        aiAnalysisPassword || undefined,
-      );
-      // Poll the scan a few times to surface the narrative.
-      let attempts = 0;
-      const baseLength = response?.narrative ? 1 : 0;
-      const pollHandle: { id: number | null } = { id: null };
-      const tick = async () => {
-        attempts += 1;
-        if (attempts > 30) {
-          setNarrativeLoading(false);
-          setNarrativeStartedAt(null);
-          return;
-        }
-        try {
-          const fresh = await fetchScan(scanId);
-          const freshLen = (fresh.attackChains?.length ?? 0);
-          if (freshLen > baseLength || fresh.attackChain) {
-            const updated = await fetchScanAttackChain(scanId, { language: locale });
-            setResponse(updated);
+  // Wrapped in useCallback so the prop reference stays stable across pill
+  // clicks / activeStage changes — otherwise AttackPathGraphView re-renders
+  // and (in some browsers) the synthetic-event reconciliation interrupted
+  // panzoom's drag-tracking, manifesting as "graph resets and freezes".
+  const handleTriggerNarrative = useCallback(
+    async (provider: string, additionalContext: string) => {
+      setError(null);
+      setNarrativeLoading(true);
+      setNarrativeStartedAt(Date.now());
+      try {
+        await triggerScanAttackChainNarrative(
+          scanId,
+          {
+            provider,
+            language: locale,
+            additionalContext: additionalContext || undefined,
+          },
+          aiAnalysisPassword || undefined,
+        );
+        // Poll the scan a few times to surface the narrative.
+        let attempts = 0;
+        const baseLength = response?.narrative ? 1 : 0;
+        const pollHandle: { id: number | null } = { id: null };
+        const tick = async () => {
+          attempts += 1;
+          if (attempts > 30) {
             setNarrativeLoading(false);
             setNarrativeStartedAt(null);
-            onPersistedNarrativeChange?.();
             return;
           }
-        } catch {
-          // fall through to retry
-        }
+          try {
+            const fresh = await fetchScan(scanId);
+            const freshLen = (fresh.attackChains?.length ?? 0);
+            if (freshLen > baseLength || fresh.attackChain) {
+              const updated = await fetchScanAttackChain(scanId, { language: locale });
+              setResponse(updated);
+              setNarrativeLoading(false);
+              setNarrativeStartedAt(null);
+              onPersistedNarrativeChange?.();
+              return;
+            }
+          } catch {
+            // fall through to retry
+          }
+          pollHandle.id = window.setTimeout(tick, 4000);
+        };
         pollHandle.id = window.setTimeout(tick, 4000);
-      };
-      pollHandle.id = window.setTimeout(tick, 4000);
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
-      const detail = (err as { response?: { data?: { detail?: string } } } | undefined)?.response?.data?.detail;
-      let message =
-        detail ?? t("Failed to start narrative generation.", "Beschreibungserzeugung konnte nicht gestartet werden.");
-      if (status === 401) {
-        message = t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig.");
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
+        const detail = (err as { response?: { data?: { detail?: string } } } | undefined)?.response?.data?.detail;
+        let message =
+          detail ?? t("Failed to start narrative generation.", "Beschreibungserzeugung konnte nicht gestartet werden.");
+        if (status === 401) {
+          message = t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig.");
+        }
+        setError(message);
+        setNarrativeLoading(false);
+        setNarrativeStartedAt(null);
       }
-      setError(message);
-      setNarrativeLoading(false);
-      setNarrativeStartedAt(null);
-    }
-  };
+    },
+    [scanId, locale, aiAnalysisPassword, response?.narrative, onPersistedNarrativeChange, t],
+  );
 
   if (loading && !response) {
     return (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -390,6 +390,7 @@ export function AttackPathGraphView({
   error = null,
 }: AttackPathGraphProps) {
   const { t, language } = useI18n();
+  const navigate = useNavigate();
   const [renderState, setRenderState] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
   const [renderId] = useState(() => `attack-path-${Math.random().toString(36).slice(2, 10)}`);
@@ -398,6 +399,14 @@ export function AttackPathGraphView({
   const svgContainerRef = useRef<HTMLDivElement | null>(null);
   const panzoomRef = useRef<PanzoomController | null>(null);
   const attachedSvgRef = useRef<SVGElement | null>(null);
+
+  // Stable nodes-by-id lookup so click handlers can navigate without
+  // triggering the panzoom-attach effect to re-run.
+  const nodesById = useMemo(() => {
+    const out = new Map<string, (typeof graph.nodes)[number]>();
+    for (const n of graph.nodes) out.set(n.id, n);
+    return out;
+  }, [graph.nodes]);
 
   useEffect(() => {
     if (!selectedProvider && aiProviders[0]?.id) {
@@ -519,6 +528,76 @@ export function AttackPathGraphView({
       attachedSvgRef.current = null;
     };
   }, []);
+
+  // Bind click handlers to CVE / CWE / CAPEC node groups so they navigate to
+  // the relevant detail page or external taxonomy page. Mermaid emits each
+  // node as a `<g class="node" id="flowchart-{nodeId}-..."`. We walk the
+  // rendered SVG once, look up the source node by id, and attach a listener.
+  // The handlers run on `click` (not mousedown) so they don't fight the
+  // panzoom drag-detection logic.
+  useEffect(() => {
+    if (renderState !== "ready") return;
+    const container = svgContainerRef.current;
+    if (!container) return;
+    const svgEl = container.querySelector("svg");
+    if (!svgEl) return;
+
+    const handlers: Array<{ el: Element; fn: (e: Event) => void }> = [];
+    const nodeEls = svgEl.querySelectorAll<SVGGElement>("g.node");
+    nodeEls.forEach((el) => {
+      // Mermaid id format: "flowchart-{nodeId}-{counter}". Strip the prefix
+      // and the trailing counter to recover the original node id.
+      const rawId = el.id || "";
+      const match = rawId.match(/^flowchart-(.+)-\d+$/);
+      const nodeId = match?.[1];
+      if (!nodeId) return;
+      const node = nodesById.get(nodeId);
+      if (!node) return;
+
+      let target: { kind: "internal" | "external"; href: string } | null = null;
+      const meta = (node.metadata ?? {}) as Record<string, unknown>;
+      if (node.type === "cve") {
+        const vid = (meta.vulnerabilityId as string | undefined) ?? node.label.split("\\n")[0].trim();
+        if (vid) target = { kind: "internal", href: `/vulnerability/${encodeURIComponent(vid)}` };
+      } else if (node.type === "cwe" && typeof meta.cweId === "string") {
+        target = {
+          kind: "external",
+          href: `https://cwe.mitre.org/data/definitions/${meta.cweId.replace(/^CWE-/i, "")}.html`,
+        };
+      } else if (node.type === "capec" && typeof meta.capecId === "string") {
+        target = {
+          kind: "external",
+          href: `https://capec.mitre.org/data/definitions/${meta.capecId.replace(/^CAPEC-/i, "")}.html`,
+        };
+      }
+
+      if (!target) return;
+      // Visual affordance: pointer cursor + on-hover outline.
+      el.style.cursor = "pointer";
+
+      const fn = (e: Event) => {
+        // Defensive: panzoom emits mouseup → click sequence after drag. If
+        // the user panned more than a few px the click will still fire here,
+        // but Mermaid's nodes are small enough that this is acceptable. We
+        // could thresholding this with a mousedown coordinate but the simpler
+        // contract — "click navigates" — is what users expect.
+        e.stopPropagation();
+        if (target!.kind === "internal") {
+          navigate(target!.href);
+        } else {
+          window.open(target!.href, "_blank", "noopener,noreferrer");
+        }
+      };
+      el.addEventListener("click", fn);
+      handlers.push({ el, fn });
+    });
+
+    return () => {
+      for (const { el, fn } of handlers) {
+        el.removeEventListener("click", fn);
+      }
+    };
+  }, [renderState, svgMarkup, nodesById, navigate]);
 
   const zoomBy = (factor: number) => {
     const controller = panzoomRef.current;
