@@ -1749,13 +1749,30 @@ class ScanService:
 
     # --- Private helpers ---
 
+    # Finding types whose `package_name` field does NOT identify a software package and
+    # must NOT participate in CVE-by-package auto-matching. TruffleHog reuses the field
+    # for detector names ("GCP", "PrivateKey"), Semgrep for rule check_ids, Dockle for
+    # CIS rule codes, and the Hecate malware detector for typosquat candidates. Substring-
+    # matching those against the `products` index sorted by `published desc` produces
+    # spurious links (e.g. TruffleHog "GCP" → MAL-2026-3173 / `gcp-internal-research-poc`).
+    _NON_PACKAGE_FINDING_TYPES = frozenset({
+        "secret-finding",
+        "sast-finding",
+        "compliance-check",
+        "malicious-indicator",
+    })
+
     async def _match_cve_for_unmatched_findings(
         self, scan_id: str, findings: list[ScanFindingDocument]
     ) -> None:
         """Try to match findings without CVE against the local vulnerability DB via OpenSearch."""
         from app.db.opensearch import async_search
 
-        unmatched = [f for f in findings if not f.vulnerability_id]
+        unmatched = [
+            f for f in findings
+            if not f.vulnerability_id
+            and f.package_type not in self._NON_PACKAGE_FINDING_TYPES
+        ]
         if not unmatched:
             return
 
