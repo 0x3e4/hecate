@@ -1,6 +1,7 @@
 FROM aquasec/trivy:0.69.3 AS trivy
 FROM anchore/grype:v0.112.0 AS grype
 FROM anchore/syft:v1.44.0 AS syft
+FROM mcr.microsoft.com/dotnet/runtime:8.0 AS dotnet
 FROM python:3.13-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
@@ -31,6 +32,13 @@ RUN pip install --no-cache-dir "setuptools<74" semgrep==1.114.0
 # Install TruffleHog (secret scanner)
 RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.2/trufflehog_3.95.2_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
+
+# Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)
+COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
+ENV DOTNET_ROOT=/usr/share/dotnet \
+    PATH="/usr/share/dotnet:${PATH}" \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
 
 # Install DevSkim (Microsoft SAST scanner — no-build, native SARIF output)
 # v1.0.59 is the latest tag with published Linux binaries (newer tags ship source-only).
