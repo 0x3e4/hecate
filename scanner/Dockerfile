@@ -34,11 +34,13 @@ RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v
     | tar xz -C /usr/local/bin trufflehog
 
 # Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)
+# Globalization-invariant mode avoids needing libicu (DevSkim is pattern-matching, locale-agnostic)
 COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
 ENV DOTNET_ROOT=/usr/share/dotnet \
     PATH="/usr/share/dotnet:${PATH}" \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
-    DOTNET_NOLOGO=1
+    DOTNET_NOLOGO=1 \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
 # Install DevSkim (Microsoft SAST scanner — no-build, native SARIF output)
 # v1.0.59 is the latest tag with published Linux binaries (newer tags ship source-only).

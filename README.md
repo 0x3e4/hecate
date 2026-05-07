@@ -14,6 +14,82 @@ Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, 
 
 ---
 
+<p align="center">
+  <img src="img/hecate-dash.png" alt="Hecate dashboard — vulnerability search with CVSS, EPSS, KEV badges and live SSE updates" width="100%" />
+</p>
+
+<details>
+<summary><strong>More screenshots</strong> — vulnerability search, SCA scans, SBOM, attack path, malware feed, system</summary>
+
+<br/>
+
+### Vulnerability management
+
+<table>
+  <tr>
+    <td width="50%"><img src="img/hecate-vuln-dql-filter.png" alt="Vulnerability list with DQL filter" /></td>
+    <td width="50%"><img src="img/hecate-vuln-dql-filter-saved-search.png" alt="Saved search applied to the vulnerability list" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Vulnerability list · DQL filter</sub></td>
+    <td align="center"><sub>Saved searches</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="img/hecate-query-build.png" alt="Interactive DQL query builder" /></td>
+    <td width="50%"><img src="img/hecate-stats.png" alt="Statistics: trends, top vendors and severity distribution" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Query builder</sub></td>
+    <td align="center"><sub>Statistics</sub></td>
+  </tr>
+</table>
+
+### SCA scanning
+
+<table>
+  <tr>
+    <td width="50%"><img src="img/hecate-sca.png" alt="SCA scan targets overview" /></td>
+    <td width="50%"><img src="img/hecate-scan-find.png" alt="Scan findings with VEX, dismissal and multi-select" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Scan targets</sub></td>
+    <td align="center"><sub>Findings · VEX · dismissal</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="img/hecate-scan-sbom.png" alt="SBOM components with provenance verification" /></td>
+    <td width="50%"><img src="img/hecate-scan-attackpath.png" alt="Per-CVE Mermaid attack-path graph with AI narrative" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>SBOM · provenance</sub></td>
+    <td align="center"><sub>Attack-path graph</sub></td>
+  </tr>
+</table>
+
+### Intelligence & operations
+
+<table>
+  <tr>
+    <td width="50%"><img src="img/hecate-malware-feed.png" alt="Malware feed: MAL-aliased OSV advisories across ecosystems" /></td>
+    <td width="50%"><img src="img/hecate-system.png" alt="System settings: notifications, data sources, policies" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Malware feed</sub></td>
+    <td align="center"><sub>System settings</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="img/hecate-system-data.png" alt="Data-source sync status and re-sync controls" /></td>
+    <td width="50%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Data sources</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+</details>
+
+---
+
 ## Architecture
 
 ```mermaid
