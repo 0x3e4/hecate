@@ -114,7 +114,7 @@ app/
 | `SavedSearchService` | Saved searches. |
 | `AssetCatalogService` | Asset catalogue from ingested data. |
 | `ScanService` | SCA scan orchestration (concurrency limiting, resource gating, SBOM import, AI analysis, per-scan SBOM dedup via `unique_component_keys → sbom_component_count`, `backfill_sbom_component_count_v2` startup backfill). |
-| `ScanParser` | Scanner-output parsers (Trivy, Grype, Syft, OSV, SPDX SBOM). |
+| `ScanParser` | Scanner-output parsers (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, SPDX SBOM, generic SARIF for DevSkim). The generic `parse_sarif()` is reusable for any future SARIF-emitting tool (CodeQL, Snyk Code, …). |
 | `SbomExport` | SBOM export builder (CycloneDX 1.5, SPDX 2.3). |
 | `VexService` | VEX export / import (CycloneDX VEX), VEX + dismissal carry-forward across scans. |
 | `LicenseComplianceService` | License-policy evaluation, automatic evaluation after scans. |

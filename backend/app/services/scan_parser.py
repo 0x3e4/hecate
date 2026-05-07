@@ -895,9 +895,10 @@ def parse_sarif(
             if not msg and isinstance(rule.get("shortDescription"), dict):
                 msg = rule["shortDescription"].get("text", "") or ""
 
-            # Location: first physicalLocation
+            # Location: first physicalLocation — extract path, line, and matched code snippet
             path = ""
             line = 0
+            snippet = ""
             locations = result.get("locations", []) or []
             if isinstance(locations, list) and locations:
                 phys = (locations[0] or {}).get("physicalLocation", {}) if isinstance(locations[0], dict) else {}
@@ -908,6 +909,16 @@ def parse_sarif(
                     region = phys.get("region", {}) or {}
                     if isinstance(region, dict):
                         line = region.get("startLine", 0) or 0
+                        region_snippet = region.get("snippet", {}) or {}
+                        if isinstance(region_snippet, dict):
+                            snippet = region_snippet.get("text", "") or ""
+                    # Fall back to wider contextRegion if region had no snippet text
+                    if not snippet:
+                        ctx = phys.get("contextRegion", {}) or {}
+                        if isinstance(ctx, dict):
+                            ctx_snippet = ctx.get("snippet", {}) or {}
+                            if isinstance(ctx_snippet, dict):
+                                snippet = ctx_snippet.get("text", "") or ""
 
             # Dedup
             dedup_key = f"{rule_id}:{path}:{line}"
@@ -920,14 +931,37 @@ def parse_sarif(
             tags = props.get("tags", []) if isinstance(props, dict) else []
             cwes = [t for t in tags if isinstance(t, str) and t.upper().startswith("CWE-")] if isinstance(tags, list) else []
 
-            # Build description
+            # Optional richer guidance from rule.fullDescription.text or rule.help.text
+            extra_help = ""
+            full_desc = rule.get("fullDescription")
+            if isinstance(full_desc, dict):
+                ftext = (full_desc.get("text") or "").strip()
+                if ftext and ftext != msg.strip():
+                    extra_help = ftext
+            if not extra_help:
+                rule_help = rule.get("help")
+                if isinstance(rule_help, dict):
+                    htext = (rule_help.get("text") or "").strip()
+                    if htext and htext != msg.strip():
+                        extra_help = htext
+
+            # Build description (matches Semgrep parser format so frontend renders code block + chips)
             desc_parts: list[str] = []
             if msg:
                 desc_parts.append(msg)
+            if extra_help:
+                desc_parts.append(extra_help)
             if cwes:
                 desc_parts.append(f"CWE: {', '.join(cwes)}")
-            if path and line:
-                desc_parts.append(f"Location: {path}:{line}")
+
+            description = "\n\n".join(desc_parts) if desc_parts else ""
+            # Trim trailing whitespace lines from snippet, keep up to ~12 lines for readability
+            if snippet:
+                snippet_lines = snippet.rstrip().splitlines()
+                if len(snippet_lines) > 12:
+                    snippet_lines = snippet_lines[:12] + ["..."]
+                snippet_clean = "\n".join(snippet_lines)
+                description = (description + "\n\nCode:\n```\n" + snippet_clean + "\n```") if description else "Code:\n```\n" + snippet_clean + "\n```"
 
             # helpUri → urls[]
             urls: list[str] = []
@@ -950,7 +984,7 @@ def parse_sarif(
                 package_path=path or None,
                 severity=severity,
                 title=title,
-                description="\n\n".join(desc_parts) or title,
+                description=description or title,
                 fix_version=None,
                 fix_state="not_fixed",
                 data_source=f"{scanner_name}:{rule_id}" if rule_id else scanner_name,

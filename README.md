@@ -2,7 +2,7 @@
 
 > Vulnerability management platform that aggregates, normalises, enriches, and analyses security advisories — and actively scans container images and source repositories (SCA).
 
-Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV), normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, and TruffleHog against your container images and source repos.
+Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV), normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, and DevSkim against your container images and source repos.
 
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
@@ -108,7 +108,7 @@ flowchart TB
         MCP[MCP server]
     end
 
-    Scanner["Scanner sidecar :8080<br/>Trivy · Grype · Syft · OSV<br/>Hecate · Dockle · Dive · Semgrep · TruffleHog"]
+    Scanner["Scanner sidecar :8080<br/>Trivy · Grype · Syft · OSV · Hecate<br/>Dockle · Dive · Semgrep · TruffleHog · DevSkim"]
     Apprise["Apprise<br/>Slack / Discord / Email / …"]
 
     Mongo[("MongoDB :27017<br/>persistence")]
@@ -152,7 +152,7 @@ flowchart TB
 | | |
 | --- | --- |
 | **9-source ingestion** | EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV — normalised into a single schema with priority-gated upserts and a 3-tier cache. |
-| **Active SCA scanning** | 9 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog) for container images and source repos. |
+| **Active SCA scanning** | 10 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, DevSkim) for container images and source repos. |
 | **Supply-chain malware detection** | 35 heuristic rules informed by real attacks (Shai-Hulud, LiteLLM, Trivy v0.69.4, Glassworm, Telnyx, Axios, …). |
 | **Provenance verification** | npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker — Sigstore, PEP 740, Go sumdb, Cosign. |
 | **Attack-path graph** | Per-CVE deterministic Mermaid graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) with optional AI narrative. |
@@ -170,7 +170,7 @@ flowchart TB
 .
 ├── backend/              FastAPI service · ingestion pipelines · scheduler · CLI
 ├── frontend/             React 19 SPA
-├── scanner/              Hardened scanner sidecar (9 scanners)
+├── scanner/              Hardened scanner sidecar (10 scanners)
 ├── docs/                 Architecture + design notes
 ├── .gitea/workflows/     CI (build · Hecate scan · SonarQube)
 ├── .env.example          Environment-variable template (~104 vars)
@@ -233,7 +233,7 @@ scanner/
 
 ### SCA scanning
 
-- **Scanner sidecar** running 9 scanners as a hardened Docker container (`no-new-privileges`, read-only, `cap_drop: ALL`, tmpfs).
+- **Scanner sidecar** running 10 scanners as a hardened Docker container (`no-new-privileges`, read-only, `cap_drop: ALL`, tmpfs).
 - **CI/CD or interactive triggers** via `POST /api/v1/scans` and `/scans/manual`.
 - **Auto-scan** of registered targets with the scanner set chosen at first scan, change-detection via image digest / commit SHA, and a per-target diagnostics view (`POST /v1/scans/targets/{id}/check`).
 - **Target grouping** lets you combine repos and images of one application into a single roll-up section in the UI.
@@ -575,7 +575,7 @@ The Gitea workflow [`.gitea/workflows/ci.yml`](.gitea/workflows/ci.yml) uses the
 | HTTP client | httpx 0.28 (async) |
 | Logging | structlog 25 |
 | AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) — each optional |
-| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
+| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 8 runtime), Skopeo, FastAPI |
 | Notifications | Apprise (caronc/apprise) |
 | MCP server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
 | CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |

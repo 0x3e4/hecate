@@ -59,6 +59,108 @@ interface ConfirmModal {
   onConfirm: () => void;
 }
 
+type ScannerCategory = "vulnerability" | "sbom" | "sast" | "secrets" | "malware" | "compliance" | "layer";
+
+interface ScannerMeta {
+  id: string;
+  category: ScannerCategory;
+  noteEn?: string;
+  noteDe?: string;
+}
+
+const SCANNER_META: ScannerMeta[] = [
+  { id: "trivy", category: "vulnerability" },
+  { id: "grype", category: "vulnerability" },
+  { id: "osv-scanner", category: "vulnerability" },
+  { id: "syft", category: "sbom" },
+  { id: "semgrep", category: "sast" },
+  { id: "devskim", category: "sast", noteEn: ".NET focus", noteDe: ".NET-Fokus" },
+  { id: "trufflehog", category: "secrets" },
+  { id: "hecate", category: "malware" },
+  { id: "dockle", category: "compliance" },
+  { id: "dive", category: "layer" },
+];
+
+const CATEGORY_ORDER: Array<{ key: ScannerCategory; en: string; de: string }> = [
+  { key: "vulnerability", en: "Vulnerability", de: "Schwachstellen" },
+  { key: "sbom", en: "SBOM", de: "SBOM" },
+  { key: "sast", en: "SAST", de: "SAST" },
+  { key: "secrets", en: "Secrets", de: "Secrets" },
+  { key: "malware", en: "Malware", de: "Malware" },
+  { key: "compliance", en: "Compliance", de: "Compliance" },
+  { key: "layer", en: "Layer Analysis", de: "Schichtanalyse" },
+];
+
+const SOURCE_REPO_SCANNER_IDS = new Set(["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog", "devskim"]);
+const CONTAINER_SCANNER_IDS = new Set(["trivy", "grype", "syft", "dockle", "dive"]);
+
+interface ScannerCheckboxGroupProps {
+  scanType: "container_image" | "source_repo";
+  selected: string[];
+  onToggle: (id: string) => void;
+  compact?: boolean;
+}
+
+const ScannerCheckboxGroup = ({ scanType, selected, onToggle, compact = false }: ScannerCheckboxGroupProps) => {
+  const { t } = useI18n();
+  const allowed = scanType === "container_image" ? CONTAINER_SCANNER_IDS : SOURCE_REPO_SCANNER_IDS;
+  const fontSize = compact ? "0.75rem" : "0.8125rem";
+  const noteSize = compact ? "0.65rem" : "0.7rem";
+  const headerSize = compact ? "0.65rem" : "0.7rem";
+  const itemGap = compact ? "0.25rem" : "0.375rem";
+  const groupGap = compact ? "0.5rem" : "0.75rem";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: groupGap }}>
+      {CATEGORY_ORDER.map(cat => {
+        const items = SCANNER_META.filter(m => m.category === cat.key && allowed.has(m.id));
+        if (items.length === 0) return null;
+        return (
+          <div key={cat.key}>
+            <div style={{
+              fontSize: headerSize,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: "rgba(255,255,255,0.4)",
+              marginBottom: "0.25rem",
+              fontWeight: 600,
+            }}>
+              {t(cat.en, cat.de)}
+            </div>
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              {items.map(m => (
+                <label
+                  key={m.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: itemGap,
+                    cursor: "pointer",
+                    fontSize,
+                    color: "rgba(255,255,255,0.8)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(m.id)}
+                    onChange={() => onToggle(m.id)}
+                  />
+                  {m.id}
+                  {m.noteEn && (
+                    <span style={{ fontSize: noteSize, color: "rgba(255,255,255,0.4)" }}>
+                      ({t(m.noteEn, m.noteDe || m.noteEn)})
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 export const ScansPage = () => {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("targets");
@@ -2285,21 +2387,11 @@ export const ScansPage = () => {
 
               <div>
                 <label style={labelStyle}>{t("Scanners", "Scanner")}</label>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  {(scanType === "container_image"
-                    ? ["trivy", "grype", "syft", "dockle", "dive"]
-                    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog", "devskim"]
-                  ).map(name => (
-                    <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
-                      <input
-                        type="checkbox"
-                        checked={scanners.includes(name)}
-                        onChange={() => handleScannerToggle(name)}
-                      />
-                      {name}
-                    </label>
-                  ))}
-                </div>
+                <ScannerCheckboxGroup
+                  scanType={scanType}
+                  selected={scanners}
+                  onToggle={handleScannerToggle}
+                />
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -2616,10 +2708,6 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
     setEditingGroup(false);
   };
 
-  const availableScanners = target.type === "container_image"
-    ? ["trivy", "grype", "syft", "dockle", "dive"]
-    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog", "devskim"];
-
   const startEditing = () => {
     setSelectedScanners(target.scanners?.length ? [...target.scanners] : []);
     setEditingScanners(true);
@@ -2752,17 +2840,13 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
       <div style={{ marginTop: "0.625rem" }}>
         {editingScanners && !isSbomImport ? (
           <div style={{ padding: "0.5rem 0" }}>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-              {availableScanners.map(name => (
-                <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", fontSize: "0.75rem", color: "rgba(255,255,255,0.8)" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedScanners.includes(name)}
-                    onChange={() => setSelectedScanners(prev => prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name])}
-                  />
-                  {name}
-                </label>
-              ))}
+            <div style={{ marginBottom: "0.5rem" }}>
+              <ScannerCheckboxGroup
+                scanType={target.type === "container_image" ? "container_image" : "source_repo"}
+                selected={selectedScanners}
+                onToggle={(id) => setSelectedScanners(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])}
+                compact
+              />
             </div>
             <div style={{ display: "flex", gap: "0.375rem" }}>
               <button
