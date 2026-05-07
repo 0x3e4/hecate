@@ -4,7 +4,7 @@ FROM anchore/syft:v1.44.0 AS syft
 FROM python:3.13-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl skopeo \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl skopeo unzip \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir poetry
 
@@ -31,6 +31,14 @@ RUN pip install --no-cache-dir "setuptools<74" semgrep==1.114.0
 # Install TruffleHog (secret scanner)
 RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.2/trufflehog_3.95.2_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
+
+# Install DevSkim (Microsoft SAST scanner — no-build, native SARIF output)
+RUN curl -fsSL https://github.com/microsoft/DevSkim/releases/download/v1.0.70/DevSkim_linux_x64_1.0.70.zip \
+    -o /tmp/devskim.zip \
+    && unzip -q /tmp/devskim.zip -d /usr/local/lib/devskim \
+    && chmod +x /usr/local/lib/devskim/devskim \
+    && ln -s /usr/local/lib/devskim/devskim /usr/local/bin/devskim \
+    && rm /tmp/devskim.zip
 
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all

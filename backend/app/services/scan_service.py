@@ -33,6 +33,7 @@ from app.services.scan_parser import (
     parse_grype_json,
     parse_hecate_json,
     parse_osv_json,
+    parse_sarif,
     parse_semgrep_json,
     parse_trivy_json,
     parse_trufflehog_json,
@@ -562,6 +563,8 @@ class ScanService:
                         })
                     elif fmt == "semgrep-json":
                         findings, _ = parse_semgrep_json(report, scan_id, target_id)
+                    elif fmt == "devskim-sarif":
+                        findings, _ = parse_sarif(report, scan_id, target_id, scanner_name="devskim")
                     elif fmt == "trufflehog-json":
                         findings, _ = parse_trufflehog_json(report, scan_id, target_id)
                     elif fmt == "dive-json":
@@ -1562,7 +1565,7 @@ class ScanService:
             "unchanged_count": unchanged_count,
         }
 
-    VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog"}
+    VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
 
     async def update_target_auto_scan(self, target_id: str, auto_scan: bool) -> bool:
         """Update auto_scan flag on a target."""

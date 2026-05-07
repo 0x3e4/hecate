@@ -101,6 +101,11 @@ export const CiCdInfoPage = () => {
               <td>{t("Static analysis for source repositories only", "Statische Analyse nur für Source-Repositories")}</td>
             </tr>
             <tr>
+              <td><code>devskim</code></td>
+              <td>SAST</td>
+              <td>{t("Microsoft SAST scanner with strong .NET / ASP.NET coverage (source repos only, no build required)", "Microsoft SAST-Scanner mit starker .NET-/ASP.NET-Abdeckung (nur Source-Repos, kein Build nötig)")}</td>
+            </tr>
+            <tr>
               <td><code>trufflehog</code></td>
               <td>{t("Secrets", "Secrets")}</td>
               <td>{t("Secret detection for source repositories only", "Secret-Erkennung nur für Source-Repositories")}</td>

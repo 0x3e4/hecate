@@ -118,7 +118,7 @@ def register(mcp: FastMCP) -> None:
                 return {"error": "Invalid target."}
 
             # Validate scanners
-            valid_scanners = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog"}
+            valid_scanners = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
             if scanners:
                 invalid = [s for s in scanners if s not in valid_scanners]
                 if invalid:

@@ -401,6 +401,11 @@ export const ScanDetailPage = () => {
     () => merged.filter(f => f.packageType === "sast-finding"),
     [merged],
   );
+  const sastScannerLabel = useMemo(() => {
+    const names = Array.from(new Set(sastFindings.map(f => f.scanner).filter(Boolean)));
+    if (names.length === 0) return "SAST";
+    return names.map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(", ");
+  }, [sastFindings]);
   const secretFindings = useMemo(
     () => merged.filter(f => f.packageType === "secret-finding"),
     [merged],
@@ -2536,8 +2541,8 @@ export const ScanDetailPage = () => {
                 }}>
                   <span style={{ color: "#a78bfa", fontWeight: 600, fontSize: "0.875rem" }}>
                     {t(
-                      `${sastFindings.length} code issue${sastFindings.length !== 1 ? "s" : ""} found by Semgrep`,
-                      `${sastFindings.length} Code-Problem${sastFindings.length !== 1 ? "e" : ""} von Semgrep gefunden`,
+                      `${sastFindings.length} code issue${sastFindings.length !== 1 ? "s" : ""} found by ${sastScannerLabel}`,
+                      `${sastFindings.length} Code-Problem${sastFindings.length !== 1 ? "e" : ""} von ${sastScannerLabel} gefunden`,
                     )}
                   </span>
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -2610,6 +2615,19 @@ export const ScanDetailPage = () => {
                               }}>
                                 {sev}
                               </span>
+                              {finding.scanner && (
+                                <span style={{
+                                  padding: "0.125rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.7rem",
+                                  fontWeight: 600,
+                                  background: "rgba(167,139,250,0.12)",
+                                  color: "#a78bfa",
+                                  border: "1px solid rgba(167,139,250,0.25)",
+                                }}>
+                                  {finding.scanner}
+                                </span>
+                              )}
                               <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
                                 {finding.title}
                               </span>
