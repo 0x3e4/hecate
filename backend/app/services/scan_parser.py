@@ -826,6 +826,141 @@ def parse_semgrep_json(
 
 
 # ---------------------------------------------------------------------------
+# Generic SARIF 2.1.0 (DevSkim and other SARIF-emitting SAST tools)
+# ---------------------------------------------------------------------------
+
+_SARIF_LEVEL_MAP = {
+    "error": "high",
+    "warning": "medium",
+    "note": "low",
+    "none": "low",
+}
+
+
+def parse_sarif(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+    scanner_name: str = "devskim",
+) -> tuple[list[ScanFindingDocument], ScanSummary]:
+    """Parse generic SARIF 2.1.0 output into SAST findings.
+
+    Reusable for any SARIF-emitting tool (DevSkim, CodeQL, Snyk Code, etc.).
+    Severity comes from result.level (or rule.defaultConfiguration.level fallback).
+    CWE tags are extracted from rule.properties.tags (e.g. "CWE-89").
+    """
+    findings: list[ScanFindingDocument] = []
+    seen: set[str] = set()
+
+    runs = data.get("runs", [])
+    if not isinstance(runs, list):
+        return findings, ScanSummary()
+
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        # Build rule lookup: ruleId -> rule object
+        driver = (run.get("tool", {}) or {}).get("driver", {}) or {}
+        rules_list = driver.get("rules", []) if isinstance(driver, dict) else []
+        rules: dict[str, dict[str, Any]] = {}
+        if isinstance(rules_list, list):
+            for r in rules_list:
+                if isinstance(r, dict) and isinstance(r.get("id"), str):
+                    rules[r["id"]] = r
+
+        for result in run.get("results", []) or []:
+            if not isinstance(result, dict):
+                continue
+
+            rule_id = result.get("ruleId") or ""
+            if not isinstance(rule_id, str):
+                rule_id = str(rule_id)
+
+            rule = rules.get(rule_id, {}) or {}
+
+            # Severity: result.level > rule.defaultConfiguration.level > "warning"
+            level = result.get("level")
+            if not level and isinstance(rule.get("defaultConfiguration"), dict):
+                level = rule["defaultConfiguration"].get("level")
+            level_str = (level or "warning").lower() if isinstance(level, str) else "warning"
+            severity = _SARIF_LEVEL_MAP.get(level_str, "medium")
+
+            # Message: result.message.text > rule.shortDescription.text
+            msg = ""
+            result_msg = result.get("message")
+            if isinstance(result_msg, dict):
+                msg = result_msg.get("text", "") or ""
+            elif isinstance(result_msg, str):
+                msg = result_msg
+            if not msg and isinstance(rule.get("shortDescription"), dict):
+                msg = rule["shortDescription"].get("text", "") or ""
+
+            # Location: first physicalLocation
+            path = ""
+            line = 0
+            locations = result.get("locations", []) or []
+            if isinstance(locations, list) and locations:
+                phys = (locations[0] or {}).get("physicalLocation", {}) if isinstance(locations[0], dict) else {}
+                if isinstance(phys, dict):
+                    artifact = phys.get("artifactLocation", {}) or {}
+                    if isinstance(artifact, dict):
+                        path = artifact.get("uri", "") or ""
+                    region = phys.get("region", {}) or {}
+                    if isinstance(region, dict):
+                        line = region.get("startLine", 0) or 0
+
+            # Dedup
+            dedup_key = f"{rule_id}:{path}:{line}"
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            # CWE extraction from rule.properties.tags (e.g. "CWE-89")
+            props = rule.get("properties", {}) or {}
+            tags = props.get("tags", []) if isinstance(props, dict) else []
+            cwes = [t for t in tags if isinstance(t, str) and t.upper().startswith("CWE-")] if isinstance(tags, list) else []
+
+            # Build description
+            desc_parts: list[str] = []
+            if msg:
+                desc_parts.append(msg)
+            if cwes:
+                desc_parts.append(f"CWE: {', '.join(cwes)}")
+            if path and line:
+                desc_parts.append(f"Location: {path}:{line}")
+
+            # helpUri → urls[]
+            urls: list[str] = []
+            help_uri = rule.get("helpUri")
+            if isinstance(help_uri, str) and help_uri:
+                urls.append(help_uri)
+
+            # Title — prefer rule.name when present, else trim ruleId
+            short_id = rule_id.rsplit(".", 1)[-1] if rule_id else "rule"
+            title = f"[{short_id}] {msg[:120]}" if msg else f"[{rule_id or 'rule'}]"
+
+            findings.append(ScanFindingDocument(
+                scan_id=scan_id,
+                target_id=target_id,
+                vulnerability_id=None,
+                scanner=scanner_name,
+                package_name=rule_id or short_id,
+                package_version="",
+                package_type="sast-finding",
+                package_path=path or None,
+                severity=severity,
+                title=title,
+                description="\n\n".join(desc_parts) or title,
+                fix_version=None,
+                fix_state="not_fixed",
+                data_source=f"{scanner_name}:{rule_id}" if rule_id else scanner_name,
+                urls=urls,
+            ))
+
+    return findings, _build_summary(findings)
+
+
+# ---------------------------------------------------------------------------
 # TruffleHog (Secret Detection)
 # ---------------------------------------------------------------------------
 

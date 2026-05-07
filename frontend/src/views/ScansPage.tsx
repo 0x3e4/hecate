@@ -2288,7 +2288,7 @@ export const ScansPage = () => {
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
                   {(scanType === "container_image"
                     ? ["trivy", "grype", "syft", "dockle", "dive"]
-                    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"]
+                    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog", "devskim"]
                   ).map(name => (
                     <label key={name} style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
                       <input
@@ -2618,7 +2618,7 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
 
   const availableScanners = target.type === "container_image"
     ? ["trivy", "grype", "syft", "dockle", "dive"]
-    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"];
+    : ["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog", "devskim"];
 
   const startEditing = () => {
     setSelectedScanners(target.scanners?.length ? [...target.scanners] : []);

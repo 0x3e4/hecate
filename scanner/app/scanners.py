@@ -162,6 +162,8 @@ async def run_scanner(
         return await _run_semgrep(target, target_type, source_dir)
     elif scanner_name == "trufflehog":
         return await _run_trufflehog(target, target_type, source_dir)
+    elif scanner_name == "devskim":
+        return await _run_devskim(target, target_type, source_dir)
     else:
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
@@ -734,6 +736,62 @@ async def _run_semgrep(
         return _parse_json_output(stdout, "semgrep", "semgrep-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="semgrep", format="semgrep-json", report={}, error=str(exc))
+    finally:
+        if clone_dir:
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+async def _run_devskim(
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
+    """Run DevSkim SAST scanner (Microsoft, no-build, SARIF output). Only supports source repos."""
+    if target_type == "container_image":
+        return ScannerResult(
+            scanner="devskim", format="devskim-sarif", report={},
+            error="DevSkim only supports source repository scanning",
+        )
+
+    clone_dir: str | None = None
+    try:
+        scan_dir = source_dir
+        if not scan_dir:
+            clone_dir = await _clone_repo(target)
+            scan_dir = clone_dir
+
+        out_path = os.path.join(scan_dir, ".devskim-output.sarif")
+        cmd = [
+            "devskim", "analyze",
+            "-I", scan_dir,
+            "-O", out_path,
+            "-f", "sarif",
+            "--ignore-globs", "**/node_modules/**,**/.git/**,**/bin/**,**/obj/**,**/dist/**,**/build/**",
+        ]
+
+        _, stderr, rc = await _run_command(cmd)
+        # DevSkim exit codes: 0 = no findings, 1 = findings present, other = error
+        if rc not in (0, 1):
+            return ScannerResult(
+                scanner="devskim", format="devskim-sarif", report={},
+                error=f"DevSkim failed (exit {rc}): {_sanitize_error(stderr)}",
+            )
+        if not os.path.exists(out_path):
+            return ScannerResult(
+                scanner="devskim", format="devskim-sarif", report={},
+                error="DevSkim produced no SARIF output file",
+            )
+        try:
+            with open(out_path, "r", encoding="utf-8") as f:
+                report = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            return ScannerResult(
+                scanner="devskim", format="devskim-sarif", report={},
+                error=f"Failed to read DevSkim SARIF output: {exc}",
+            )
+        return ScannerResult(scanner="devskim", format="devskim-sarif", report=report)
+    except RuntimeError as exc:
+        return ScannerResult(scanner="devskim", format="devskim-sarif", report={}, error=str(exc))
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
