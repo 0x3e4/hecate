@@ -33,12 +33,18 @@ RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v
     | tar xz -C /usr/local/bin trufflehog
 
 # Install DevSkim (Microsoft SAST scanner — no-build, native SARIF output)
-RUN curl -fsSL https://github.com/microsoft/DevSkim/releases/download/v1.0.70/DevSkim_linux_x64_1.0.70.zip \
+# v1.0.59 is the latest tag with published Linux binaries (newer tags ship source-only).
+# Asset layout may include a top-level subdirectory, so we locate the binary via `find`.
+RUN curl -fsSL https://github.com/microsoft/DevSkim/releases/download/v1.0.59/DevSkim_CLI_linux_1.0.59.zip \
     -o /tmp/devskim.zip \
-    && unzip -q /tmp/devskim.zip -d /usr/local/lib/devskim \
+    && mkdir -p /tmp/devskim-extract \
+    && unzip -q /tmp/devskim.zip -d /tmp/devskim-extract \
+    && BIN_DIR="$(dirname "$(find /tmp/devskim-extract -type f -name devskim -print -quit)")" \
+    && [ -n "$BIN_DIR" ] && [ "$BIN_DIR" != "." ] \
+    && mv "$BIN_DIR" /usr/local/lib/devskim \
     && chmod +x /usr/local/lib/devskim/devskim \
     && ln -s /usr/local/lib/devskim/devskim /usr/local/bin/devskim \
-    && rm /tmp/devskim.zip
+    && rm -rf /tmp/devskim.zip /tmp/devskim-extract
 
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all
