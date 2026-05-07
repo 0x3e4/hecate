@@ -21,11 +21,12 @@
 | [Dive](https://github.com/wagoodman/dive) | Docker image-layer analysis (container images only) | `dive-json` |
 | [Semgrep](https://github.com/semgrep/semgrep) | SAST scanner (source repos only) | `semgrep-json` |
 | [TruffleHog](https://github.com/trufflesecurity/trufflehog) | Secret scanner (source repos only) | `trufflehog-json` |
+| [DevSkim](https://github.com/microsoft/DevSkim) | Microsoft SAST scanner with strong .NET / ASP.NET coverage (source repos only, no build required) | `devskim-sarif` |
 
-Trivy, Grype, Syft, Dockle, and OSV Scanner are installed as binaries inside the Docker image. Dive and TruffleHog come in as GitHub releases. Semgrep is installed via pip. The Hecate Analyzer is a native Python scanner with no external dependencies.
+Trivy, Grype, Syft, Dockle, and OSV Scanner are installed as binaries inside the Docker image. Dive, TruffleHog, and DevSkim come in as GitHub releases. Semgrep is installed via pip. DevSkim is a framework-dependent .NET 8 app — the runtime is copied in from `mcr.microsoft.com/dotnet/runtime:8.0` as a multi-stage build and runs in globalization-invariant mode (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`). The Hecate Analyzer is a native Python scanner with no external dependencies.
 
 > [!NOTE]
-> Dockle and Dive are container-image-only. Semgrep, TruffleHog, OSV Scanner, and the Hecate Analyzer are source-repo-only.
+> Dockle and Dive are container-image-only. Semgrep, TruffleHog, DevSkim, OSV Scanner, and the Hecate Analyzer are source-repo-only.
 
 ### Enhanced detection
 
@@ -82,7 +83,7 @@ Run one or more scanners against a target.
 | --- | --- | --- |
 | `target` | string | Container-image reference or source-repo URL |
 | `type` | string | `container_image` or `source_repo` |
-| `scanners` | string[] | Scanners to run (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`, `semgrep`, `trufflehog`) |
+| `scanners` | string[] | Scanners to run (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`, `semgrep`, `trufflehog`, `devskim`) |
 
 **Response:**
 
