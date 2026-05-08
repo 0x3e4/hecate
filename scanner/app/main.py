@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from pathlib import Path
+
+# Configure root logger BEFORE importing modules that grab their own logger.
+# Uvicorn doesn't touch the root logger, so application loggers like
+# `app.scanners` would otherwise inherit WARNING with no handler attached
+# and `logger.info()` calls would silently disappear. basicConfig adds a
+# StreamHandler to root only if none exists yet, which is exactly the gap
+# uvicorn leaves.
+#
+# Level honors the deployment-wide `LOG_LEVEL` env var (same one the
+# backend's configure_logging() reads), so a single `LOG_LEVEL=DEBUG` in
+# `.env` flips both services into verbose mode together.
+_log_level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, _log_level_name, logging.INFO),
+    format="%(asctime)s %(levelname)-7s %(name)s %(message)s",
+)
 
 from fastapi import FastAPI, HTTPException
 

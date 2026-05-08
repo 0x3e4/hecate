@@ -19,7 +19,7 @@ RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/
     | tar xz -C /usr/local/bin dockle
 
 # Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.6/osv-scanner_linux_amd64 \
+RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
 
 # Install Dive (Docker image layer analysis)
