@@ -11,6 +11,7 @@ Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, 
 ![MongoDB](https://img.shields.io/badge/MongoDB-8-47A248?logo=mongodb&logoColor=white)
 ![OpenSearch](https://img.shields.io/badge/OpenSearch-3-005EB8?logo=opensearch&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+[![Hecate](https://img.shields.io/endpoint?url=https%3A%2F%2Fhecate.pw%2Fapi%2Fv1%2Fscans%2Ftargets%2Fhttps%253A%252F%252Fgithub.com%252F0x3e4%252Fhecate%2Fshield?label=Hecate)](https://hecate.pw/scans)
 
 ---
 
@@ -139,6 +140,7 @@ flowchart TB
 - [Quick start (Docker Compose)](#quick-start-docker-compose)
 - [Local development](#local-development)
 - [API surface](#api-surface)
+- [Status badges](#status-badges)
 - [Backend CLI](#backend-cli)
 - [Configuration](#configuration)
 - [CI/CD](#cicd)
@@ -510,6 +512,36 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 </details>
 
 The request schemas accept an optional `triggeredBy` field; the web UI does not set it, MCP `save_*` tools set it to `{client_name} - MCP`, and the server appends the label as a Markdown footer to the stored summary. The provider keys (`OPENAI_API_KEY` · `ANTHROPIC_API_KEY` · `GOOGLE_GEMINI_API_KEY` · `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_MODEL`) are used **only** by the HTTP endpoints — MCP AI flows never call a server-side provider.
+
+---
+
+## Status badges
+
+Hecate exposes [shields.io endpoint badges](https://shields.io/endpoint) in two flavours:
+
+- **Latest scan of a target** (recommended for READMEs — always reflects the newest run):
+  `GET /api/v1/scans/targets/{target_id}/shield`
+- **A specific scan** (frozen at scan time): `GET /api/v1/scans/{scan_id}/shield`
+
+`target_id` is the value shown as `targetId` on the scan-detail JSON (e.g. a repo URL like `https://github.com/owner/repo` or a container image ref). Path-encode it once for the inner URL, then encode the whole inner URL again for the shields.io `?url=` parameter (so `/` in the repo URL becomes `%252F`).
+
+```markdown
+[![Vulnerability scan](https://img.shields.io/endpoint?url=https%3A%2F%2FYOUR_HOST%2Fapi%2Fv1%2Fscans%2Ftargets%2FYOUR_TARGET_ID%2Fshield)](https://YOUR_HOST/scans)
+```
+
+The badge message is a compact severity breakdown like `2C 5H 12M 4L` (critical / high / medium / low — zero buckets are dropped, `0 findings` when clean). The colour follows the worst severity present:
+
+| State | Colour |
+| --- | --- |
+| `critical > 0` | `red` |
+| `high > 0` | `orange` |
+| `medium > 0` | `yellow` |
+| `low > 0` | `yellowgreen` |
+| no findings | `brightgreen` |
+| in progress | `blue` (`scanning`) |
+| pending / failed / not found | `lightgrey` / `red` / `lightgrey` |
+
+Optional query parameter: `?label=<text>` overrides the left-hand label (default `findings`). Endpoint responses set `cacheSeconds: 300` so shields.io's CDN caches them for 5 minutes.
 
 ---
 
