@@ -19,6 +19,7 @@ from app.api.v1 import (
     stats,
     status,
     sync,
+    version,
     vulnerabilities,
 )
 
@@ -42,3 +43,4 @@ api_router.include_router(license_policies.router, prefix="/license-policies", t
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(malware.router, prefix="/malware", tags=["malware"])
+api_router.include_router(version.router, tags=["version"])

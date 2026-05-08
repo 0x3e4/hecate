@@ -1,3 +1,25 @@
+export interface LatestBuildInfo {
+  tag: string;
+  shortSha: string;
+  publishedAt: string | null;
+  packageUrl: string | null;
+}
+
+export type VersionUpdateKind = "semver" | "build" | null;
+
+export interface VersionInfo {
+  currentVersion: string;
+  currentSha: string | null;
+  latestVersion: string | null;
+  latestReleaseUrl: string | null;
+  latestBuild: LatestBuildInfo | null;
+  updateAvailable: boolean;
+  updateKind: VersionUpdateKind;
+  repoUrl: string;
+  kofiUrl: string;
+  checkedAt: string;
+}
+
 export interface CvssVectorData {
   version?: string | null;
   vectorString?: string | null;

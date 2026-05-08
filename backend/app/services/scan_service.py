@@ -542,9 +542,20 @@ class ScanService:
                 )
                 if metadata and not scan_metadata:
                     scan_metadata = metadata
+            except httpx.TimeoutException as exc:
+                # str(httpx.ReadTimeout()) is "" — record a meaningful message
+                # so the banner doesn't render as a bare "scanner: ".
+                msg = (
+                    f"sidecar HTTP {type(exc).__name__} after "
+                    f"{settings.sca_scanner_timeout_seconds}s"
+                )
+                _record_scanner_error(scanner_name, msg)
+                log.warning("scan_service.scanner_call_timeout", scanner=scanner_name, error=msg)
+                return
             except Exception as exc:
-                _record_scanner_error(scanner_name, str(exc))
-                log.warning("scan_service.scanner_call_failed", scanner=scanner_name, error=str(exc))
+                msg = str(exc).strip() or repr(exc).strip() or type(exc).__name__
+                _record_scanner_error(scanner_name, msg)
+                log.warning("scan_service.scanner_call_failed", scanner=scanner_name, error=msg)
                 return
 
             for result in results:
@@ -552,7 +563,8 @@ class ScanService:
                 scanner_error = result.get("error")
 
                 if scanner_error:
-                    _record_scanner_error(scanner_name, str(scanner_error))
+                    msg = str(scanner_error).strip() or "unknown scanner error"
+                    _record_scanner_error(scanner_name, msg)
                     continue
                 if not report:
                     continue
@@ -634,7 +646,10 @@ class ScanService:
         final_summary = self._compute_summary(all_findings)
         finished_at = datetime.now(tz=UTC)
         duration = (finished_at - started_at).total_seconds()
-        error_text = "; ".join(errors) if errors else None
+        # Skip empty / whitespace-only entries so a malformed input can't
+        # produce a bare "scanner: " banner.
+        non_empty_errors = [e for e in errors if e and e.strip()]
+        error_text = "; ".join(non_empty_errors) if non_empty_errors else None
         status = "completed" if not errors or all_findings or all_components else "failed"
 
         sbom_component_count = len(unique_component_keys)

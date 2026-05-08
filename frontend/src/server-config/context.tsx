@@ -6,12 +6,14 @@ export interface ServerConfig {
   aiEnabled: boolean;
   scaEnabled: boolean;
   scaAutoScanEnabled: boolean;
+  supportPageEnabled: boolean;
 }
 
 const PESSIMISTIC_DEFAULTS: ServerConfig = {
   aiEnabled: false,
   scaEnabled: false,
   scaAutoScanEnabled: false,
+  supportPageEnabled: false,
 };
 
 const ServerConfigContext = createContext<ServerConfig | null>(null);
