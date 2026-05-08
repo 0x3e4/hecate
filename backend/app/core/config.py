@@ -188,13 +188,6 @@ class Settings(BaseSettings):
     scheduler_nvd_full_sync_enabled: bool = True
     scheduler_nvd_full_sync_cron_hour: int = 2  # 2 AM UTC
     scheduler_nvd_full_sync_cron_day_of_week: str = "wed"  # Wednesday
-    # OSV initial-mode full sync re-pulls each ecosystem's all.zip, so it
-    # heals any drift from the incremental cap-on-cursor bug and absorbs
-    # any GHSA placeholders the GHSA pipeline created in the meantime.
-    # Defaulted to Friday to spread the weekly load across the week (EUVD
-    # is Sunday, NVD is Wednesday). The full sync is unbounded by record
-    # count — it runs until the timeout (`INGESTION_RUNNING_TIMEOUT_MINUTES`)
-    # or until every ecosystem ZIP is exhausted.
     scheduler_osv_full_sync_enabled: bool = True
     scheduler_osv_full_sync_cron_hour: int = 2  # 2 AM UTC
     scheduler_osv_full_sync_cron_day_of_week: str = "fri"  # Friday
@@ -203,10 +196,7 @@ class Settings(BaseSettings):
     sca_enabled: bool = True
     sca_api_key: str | None = None
     sca_scanner_url: str = "http://scanner:8080"
-    # Must stay above the longest scanner subprocess timeout (currently DevSkim
-    # at 1500 s) so the structured timeout error wins the race instead of the
-    # backend's httpx ReadTimeout firing first with an empty exception string.
-    sca_scanner_timeout_seconds: int = 1560
+    sca_scanner_timeout_seconds: int = 2060
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
     sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
