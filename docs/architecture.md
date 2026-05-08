@@ -69,7 +69,7 @@ flowchart TB
 - `saved_searches.py` — saved searches (CRUD)
 - `audit.py` — ingestion logs
 - `changelog.py` — recent changes
-- `scans.py` — SCA scan management (submit, targets incl. group filter, target-group roll-up, findings, SBOM, SBOM export, SBOM import, layer analysis, VEX, license compliance, AI analysis via `POST /scans/{id}/ai-analysis` + listing via `GET /scans/ai-analyses` — the latter is registered before the dynamic `/{scan_id}` route, otherwise the path `ai-analyses` would be interpreted as a scan ID)
+- `scans.py` — SCA scan management (submit, targets incl. group filter, target-group roll-up, findings, SBOM, SBOM export, SBOM import, layer analysis, VEX, license compliance, AI analysis via `POST /scans/{id}/ai-analysis` + listing via `GET /scans/ai-analyses` — the latter is registered before the dynamic `/{scan_id}` route, otherwise the path `ai-analyses` would be interpreted as a scan ID; public shields.io status badges via `GET /scans/{scan_id}/shield` and `GET /scans/targets/{target_id:path}/shield` — both must also be registered before their bare counterparts to avoid the same greedy-path-capture trap)
 - `notifications.py` — notification status, channels, rules, message templates
 - `events.py` — Server-Sent Events (SSE) stream
 - `license_policies.py` — license-policy management (CRUD, default policy, license groups)

@@ -33,7 +33,9 @@ app/
 │   ├── scans.py             SCA scan management — submit, targets (group filter + manual /check trigger for auto-scan diagnostics),
 │   │                          target-group roll-up, history (since filter), findings (?includeDismissed), SBOM, SBOM export,
 │   │                          SBOM import, compare, VEX (incl. bulk-update-by-ids and import), findings dismiss,
-│   │                          license compliance, cross-CVE attack chain (GET/POST /scans/{id}/attack-chain)
+│   │                          license compliance, cross-CVE attack chain (GET/POST /scans/{id}/attack-chain),
+│   │                          shields.io status badges (GET /scans/{id}/shield, GET /scans/targets/{id:path}/shield —
+│   │                          both registered before their bare counterparts to avoid greedy /shield capture)
 │   ├── events.py            Server-Sent Events (SSE) stream
 │   ├── notifications.py     Notifications (channels, rules, templates)
 │   ├── license_policies.py  License-policy management (CRUD, default policy, license groups)

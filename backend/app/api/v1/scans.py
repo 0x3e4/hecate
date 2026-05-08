@@ -252,6 +252,22 @@ async def get_target_history(
     )
 
 
+@router.get("/targets/{target_id:path}/shield")
+async def get_target_shield(
+    target_id: str,
+    label: str = Query(default="findings", max_length=64),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, Any]:
+    """shields.io endpoint badge for a target's latest completed scan."""
+    latest = await service.scan_repo.get_latest_by_target(target_id)
+    if not latest:
+        return _shield_payload("hecate", "no scans", "lightgrey", is_error=True)
+    scan = await service.get_scan(str(latest.get("_id")))
+    if not scan:
+        return _shield_payload("hecate", "no scans", "lightgrey", is_error=True)
+    return _render_scan_shield(scan, label)
+
+
 @router.get("/targets/{target_id:path}", response_model=ScanTargetResponse)
 async def get_target(
     target_id: str,
@@ -707,6 +723,72 @@ async def list_scan_ai_analyses(
 ) -> dict[str, Any]:
     """List scans that have at least one AI analysis, newest first."""
     return await service.list_scan_ai_analyses(limit=limit, offset=offset)
+
+
+def _shield_payload(label: str, message: str, color: str, *, is_error: bool = False) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schemaVersion": 1,
+        "label": label,
+        "message": message,
+        "color": color,
+        "cacheSeconds": 300,
+    }
+    if is_error:
+        payload["isError"] = True
+    return payload
+
+
+def _render_scan_shield(scan: dict[str, Any], label: str) -> dict[str, Any]:
+    status = scan.get("status")
+    if status == "pending":
+        return _shield_payload(label, "pending", "lightgrey")
+    if status == "running":
+        return _shield_payload(label, "scanning", "blue")
+    if status == "failed":
+        return _shield_payload(label, "scan failed", "red", is_error=True)
+
+    s = scan.get("summary") or {}
+    critical = int(s.get("critical") or 0)
+    high = int(s.get("high") or 0)
+    medium = int(s.get("medium") or 0)
+    low = int(s.get("low") or 0)
+
+    parts: list[str] = []
+    if critical:
+        parts.append(f"{critical}C")
+    if high:
+        parts.append(f"{high}H")
+    if medium:
+        parts.append(f"{medium}M")
+    if low:
+        parts.append(f"{low}L")
+    message = " ".join(parts) if parts else "0 findings"
+
+    if critical:
+        color = "red"
+    elif high:
+        color = "orange"
+    elif medium:
+        color = "yellow"
+    elif low:
+        color = "yellowgreen"
+    else:
+        color = "brightgreen"
+
+    return _shield_payload(label, message, color)
+
+
+@router.get("/{scan_id}/shield")
+async def get_scan_shield(
+    scan_id: str,
+    label: str = Query(default="findings", max_length=64),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, Any]:
+    """shields.io endpoint badge for a scan. See https://shields.io/endpoint."""
+    scan = await service.get_scan(scan_id)
+    if not scan:
+        return _shield_payload("hecate", "scan not found", "lightgrey", is_error=True)
+    return _render_scan_shield(scan, label)
 
 
 @router.get("/{scan_id}", response_model=ScanResponse)
