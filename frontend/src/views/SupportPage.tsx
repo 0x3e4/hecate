@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   LuCoffee,
   LuExternalLink,
@@ -126,52 +126,153 @@ export const SupportPage = () => {
     return t(`${days} d ago`, `vor ${days} Tagen`);
   };
 
-  const renderVersionBadge = (): React.ReactNode => {
-    if (loadError || !info) return null;
-    const noUpstream =
-      info.latestVersion === null && info.latestBuild === null;
-    if (noUpstream) {
+  // Vite injects VITE_BUILD_SHA into the bundle at build time (see
+  // frontend/Dockerfile). Empty in dev / non-baked builds.
+  const FRONTEND_SHA: string =
+    ((import.meta as { env?: Record<string, string | undefined> }).env
+      ?.VITE_BUILD_SHA ?? "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 7);
+
+  type ComponentKey = "backend" | "frontend" | "scanner";
+  type Status = "up_to_date" | "build_update" | "running_unknown" | "unreachable";
+
+  const componentStatus = (
+    runningSha: string | null,
+    latestSha: string | null,
+    reachable: boolean
+  ): Status => {
+    if (!reachable) return "unreachable";
+    if (!runningSha) return "running_unknown";
+    if (!latestSha) return "running_unknown";
+    return runningSha === latestSha ? "up_to_date" : "build_update";
+  };
+
+  const renderRowStatus = (status: Status): React.ReactNode => {
+    if (status === "up_to_date") {
       return (
-        <span style={unreachableBadge}>
-          <LuCircleAlert aria-hidden="true" />
-          {t("Couldn't reach GitHub", "GitHub nicht erreichbar")}
+        <span style={upToDateBadge}>
+          <LuCircleCheck aria-hidden="true" />
+          {t("Up to date", "Aktuell")}
         </span>
       );
     }
-    if (info.updateKind === "semver" && info.latestVersion) {
+    if (status === "build_update") {
       return (
         <span style={updateBadge}>
           <LuTriangleAlert aria-hidden="true" />
-          {t(
-            `Update available — v${info.latestVersion}`,
-            `Update verfügbar — v${info.latestVersion}`
-          )}
+          {t("New build available", "Neuer Build verfügbar")}
         </span>
       );
     }
-    if (info.updateKind === "build" && info.latestBuild) {
-      return (
-        <span style={updateBadge}>
-          <LuTriangleAlert aria-hidden="true" />
-          {t(
-            `New build available — ${info.latestBuild.tag}`,
-            `Neuer Build verfügbar — ${info.latestBuild.tag}`
-          )}
-        </span>
-      );
-    }
-    if (info.currentSha === null && info.latestBuild) {
+    if (status === "unreachable") {
       return (
         <span style={unreachableBadge}>
           <LuCircleAlert aria-hidden="true" />
-          {t("Build SHA unknown", "Build-SHA unbekannt")}
+          {t("Unreachable", "Nicht erreichbar")}
         </span>
       );
     }
     return (
-      <span style={upToDateBadge}>
-        <LuCircleCheck aria-hidden="true" />
-        {t("Up to date", "Aktuell")}
+      <span style={unreachableBadge}>
+        <LuCircleAlert aria-hidden="true" />
+        {t("Build SHA unknown", "Build-SHA unbekannt")}
+      </span>
+    );
+  };
+
+  type Row = {
+    key: ComponentKey;
+    label: string;
+    runningSha: string | null;
+    runningVersion: string | null;
+    reachable: boolean;
+    latestTag: string | null;
+    latestSha: string | null;
+    publishedAt: string | null;
+    packageUrl: string | null;
+  };
+
+  const buildRows = (data: VersionInfo): Row[] => [
+    {
+      key: "backend",
+      label: t("Backend", "Backend"),
+      runningSha: data.backend.runningSha,
+      runningVersion: data.backend.runningVersion,
+      reachable: data.backend.reachable,
+      latestTag: data.ghcr.backend?.tag ?? null,
+      latestSha: data.ghcr.backend?.shortSha ?? null,
+      publishedAt: data.ghcr.backend?.publishedAt ?? null,
+      packageUrl: data.ghcr.backend?.packageUrl ?? null,
+    },
+    {
+      key: "frontend",
+      label: t("Frontend", "Frontend"),
+      runningSha: FRONTEND_SHA || null,
+      runningVersion: null,
+      reachable: true,
+      latestTag: data.ghcr.frontend?.tag ?? null,
+      latestSha: data.ghcr.frontend?.shortSha ?? null,
+      publishedAt: data.ghcr.frontend?.publishedAt ?? null,
+      packageUrl: data.ghcr.frontend?.packageUrl ?? null,
+    },
+    {
+      key: "scanner",
+      label: t("Scanner", "Scanner"),
+      runningSha: data.scanner.runningSha,
+      runningVersion: data.scanner.runningVersion,
+      reachable: data.scanner.reachable,
+      latestTag: data.ghcr.scanner?.tag ?? null,
+      latestSha: data.ghcr.scanner?.shortSha ?? null,
+      publishedAt: data.ghcr.scanner?.publishedAt ?? null,
+      packageUrl: data.ghcr.scanner?.packageUrl ?? null,
+    },
+  ];
+
+  const overallBadge = (rows: Row[]): React.ReactNode => {
+    if (!info) return null;
+    const statuses = rows.map((r) =>
+      componentStatus(r.runningSha, r.latestSha, r.reachable)
+    );
+    const allReachable = statuses.every((s) => s !== "unreachable");
+    const anyOutdated = statuses.includes("build_update");
+    const anyUnknown = statuses.includes("running_unknown");
+    if (info.semverTag) {
+      return (
+        <span style={updateBadge}>
+          <LuTriangleAlert aria-hidden="true" />
+          {t(
+            `Release available — v${info.semverTag.tag.replace(/^v/, "")}`,
+            `Release verfügbar — v${info.semverTag.tag.replace(/^v/, "")}`
+          )}
+        </span>
+      );
+    }
+    if (anyOutdated) {
+      const count = statuses.filter((s) => s === "build_update").length;
+      return (
+        <span style={updateBadge}>
+          <LuTriangleAlert aria-hidden="true" />
+          {t(
+            `${count} component${count === 1 ? "" : "s"} out of date`,
+            `${count} Komponente${count === 1 ? "" : "n"} veraltet`
+          )}
+        </span>
+      );
+    }
+    if (allReachable && !anyUnknown) {
+      return (
+        <span style={upToDateBadge}>
+          <LuCircleCheck aria-hidden="true" />
+          {t("All components up to date", "Alle Komponenten aktuell")}
+        </span>
+      );
+    }
+    return (
+      <span style={unreachableBadge}>
+        <LuCircleAlert aria-hidden="true" />
+        {t("Status partial", "Status unvollständig")}
       </span>
     );
   };
@@ -191,66 +292,95 @@ export const SupportPage = () => {
       return <p className="muted">{t("Loading…", "Wird geladen…")}</p>;
     }
 
-    const runningLabel = info.currentSha
-      ? `v${info.currentVersion} · ${info.currentSha}`
-      : `v${info.currentVersion}`;
+    const rows = buildRows(info);
+    const monoFamily = currentVersionStyle.fontFamily;
 
-    const latestLine = (() => {
-      if (info.latestBuild) {
-        const ago = formatRelative(info.latestBuild.publishedAt);
-        const suffix = ago ? ` · ${ago}` : "";
-        return `${info.latestBuild.tag}${suffix}`;
-      }
-      if (info.latestVersion) return `v${info.latestVersion}`;
-      return null;
-    })();
+    const runningLabel = (row: Row): string => {
+      if (!row.reachable) return t("(not reachable)", "(nicht erreichbar)");
+      if (!row.runningSha) return t("(SHA unknown)", "(SHA unbekannt)");
+      const v = row.runningVersion ? `v${row.runningVersion} · ` : "";
+      return `${v}${row.runningSha}`;
+    };
+
+    const latestLabel = (row: Row): string => {
+      if (!row.latestTag) return t("(no signal)", "(kein Signal)");
+      const ago = formatRelative(row.publishedAt);
+      return ago ? `${row.latestTag} · ${ago}` : row.latestTag;
+    };
 
     return (
       <>
-        <div>
-          <div className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.2rem" }}>
-            {t("Running build", "Laufender Build")}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr 1fr auto",
+            columnGap: "1.25rem",
+            rowGap: "0.5rem",
+            alignItems: "center",
+            marginTop: "0.25rem",
+          }}
+        >
+          <div className="muted" style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {t("Component", "Komponente")}
           </div>
-          <div style={currentVersionStyle}>{runningLabel}</div>
+          <div className="muted" style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {t("Running", "Laufend")}
+          </div>
+          <div className="muted" style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {t("Latest on GitHub", "Aktuell auf GitHub")}
+          </div>
+          <div />
+
+          {rows.map((row) => {
+            const status = componentStatus(row.runningSha, row.latestSha, row.reachable);
+            return (
+              <Fragment key={row.key}>
+                <div style={{ fontWeight: 600 }}>{row.label}</div>
+                <div style={{ fontFamily: monoFamily, fontSize: "0.95rem" }}>
+                  {runningLabel(row)}
+                </div>
+                <div style={{ fontFamily: monoFamily, fontSize: "0.95rem" }}>
+                  {row.packageUrl && row.latestTag ? (
+                    <a
+                      href={row.packageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "inherit", textDecoration: "underline dotted", textUnderlineOffset: "3px" }}
+                    >
+                      {latestLabel(row)}
+                    </a>
+                  ) : (
+                    latestLabel(row)
+                  )}
+                </div>
+                <div>{renderRowStatus(status)}</div>
+              </Fragment>
+            );
+          })}
         </div>
-        {latestLine && (
-          <div style={{ marginTop: "0.85rem" }}>
-            <span className="muted" style={{ fontSize: "0.85rem", marginRight: "0.5rem" }}>
-              {t("Latest on GitHub:", "Aktuell auf GitHub:")}
-            </span>
-            <span style={{ fontFamily: currentVersionStyle.fontFamily, fontSize: "0.95rem" }}>
-              {latestLine}
-            </span>
-          </div>
-        )}
-        {info.updateKind === "semver" && info.latestReleaseUrl && (
-          <p style={{ marginTop: "1rem", marginBottom: 0 }}>
+        {info.semverTag && (
+          <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
             <a
-              href={info.latestReleaseUrl}
+              href={info.semverTag.releaseUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={releaseLinkStyle}
             >
               <LuExternalLink aria-hidden="true" />
-              {t("View release notes on GitHub", "Release-Notes auf GitHub ansehen")}
-            </a>
-          </p>
-        )}
-        {info.updateKind === "build" && info.latestBuild?.packageUrl && (
-          <p style={{ marginTop: "1rem", marginBottom: 0 }}>
-            <a
-              href={info.latestBuild.packageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={releaseLinkStyle}
-            >
-              <LuExternalLink aria-hidden="true" />
-              {t("View container on GHCR", "Container auf GHCR ansehen")}
+              {t(
+                `View release notes — v${info.semverTag.tag.replace(/^v/, "")}`,
+                `Release-Notes ansehen — v${info.semverTag.tag.replace(/^v/, "")}`
+              )}
             </a>
           </p>
         )}
       </>
     );
+  };
+
+  const renderVersionBadge = (): React.ReactNode => {
+    if (loadError || !info) return null;
+    return overallBadge(buildRows(info));
   };
 
   const kofiUrl = info?.kofiUrl ?? "https://ko-fi.com/0x3e4";

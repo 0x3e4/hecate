@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
@@ -33,6 +34,30 @@ async def _startup() -> None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_BUILD_SHA_FILE = Path("/scanner/app/.build_sha")
+
+
+def _read_build_sha() -> str | None:
+    """Resolve the scanner's build SHA. File baked at image build time wins;
+    otherwise fall back to the HECATE_BUILD_SHA env var (for local dev).
+    """
+    try:
+        raw = _BUILD_SHA_FILE.read_text().strip()
+    except (FileNotFoundError, PermissionError, OSError):
+        raw = ""
+    if not raw:
+        raw = (os.environ.get("HECATE_BUILD_SHA") or "").strip()
+    return raw or None
+
+
+@app.get("/version")
+async def version() -> dict[str, str | None]:
+    """Self-report identity for the in-app Support page. Sibling of the
+    backend's /api/v1/version endpoint, queried over the compose network.
+    """
+    return {"buildSha": _read_build_sha(), "version": "1.0.0"}
 
 
 def _read_int(path: str) -> int | None:
