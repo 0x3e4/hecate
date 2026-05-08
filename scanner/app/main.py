@@ -94,6 +94,19 @@ async def stats() -> StatsResponse:
 @app.post("/check", response_model=CheckResponse)
 async def check(request: CheckRequest) -> CheckResponse:
     """Lightweight fingerprint check — returns current digest/commit without scanning."""
+    # Short-circuit when scans are saturating the host: spawning git ls-remote
+    # or skopeo inspect on a CPU-pegged container can take >60 s, which the
+    # backend's HTTP client interprets as ReadTimeout. Returning a null
+    # fingerprint lets the backend fall back to the stored value
+    # (verdict=check_failed_skipped) — exactly the "rescan only when changed"
+    # behaviour we want under load.
+    try:
+        max_active = int(os.environ.get("SCANNER_MAX_CONCURRENT_SCANS", "2"))
+    except ValueError:
+        max_active = 2
+    if _active_scans >= max_active:
+        return CheckResponse(target=request.target, type=request.type)
+
     if request.type == "container_image":
         digest = await get_image_digest(request.target)
         return CheckResponse(target=request.target, type=request.type, current_digest=digest)

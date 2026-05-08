@@ -64,6 +64,9 @@ services:
       resources:
         limits:
           memory: 12G
+          cpus: "4"
+        reservations:
+          cpus: "1"
     # Custom CA
     # volumes:
     #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro

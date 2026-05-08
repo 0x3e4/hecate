@@ -37,7 +37,7 @@ const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[]
   ...(scaEnabled ? [{
     titleEn: "Security", titleDe: "Sicherheit",
     items: [
-      { to: "/scans", label: "SCA Scans", icon: LuScanLine },
+      { to: "/scans", label: "SCA", icon: LuScanLine },
       { to: "/malware-feed", label: "Malware Feed", icon: LuShieldAlert },
     ],
   }] : []),
@@ -127,7 +127,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/changelog": "Changelog",
     "/audit": "Audit-Log",
     "/inventory": "Inventar",
-    "/scans": "SCA-Scans",
+    "/scans": "SCA",
     "/malware-feed": "Malware-Feed",
     "/system": "System",
     "/info/api": "API",

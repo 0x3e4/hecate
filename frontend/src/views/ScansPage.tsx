@@ -269,7 +269,7 @@ export const ScansPage = () => {
   const [scanError, setScanError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = t("Hecate Cyber Defense - SCA Scans", "Hecate Cyber Defense - SCA-Scans");
+    document.title = t("Hecate Cyber Defense - Software Composition Analysis", "Hecate Cyber Defense - Software-Kompositionsanalyse");
     return () => { document.title = "Hecate Cyber Defense"; };
   }, [t]);
 
@@ -2586,6 +2586,21 @@ export const ScansPage = () => {
                 </div>
 
                 {/* Live resource charts — full width, stacked */}
+                {scannerStats.stale && (
+                  <div style={{
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(252,196,25,0.3)",
+                    background: "rgba(252,196,25,0.08)",
+                    color: "#fcc419",
+                    fontSize: "0.75rem",
+                  }}>
+                    {t(
+                      `Cached values shown — sidecar didn't respond in time (last update ${scannerStats.staleSeconds ?? 0}s ago).`,
+                      `Zwischengespeicherte Werte — Sidecar hat nicht rechtzeitig geantwortet (letztes Update vor ${scannerStats.staleSeconds ?? 0}s).`,
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                   <LiveChart
                     label={t("Container Memory", "Container-Speicher")}
