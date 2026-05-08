@@ -5,16 +5,28 @@ export interface LatestBuildInfo {
   packageUrl: string | null;
 }
 
-export type VersionUpdateKind = "semver" | "build" | null;
+export interface RunningComponentInfo {
+  runningSha: string | null;
+  runningVersion: string | null;
+  reachable: boolean;
+}
+
+export interface GhcrLatestInfo {
+  backend: LatestBuildInfo | null;
+  frontend: LatestBuildInfo | null;
+  scanner: LatestBuildInfo | null;
+}
+
+export interface SemverTagInfo {
+  tag: string;
+  releaseUrl: string;
+}
 
 export interface VersionInfo {
-  currentVersion: string;
-  currentSha: string | null;
-  latestVersion: string | null;
-  latestReleaseUrl: string | null;
-  latestBuild: LatestBuildInfo | null;
-  updateAvailable: boolean;
-  updateKind: VersionUpdateKind;
+  backend: RunningComponentInfo;
+  scanner: RunningComponentInfo;
+  ghcr: GhcrLatestInfo;
+  semverTag: SemverTagInfo | null;
   repoUrl: string;
   kofiUrl: string;
   checkedAt: string;

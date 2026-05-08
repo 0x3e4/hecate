@@ -77,6 +77,11 @@ COPY app ./app
 COPY entrypoint.sh /scanner/entrypoint.sh
 RUN chmod +x /scanner/entrypoint.sh
 
+# Bake the build SHA into the image so the runtime can self-report via
+# /version. Same mechanism as backend/Dockerfile.
+ARG HECATE_BUILD_SHA=
+RUN printf '%s' "${HECATE_BUILD_SHA}" > /scanner/app/.build_sha
+
 EXPOSE 8080
 
 ENTRYPOINT ["/scanner/entrypoint.sh"]

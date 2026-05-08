@@ -220,10 +220,10 @@ class Settings(BaseSettings):
     # the `HECATE_BUILD_SHA` Docker build arg (see backend/Dockerfile and
     # .github/workflows/build-images.yml). Empty in dev/local runs.
     hecate_build_sha: str = ""
-    # GHCR namespace + image name to poll for `main-<sha>` rolling-build
-    # update detection. Override only when forking under a different owner.
+    # GHCR namespace under which the three Hecate images live. Override
+    # only when forking under a different owner. The image names themselves
+    # (`hecate-{backend,frontend,scanner}`) are fixed in code.
     hecate_ghcr_owner: str = "0x3e4"
-    hecate_ghcr_image: str = "hecate-backend"
 
     # Notifications (Apprise)
     notifications_enabled: bool = False
