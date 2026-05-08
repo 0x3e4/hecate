@@ -21,6 +21,8 @@ RUN poetry install --no-root
 
 FROM python:3.13-slim AS runtime
 
+ARG HECATE_BUILD_SHA=
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/
@@ -32,6 +34,12 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY app /app
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Bake the build SHA into the image as a file so the runtime can report
+# its identity to /api/v1/version. Using a file (not ENV) makes the value
+# immune to docker-compose env_file overrides — the SHA is artifact
+# identity, not user-tunable config.
+RUN printf '%s' "${HECATE_BUILD_SHA}" > /app/.build_sha
 
 EXPOSE 8000
 

@@ -203,13 +203,27 @@ class Settings(BaseSettings):
     sca_enabled: bool = True
     sca_api_key: str | None = None
     sca_scanner_url: str = "http://scanner:8080"
-    sca_scanner_timeout_seconds: int = 600
+    # Must stay above the longest scanner subprocess timeout (currently DevSkim
+    # at 1500 s) so the structured timeout error wins the race instead of the
+    # backend's httpx ReadTimeout firing first with an empty exception string.
+    sca_scanner_timeout_seconds: int = 1560
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
     sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
     sca_max_concurrent_scans: int = 2
     sca_min_free_memory_mb: int = 1024
     sca_min_free_disk_mb: int = 2048
+
+    # Support page (Ko-fi donate, GitHub star, version-update indicator)
+    support_page_enabled: bool = True
+    # Short git SHA of the running build, injected at image build time via
+    # the `HECATE_BUILD_SHA` Docker build arg (see backend/Dockerfile and
+    # .github/workflows/build-images.yml). Empty in dev/local runs.
+    hecate_build_sha: str = ""
+    # GHCR namespace + image name to poll for `main-<sha>` rolling-build
+    # update detection. Override only when forking under a different owner.
+    hecate_ghcr_owner: str = "0x3e4"
+    hecate_ghcr_image: str = "hecate-backend"
 
     # Notifications (Apprise)
     notifications_enabled: bool = False

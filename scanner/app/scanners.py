@@ -168,6 +168,19 @@ async def run_scanner(
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
 
+def _scanner_timeout(scanner: str, default: int = 600) -> int:
+    """Resolve a scanner-specific subprocess timeout from `<SCANNER>_TIMEOUT_SECONDS`,
+    falling back to *default* when unset, non-numeric, or non-positive."""
+    raw = os.environ.get(f"{scanner.upper()}_TIMEOUT_SECONDS")
+    if not raw:
+        return default
+    try:
+        val = int(raw)
+    except ValueError:
+        return default
+    return val if val > 0 else default
+
+
 async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, int]:
     """Run a subprocess command and return stdout, stderr, returncode."""
     try:
@@ -772,7 +785,8 @@ async def _run_devskim(
             "--ignore-globs", "**/node_modules/**,**/.git/**,**/bin/**,**/obj/**,**/dist/**,**/build/**",
         ]
 
-        _, stderr, rc = await _run_command(cmd)
+        timeout = _scanner_timeout("devskim", default=1500)
+        _, stderr, rc = await _run_command(cmd, timeout=timeout)
         # DevSkim exit codes: 0 = no findings, 1 = findings present, other = error
         if rc not in (0, 1):
             return ScannerResult(

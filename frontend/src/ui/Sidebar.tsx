@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox } from "react-icons/lu";
+import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart } from "react-icons/lu";
 import { useEffect, useMemo, useState } from "react";
 
 import { version } from "../../package.json";
@@ -20,7 +20,11 @@ type SidebarProps = {
 type NavItem = { to: string; label: string; icon: typeof LuLayoutDashboard };
 type NavSection = { titleEn: string; titleDe: string; items: NavItem[] };
 
-const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[] => [
+const buildNavSections = (
+  aiEnabled: boolean,
+  scaEnabled: boolean,
+  supportPageEnabled: boolean,
+): NavSection[] => [
   {
     titleEn: "", titleDe: "",
     items: [{ to: "/", label: "Dashboard", icon: LuLayoutDashboard }],
@@ -66,6 +70,12 @@ const buildNavSections = (aiEnabled: boolean, scaEnabled: boolean): NavSection[]
       { to: "/info/mcp", label: "MCP", icon: LuBookOpen },
     ],
   }] : []),
+  ...(supportPageEnabled ? [{
+    titleEn: "Support", titleDe: "Unterstützung",
+    items: [
+      { to: "/support", label: "Support", icon: LuHeart },
+    ],
+  }] : []),
 ];
 
 export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileMenuClose }: SidebarProps) => {
@@ -75,10 +85,10 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
   const { jobs } = useSSE();
-  const { aiEnabled, scaEnabled } = useServerConfig();
+  const { aiEnabled, scaEnabled, supportPageEnabled } = useServerConfig();
   const navSections = useMemo(
-    () => buildNavSections(aiEnabled, scaEnabled),
-    [aiEnabled, scaEnabled]
+    () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled),
+    [aiEnabled, scaEnabled, supportPageEnabled]
   );
 
   const aiRunning = useMemo(() => {
@@ -133,6 +143,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/info/api": "API",
     "/info/cicd": "CI/CD",
     "/info/mcp": "MCP",
+    "/support": "Unterstützung",
   };
 
   const localizedSections = useMemo(

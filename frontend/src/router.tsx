@@ -17,6 +17,7 @@ import { MalwareFeedPage } from "./views/MalwareFeedPage";
 import { CiCdInfoPage } from "./views/CiCdInfoPage";
 import { ApiInfoPage } from "./views/ApiInfoPage";
 import { McpInfoPage } from "./views/McpInfoPage";
+import { SupportPage } from "./views/SupportPage";
 
 export const router = createBrowserRouter([
   {
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
       { path: "info/cicd", element: <CiCdInfoPage /> },
       { path: "info/api", element: <ApiInfoPage /> },
       { path: "info/mcp", element: <McpInfoPage /> },
+      { path: "support", element: <SupportPage /> },
       { path: "cicd", element: <Navigate to="/info/cicd" replace /> },
       { path: "api-docs", element: <Navigate to="/info/api" replace /> },
       { path: "mcp-info", element: <Navigate to="/info/mcp" replace /> },

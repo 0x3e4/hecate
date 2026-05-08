@@ -12,6 +12,9 @@ class PublicConfigResponse(BaseModel):
     sca_auto_scan_enabled: bool = Field(
         alias="scaAutoScanEnabled", serialization_alias="scaAutoScanEnabled"
     )
+    support_page_enabled: bool = Field(
+        alias="supportPageEnabled", serialization_alias="supportPageEnabled"
+    )
     model_config = {"populate_by_name": True}
 
 
@@ -31,4 +34,5 @@ async def get_public_config() -> PublicConfigResponse:
         ai_enabled=ai_enabled,
         sca_enabled=settings.sca_enabled,
         sca_auto_scan_enabled=settings.sca_auto_scan_enabled,
+        support_page_enabled=settings.support_page_enabled,
     )
