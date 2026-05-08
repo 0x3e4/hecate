@@ -104,6 +104,10 @@ class ScanDocument(BaseModel):
         default=None,
         description="Latest Cross-CVE Attack Chain narrative (mirror of attack_chains[-1])",
     )
+    scanner_breakdown: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Per-scanner audit: one entry per requested scanner with findings counts, severity buckets, SBOM rows, and error message",
+    )
 
 
 class ScanFindingDocument(BaseModel):

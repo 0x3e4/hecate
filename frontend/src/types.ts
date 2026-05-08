@@ -694,6 +694,25 @@ export interface Scan {
   aiAnalyses?: ScanAiAnalysis[] | null;
   attackChain?: ScanAttackChainNarrative | null;
   attackChains?: ScanAttackChainNarrative[] | null;
+  scannerBreakdown?: ScannerBreakdownEntry[] | null;
+}
+
+export type ScannerBreakdownStatus = "ok" | "empty" | "error";
+
+export interface ScannerBreakdownEntry {
+  scanner: string;
+  status: ScannerBreakdownStatus;
+  findings_total: number;
+  by_severity: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    negligible: number;
+    unknown: number;
+  };
+  sbom_components: number;
+  error_message?: string | null;
 }
 
 export interface ScanListResponse {
@@ -709,6 +728,10 @@ export interface ScannerStats {
   tmpDiskFreeBytes: number;
   activeScans: number;
   error?: string;
+  /** Backend served the last-good response because the live /stats call timed out. */
+  stale?: boolean;
+  /** Age of the cached value in seconds (only set when stale=true). */
+  staleSeconds?: number;
 }
 
 export interface ScanFinding {

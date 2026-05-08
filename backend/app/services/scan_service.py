@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -71,6 +72,11 @@ class ScanService:
         self.sbom_repo = sbom_repo
         self.layer_repo = layer_repo
         self.audit_service = audit_service
+        # Last successful /stats response, kept so the live charts can show
+        # cached values when the sidecar is briefly too saturated to respond
+        # within the per-request timeout.
+        self._last_stats: dict[str, Any] | None = None
+        self._last_stats_at: float | None = None
 
     async def backfill_target_scan_state(self) -> int:
         """One-time migration: populate denormalized scan state on all targets."""
@@ -513,6 +519,16 @@ class ScanService:
         unique_component_keys: set[tuple[str, str]] = set()
         errors: list[str] = []
         scan_metadata: dict[str, Any] = {}
+        # Per-scanner SBOM row count (raw, not deduped — the breakdown shows
+        # how much each scanner contributed before cross-scanner merge).
+        scanner_sbom_rows: dict[str, int] = {s: 0 for s in scanners}
+        # Per-scanner error message; concatenated with "; " when multiple.
+        scanner_errors: dict[str, str] = {}
+
+        def _record_scanner_error(scanner_name: str, message: str) -> None:
+            errors.append(f"{scanner_name}: {message}")
+            prev = scanner_errors.get(scanner_name)
+            scanner_errors[scanner_name] = f"{prev}; {message}" if prev else message
 
         async def _run_single_scanner(scanner_name: str) -> None:
             """Run one scanner via the sidecar, parse & store results immediately."""
@@ -527,7 +543,7 @@ class ScanService:
                 if metadata and not scan_metadata:
                     scan_metadata = metadata
             except Exception as exc:
-                errors.append(f"{scanner_name}: {exc}")
+                _record_scanner_error(scanner_name, str(exc))
                 log.warning("scan_service.scanner_call_failed", scanner=scanner_name, error=str(exc))
                 return
 
@@ -536,7 +552,7 @@ class ScanService:
                 scanner_error = result.get("error")
 
                 if scanner_error:
-                    errors.append(f"{scanner_name}: {scanner_error}")
+                    _record_scanner_error(scanner_name, str(scanner_error))
                     continue
                 if not report:
                     continue
@@ -578,7 +594,7 @@ class ScanService:
                         continue
                 except Exception as exc:
                     log.warning("scan_service.parse_failed", scanner=scanner_name, error=str(exc))
-                    errors.append(f"{scanner_name} parse error: {exc}")
+                    _record_scanner_error(scanner_name, f"parse error: {exc}")
                     continue
 
                 # Store this scanner's results immediately so the frontend can see them
@@ -588,6 +604,7 @@ class ScanService:
                 if components:
                     await self.sbom_repo.bulk_insert(components)
                     all_components.extend(components)
+                    scanner_sbom_rows[scanner_name] = scanner_sbom_rows.get(scanner_name, 0) + len(components)
                     for comp in components:
                         unique_component_keys.add((comp.name, comp.version))
 
@@ -629,12 +646,46 @@ class ScanService:
             sbom_component_count=sbom_component_count,
             error=error_text,
         )
+        # Build per-scanner breakdown (after severity override so counts reflect
+        # the final values shown to the user). Includes scanners that returned
+        # nothing so the UI table has a row per requested scanner.
+        scanner_breakdown: list[dict[str, Any]] = []
+        for s in scanners:
+            sev_buckets = {"critical": 0, "high": 0, "medium": 0, "low": 0, "negligible": 0, "unknown": 0}
+            findings_total = 0
+            for f in all_findings:
+                if f.scanner != s:
+                    continue
+                findings_total += 1
+                sev = (f.severity or "unknown").lower()
+                if sev in sev_buckets:
+                    sev_buckets[sev] += 1
+                else:
+                    sev_buckets["unknown"] += 1
+            sbom_rows = scanner_sbom_rows.get(s, 0)
+            err_msg = scanner_errors.get(s)
+            if err_msg:
+                status_label = "error"
+            elif findings_total or sbom_rows:
+                status_label = "ok"
+            else:
+                status_label = "empty"
+            scanner_breakdown.append({
+                "scanner": s,
+                "status": status_label,
+                "findings_total": findings_total,
+                "by_severity": sev_buckets,
+                "sbom_components": sbom_rows,
+                "error_message": err_msg,
+            })
+
         # Persist scanner-reported metadata (commit SHA, image digest)
         meta_update: dict[str, Any] = {
             "summary_version": 4,
             "severity_overridden": True,
             "sbom_row_count": len(all_components),
             "sbom_count_version": 2,
+            "scanner_breakdown": scanner_breakdown,
         }
         if scan_metadata.get("commit_sha"):
             meta_update["commit_sha"] = scan_metadata["commit_sha"]
@@ -1640,20 +1691,35 @@ class ScanService:
         return True
 
     async def get_scanner_stats(self) -> dict[str, Any]:
-        """Fetch resource stats from the scanner sidecar."""
+        """Fetch resource stats from the scanner sidecar.
+
+        On transient failure (timeout / connection error) returns the
+        last-good response with ``stale=True`` and ``staleSeconds`` instead
+        of an error envelope, so the frontend live charts keep streaming
+        while the sidecar recovers from saturation. Falls through to the
+        existing ``{"error": ...}`` shape only when there is no fresh-enough
+        cached value.
+        """
+        def _camel(s: str) -> str:
+            parts = s.split("_")
+            return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
         try:
             url = f"{settings.sca_scanner_url}/stats"
-            async with httpx.AsyncClient(timeout=5) as client:
+            async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
                 data = resp.json()
-                # Convert snake_case to camelCase for frontend
-                def _camel(s: str) -> str:
-                    parts = s.split("_")
-                    return parts[0] + "".join(p.capitalize() for p in parts[1:])
-                return {_camel(k): v for k, v in data.items()}
+                fresh = {_camel(k): v for k, v in data.items()}
+                self._last_stats = fresh
+                self._last_stats_at = time.monotonic()
+                return fresh
         except Exception as exc:
             log.warning("scan_service.scanner_stats_failed", error=str(exc))
+            if self._last_stats is not None and self._last_stats_at is not None:
+                age = time.monotonic() - self._last_stats_at
+                if age < 60:
+                    return {**self._last_stats, "stale": True, "staleSeconds": int(age)}
             return {"error": str(exc)}
 
     async def check_target_changed(self, target: str, target_type: str, target_doc: dict[str, Any]) -> bool:
@@ -1675,7 +1741,7 @@ class ScanService:
         check_error: str | None = None
         try:
             url = f"{settings.sca_scanner_url}/check"
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=90) as client:
                 resp = await client.post(url, json={"target": target, "type": target_type})
                 resp.raise_for_status()
                 data = resp.json()

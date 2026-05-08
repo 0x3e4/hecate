@@ -37,9 +37,10 @@ import type {
   ScanLayerAnalysis,
   SbomComponent,
   LicenseComplianceResult,
+  ScannerBreakdownEntry,
 } from "../types";
 
-type Tab = "findings" | "sbom" | "history" | "ai-analysis" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance" | "attack-chain";
+type Tab = "findings" | "sbom" | "history" | "ai-analysis" | "compare" | "alerts" | "bestpractices" | "layers" | "sast" | "secrets" | "license-compliance" | "attack-chain" | "scanner-breakdown";
 
 /** Format bytes to human-readable string */
 function formatBytes(bytes: number): string {
@@ -983,6 +984,14 @@ export const ScanDetailPage = () => {
               {t("Licenses", "Lizenzen")}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setTab("scanner-breakdown")}
+            style={tabStyle(tab === "scanner-breakdown")}
+          >
+            {t("Scanner Breakdown", "Scanner-Übersicht")}
+            <TabBadge count={scan.scanners?.length ?? 0} />
+          </button>
         </div>
 
         {tab === "findings" && (
@@ -2980,6 +2989,10 @@ export const ScanDetailPage = () => {
             )}
           </>
         )}
+
+        {tab === "scanner-breakdown" && (
+          <ScannerBreakdownPanel scan={scan} findings={findings} />
+        )}
       </section>
 
       {/* Toast notification */}
@@ -3216,6 +3229,174 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+const ScannerBreakdownPanel = ({ scan, findings }: { scan: Scan; findings: ScanFinding[] }) => {
+  const { t } = useI18n();
+
+  const SEV_KEYS = ["critical", "high", "medium", "low", "negligible", "unknown"] as const;
+  const SEV_COLOR: Record<string, string> = {
+    critical: "#ff6b6b",
+    high: "#ff922b",
+    medium: "#fcc419",
+    low: "#69db7c",
+    negligible: "rgba(255,255,255,0.55)",
+    unknown: "rgba(255,255,255,0.5)",
+  };
+
+  const persisted = scan.scannerBreakdown ?? null;
+
+  // Fallback: aggregate from in-memory findings grouped by scanner. SBOM
+  // counts are unavailable in this path (the SBOM rows don't carry a scanner
+  // field) — show "—" in those cells.
+  const fallbackErrors: Record<string, string> = useMemo(() => {
+    const out: Record<string, string> = {};
+    if (persisted) return out;
+    const raw = scan.error ?? "";
+    if (!raw) return out;
+    for (const piece of raw.split(";")) {
+      const idx = piece.indexOf(":");
+      if (idx <= 0) continue;
+      const name = piece.slice(0, idx).trim();
+      const msg = piece.slice(idx + 1).trim();
+      if (!name || !msg) continue;
+      out[name] = out[name] ? `${out[name]}; ${msg}` : msg;
+    }
+    return out;
+  }, [persisted, scan.error]);
+
+  const fallbackEntries: ScannerBreakdownEntry[] = useMemo(() => {
+    if (persisted) return [];
+    const byScanner = new Map<string, ScannerBreakdownEntry>();
+    const ensure = (name: string): ScannerBreakdownEntry => {
+      let e = byScanner.get(name);
+      if (!e) {
+        e = {
+          scanner: name,
+          status: "empty",
+          findings_total: 0,
+          by_severity: { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0 },
+          sbom_components: 0,
+          error_message: fallbackErrors[name] ?? null,
+        };
+        byScanner.set(name, e);
+      }
+      return e;
+    };
+    for (const s of (scan.scanners ?? [])) ensure(s);
+    for (const f of findings) {
+      if (!f.scanner) continue;
+      const e = ensure(f.scanner);
+      e.findings_total += 1;
+      const sev = (f.severity || "unknown").toLowerCase();
+      if (sev === "critical" || sev === "high" || sev === "medium" || sev === "low" || sev === "negligible" || sev === "unknown") {
+        e.by_severity[sev] += 1;
+      } else {
+        e.by_severity.unknown += 1;
+      }
+    }
+    for (const e of byScanner.values()) {
+      if (e.error_message) e.status = "error";
+      else if (e.findings_total > 0) e.status = "ok";
+      else e.status = "empty";
+    }
+    return Array.from(byScanner.values()).sort((a, b) => a.scanner.localeCompare(b.scanner));
+  }, [persisted, scan.scanners, findings, fallbackErrors]);
+
+  const entries = persisted ?? fallbackEntries;
+
+  if (entries.length === 0) {
+    return (
+      <div style={{ padding: "1.5rem", textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: "0.875rem" }}>
+        {t("No scanner data recorded for this scan.", "Keine Scanner-Daten zu diesem Scan gespeichert.")}
+      </div>
+    );
+  }
+
+  const statusPill = (status: ScannerBreakdownEntry["status"]) => {
+    const map: Record<ScannerBreakdownEntry["status"], { label: string; bg: string; color: string }> = {
+      ok: { label: t("ok", "ok"), bg: "rgba(105,219,124,0.15)", color: "#69db7c" },
+      empty: { label: t("empty", "leer"), bg: "rgba(252,196,25,0.12)", color: "#fcc419" },
+      error: { label: t("error", "Fehler"), bg: "rgba(255,107,107,0.15)", color: "#ff6b6b" },
+    };
+    const m = map[status];
+    return (
+      <span style={{
+        padding: "0.125rem 0.5rem", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600,
+        background: m.bg, color: m.color,
+      }}>
+        {m.label}
+      </span>
+    );
+  };
+
+  const cellStyle: React.CSSProperties = {
+    padding: "0.5rem 0.75rem", textAlign: "left", verticalAlign: "top",
+    borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: "0.8125rem",
+  };
+
+  return (
+    <div>
+      {!persisted && (
+        <div style={{ marginBottom: "0.75rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.5)" }}>
+          {t(
+            "Computed client-side from this scan’s findings. SBOM contributions are not available for older scans.",
+            "Im Browser aus den Findings dieses Scans berechnet. SBOM-Beiträge sind für ältere Scans nicht verfügbar.",
+          )}
+        </div>
+      )}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.75rem", textAlign: "left" }}>
+              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("Scanner", "Scanner")}</th>
+              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("Status", "Status")}</th>
+              <th style={{ ...cellStyle, fontWeight: 600, textAlign: "right" }}>{t("Findings", "Findings")}</th>
+              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("By severity", "Nach Schweregrad")}</th>
+              <th style={{ ...cellStyle, fontWeight: 600, textAlign: "right" }}>{t("SBOM rows", "SBOM-Einträge")}</th>
+              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("Error", "Fehler")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.scanner}>
+                <td style={{ ...cellStyle, fontWeight: 600 }}>{e.scanner}</td>
+                <td style={cellStyle}>{statusPill(e.status)}</td>
+                <td style={{ ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{e.findings_total}</td>
+                <td style={cellStyle}>
+                  {e.findings_total === 0 ? (
+                    <span style={{ color: "rgba(255,255,255,0.35)" }}>—</span>
+                  ) : (
+                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                      {SEV_KEYS.map((k) => {
+                        const n = e.by_severity[k];
+                        if (!n) return null;
+                        return (
+                          <span key={k} style={{
+                            padding: "0.125rem 0.45rem", borderRadius: "4px", fontSize: "0.7rem",
+                            background: "rgba(255,255,255,0.05)", color: SEV_COLOR[k],
+                            fontVariantNumeric: "tabular-nums",
+                          }}>
+                            {n} {k}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </td>
+                <td style={{ ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {persisted ? e.sbom_components : <span style={{ color: "rgba(255,255,255,0.35)" }}>—</span>}
+                </td>
+                <td style={{ ...cellStyle, color: "#ff8787", fontSize: "0.75rem", maxWidth: "320px", wordBreak: "break-word" }}>
+                  {e.error_message || <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

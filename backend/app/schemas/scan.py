@@ -221,6 +221,9 @@ class ScanResponse(BaseModel):
     ai_analyses: list[dict[str, Any]] | None = Field(
         default=None, alias="aiAnalyses", serialization_alias="aiAnalyses"
     )
+    scanner_breakdown: list[dict[str, Any]] | None = Field(
+        default=None, alias="scannerBreakdown", serialization_alias="scannerBreakdown"
+    )
 
     model_config = {"populate_by_name": True}
 

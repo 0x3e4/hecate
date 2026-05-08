@@ -1141,6 +1141,7 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         layer_analysis_available=doc.get("layer_analysis_available", False),
         ai_analysis=doc.get("ai_analysis"),
         ai_analyses=doc.get("ai_analyses"),
+        scanner_breakdown=doc.get("scanner_breakdown"),
     )
 
 

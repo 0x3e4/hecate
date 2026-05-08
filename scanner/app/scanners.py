@@ -284,7 +284,10 @@ async def get_remote_commit_sha(url: str) -> str | None:
 
     async def _attempt(args: list[str]) -> tuple[str, str, int]:
         cmd = ["git", *args, "ls-remote", url, "HEAD"]
-        return await _run_command(cmd, timeout=30)
+        # 20 s — must be < the backend's /check HTTP timeout so a saturated
+        # sidecar still returns a structured null fingerprint instead of
+        # making the backend ReadTimeout.
+        return await _run_command(cmd, timeout=20)
 
     stdout, stderr, rc = await _attempt(auth_args)
     if rc == 0 and stdout.strip():
@@ -310,14 +313,14 @@ async def get_image_digest(image_ref: str) -> str | None:
     """Get image digest via skopeo or docker inspect. Falls back to trivy/grype metadata."""
     # Try docker inspect first (works if image is pulled)
     docker_stdout, docker_stderr, docker_rc = await _run_command(
-        ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", image_ref], timeout=30,
+        ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", image_ref], timeout=20,
     )
     if docker_rc == 0 and docker_stdout.strip() and "@" in docker_stdout.strip():
         # Extract just the digest part: registry/name@sha256:abc... -> sha256:abc...
         return docker_stdout.strip().split("@", 1)[1]
     # Try skopeo (doesn't require pulling)
     skopeo_stdout, skopeo_stderr, skopeo_rc = await _run_command(
-        ["skopeo", "inspect", "--format", "{{.Digest}}", f"docker://{image_ref}"], timeout=30,
+        ["skopeo", "inspect", "--format", "{{.Digest}}", f"docker://{image_ref}"], timeout=20,
     )
     if skopeo_rc == 0 and skopeo_stdout.strip():
         return skopeo_stdout.strip()
