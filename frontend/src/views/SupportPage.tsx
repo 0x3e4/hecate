@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LuCoffee,
   LuExternalLink,
@@ -80,13 +80,6 @@ const unreachableBadge: React.CSSProperties = {
   background: "rgba(160, 160, 160, 0.12)",
   border: "1px solid rgba(160, 160, 160, 0.3)",
   color: "rgba(200, 200, 200)",
-};
-
-const currentVersionStyle: React.CSSProperties = {
-  fontFamily:
-    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
-  fontSize: "1.1rem",
-  fontWeight: 600,
 };
 
 export const SupportPage = () => {
@@ -293,7 +286,6 @@ export const SupportPage = () => {
     }
 
     const rows = buildRows(info);
-    const monoFamily = currentVersionStyle.fontFamily;
 
     const runningLabel = (row: Row): string => {
       if (!row.reachable) return t("(not reachable)", "(nicht erreichbar)");
@@ -310,51 +302,39 @@ export const SupportPage = () => {
 
     return (
       <>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr 1fr auto",
-            columnGap: "1.25rem",
-            rowGap: "0.5rem",
-            alignItems: "center",
-            marginTop: "0.25rem",
-          }}
-        >
-          <div className="muted" style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {t("Component", "Komponente")}
+        <div className="support-version-table">
+          <div className="support-version-table-header">
+            <div>{t("Component", "Komponente")}</div>
+            <div>{t("Running", "Laufend")}</div>
+            <div>{t("Latest on GitHub", "Aktuell auf GitHub")}</div>
+            <div aria-hidden="true" />
           </div>
-          <div className="muted" style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {t("Running", "Laufend")}
-          </div>
-          <div className="muted" style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {t("Latest on GitHub", "Aktuell auf GitHub")}
-          </div>
-          <div />
 
           {rows.map((row) => {
             const status = componentStatus(row.runningSha, row.latestSha, row.reachable);
             return (
-              <Fragment key={row.key}>
-                <div style={{ fontWeight: 600 }}>{row.label}</div>
-                <div style={{ fontFamily: monoFamily, fontSize: "0.95rem" }}>
+              <div className="support-version-row" key={row.key}>
+                <div className="support-version-name">{row.label}</div>
+                <div className="support-version-running">
+                  <span className="support-version-mobile-label">
+                    {t("Running", "Laufend")}
+                  </span>
                   {runningLabel(row)}
                 </div>
-                <div style={{ fontFamily: monoFamily, fontSize: "0.95rem" }}>
+                <div className="support-version-latest">
+                  <span className="support-version-mobile-label">
+                    {t("Latest", "Aktuell")}
+                  </span>
                   {row.packageUrl && row.latestTag ? (
-                    <a
-                      href={row.packageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "inherit", textDecoration: "underline dotted", textUnderlineOffset: "3px" }}
-                    >
+                    <a href={row.packageUrl} target="_blank" rel="noopener noreferrer">
                       {latestLabel(row)}
                     </a>
                   ) : (
                     latestLabel(row)
                   )}
                 </div>
-                <div>{renderRowStatus(status)}</div>
-              </Fragment>
+                <div className="support-version-status">{renderRowStatus(status)}</div>
+              </div>
             );
           })}
         </div>

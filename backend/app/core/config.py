@@ -196,6 +196,10 @@ class Settings(BaseSettings):
     sca_enabled: bool = True
     sca_api_key: str | None = None
     sca_scanner_url: str = "http://scanner:8080"
+    # Floor for the backend → sidecar HTTP read timeout. The per-call timeout
+    # is auto-derived as max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s) by
+    # ScanService._resolve_sidecar_http_timeout, so bumping a single scanner's
+    # subprocess budget doesn't require also bumping this in lock-step.
     sca_scanner_timeout_seconds: int = 2060
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
     sca_auto_scan_enabled: bool = False

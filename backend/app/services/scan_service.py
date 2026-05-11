@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -545,10 +546,8 @@ class ScanService:
             except httpx.TimeoutException as exc:
                 # str(httpx.ReadTimeout()) is "" — record a meaningful message
                 # so the banner doesn't render as a bare "scanner: ".
-                msg = (
-                    f"sidecar HTTP {type(exc).__name__} after "
-                    f"{settings.sca_scanner_timeout_seconds}s"
-                )
+                http_timeout = self._resolve_sidecar_http_timeout([scanner_name])
+                msg = f"sidecar HTTP {type(exc).__name__} after {http_timeout}s"
                 _record_scanner_error(scanner_name, msg)
                 log.warning("scan_service.scanner_call_timeout", scanner=scanner_name, error=msg)
                 return
@@ -2257,6 +2256,29 @@ class ScanService:
 
         log.warning("scan_service.resource_wait_timeout", scan_id=scan_id, waited_seconds=waited)
 
+    @staticmethod
+    def _resolve_sidecar_http_timeout(scanners: list[str]) -> int:
+        """Derive the HTTP read timeout for a sidecar call from per-scanner
+        env-var overrides (`<SCANNER>_TIMEOUT_SECONDS`), so bumping a single
+        scanner's subprocess budget doesn't also require bumping the global
+        `SCA_SCANNER_TIMEOUT_SECONDS`. Returns
+        `max(SCA_SCANNER_TIMEOUT_SECONDS, max(per_scanner) + 60s)`."""
+        configured: list[int] = []
+        for s in scanners:
+            raw = os.environ.get(f"{s.upper()}_TIMEOUT_SECONDS")
+            if not raw:
+                continue
+            try:
+                val = int(raw)
+            except ValueError:
+                continue
+            if val > 0:
+                configured.append(val)
+        floor = settings.sca_scanner_timeout_seconds
+        if not configured:
+            return floor
+        return max(floor, max(configured) + 60)
+
     async def _call_scanner_sidecar(
         self,
         target: str,
@@ -2273,7 +2295,8 @@ class ScanService:
         }
         if source_archive_base64:
             payload["sourceArchiveBase64"] = source_archive_base64
-        async with httpx.AsyncClient(timeout=settings.sca_scanner_timeout_seconds) as client:
+        timeout = self._resolve_sidecar_http_timeout(scanners)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
