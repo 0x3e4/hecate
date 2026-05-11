@@ -228,17 +228,23 @@ export const SupportPage = () => {
     const statuses = rows.map((r) =>
       componentStatus(r.runningSha, r.latestSha, r.reachable)
     );
-    const allReachable = statuses.every((s) => s !== "unreachable");
+    const allUpToDate = statuses.every((s) => s === "up_to_date");
     const anyOutdated = statuses.includes("build_update");
-    const anyUnknown = statuses.includes("running_unknown");
+
+    if (allUpToDate) {
+      return (
+        <span style={upToDateBadge}>
+          <LuCircleCheck aria-hidden="true" />
+          {t("All components up to date", "Alle Komponenten aktuell")}
+        </span>
+      );
+    }
     if (info.semverTag) {
+      const tag = info.semverTag.tag.replace(/^v/, "");
       return (
         <span style={updateBadge}>
           <LuTriangleAlert aria-hidden="true" />
-          {t(
-            `Release available — v${info.semverTag.tag.replace(/^v/, "")}`,
-            `Release verfügbar — v${info.semverTag.tag.replace(/^v/, "")}`
-          )}
+          {t(`Release available: ${tag}`, `Release verfügbar: ${tag}`)}
         </span>
       );
     }
@@ -251,14 +257,6 @@ export const SupportPage = () => {
             `${count} component${count === 1 ? "" : "s"} out of date`,
             `${count} Komponente${count === 1 ? "" : "n"} veraltet`
           )}
-        </span>
-      );
-    }
-    if (allReachable && !anyUnknown) {
-      return (
-        <span style={upToDateBadge}>
-          <LuCircleCheck aria-hidden="true" />
-          {t("All components up to date", "Alle Komponenten aktuell")}
         </span>
       );
     }
@@ -290,7 +288,7 @@ export const SupportPage = () => {
     const runningLabel = (row: Row): string => {
       if (!row.reachable) return t("(not reachable)", "(nicht erreichbar)");
       if (!row.runningSha) return t("(SHA unknown)", "(SHA unbekannt)");
-      const v = row.runningVersion ? `v${row.runningVersion} · ` : "";
+      const v = row.runningVersion ? `${row.runningVersion} · ` : "";
       return `${v}${row.runningSha}`;
     };
 
@@ -348,8 +346,8 @@ export const SupportPage = () => {
             >
               <LuExternalLink aria-hidden="true" />
               {t(
-                `View release notes — v${info.semverTag.tag.replace(/^v/, "")}`,
-                `Release-Notes ansehen — v${info.semverTag.tag.replace(/^v/, "")}`
+                `Release notes for ${info.semverTag.tag.replace(/^v/, "")}`,
+                `Release-Notes für ${info.semverTag.tag.replace(/^v/, "")}`
               )}
             </a>
           </p>
@@ -369,44 +367,6 @@ export const SupportPage = () => {
   return (
     <div className="page support-page">
       <section className="card">
-        <h2>
-          <LuHeart aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "0.4rem", color: KOFI_RED }} />
-          {t("Support Hecate", "Hecate unterstützen")}
-        </h2>
-        <p className="muted">
-          {t(
-            "Hecate is a free, self-hosted vulnerability-management platform. If it saves you time or helps keep your systems safer, please consider supporting development — it directly funds new data sources, scanner integrations, and feature work.",
-            "Hecate ist eine kostenlose, selbst gehostete Schwachstellenmanagement-Plattform. Wenn sie Ihnen Zeit spart oder Ihre Systeme sicherer macht, freuen wir uns über Ihre Unterstützung — sie fließt direkt in neue Datenquellen, Scanner-Integrationen und neue Funktionen."
-          )}
-        </p>
-        <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
-          <a href={kofiUrl} target="_blank" rel="noopener noreferrer" style={kofiStyle}>
-            <LuCoffee aria-hidden="true" />
-            {t("Donate on Ko-fi", "Auf Ko-fi spenden")}
-          </a>
-        </p>
-      </section>
-
-      <section className="card">
-        <h2>
-          <LuStar aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "0.4rem", color: "#fcc419" }} />
-          {t("Star us on GitHub", "GitHub-Star vergeben")}
-        </h2>
-        <p className="muted">
-          {t(
-            "A star on GitHub helps other defenders discover Hecate and signals which features the community values. It costs nothing and takes ten seconds.",
-            "Ein Stern auf GitHub hilft anderen Verteidiger:innen, Hecate zu finden, und zeigt uns, welche Funktionen der Community wichtig sind. Es kostet nichts und dauert zehn Sekunden."
-          )}
-        </p>
-        <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
-          <a href={repoUrl} target="_blank" rel="noopener noreferrer" style={githubStyle}>
-            <LuGithub aria-hidden="true" />
-            {t("Star on GitHub", "Stern auf GitHub vergeben")}
-          </a>
-        </p>
-      </section>
-
-      <section className="card">
         <div
           style={{
             display: "flex",
@@ -421,12 +381,52 @@ export const SupportPage = () => {
         </div>
         <p className="muted" style={{ marginTop: "0.5rem" }}>
           {t(
-            "Hecate checks GitHub hourly for new version tags and rolling main-<sha> container builds. The first line below shows the running container; the second shows the newest signal upstream.",
-            "Hecate prüft stündlich auf neue Versions-Tags und auf rollende main-<sha>-Container-Builds bei GitHub. Die erste Zeile zeigt den laufenden Container; die zweite den neuesten Signalstand auf GitHub."
+            "Hourly check against GitHub for new tags and main-<sha> builds. Running here on top, latest available below.",
+            "Stündlicher GitHub-Abgleich auf neue Tags und main-<sha>-Builds. Oben: was hier läuft. Unten: was verfügbar ist."
           )}
         </p>
         {renderVersionBody()}
       </section>
+
+      <div className="support-grid">
+        <section className="card">
+          <h2>
+            <LuHeart aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "0.4rem", color: KOFI_RED }} />
+            {t("Support Hecate", "Hecate unterstützen")}
+          </h2>
+          <p className="muted">
+            {t(
+              "Hecate is a free, self-hosted vulnerability-management platform. If it saves you time or helps keep your systems safer, please consider supporting development. It directly funds new data sources, scanner integrations, and feature work.",
+              "Hecate ist eine kostenlose, selbst gehostete Schwachstellenmanagement-Plattform. Wenn sie Ihnen Zeit spart oder Ihre Systeme sicherer macht, freuen wir uns über Ihre Unterstützung. Sie fließt direkt in neue Datenquellen, Scanner-Integrationen und neue Funktionen."
+            )}
+          </p>
+          <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
+            <a href={kofiUrl} target="_blank" rel="noopener noreferrer" style={kofiStyle}>
+              <LuCoffee aria-hidden="true" />
+              {t("Donate on Ko-fi", "Auf Ko-fi spenden")}
+            </a>
+          </p>
+        </section>
+
+        <section className="card">
+          <h2>
+            <LuStar aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "0.4rem", color: "#fcc419" }} />
+            {t("Star us on GitHub", "GitHub-Star vergeben")}
+          </h2>
+          <p className="muted">
+            {t(
+              "A star on GitHub helps other defenders discover Hecate and signals which features the community values. It costs nothing and takes ten seconds.",
+              "Ein Stern auf GitHub hilft anderen Verteidiger:innen, Hecate zu finden, und zeigt uns, welche Funktionen der Community wichtig sind. Es kostet nichts und dauert zehn Sekunden."
+            )}
+          </p>
+          <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
+            <a href={repoUrl} target="_blank" rel="noopener noreferrer" style={githubStyle}>
+              <LuGithub aria-hidden="true" />
+              {t("Star on GitHub", "Stern auf GitHub vergeben")}
+            </a>
+          </p>
+        </section>
+      </div>
     </div>
   );
 };

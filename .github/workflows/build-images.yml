@@ -26,12 +26,18 @@ jobs:
           - component: backend
             context: ./backend
             target: ""
+            title: Hecate Backend
+            description: FastAPI backend — REST API, scheduler, MCP server, and 9 ingestion pipelines (NVD / EUVD / KEV / CWE / CAPEC / CPE / CIRCL / GHSA / OSV).
           - component: frontend
             context: ./frontend
             target: runtime
+            title: Hecate Frontend
+            description: React SPA — vulnerability dashboard, DQL query builder, SCA scan management, environment inventory, MCP info, served by nginx.
           - component: scanner
             context: ./scanner
             target: ""
+            title: Hecate Scanner
+            description: Scanner sidecar — Trivy, Grype, Syft, OSV Scanner, Semgrep, TruffleHog, Dockle, Dive, DevSkim plus the Hecate analyzer (35 supply-chain rules).
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,6 +64,9 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.description=${{ matrix.description }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
