@@ -4155,3 +4155,96 @@ table thead th {
   }
 }
 
+/* ─── Support page: per-component version table ───────────────────────────── */
+
+.support-version-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.support-version-table-header,
+.support-version-row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1.25rem;
+  row-gap: 0.25rem;
+  padding: 0.45rem 0;
+}
+
+.support-version-table-header {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.55rem;
+  margin-bottom: 0.15rem;
+}
+
+.support-version-name {
+  font-weight: 600;
+}
+
+.support-version-running,
+.support-version-latest {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.support-version-latest a {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.support-version-status {
+  justify-self: end;
+}
+
+.support-version-mobile-label {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .support-version-table-header {
+    display: none;
+  }
+
+  .support-version-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "name    status"
+      "running running"
+      "latest  latest";
+    column-gap: 0.6rem;
+    row-gap: 0.35rem;
+    padding: 0.7rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .support-version-row:first-of-type {
+    border-top: none;
+    padding-top: 0.25rem;
+  }
+
+  .support-version-name { grid-area: name; }
+  .support-version-running { grid-area: running; }
+  .support-version-latest { grid-area: latest; }
+  .support-version-status { grid-area: status; justify-self: end; }
+
+  .support-version-mobile-label {
+    display: inline;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.5);
+    margin-right: 0.5rem;
+    font-family: inherit;
+    font-weight: 500;
+  }
+}
+

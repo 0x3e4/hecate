@@ -420,8 +420,8 @@ Backend-side configuration of the sidecar:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SCA_SCANNER_URL` | `http://scanner:8080` | URL of the scanner sidecar |
-| `SCA_SCANNER_TIMEOUT_SECONDS` | `1560` | Backend → sidecar HTTP read timeout. Must stay above the largest scanner subprocess timeout (currently `DEVSKIM_TIMEOUT_SECONDS=1500`), otherwise `httpx.ReadTimeout` (which stringifies to `""`) replaces the structured timeout error and the scan banner shows a bare `scanner:` |
-| `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim subprocess timeout. The `<SCANNER>_TIMEOUT_SECONDS` convention works for any scanner wired through `_scanner_timeout()` in `scanner/app/scanners.py` |
+| `SCA_SCANNER_TIMEOUT_SECONDS` | `1560` | Floor for the backend → sidecar HTTP read timeout. The actual per-call timeout is `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s)`, so bumping a single scanner's subprocess budget auto-grants enough HTTP wait — no need to bump this in lock-step |
+| `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim subprocess timeout. The `<SCANNER>_TIMEOUT_SECONDS` convention works for any scanner wired through `_scanner_timeout()` in `scanner/app/scanners.py`; the backend reads the same env vars to size the sidecar HTTP timeout |
 
 ---
 
