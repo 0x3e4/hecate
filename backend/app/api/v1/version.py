@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import tomllib
 from datetime import UTC, datetime
 from importlib import metadata as importlib_metadata
 from pathlib import Path
@@ -35,9 +36,20 @@ COMPONENT_IMAGES: dict[str, str] = {
 
 CACHE_TTL_SECONDS = 3600
 SCANNER_PROBE_TIMEOUT = 3.0
-_FALLBACK_VERSION = "1.0.0"
+_FALLBACK_VERSION = "0.0.0"
 _SHORT_SHA_LEN = 7
 _BUILD_SHA_FILE = Path("/app/.build_sha")
+# `poetry install --no-root` skips registering the project as a package, so
+# importlib_metadata can't find "hecate-backend" at runtime. Carry the
+# pyproject.toml into the runtime image (see backend/Dockerfile) and read
+# the version directly. Multiple candidate paths so the same code works in
+# dev (cwd) and docker (baked at /app/pyproject.toml).
+_PYPROJECT_CANDIDATES = (
+    Path("/app/pyproject.toml"),
+    Path("/workspace/pyproject.toml"),
+    Path(__file__).resolve().parents[3] / "pyproject.toml",
+    Path("pyproject.toml"),
+)
 # Optional bind-mount targets the user can add to their docker-compose.yml so
 # the backend can self-detect its SHA when building locally (no CI build-arg
 # available). Read-only, parsed without needing a git binary.
@@ -52,7 +64,23 @@ _SEMVER_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?(?:[-+].+)?$")
 _BUILD_TAG_RE = re.compile(r"^main-([0-9a-f]{7,40})$", re.IGNORECASE)
 
 
+def _read_version_from_pyproject() -> str | None:
+    for path in _PYPROJECT_CANDIDATES:
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except (FileNotFoundError, OSError, tomllib.TOMLDecodeError):
+            continue
+        version = data.get("tool", {}).get("poetry", {}).get("version")
+        if isinstance(version, str) and version:
+            return version
+    return None
+
+
 def _read_current_version() -> str:
+    version = _read_version_from_pyproject()
+    if version:
+        return version
     try:
         return importlib_metadata.version("hecate-backend")
     except importlib_metadata.PackageNotFoundError:

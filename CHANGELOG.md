@@ -13,13 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.0.1] - 2026-05-11
+## [1.0.2] - 2026-05-11
 
 ### Added
 
 ### Changed
 
 ### Fixed
+- Running version on Support page now reflects pyproject.toml
+
+## [1.0.1] - 2026-05-11
+
+### Added
+- GHCR package descriptions for backend / frontend / scanner
+
+### Changed
+- Support page: Version section moved to top, Support + Star side-by-side
+
+### Fixed
+- Support page badge shows "Up to date" when all components match latest
 
 ## [1.0.0] - 2026-05-11
 

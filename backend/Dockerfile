@@ -32,6 +32,11 @@ WORKDIR /
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY app /app
+# Carry pyproject.toml into the runtime image so /api/v1/version can read the
+# package version directly (poetry install --no-root never registers the
+# project as a package, so importlib_metadata would fail and return the
+# hardcoded fallback).
+COPY --from=builder /workspace/pyproject.toml /app/pyproject.toml
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import tomllib
 from pathlib import Path
 
 # Configure root logger BEFORE importing modules that grab their own logger.
@@ -36,7 +37,32 @@ from app.scanners import (
 # Track active scan count
 _active_scans = 0
 
-app = FastAPI(title="Hecate Scanner Sidecar", version="1.0.0")
+
+_PYPROJECT_CANDIDATES = (
+    Path("/scanner/pyproject.toml"),
+    Path(__file__).resolve().parents[1] / "pyproject.toml",
+    Path("pyproject.toml"),
+)
+
+
+def _read_version() -> str:
+    """Read the scanner version from pyproject.toml so bump-version.sh
+    propagates to the runtime self-report (FastAPI docs + /version)."""
+    for path in _PYPROJECT_CANDIDATES:
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except (FileNotFoundError, OSError, tomllib.TOMLDecodeError):
+            continue
+        version = data.get("tool", {}).get("poetry", {}).get("version")
+        if isinstance(version, str) and version:
+            return version
+    return "0.0.0"
+
+
+_VERSION = _read_version()
+
+app = FastAPI(title="Hecate Scanner Sidecar", version=_VERSION)
 
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
 
@@ -74,7 +100,7 @@ async def version() -> dict[str, str | None]:
     """Self-report identity for the in-app Support page. Sibling of the
     backend's /api/v1/version endpoint, queried over the compose network.
     """
-    return {"buildSha": _read_build_sha(), "version": "1.0.0"}
+    return {"buildSha": _read_build_sha(), "version": _VERSION}
 
 
 def _read_int(path: str) -> int | None:
