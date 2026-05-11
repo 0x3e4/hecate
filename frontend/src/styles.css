@@ -4155,6 +4155,24 @@ table thead th {
   }
 }
 
+/* ─── Support page: 2-column row for Support + Star cards ─────────────────── */
+
+.support-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.support-grid > .card {
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .support-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ─── Support page: per-component version table ───────────────────────────── */
 
 .support-version-table {
