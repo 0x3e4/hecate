@@ -103,7 +103,7 @@ app/
 
 | Service | Responsibility |
 | --- | --- |
-| `VulnerabilityService` | Search, refresh, lookup. |
+| `VulnerabilityService` | Search, refresh, lookup. Search supports full-text / DQL **and** regex (`regexQuery` runs Lucene `regexp` over the curated `REGEX_SEARCH_FIELDS` tuple — summary, title, vendors, products, aliases, ID, versions, references, CWEs). Saved searches persist `regexQuery` + `queryMode` (`keyword` / `dql` / `regex`) so the UI can restore the mode. |
 | `CWEService` | 3-tier cache (memory → MongoDB → MITRE API). |
 | `CAPECService` | 3-tier cache + CWE→CAPEC mapping. |
 | `CPEService` | CPE catalogue. |
@@ -125,7 +125,8 @@ app/
 | `attack_chain_stages` | CWE → ATT&CK kill-chain stage map (`foothold` / `credential_access` / `priv_escalation` / `lateral_movement` / `impact`); `categorize_cve(cwes, severity)` with severity fallback. |
 | `ScanAttackChainService` | Cross-CVE attack-chain builder for the scan-detail tab. Filter + dedup findings → bulk-fetch CWEs → bucket per stage → top-5 per stage by CVSS → top-2 CAPECs per stage via `CAPECService` → `AttackPathGraph` (entry → stage anchors → CVE leaves). |
 | `EventBus` | In-memory async event bus for SSE. |
-| `NotificationService` | Apprise notifications (incl. inventory watch-rule evaluator with optional `inventory_item_ids` filter). |
+| `NotificationService` | Apprise notifications (incl. inventory watch-rule evaluator with optional `inventory_item_ids` filter, and the `sca_malware_alert` rule type fired by `ScaMalwareWatchService` for retroactive MAL-* hits). |
+| `ScaMalwareWatchService` | Continuous OSV MAL-* watcher. Streams MAL-* docs newer than its own `ingestion_state` watermark (`STATE_KEY="sca_malware_watch"`), cross-checks each (ecosystem, package, version) tuple against the SBOM of the latest completed scan per target via `ScanSbomRepository.find_scans_with_package()`, and injects synthetic findings (`scanner="mal-watch"`, `package_type="malicious-indicator"`) into the existing scan via `ScanFindingRepository.upsert_mal_finding()` — idempotent through a partial unique index on `(scan_id, vulnerability_id, package_name, version)` filtered on `scanner == "mal-watch"`. Triggered at the tail of the OSV scheduler job and the CLI `sync-osv` path; fail-soft (errors roll back its own watermark, never OSV's). First run silently sets the watermark to `now` (anti-storm bootstrap). Emits `sca_malware_alert` SSE events per affected scan and calls `NotificationService.notify_sca_malware_alert()` for newly inserted findings only. |
 
 ### HTTP helpers
 
@@ -184,7 +185,7 @@ services/ingestion/
 | `scan_findings` | `ScanFindingDocument` | Vulnerability findings from SCA scans |
 | `scan_sbom_components` | `ScanSbomComponentDocument` | SBOM components from SCA scans (exportable as CycloneDX 1.5 / SPDX 2.3) |
 | `scan_layer_analysis` | `ScanLayerAnalysisDocument` | Image-layer analysis from Dive scans |
-| `notification_rules` | — | Notification rules (event, watch, DQL, scan, inventory) |
+| `notification_rules` | — | Notification rules (event, watch, DQL, scan, inventory, sca_malware_alert) |
 | `notification_channels` | — | Apprise channels (URL + tag) |
 | `notification_templates` | — | Title / body templates per event type |
 | `license_policies` | `LicensePolicyDocument` | License policies (allowed, denied, review-required) |

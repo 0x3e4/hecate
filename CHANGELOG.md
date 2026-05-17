@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- Documentation refresh: README CI/CD section now describes the actual GitHub Actions workflows (build-images, release) and GHCR registry; deep docs (architecture.md, backend / frontend READMEs) brought in sync with the 1.1.0 feature set
 
 ### Fixed
 

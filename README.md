@@ -1,3 +1,5 @@
+<p align="center"><img width="120" src="./frontend/public/logo.png" alt="Hecate logo" /></p>
+
 # Hecate
 
 > Vulnerability management platform that aggregates, normalises, enriches, and analyses security advisories — and actively scans container images and source repositories (SCA).
@@ -155,7 +157,7 @@ flowchart TB
 | --- | --- |
 | **9-source ingestion** | EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV — normalised into a single schema with priority-gated upserts and a 3-tier cache. |
 | **Active SCA scanning** | 10 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, DevSkim) for container images and source repos. |
-| **Supply-chain malware detection** | 35 heuristic rules informed by real attacks (Shai-Hulud, LiteLLM, Trivy v0.69.4, Glassworm, Telnyx, Axios, …). |
+| **Supply-chain malware detection** | 35 heuristic rules informed by real attacks (Shai-Hulud, LiteLLM, Trivy v0.69.4, Glassworm, Telnyx, Axios, …) plus a continuous OSV MAL-* watcher that retroactively injects findings into the latest scan of every affected target. |
 | **Provenance verification** | npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker — Sigstore, PEP 740, Go sumdb, Cosign. |
 | **Attack-path graph** | Per-CVE deterministic Mermaid graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) with optional AI narrative. |
 | **Cross-CVE attack chain** | Per-scan ATT&CK kill-chain narrative bucketing all findings into Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact. |
@@ -174,7 +176,7 @@ flowchart TB
 ├── frontend/             React 19 SPA
 ├── scanner/              Hardened scanner sidecar (10 scanners)
 ├── docs/                 Architecture + design notes
-├── .gitea/workflows/     CI (build · Hecate scan · SonarQube)
+├── .github/workflows/    GitHub Actions (build-images · release)
 ├── .env.example          Environment-variable template (~104 vars)
 └── docker-compose.yml.example
 ```
@@ -245,10 +247,11 @@ scanner/
 - **Provenance verification** across 8 ecosystems.
 - **Best-practice + layer analysis** for container images (Dockle + Dive, opt-in).
 - **Deduplication** of multi-scanner results, severity summaries dedup by CVE-ID.
+- **Continuous MAL-\* watcher** cross-checks newly-arrived OSV MAL-* records against the SBOM of the most recent completed scan per target and injects synthetic findings (`scanner=mal-watch`, `package_type=malicious-indicator`) into the existing scan — surfaces in the Findings and Security Alerts tabs without a re-scan. Hooks into the OSV scheduler tick and the CLI `sync-osv` path; emits the `sca_malware_alert` SSE event and fires the matching notification rules for newly inserted findings only.
 
 ### Search & analysis
 
-- **OpenSearch full-text** with DQL (Domain-Specific Query Language) and relevance ranking.
+- **OpenSearch full-text** with DQL (Domain-Specific Query Language) and relevance ranking, plus a **regex search mode** (`regexQuery` parameter) that runs Lucene `regexp` patterns over a curated field set (summary, title, vendors, products, aliases, ID, versions, references, CWEs).
 - **AI assessments** via OpenAI (Responses API + reasoning + web search), Anthropic, Google Gemini, or any OpenAI-compatible endpoint (Ollama, vLLM, OpenRouter, LocalAI, LM Studio).
 - **Attack-path graph** rendered with Mermaid: deterministic structural layer plus optional AI narrative.
 - **Cross-CVE attack chain** synthesises every finding of a scan into a multi-stage ATT&CK story.
@@ -278,7 +281,7 @@ scanner/
 
 - Apprise REST-API integration with bundled Docker sidecar or external service.
 - Channel routing via Apprise tags (Slack, Discord, email, Telegram, Signal, webhooks, …).
-- **Rule types**: `event`, `saved_search`, `vendor`, `product`, `dql`, `scan`, `inventory`.
+- **Rule types**: `event`, `saved_search`, `vendor`, `product`, `dql`, `scan`, `inventory`, `sca_malware_alert` (retroactive MAL-* hits injected by the continuous watcher).
 - Customisable title and body templates per event with `{variable}` and `{#each list}{/each}` loops.
 - Watch rules evaluated after every ingestion with concurrency-safe compare-and-set claim.
 - Fire-and-forget: notification failures never break primary workflows.
@@ -354,7 +357,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 <details>
 <summary><strong>Vulnerabilities</strong></summary>
 
-- `POST /api/v1/vulnerabilities/search` — full-text search with DQL, filters, pagination
+- `POST /api/v1/vulnerabilities/search` — full-text search with DQL, regex (`regexQuery`), filters, pagination. `regexQuery` runs OpenSearch `regexp` over a curated field set (summary / title / vendors / products / aliases / ID / versions / references / CWEs). Saved searches additionally persist `regexQuery` + `queryMode` (`keyword` | `dql` | `regex`) so the UI can restore the originating mode.
 - `GET /api/v1/vulnerabilities/{id}` — fetch a single vulnerability
 - `POST /api/v1/vulnerabilities/lookup` — lookup with auto-sync
 - `POST /api/v1/vulnerabilities/refresh` — manual refresh of individual IDs
@@ -401,7 +404,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `POST /api/v1/scans` — submit a scan (CI/CD; API key required)
 - `POST /api/v1/scans/manual` — manual scan from the frontend
 - `GET  /api/v1/scans/targets` — list scan targets
-- `POST /api/v1/scans/targets/{id}/check` — force a `/check` probe against the scanner sidecar (image digest / commit SHA), persist `lastCheck*` fields, return the updated target. Does not trigger a scan; powers the clickable verdict pill in the auto-scan diagnostics table.
+- `POST /api/v1/scans/targets/{id}/check` — force a `/check` probe against the scanner sidecar (image digest / commit SHA), persist `lastCheck*` fields (incl. `lastCheckError` populated from the underlying `git ls-remote` / `skopeo inspect` failure for operator visibility), return the updated target. Does not trigger a scan; powers the clickable verdict pill in the auto-scan diagnostics table. The earlier active-scan short-circuit was removed — `/check` is network-bound, not CPU-bound, so it now runs even while other scans are in flight instead of mislabelling unaffected targets `check_failed_skipped` every tick.
 - `GET  /api/v1/scans` — list scans
 - `GET  /api/v1/scans/{scanId}` — scan details
 - `GET  /api/v1/scans/{scanId}/findings` — findings of a scan
@@ -589,10 +592,10 @@ Everything is driven through environment variables — see [`.env.example`](.env
 
 ## CI/CD
 
-The Gitea workflow [`.gitea/workflows/ci.yml`](.gitea/workflows/ci.yml) uses the public [Hecate Scan Action](https://github.com/0x3e4/hecate-scan-action) (`0x3e4/hecate-scan-action@v1`):
+GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 
-- **`ci.yml`** — SonarQube code analysis, Docker image build + push, Hecate security scan (images on `main`, source repos on PRs), SonarQube findings upload.
-- **Hecate Scan Action** — reusable composite action for GitHub / Gitea Actions: scan submission, polling, quality gates, SonarQube export. Source lives in [`0x3e4/hecate-scan-action`](https://github.com/0x3e4/hecate-scan-action).
+- **[`build-images.yml`](.github/workflows/build-images.yml)** — matrix build of the three container images (backend, frontend, scanner) on every push to `main` and on semver tags (`X.Y.Z*`). Pushes to GHCR (`ghcr.io/<owner>/hecate-{backend,frontend,scanner}`) with `latest`, `main-<sha>`, and semver tags; uses GitHub Actions cache (per-component scope). The short commit SHA is injected as the `HECATE_BUILD_SHA` build arg so the running container can report its build identity via `/api/v1/version` (used by the in-app Support page to detect newer `main-<sha>` images).
+- **[`release.yml`](.github/workflows/release.yml)** — on semver tag push extracts the matching section from [`CHANGELOG.md`](CHANGELOG.md) and creates a GitHub Release; the pre-release flag is set automatically when the tag contains a `-`.
 
 ---
 
@@ -610,7 +613,7 @@ The Gitea workflow [`.gitea/workflows/ci.yml`](.gitea/workflows/ci.yml) uses the
 | Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 8 runtime), Skopeo, FastAPI |
 | Notifications | Apprise (caronc/apprise) |
 | MCP server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
-| CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |
+| CI/CD | GitHub Actions, GitHub Container Registry (GHCR) |
 
 ---
 
