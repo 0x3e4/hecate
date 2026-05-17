@@ -24,6 +24,7 @@ from app.services.cwe_service import get_cwe_service
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.services.event_bus import publish_new_vulnerabilities
 from app.services.notification_service import get_notification_service
+from app.services.sca_malware_watch_service import get_sca_malware_watch_service
 from app.services.scan_service import get_scan_service
 
 log = structlog.get_logger()
@@ -768,12 +769,31 @@ async def _execute_osv_sync(*, initial_sync: bool) -> None:
         log.info(event, **result)
         await _notify_new_vulnerabilities("OSV", result.get("created", 0))
         await _evaluate_watch_rules_after_pipeline("OSV", pipeline_started_at)
+        await _run_sca_malware_watch(pipeline_started_at)
     except Exception as exc:  # noqa: BLE001
         event = "scheduler.osv_sync_failed" if not initial_sync else "scheduler.osv_initial_sync_failed"
         log.exception(event, error=str(exc))
         await _notify_sync_failed("osv_sync", str(exc))
     finally:
         await pipeline.close()
+
+
+async def _run_sca_malware_watch(_pipeline_started_at: datetime) -> None:
+    """Cross-check newly arrived MAL-* records against existing SCA scan SBOMs.
+
+    Fail-soft: errors here must not bubble up — the OSV pipeline already
+    committed its state. The watcher tracks its own watermark in
+    ``ingestion_state`` independently of the pipeline timestamps, so a
+    single failed run doesn't lose records (the next run picks up from
+    the previous successful watermark, not from this OSV run's start time).
+    """
+    try:
+        watcher = await get_sca_malware_watch_service()
+        # ``since=None`` → use the watcher's own watermark. Bootstrap path
+        # silently seeds on the first call after deploy.
+        await watcher.process_new_mal_records()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("sca_malware_watch.run_failed", error=str(exc), exc_info=True)
 
 
 async def _scheduled_osv_full_sync() -> None:

@@ -57,5 +57,6 @@ class CheckResponse(BaseModel):
     type: str
     current_digest: str | None = None
     current_commit_sha: str | None = None
+    error: str | None = None
 
 

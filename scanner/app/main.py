@@ -161,26 +161,26 @@ async def stats() -> StatsResponse:
 
 @app.post("/check", response_model=CheckResponse)
 async def check(request: CheckRequest) -> CheckResponse:
-    """Lightweight fingerprint check — returns current digest/commit without scanning."""
-    # Short-circuit when scans are saturating the host: spawning git ls-remote
-    # or skopeo inspect on a CPU-pegged container can take >60 s, which the
-    # backend's HTTP client interprets as ReadTimeout. Returning a null
-    # fingerprint lets the backend fall back to the stored value
-    # (verdict=check_failed_skipped) — exactly the "rescan only when changed"
-    # behaviour we want under load.
-    try:
-        max_active = int(os.environ.get("SCANNER_MAX_CONCURRENT_SCANS", "2"))
-    except ValueError:
-        max_active = 2
-    if _active_scans >= max_active:
-        return CheckResponse(target=request.target, type=request.type)
+    """Lightweight fingerprint check — returns current digest/commit without scanning.
 
+    Runs concurrently with in-flight scans: the probes are network-bound
+    (git ls-remote / skopeo inspect, both 20 s subprocess-capped) and use
+    negligible CPU, so gating them on scan concurrency caused every target
+    past the first two to land in the DB as a spurious check_failed_skipped
+    each auto-scan tick.
+    """
     if request.type == "container_image":
-        digest = await get_image_digest(request.target)
-        return CheckResponse(target=request.target, type=request.type, current_digest=digest)
+        digest, error = await get_image_digest(request.target)
+        return CheckResponse(
+            target=request.target, type=request.type,
+            current_digest=digest, error=error,
+        )
     elif request.type == "source_repo":
-        sha = await get_remote_commit_sha(request.target)
-        return CheckResponse(target=request.target, type=request.type, current_commit_sha=sha)
+        sha, error = await get_remote_commit_sha(request.target)
+        return CheckResponse(
+            target=request.target, type=request.type,
+            current_commit_sha=sha, error=error,
+        )
     else:
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
@@ -220,9 +220,9 @@ async def scan(request: ScanRequest) -> ScanResponse:
             if source_dir:
                 metadata.commit_sha = await get_git_commit_sha(source_dir)
             else:
-                metadata.commit_sha = await get_remote_commit_sha(request.target)
+                metadata.commit_sha, _ = await get_remote_commit_sha(request.target)
         elif request.type == "container_image":
-            metadata.image_digest = await get_image_digest(request.target)
+            metadata.image_digest, _ = await get_image_digest(request.target)
     finally:
         _active_scans = max(0, _active_scans - 1)
         if source_dir:

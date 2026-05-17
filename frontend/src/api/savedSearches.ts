@@ -1,10 +1,12 @@
-import type { SavedSearch } from "../types";
+import type { SavedSearch, SavedSearchQueryMode } from "../types";
 import { api } from "./client";
 
 export interface SavedSearchInput {
   name: string;
   queryParams: string;
   dqlQuery?: string | null;
+  regexQuery?: string | null;
+  queryMode?: SavedSearchQueryMode | null;
 }
 
 export const listSavedSearches = async (): Promise<SavedSearch[]> => {

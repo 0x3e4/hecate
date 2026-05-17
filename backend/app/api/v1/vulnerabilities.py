@@ -258,6 +258,16 @@ async def list_vulnerabilities(
         alias="dqlQuery",
         description="Raw OpenSearch query (DQL syntax). Overrides the keyword search when present.",
     ),
+    regex: str | None = Query(
+        default=None,
+        alias="regexQuery",
+        description=(
+            "Regex pattern (Lucene regex syntax) applied to a curated set of content "
+            "fields (summary, title, vendors, products, references, aliases, identifiers, "
+            "versions, CWEs). Overrides the keyword search; ignored if dqlQuery is also present."
+        ),
+        max_length=500,
+    ),
     vendorFilters: list[str] = Query(default_factory=list),
     productFilters: list[str] = Query(default_factory=list),
     vendorSlugs: list[str] = Query(default_factory=list),
@@ -319,6 +329,7 @@ async def list_vulnerabilities(
     query = VulnerabilityQuery(
         searchTerm=search,
         dqlQuery=dql,
+        regexQuery=regex,
         vendorFilters=vendorFilters,
         productFilters=productFilters,
         vendorSlugs=vendorSlugs,

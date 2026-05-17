@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.1.0] - 2026-05-17
+
+### Added
+- Continuous MAL-* watcher cross-checks new malware against existing SCA scans
+- Regex search mode on the Vulnerabilities page and saved searches
+- TruffleHog 3.95.3 (was 3.95.2)
+
+### Changed
+- `/check` probe now runs in parallel with scans (no more spurious skips under load)
+
+### Fixed
+- Surface real `/check` error (auth/DNS/TLS/timeout) on the target diagnostics row
+
 ## [1.0.2] - 2026-05-11
 
 ### Added

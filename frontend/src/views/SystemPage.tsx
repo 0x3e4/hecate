@@ -347,8 +347,14 @@ export const SystemPage = () => {
         vendorSlug: formType === "vendor" ? formVendorSlug || null : null,
         productSlug: formType === "product" ? formProductSlug || null : null,
         dqlQuery: formType === "dql" ? formDqlQuery || null : null,
-        scanSeverityThreshold: formType === "scan" ? formScanSeverityThreshold || null : null,
-        scanTargetFilter: formType === "scan" ? formScanTargetFilter || null : null,
+        scanSeverityThreshold:
+          formType === "scan" || formType === "sca_malware_alert"
+            ? formScanSeverityThreshold || null
+            : null,
+        scanTargetFilter:
+          formType === "scan" || formType === "sca_malware_alert"
+            ? formScanTargetFilter || null
+            : null,
         inventoryItemIds: formType === "inventory" ? (formInventoryItemIds.length ? formInventoryItemIds : null) : null,
       };
       if (editingRule) {
@@ -419,6 +425,7 @@ export const SystemPage = () => {
       case "dql": return t("DQL Query", "DQL-Abfrage");
       case "scan": return t("SCA Scan", "SCA-Scan");
       case "inventory": return t("Inventory", "Inventar");
+      case "sca_malware_alert": return t("SCA Malware Alert", "SCA-Malware-Alarm");
     }
   };
 
@@ -441,6 +448,12 @@ export const SystemPage = () => {
         if (rule.scanTargetFilter) parts.push(rule.scanTargetFilter);
         return parts.join(" · ") || t("All scans", "Alle Scans");
       }
+      case "sca_malware_alert": {
+        const parts: string[] = [];
+        if (rule.scanSeverityThreshold) parts.push(`>= ${rule.scanSeverityThreshold}`);
+        if (rule.scanTargetFilter) parts.push(rule.scanTargetFilter);
+        return parts.join(" · ") || t("All targets", "Alle Ziele");
+      }
       case "inventory": {
         const ids = rule.inventoryItemIds || [];
         if (ids.length === 0) return t("All inventory items", "Alle Inventar-Einträge");
@@ -458,6 +471,7 @@ export const SystemPage = () => {
     { value: "sync_failed", label: "Sync Failed" },
     { value: "watch_rule_match", label: "Watch Rule Match" },
     { value: "inventory_match", label: "Inventory Match" },
+    { value: "sca_malware_alert", label: "SCA Malware Alert" },
   ];
 
   const TEMPLATE_PLACEHOLDERS: Record<NotificationEventKey, { scalars: string; loops?: { label: string; fields: string }[] }> = {
@@ -491,6 +505,12 @@ export const SystemPage = () => {
         { label: "affected_items", fields: "{id}, {name}, {version}, {deployment}, {environment}, {instanceCount}, {owner}" },
       ],
     },
+    sca_malware_alert: {
+      scalars: "{icon}, {target}, {scan_id}, {mal_count}, {noun}, {packages_list}, {time}",
+      loops: [
+        { label: "malware", fields: "{mal_id}, {package}, {version}, {ecosystem}, {severity}, {title}" },
+      ],
+    },
   };
 
   const DEFAULT_TEMPLATES: Record<NotificationEventKey, { title: string; body: string }> = {
@@ -517,6 +537,10 @@ export const SystemPage = () => {
     inventory_match: {
       title: "{icon} Hecate — {count} inventory-affecting {noun}: {rule_name}",
       body: "Rule: {rule_name}\nNew vulnerabilities affecting your inventory: {count}\nInventory items impacted: {affected_item_count} ({total_instances} instances)\nVulnerabilities: {vulnerabilities_list}\nTime: {time}",
+    },
+    sca_malware_alert: {
+      title: "{icon} Hecate — {mal_count} new MAL-* {noun} on {target}",
+      body: "Target: {target}\nScan: {scan_id}\nNew MAL-* findings: {mal_count}\nPackages: {packages_list}\nTime: {time}",
     },
   };
 
@@ -1578,6 +1602,7 @@ export const SystemPage = () => {
                     <option value="dql">{t("DQL Query", "DQL-Abfrage")}</option>
                     <option value="scan">{t("SCA Scan", "SCA-Scan")}</option>
                     <option value="inventory">{t("Inventory", "Inventar")}</option>
+                    <option value="sca_malware_alert">{t("SCA Malware Alert", "SCA-Malware-Alarm")}</option>
                   </select>
                 </div>
                 <div>
@@ -1680,7 +1705,7 @@ export const SystemPage = () => {
                 </div>
               )}
 
-              {formType === "scan" && (
+              {(formType === "scan" || formType === "sca_malware_alert") && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>

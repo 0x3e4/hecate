@@ -253,6 +253,7 @@ export interface VulnerabilityPreview {
 export interface VulnerabilityQuery {
   searchTerm: string | null;
   dqlQuery?: string | null;
+  regexQuery?: string | null;
   cpeFilters?: string[];
   vendorFilters?: string[];
   productFilters?: string[];
@@ -568,11 +569,15 @@ export interface CatalogVersionListResponse {
   items: CatalogVersion[];
 }
 
+export type SavedSearchQueryMode = "keyword" | "dql" | "regex";
+
 export interface SavedSearch {
   id: string;
   name: string;
   queryParams: string;
   dqlQuery?: string | null;
+  regexQuery?: string | null;
+  queryMode?: SavedSearchQueryMode | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -964,7 +969,7 @@ export interface NotificationTestResponse {
   message: string;
 }
 
-export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan" | "inventory";
+export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan" | "inventory" | "sca_malware_alert";
 
 export interface NotificationRule {
   id: string;
@@ -1017,7 +1022,7 @@ export interface NotificationChannelListResponse {
   items: NotificationChannel[];
 }
 
-export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match" | "inventory_match";
+export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match" | "inventory_match" | "sca_malware_alert";
 
 export interface NotificationTemplate {
   id: string;

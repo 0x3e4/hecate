@@ -43,6 +43,10 @@ async def create_saved_search(
     }
     if created.dql_query:
         result_payload["dqlQuery"] = created.dql_query
+    if created.regex_query:
+        result_payload["regexQuery"] = created.regex_query
+    if created.query_mode:
+        result_payload["queryMode"] = created.query_mode
     await audit_service.record_event(
         "saved_search_created",
         metadata=metadata or None,
@@ -79,6 +83,10 @@ async def update_saved_search(
     }
     if updated.dql_query:
         result_payload["dqlQuery"] = updated.dql_query
+    if updated.regex_query:
+        result_payload["regexQuery"] = updated.regex_query
+    if updated.query_mode:
+        result_payload["queryMode"] = updated.query_mode
     await audit_service.record_event(
         "saved_search_updated",
         metadata=metadata or None,
@@ -119,6 +127,10 @@ async def delete_saved_search(
     }
     if existing.dql_query:
         result_payload["dqlQuery"] = existing.dql_query
+    if existing.regex_query:
+        result_payload["regexQuery"] = existing.regex_query
+    if existing.query_mode:
+        result_payload["queryMode"] = existing.query_mode
 
     await audit_service.record_event(
         "saved_search_deleted",

@@ -38,7 +38,18 @@ class SavedSearchService:
         if not name:
             raise ValueError("Name must not be empty.")
 
-        document = await repository.insert(name=name, query_params=query_params, dql_query=dql_query)
+        regex_query = payload.regex_query.strip() if payload.regex_query else None
+        if regex_query == "":
+            regex_query = None
+        query_mode = _normalize_query_mode(payload.query_mode)
+
+        document = await repository.insert(
+            name=name,
+            query_params=query_params,
+            dql_query=dql_query,
+            regex_query=regex_query,
+            query_mode=query_mode,
+        )
         return self._to_schema(document)
 
     async def update_saved_search(self, search_id: str, payload: SavedSearchUpdate) -> SavedSearch | None:
@@ -58,6 +69,10 @@ class SavedSearchService:
             fields["dqlQuery"] = dql_query
         elif payload.dql_query is not None:
             fields["dqlQuery"] = payload.dql_query.strip() or None
+        if payload.regex_query is not None:
+            fields["regexQuery"] = payload.regex_query.strip() or None
+        if payload.query_mode is not None:
+            fields["queryMode"] = _normalize_query_mode(payload.query_mode)
         if not fields:
             existing = await repository.get(search_id)
             return self._to_schema(existing) if existing else None
@@ -73,6 +88,8 @@ class SavedSearchService:
     def _to_schema(self, document: dict[str, Any]) -> SavedSearch:
         query_params = document.get("queryParams") or ""
         dql_query = document.get("dqlQuery")
+        regex_query = document.get("regexQuery")
+        query_mode = _normalize_query_mode(document.get("queryMode"))
         if not query_params and dql_query:
             query_params = urlencode([("mode", "dql"), ("search", dql_query)], doseq=True)
         created_at = _normalize_datetime(
@@ -89,6 +106,8 @@ class SavedSearchService:
             "name": document.get("name", ""),
             "query_params": query_params,
             "dql_query": dql_query,
+            "regex_query": regex_query,
+            "query_mode": query_mode,
             "created_at": created_at,
             "updated_at": updated_at,
         }
@@ -121,6 +140,18 @@ def _extract_first(pairs: Iterable[tuple[str, str]], target: str) -> str | None:
     for key, value in pairs:
         if key == target:
             return value
+    return None
+
+
+_VALID_QUERY_MODES = frozenset({"keyword", "dql", "regex"})
+
+
+def _normalize_query_mode(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip().lower()
+    if cleaned in _VALID_QUERY_MODES:
+        return cleaned
     return None
 
 

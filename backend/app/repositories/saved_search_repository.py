@@ -35,12 +35,22 @@ class SavedSearchRepository:
             documents.append(document)
         return documents
 
-    async def insert(self, *, name: str, query_params: str, dql_query: str | None) -> dict[str, Any]:
+    async def insert(
+        self,
+        *,
+        name: str,
+        query_params: str,
+        dql_query: str | None,
+        regex_query: str | None = None,
+        query_mode: str | None = None,
+    ) -> dict[str, Any]:
         now = datetime.now(tz=UTC)
         payload = {
             "name": name,
             "queryParams": query_params,
             "dqlQuery": dql_query,
+            "regexQuery": regex_query,
+            "queryMode": query_mode,
             "createdAt": now,
             "updatedAt": now,
         }

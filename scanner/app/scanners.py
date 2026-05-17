@@ -306,17 +306,18 @@ async def get_git_commit_sha(repo_dir: str) -> str | None:
     return None
 
 
-async def get_remote_commit_sha(url: str) -> str | None:
+async def get_remote_commit_sha(url: str) -> tuple[str | None, str | None]:
     """Get HEAD commit SHA from a remote repo via ls-remote (no clone needed).
+
+    Returns ``(sha, None)`` on success, ``(None, sanitized_stderr)`` on
+    terminal failure. The error is surfaced to the backend's
+    last_check_error so operators see the actual reason (auth, DNS, TLS,
+    timeout) instead of a silent "no_current_fingerprint".
 
     If SCANNER_AUTH supplied credentials for the host and the authenticated
     call fails with an auth-rejection pattern, retries anonymously — a single
     stale PAT on a host with mixed public/private repos shouldn't block the
     public ones.
-
-    Logs the stderr / failure reason on terminal failure — otherwise these
-    silent failures show up to the backend as "no_current_fingerprint" with
-    no way to tell whether it's DNS, TLS, auth, or timeout.
     """
     auth_args = _git_auth_args_for(url)
 
@@ -329,7 +330,7 @@ async def get_remote_commit_sha(url: str) -> str | None:
 
     stdout, stderr, rc = await _attempt(auth_args)
     if rc == 0 and stdout.strip():
-        return stdout.strip().split()[0]
+        return stdout.strip().split()[0], None
 
     if auth_args and _looks_like_auth_failure(stderr):
         logger.warning(
@@ -338,35 +339,46 @@ async def get_remote_commit_sha(url: str) -> str | None:
         )
         stdout, stderr, rc = await _attempt([])
         if rc == 0 and stdout.strip():
-            return stdout.strip().split()[0]
+            return stdout.strip().split()[0], None
 
     logger.warning(
         "get_remote_commit_sha.failed url=%s rc=%d stdout=%r stderr=%r",
         url, rc, stdout[:200], stderr[:400],
     )
-    return None
+    return None, _sanitize_error(stderr) or f"git ls-remote exited {rc}"
 
 
-async def get_image_digest(image_ref: str) -> str | None:
-    """Get image digest via skopeo or docker inspect. Falls back to trivy/grype metadata."""
+async def get_image_digest(image_ref: str) -> tuple[str | None, str | None]:
+    """Get image digest via skopeo or docker inspect.
+
+    Returns ``(digest, None)`` on success, ``(None, sanitized_error)`` on
+    terminal failure. Prefers skopeo's stderr on the error path — it's
+    registry-level (e.g. "manifest unknown", "pinging container registry …")
+    and more actionable than docker's "no such image".
+    """
     # Try docker inspect first (works if image is pulled)
     docker_stdout, docker_stderr, docker_rc = await _run_command(
         ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", image_ref], timeout=20,
     )
     if docker_rc == 0 and docker_stdout.strip() and "@" in docker_stdout.strip():
         # Extract just the digest part: registry/name@sha256:abc... -> sha256:abc...
-        return docker_stdout.strip().split("@", 1)[1]
+        return docker_stdout.strip().split("@", 1)[1], None
     # Try skopeo (doesn't require pulling)
     skopeo_stdout, skopeo_stderr, skopeo_rc = await _run_command(
         ["skopeo", "inspect", "--format", "{{.Digest}}", f"docker://{image_ref}"], timeout=20,
     )
     if skopeo_rc == 0 and skopeo_stdout.strip():
-        return skopeo_stdout.strip()
+        return skopeo_stdout.strip(), None
     logger.warning(
         "get_image_digest.failed image=%s docker_rc=%d docker_stderr=%r skopeo_rc=%d skopeo_stderr=%r",
         image_ref, docker_rc, docker_stderr[:200], skopeo_rc, skopeo_stderr[:400],
     )
-    return None
+    error = (
+        _sanitize_error(skopeo_stderr)
+        or _sanitize_error(docker_stderr)
+        or f"skopeo rc={skopeo_rc} docker rc={docker_rc}"
+    )
+    return None, error
 
 
 def _sanitize_error(stderr: str, max_len: int = 300) -> str:
@@ -390,12 +402,21 @@ def _sanitize_error(stderr: str, max_len: int = 300) -> str:
     return first[:max_len]
 
 
-def _parse_json_output(stdout: str, scanner: str, fmt: str) -> ScannerResult:
-    """Parse JSON output from a scanner, handling errors gracefully."""
+async def _parse_json_output(stdout: str, scanner: str, fmt: str) -> ScannerResult:
+    """Parse JSON output from a scanner, handling errors gracefully.
+
+    Offloads ``json.loads`` to a worker thread because scanner reports
+    routinely reach tens of megabytes (Trivy / Grype on a fat image can
+    produce 50+ MB of JSON). Parsing that synchronously inside the asyncio
+    handler pegs the event loop for seconds at a time and starves any
+    concurrent request — most visibly the ``/check`` probe, which then
+    blows the backend's HTTP timeout despite the underlying subprocess
+    having returned in well under 20 s.
+    """
     if not stdout.strip():
         return ScannerResult(scanner=scanner, format=fmt, report={}, error="No output from scanner")
     try:
-        report = json.loads(stdout)
+        report = await asyncio.to_thread(json.loads, stdout)
         return ScannerResult(scanner=scanner, format=fmt, report=report)
     except json.JSONDecodeError as exc:
         return ScannerResult(scanner=scanner, format=fmt, report={}, error=f"Invalid JSON output: {exc}")
@@ -417,7 +438,7 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=f"Trivy failed (exit {rc}): {_sanitize_error(stderr)}")
-        return _parse_json_output(stdout, "trivy", "trivy-json")
+        return await _parse_json_output(stdout, "trivy", "trivy-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=str(exc))
     finally:
@@ -441,7 +462,7 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {_sanitize_error(stderr)}")
-        return _parse_json_output(stdout, "grype", "grype-json")
+        return await _parse_json_output(stdout, "grype", "grype-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="grype", format="grype-json", report={}, error=str(exc))
     finally:
@@ -465,7 +486,7 @@ async def _run_syft(target: str, target_type: str, source_dir: str | None = None
         stdout, stderr, rc = await _run_command(cmd)
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=f"Syft failed (exit {rc}): {_sanitize_error(stderr)}")
-        return _parse_json_output(stdout, "syft", "cyclonedx-json")
+        return await _parse_json_output(stdout, "syft", "cyclonedx-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=str(exc))
     finally:
@@ -593,7 +614,7 @@ async def _run_osv_scanner(
                 return ScannerResult(scanner="osv-scanner", format="osv-json", report={})
             if not stdout.strip():
                 return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=f"OSV Scanner failed (exit {rc}): {_sanitize_error(stderr)}")
-        return _parse_json_output(stdout, "osv-scanner", "osv-json")
+        return await _parse_json_output(stdout, "osv-scanner", "osv-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="osv-scanner", format="osv-json", report={}, error=str(exc))
     finally:
@@ -664,7 +685,7 @@ async def _run_dockle(target: str, target_type: str) -> ScannerResult:
                 scanner="dockle", format="dockle-json", report={},
                 error=f"Dockle failed (exit {rc}): {_sanitize_error(stderr)}",
             )
-        return _parse_json_output(stdout, "dockle", "dockle-json")
+        return await _parse_json_output(stdout, "dockle", "dockle-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="dockle", format="dockle-json", report={}, error=str(exc))
 
@@ -774,7 +795,7 @@ async def _run_semgrep(
                 scanner="semgrep", format="semgrep-json", report={},
                 error=f"Semgrep failed: {err_detail}",
             )
-        return _parse_json_output(stdout, "semgrep", "semgrep-json")
+        return await _parse_json_output(stdout, "semgrep", "semgrep-json")
     except RuntimeError as exc:
         return ScannerResult(scanner="semgrep", format="semgrep-json", report={}, error=str(exc))
     finally:

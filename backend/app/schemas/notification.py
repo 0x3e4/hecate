@@ -35,7 +35,7 @@ class NotificationRuleCreate(BaseModel):
     rule_type: str = Field(
         alias="ruleType",
         serialization_alias="ruleType",
-        description="event | saved_search | vendor | product | dql | scan | inventory",
+        description="event | saved_search | vendor | product | dql | scan | inventory | sca_malware_alert",
     )
     apprise_tag: str = Field(
         default="all",
@@ -211,7 +211,7 @@ class NotificationTemplateCreate(BaseModel):
         max_length=100,
         alias="eventKey",
         serialization_alias="eventKey",
-        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match, inventory_match",
+        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match, inventory_match, sca_malware_alert",
     )
     tag: str = Field(
         default="all",

@@ -35,6 +35,19 @@ class SavedSearchCreate(SavedSearchBase):
         serialization_alias="dqlQuery",
         description="Optional DQL query when the saved search was created in DQL mode.",
     )
+    regex_query: str | None = Field(
+        default=None,
+        alias="regexQuery",
+        serialization_alias="regexQuery",
+        description="Optional regex pattern when the saved search was created in regex mode.",
+        max_length=500,
+    )
+    query_mode: str | None = Field(
+        default=None,
+        alias="queryMode",
+        serialization_alias="queryMode",
+        description="Discriminator: keyword | dql | regex. Used to restore the UI mode.",
+    )
 
 
 class SavedSearchUpdate(BaseModel):
@@ -48,6 +61,17 @@ class SavedSearchUpdate(BaseModel):
         default=None,
         alias="dqlQuery",
         serialization_alias="dqlQuery",
+    )
+    regex_query: str | None = Field(
+        default=None,
+        alias="regexQuery",
+        serialization_alias="regexQuery",
+        max_length=500,
+    )
+    query_mode: str | None = Field(
+        default=None,
+        alias="queryMode",
+        serialization_alias="queryMode",
     )
 
     model_config = {"populate_by_name": True}
@@ -71,4 +95,14 @@ class SavedSearch(SavedSearchBase):
         default=None,
         alias="dqlQuery",
         serialization_alias="dqlQuery",
+    )
+    regex_query: str | None = Field(
+        default=None,
+        alias="regexQuery",
+        serialization_alias="regexQuery",
+    )
+    query_mode: str | None = Field(
+        default=None,
+        alias="queryMode",
+        serialization_alias="queryMode",
     )

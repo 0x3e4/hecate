@@ -1753,15 +1753,32 @@ class ScanService:
         data: dict[str, Any] = {}
         check_failed = False
         check_error: str | None = None
+        check_timeout_seconds = 90
         try:
             url = f"{settings.sca_scanner_url}/check"
-            async with httpx.AsyncClient(timeout=90) as client:
+            async with httpx.AsyncClient(timeout=check_timeout_seconds) as client:
                 resp = await client.post(url, json={"target": target, "type": target_type})
                 resp.raise_for_status()
                 data = resp.json()
+            # Sidecar returns error=<sanitized stderr> when the probe subprocess
+            # failed (auth rejected, registry unreachable, DNS, manifest unknown).
+            # Surface it so the Auto-scan diagnostics ERROR column shows the
+            # reason instead of "—".
+            sidecar_error = data.get("error")
+            if isinstance(sidecar_error, str) and sidecar_error:
+                check_error = sidecar_error
+        except httpx.TimeoutException as exc:
+            # str(httpx.ReadTimeout()) is the empty string, so the legacy
+            # `str(exc) or type(exc).__name__` fallback rendered as a bare
+            # "ReadTimeout" with no context. Spell out what timed out and
+            # the budget that was exceeded so operators can tell apart a
+            # sidecar hang from a quick subprocess failure at a glance.
+            check_failed = True
+            check_error = f"sidecar HTTP {type(exc).__name__} after {check_timeout_seconds}s"
+            log.warning("scan_service.change_check_failed", target=target, error=check_error)
         except Exception as exc:
             check_failed = True
-            check_error = str(exc) or type(exc).__name__
+            check_error = str(exc) or repr(exc) or type(exc).__name__
             log.warning("scan_service.change_check_failed", target=target, error=check_error)
 
         # Extract current and previous fingerprints

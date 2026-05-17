@@ -154,6 +154,8 @@ The malware detector (`scanner/app/malware_detector/`) flags potentially malicio
 
 The malware detector implements 35 detection rules across 14 categories, informed by real-world supply-chain attacks from 2020 to 2026.
 
+> **Layered with `osv-scanner` — not redundant.** The heuristics here detect **behavioural patterns** (install hooks, obfuscation, typosquatting, persistence, invisible Unicode, etc.) and catch fresh attacks **before** they receive a MAL-* identifier. `osv-scanner` runs in the same scan and queries OSV's live MAL-* feed to catch **known-malicious package+version combinations** **after** researchers have catalogued the IOC. HEC-090 is a third, separate layer: SHA-256 matching against known malicious payload **files** (not packages). Removing any one layer would create a detection gap — during Shai-Hulud V2 the worm spread to 47+ npm packages within 60 seconds, well before MAL-* identifiers existed, and only the HEC-075/076 worm rules would have flagged the live attack.
+
 | Rule ID | Name | Severity | Category | Source / attack |
 | --- | --- | --- | --- | --- |
 | HEC-001 | npm install script detected | medium | `install_hook` | — (standard heuristic) |

@@ -24,6 +24,12 @@ class ScanSbomRepository:
         await collection.create_index("scan_id")
         await collection.create_index("target_id")
         await collection.create_index("purl")
+        # Powers the SBOM × MAL-* cross-check in ScaMalwareWatchService: after
+        # every OSV pipeline run we query "any component matching this
+        # (name, version)" across the latest completed scan per target. The
+        # compound index turns that lookup into an IXSCAN of ~1 ms instead of
+        # a collection scan of ~all SBOM rows.
+        await collection.create_index([("name", 1), ("version", 1)])
         return cls(collection)
 
     async def bulk_insert(self, components: list[ScanSbomComponentDocument]) -> int:
@@ -313,6 +319,54 @@ class ScanSbomRepository:
             return out
         except PyMongoError as exc:
             log.warning("scan_sbom_repository.list_distinct_raw_licenses_failed", error=str(exc))
+            return []
+
+    async def find_scans_with_package(
+        self,
+        name: str,
+        versions: list[str],
+        scan_ids: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find SBOM components matching ``name`` + any of ``versions``.
+
+        Used by ScaMalwareWatchService to retroactively check the latest
+        completed scan per target against a newly-arrived MAL-* record. When
+        ``scan_ids`` is provided, the lookup is constrained to that subset
+        (typically the latest scan per target).
+
+        Returns a list of dicts with keys ``scan_id``, ``target_id``,
+        ``name``, ``version``, ``purl``. Ecosystem filtering on the ``purl``
+        prefix is the caller's responsibility — the SBOM schema doesn't
+        carry a discrete ``ecosystem`` field.
+        """
+        if not name or not versions:
+            return []
+        query: dict[str, Any] = {"name": name, "version": {"$in": versions}}
+        if scan_ids is not None:
+            if not scan_ids:
+                return []
+            query["scan_id"] = {"$in": scan_ids}
+        try:
+            cursor = self.collection.find(
+                query,
+                {"scan_id": 1, "target_id": 1, "name": 1, "version": 1, "purl": 1},
+            )
+            hits: list[dict[str, Any]] = []
+            async for doc in cursor:
+                hits.append({
+                    "scan_id": doc.get("scan_id"),
+                    "target_id": doc.get("target_id"),
+                    "name": doc.get("name"),
+                    "version": doc.get("version"),
+                    "purl": doc.get("purl"),
+                })
+            return hits
+        except PyMongoError as exc:
+            log.warning(
+                "scan_sbom_repository.find_scans_with_package_failed",
+                name=name,
+                error=str(exc),
+            )
             return []
 
     async def delete_by_scan(self, scan_id: str) -> int:

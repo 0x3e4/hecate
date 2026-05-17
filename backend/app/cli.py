@@ -350,7 +350,24 @@ async def run_osv_sync_once(
     pipeline = OsvPipeline()
     try:
         with opensearch_bulk_mode():
-            return await pipeline.sync(limit=limit, initial_sync=initial_sync)
+            result = await pipeline.sync(limit=limit, initial_sync=initial_sync)
+        # Cross-check newly-arrived MAL-* records against existing SCA scan
+        # SBOMs (same hook the scheduler runs after every OSV sync). Fail-soft
+        # so a CLI sync isn't blocked by a watcher hiccup.
+        try:
+            from app.services.sca_malware_watch_service import (
+                get_sca_malware_watch_service,
+            )
+
+            watcher = await get_sca_malware_watch_service()
+            await watcher.process_new_mal_records()
+        except Exception as exc:  # noqa: BLE001 — CLI must always return
+            import structlog
+
+            structlog.get_logger().warning(
+                "cli.sca_malware_watch_failed", error=str(exc), exc_info=True,
+            )
+        return result
     finally:
         await pipeline.close()
 

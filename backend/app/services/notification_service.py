@@ -424,6 +424,128 @@ class NotificationService:
             target=target,
         )
 
+    async def notify_sca_malware_alert(
+        self,
+        *,
+        per_scan_matches: dict[str, dict[str, Any]],
+    ) -> None:
+        """Fire ``sca_malware_alert`` notifications for retroactive MAL-* hits.
+
+        Called by :class:`ScaMalwareWatchService` after it has injected
+        synthetic findings into already-completed scans. ``per_scan_matches``
+        maps ``scan_id`` → ``{target_id, malware: [...]}``.
+
+        Each enabled ``sca_malware_alert`` rule is evaluated independently:
+        ``scan_severity_threshold`` filters by the highest severity of any
+        new finding (MAL-* is always ``critical``), and
+        ``scan_target_filter`` matches the target_id with ``*``-wildcards.
+        One notification body is sent per (rule × affected scan) combo so
+        targets with different owners can route to different channels.
+        """
+        if not self.enabled:
+            return
+        # Only "inserted" rows are newsworthy — re-confirmations on repeated
+        # watcher runs would otherwise flood the channel with the same hits.
+        filtered: dict[str, dict[str, Any]] = {}
+        for scan_id, payload in per_scan_matches.items():
+            inserted = [m for m in payload.get("malware", []) if m.get("result") == "inserted"]
+            if inserted:
+                filtered[scan_id] = {
+                    "target_id": payload.get("target_id", ""),
+                    "target_name": payload.get("target_name") or payload.get("target_id", ""),
+                    "malware": inserted,
+                }
+        if not filtered:
+            return
+
+        repo = await NotificationRuleRepository.create()
+        rules = await repo.list_enabled_by_type("sca_malware_alert")
+        if not rules:
+            return
+
+        now = datetime.now(tz=UTC)
+        now_str = self._format_now()
+
+        for rule in rules:
+            try:
+                tag = rule.get("apprise_tag", self._tags)
+                threshold = rule.get("scan_severity_threshold")
+                target_filter = rule.get("scan_target_filter")
+
+                for scan_id, payload in filtered.items():
+                    target_id = payload["target_id"]
+                    target_name = payload.get("target_name") or target_id
+                    if target_filter and not _matches_target_filter(target_name, target_filter):
+                        continue
+                    # All MAL-* findings carry severity=critical today, but
+                    # we honour the threshold for forward-compat in case
+                    # the watcher derives severities from upstream metadata.
+                    summary = {"critical": sum(
+                        1 for m in payload["malware"] if m.get("severity") == "critical"
+                    )}
+                    if threshold and not _meets_severity_threshold(summary, threshold):
+                        continue
+
+                    malware_entries = payload["malware"]
+                    mal_count = len(malware_entries)
+                    packages_seen: list[str] = []
+                    seen_keys: set[str] = set()
+                    for m in malware_entries:
+                        key = f"{m['package']}@{m['version']}"
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
+                        packages_seen.append(key)
+
+                    variables: dict[str, Any] = {
+                        "icon": "\U0001f6a8",
+                        "target": target_name,
+                        "target_id": target_id,
+                        "scan_id": scan_id,
+                        "mal_count": str(mal_count),
+                        "noun": "Malware Match" if mal_count == 1 else "Malware Matches",
+                        "packages_list": ", ".join(packages_seen[:10]),
+                        "time": now_str,
+                        "malware": malware_entries,
+                    }
+                    default_title = (
+                        f"\U0001f6a8 Hecate — {mal_count} new MAL-* "
+                        f"{variables['noun']} on {target_name}"
+                    )
+                    default_body_lines = [
+                        f"Target: {target_name}",
+                        f"Scan: {scan_id}",
+                        f"New MAL-* findings: {mal_count}",
+                        "",
+                        "Packages:",
+                    ]
+                    for entry in malware_entries[:15]:
+                        default_body_lines.append(
+                            f"  • {entry['mal_id']} — {entry['package']}@{entry['version']} "
+                            f"({entry.get('ecosystem', 'unknown')})"
+                        )
+                    if mal_count > 15:
+                        default_body_lines.append(f"  ... and {mal_count - 15} more")
+                    default_body_lines.append(f"\nTime: {now_str}")
+                    default_body = "\n".join(default_body_lines)
+
+                    title, body = await self._apply_template(
+                        "sca_malware_alert", tag, variables, default_title, default_body,
+                    )
+                    await self.send(
+                        title=title,
+                        body=body,
+                        notify_type="warning",
+                        tag=tag,
+                    )
+                await repo.update(str(rule["_id"]), {"last_triggered_at": now})
+            except Exception as exc:  # noqa: BLE001 — fire-and-forget contract
+                log.warning(
+                    "notification.sca_malware_alert_rule_failed",
+                    rule_id=str(rule.get("_id", "")),
+                    error=str(exc),
+                )
+
     async def notify_sync_failed(self, *, job_name: str, error: str) -> None:
         now_str = self._format_now()
         variables = {

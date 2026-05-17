@@ -29,6 +29,22 @@ class ScanFindingRepository:
         await collection.create_index("severity")
         await collection.create_index("vex_status", sparse=True)
         await collection.create_index("dismissed", sparse=True)
+        # Partial unique index for the retroactive MAL-* watcher. Only applies
+        # to rows the watcher itself wrote (``scanner='mal-watch'``) so it
+        # doesn't conflict with the standard scanner inserts where the same
+        # (scan_id, vulnerability_id, package_name, package_version) tuple
+        # can legitimately appear from trivy + grype + osv-scanner.
+        await collection.create_index(
+            [
+                ("scan_id", 1),
+                ("vulnerability_id", 1),
+                ("package_name", 1),
+                ("package_version", 1),
+            ],
+            name="mal_watch_unique",
+            unique=True,
+            partialFilterExpression={"scanner": "mal-watch"},
+        )
         return cls(collection)
 
     async def bulk_insert(self, findings: list[ScanFindingDocument]) -> int:
@@ -42,6 +58,92 @@ class ScanFindingRepository:
         except PyMongoError as exc:
             log.warning("scan_finding_repository.bulk_insert_failed", count=len(findings), error=str(exc))
             return 0
+
+    async def upsert_mal_finding(
+        self,
+        *,
+        scan_id: str,
+        target_id: str,
+        mal_id: str,
+        package_name: str,
+        package_version: str,
+        severity: str = "critical",
+        title: str | None = None,
+        description: str | None = None,
+        urls: list[str] | None = None,
+    ) -> str:
+        """Upsert a retroactive MAL-* finding on an already-completed scan.
+
+        Dedup key: (scan_id, vulnerability_id, package_name, package_version)
+        scoped to ``scanner='mal-watch'`` via the partial unique index.
+        Returns ``"inserted"`` | ``"updated"`` | ``"unchanged"``.
+        """
+        now = datetime.now(tz=UTC)
+        urls = urls or []
+        # The static fields that never change between watcher runs for the
+        # same MAL × scan × package are stored once; `created_at` only lands
+        # on the first insert.
+        on_insert: dict[str, Any] = {
+            "scan_id": scan_id,
+            "target_id": target_id,
+            "vulnerability_id": mal_id,
+            "scanner": "mal-watch",
+            "package_name": package_name,
+            "package_version": package_version,
+            "package_type": "malicious-indicator",
+            "data_source": "OSV",
+            "created_at": now,
+            "matched_from": "mal-watch",
+            "fix_state": "unknown",
+        }
+        # Fields the watcher may refresh on re-runs (e.g. severity revisions
+        # from upstream OSV updates, new references). Stay conservative:
+        # don't touch user-driven fields like vex_status / dismissed.
+        on_update: dict[str, Any] = {
+            "severity": severity,
+            "title": title or f"Known malicious package: {package_name}",
+            "description": description,
+            "urls": urls,
+            "updated_at": now,
+        }
+        try:
+            existing = await self.collection.find_one(
+                {
+                    "scan_id": scan_id,
+                    "vulnerability_id": mal_id,
+                    "package_name": package_name,
+                    "package_version": package_version,
+                    "scanner": "mal-watch",
+                },
+                {"severity": 1, "title": 1, "description": 1, "urls": 1},
+            )
+            if existing is None:
+                await self.collection.insert_one({**on_insert, **on_update})
+                return "inserted"
+            # Compare the mutable subset to keep the result honest — repeated
+            # watcher runs on stable data shouldn't bump updated_at.
+            same = (
+                existing.get("severity") == on_update["severity"]
+                and existing.get("title") == on_update["title"]
+                and existing.get("description") == on_update["description"]
+                and (existing.get("urls") or []) == urls
+            )
+            if same:
+                return "unchanged"
+            await self.collection.update_one(
+                {"_id": existing["_id"]},
+                {"$set": on_update},
+            )
+            return "updated"
+        except PyMongoError as exc:
+            log.warning(
+                "scan_finding_repository.upsert_mal_finding_failed",
+                scan_id=scan_id,
+                mal_id=mal_id,
+                package=package_name,
+                error=str(exc),
+            )
+            return "unchanged"
 
     async def list_by_scan(
         self,
