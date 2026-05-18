@@ -41,7 +41,7 @@ Trivy, Grype, Syft, Dockle, and OSV Scanner are installed as binaries inside the
 flowchart LR
     Trigger[CI/CD or frontend]
     Backend["Backend :8000<br/>Scan service"]
-    Sidecar["Scanner sidecar :8080<br/>Trivy · Grype · Syft · OSV<br/>Hecate · Dockle · Dive<br/>Semgrep · TruffleHog"]
+    Sidecar["Scanner sidecar :8080<br/>Trivy · Grype · Syft · OSV · Hecate<br/>Dockle · Dive · Semgrep · TruffleHog · DevSkim"]
     Mongo[(MongoDB<br/>Findings · SBOM)]
 
     Trigger --> Backend

@@ -10,7 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
-- Documentation refresh: README CI/CD section now describes the actual GitHub Actions workflows (build-images, release) and GHCR registry; deep docs (architecture.md, backend / frontend READMEs) brought in sync with the 1.1.0 feature set
+
+### Fixed
+
+## [1.1.1] - 2026-05-18
+
+### Added
+
+### Changed
+- Documentation sync with the 1.1.0 feature set: README CI/CD section rewritten to describe the actual GitHub Actions workflows (build-images, release) and GHCR registry; architecture.md CI/CD + container-registry section finalized from the stale Gitea / `https://github.com/0x3e4/hecate` text; Support page added to every frontend route / view table (README, frontend/README, architecture.md); DevSkim now listed in every scanner enumeration, Mermaid diagram, and tech-stack row (architecture.md system context + deployment diagram, scanner/README integration diagram); router count bumped 19 → 20 (architecture.md, backend/README, README) with the new `malware` / `version` routers added to the API-layer listing; `sca_malware_alert` listed alongside the other notification rule types in the `notification_rules` collection description; `enrich-mal` / `purge-malware` added to the CLI block in architecture.md
+- Dependency bumps (backend / poetry): click 8.3.3 → 8.4.0, coverage 7.13.5 → 7.14.0, google-auth 2.51.0 → 2.53.0, idna 3.13 → 3.15, markdown-it-py 4.1.0 → 4.2.0, mcp 1.27.0 → 1.27.1, pydantic-settings 2.14.0 → 2.14.1, python-multipart 0.0.27 → 0.0.29, requests 2.33.1 → 2.34.2, sse-starlette 3.4.2 → 3.4.4, urllib3 2.6.3 → 2.7.0
+- Dependency bumps (scanner / poetry): click 8.3.3 → 8.4.0, idna 3.13 → 3.15, uvicorn 0.46.0 → 0.47.0
+- Dependency bumps (frontend / pnpm): axios 1.15.2 → 1.16.0 (direct); transitive refreshes for `@babel/*`, `@iconify/utils`, and the `@rollup/rollup-*` platform binaries (4.60.2 → 4.60.3)
+- Tooling pin: `packageManager` in `frontend/package.json` bumped from pnpm 10.33.0 → 10.33.4 (picked up automatically via Corepack in the frontend Dockerfile)
 
 ### Fixed
 

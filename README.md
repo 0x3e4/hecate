@@ -187,7 +187,7 @@ flowchart TB
 ```text
 backend/
 ├── app/
-│   ├── api/v1/           REST endpoints (19 router modules)
+│   ├── api/v1/           REST endpoints (20 router modules)
 │   ├── core/             Pydantic settings, logging
 │   ├── db/               MongoDB (Motor) + OpenSearch connections
 │   ├── models/           MongoDB document schemas
@@ -275,6 +275,7 @@ scanner/
 | Inventory | User-declared products + versions matched against the catalogue. |
 | Malware feed | Overview of all MAL-aliased OSV advisories (~417 k records, server-paginated). |
 | System | 4 tabs: General, Notifications, Data, Policies. |
+| Support | In-app diagnostics: per-component version check (backend / frontend / scanner) against the latest `main-<sha>` images on GHCR via `GET /api/v1/version`. |
 | CI/CD · API · MCP | Embedded docs and Swagger UI. |
 
 ### Notifications (Apprise)

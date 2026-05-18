@@ -38,7 +38,7 @@ src/
 │   │                              version context + `triggerAttackPathNarrative` for the AI narrative job)
 │   └── malware.ts               Malware-feed overview (`fetchMalwareFeed` → GET /v1/malware/malware-feed,
 │                                  server-paginated)
-├── views/                       Page components (16 views)
+├── views/                       Page components (17 views)
 │   ├── DashboardPage.tsx        Home page with vulnerability search
 │   ├── VulnerabilityListPage.tsx
 │   │                            Paginated list with filters (incl. advanced filters)
@@ -68,6 +68,8 @@ src/
 │   ├── InventoryPage.tsx        Environment inventory (CRUD + affected CVEs per item)
 │   ├── MalwareFeedPage.tsx      Overview of all MAL-aliased OSV records (~417 k, server-paginated 100/page,
 │   │                              hard-coded ecosystem slugs, substring search routed to OpenSearch)
+│   ├── SupportPage.tsx          In-app diagnostics with per-component version check against GHCR `main-<sha>`
+│   │                              images via `GET /api/v1/version` (backend / frontend / scanner)
 │   └── SystemPage.tsx           System (single-card layout, 4 tabs: General, Notifications, Data, Policies)
 ├── components/                  Reusable components
 │   ├── AIAnalyse/
@@ -171,6 +173,7 @@ src/
 | `/info/cicd` | `CiCdInfoPage` | CI/CD integration guide (pipeline examples, scanner reference, quality gates) |
 | `/info/api` | `ApiInfoPage` | API documentation with embedded Swagger UI and endpoint overview |
 | `/info/mcp` | `McpInfoPage` | MCP server info (IdP setup GitHub / Microsoft / OIDC, Claude Desktop guide, tools incl. `prepare_*` / `save_*` pairs and `get_sca_scan`, example prompts, configuration) |
+| `/support` | `SupportPage` | In-app diagnostics: per-component version check against the latest `main-<sha>` images on GHCR via `GET /api/v1/version` (backend / frontend / scanner). Highlights newer images so an operator knows when to `docker compose pull`. |
 
 > [!NOTE]
 > Info pages live under `/info/*` so their paths cannot collide with the backend prefixes `/api*` and `/mcp*` when a reverse proxy forwards those by prefix. The legacy paths `/cicd`, `/api-docs`, and `/mcp-info` still exist as client-side React Router redirects (`<Navigate replace>`) for bookmark compatibility — but they only kick in once the SPA entry has loaded. A hard refresh on the legacy paths can still fail depending on the proxy rule.

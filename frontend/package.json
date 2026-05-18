@@ -1,9 +1,9 @@
 {
   "name": "hecate-frontend",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@10.33.4",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +11,7 @@
     "lint": "eslint . --ext ts,tsx --max-warnings 0"
   },
   "dependencies": {
-    "axios": "^1.15.2",
+    "axios": "^1.16.0",
     "mermaid": "^11.14.0",
     "panzoom": "^9.4.4",
     "react": "^19.2.5",

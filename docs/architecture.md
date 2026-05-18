@@ -10,7 +10,7 @@ Hecate is a vulnerability management platform that aggregates data from 9 extern
 - FastAPI orchestrates ingestion, persistence, and AI calls, and serves data to the frontend.
 - OpenSearch is the performant query index; MongoDB holds normalised data and job state.
 - External feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) plus optional AI providers (OpenAI, Anthropic, Gemini, OpenAI-compatible for Ollama / vLLM / OpenRouter / LocalAI / LM Studio) provide the raw data.
-- A scanner sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog) executes active SCA scans against container images and source repositories.
+- A scanner sidecar (Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim) executes active SCA scans against container images and source repositories.
 
 ## Deployment topology
 
@@ -30,7 +30,7 @@ flowchart TB
         MCP[MCP server]
     end
 
-    Scanner["Scanner :8080<br/>Trivy · Grype · Syft · OSV<br/>Hecate · Dockle · Dive · Semgrep · TruffleHog"]
+    Scanner["Scanner :8080<br/>Trivy · Grype · Syft · OSV · Hecate<br/>Dockle · Dive · Semgrep · TruffleHog · DevSkim"]
     Apprise["Apprise<br/>Slack · Discord · Email · …"]
 
     Mongo[("MongoDB :27017<br/>persistence")]
@@ -46,15 +46,15 @@ flowchart TB
 ```
 
 - Docker Compose orchestration: backend, frontend, scanner, mongo, opensearch, apprise.
-- Container registry: `ghcr.io/0x3e4/hecate-{backend,frontend,scanner}:latest`.
-- CI/CD: Gitea Actions (`ci.yml` build + Hecate scan + SonarQube), external composite action [`0x3e4/hecate-scan-action`](https://github.com/0x3e4/hecate-scan-action).
+- Container registry: `ghcr.io/<owner>/hecate-{backend,frontend,scanner}` — published as `latest`, `main-<sha>`, and semver tags.
+- CI/CD: GitHub Actions ([`build-images.yml`](../.github/workflows/build-images.yml) — matrix build of all three images on every push to `main` and on semver tags, pushes to GHCR with `latest` / `main-<sha>` / semver; [`release.yml`](../.github/workflows/release.yml) — on semver tag push extracts the matching section from `CHANGELOG.md` and creates a GitHub Release).
 - Corporate-MITM support: backend and scanner containers load `HTTP_CA_BUNDLE` at startup via identical entrypoint scripts ([backend/entrypoint.sh](../backend/entrypoint.sh), [scanner/entrypoint.sh](../scanner/entrypoint.sh)). The mounted PEM is concatenated with `/etc/ssl/certs/ca-certificates.crt` into `/tmp/hecate-trust-bundle.pem`, and `HTTP_CA_BUNDLE` / `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` are re-exported to that combined path. The PEM therefore only has to contain the corporate / MITM CA and is used additively to the system store, not as a replacement (without the concatenation, every non-MITM-proxied egress destination would break with `CERTIFICATE_VERIFY_FAILED`).
 
 ## Backend architecture
 
 ### API layer
 
-19 router modules under `app/api/v1` group functional areas:
+20 router modules under `app/api/v1` group functional areas:
 
 - `status.py` — health check / liveness probe, scanner health
 - `config.py` — public runtime config (`GET /api/v1/config`): derives `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` from backend settings and replaces the former `VITE_*` feature flags
@@ -74,6 +74,8 @@ flowchart TB
 - `events.py` — Server-Sent Events (SSE) stream
 - `license_policies.py` — license-policy management (CRUD, default policy, license groups)
 - `inventory.py` — environment inventory (CRUD + `/affected-vulnerabilities` per item)
+- `malware.py` — malware-intel feed (`GET /malware-feed` for the frontend overview, MongoDB-backed with OpenSearch-routed substring search and 60 s response cache + 30 min count cache)
+- `version.py` — build / release metadata (`GET /api/v1/version`): backend / frontend / scanner SHA + latest published `main-<sha>` image lookup on GHCR; powers the in-app Support page
 
 In addition, the MCP server (`app/mcp/`) is mounted as a separate ASGI sub-app under `/mcp` with **35 tools** (CVE search and detail, asset catalogue, CWE / CAPEC, stats; SCA scan lookups including per-scan findings, security alerts, SBOM components + facets, target scan history, scan compare, Dive layer analysis, target / group discovery, `list_scans`, `find_findings_by_cve`; AI-analysis prepare / save pairs; scan / sync triggers), plus rate limiting and audit logging. The server is initialised as `FastMCP("hecate", ...)`; the `MCPAuthMiddleware` is path-aware and only processes paths under `/mcp` and `/mcp/*` — anything else is rejected with 404 so misrouted SPA routes such as `/info/mcp` cannot produce 401 responses. Authentication uses delegated OAuth: Hecate acts as an authorisation server toward the MCP client (Dynamic Client Registration + Auth Code + PKCE/S256) and delegates user authentication to an upstream IdP (GitHub OAuth App, Microsoft Entra ID, or a generic OIDC provider such as Authentik / Keycloak / Auth0 / Zitadel). There are no static API keys any more. Write tools (`trigger_scan`, `trigger_sync`, all `save_*_ai_analysis`) are scope-gated: only sessions whose browser IP at authorize time was inside `MCP_WRITE_IP_SAFELIST` get the `mcp:write` scope. At tool-call time only the token scope is verified (no second IP check), because proxied transports such as Claude Desktop deliver tool calls from vendor infrastructure — the token scope is authoritative. Provider abstraction lives in `app/mcp/oauth_providers.py`. Two deployment switches: `MCP_PUBLIC_URL` pins the base URL advertised in OAuth metadata (resource / issuer / endpoints) and the 401 `WWW-Authenticate` hint — needed when the reverse proxy doesn't reliably forward `Host` / `X-Forwarded-Host`, or when several hostnames point at the same backend. `MCP_AUTH_DISABLED=true` bypasses OAuth entirely (synthetic `local-dev` identity with `mcp:read mcp:write`, WARNING log per request) — for local single-user deployments only; mount gating in `app/main.py` allows mounting with `MCP_ENABLED=true` plus the bypass, without any IdP configuration.
 
@@ -173,7 +175,7 @@ Services encapsulate database access (repositories) and coordinate OpenSearch + 
 | `scan_findings` | Vulnerability findings from SCA scans |
 | `scan_sbom_components` | SBOM components from SCA scans |
 | `scan_layer_analysis` | Image-layer analysis from Dive scans |
-| `notification_rules` | Notification rules (event, watch, DQL, scan, inventory) |
+| `notification_rules` | Notification rules (event, watch, DQL, scan, inventory, sca_malware_alert) |
 | `notification_channels` | Apprise channels (URL + tag) |
 | `notification_templates` | Title / body templates per event type |
 | `license_policies` | License policies (allowed, denied, review-required) |
@@ -274,6 +276,8 @@ poetry run python -m app.cli sync-capec     [--initial]
 poetry run python -m app.cli sync-circl     [--limit N]
 poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
 poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
+poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs
+poetry run python -m app.cli purge-malware  --ecosystem <eco> [--dry-run] # delete an ecosystem from malware_intel + MAL-* vulnerabilities
 poetry run python -m app.cli reindex-opensearch
 ```
 
@@ -304,6 +308,7 @@ poetry run python -m app.cli reindex-opensearch
 | `/info/cicd` | `CiCdInfoPage` | CI/CD integration guide (pipeline examples, scanner reference, quality gates) |
 | `/info/api` | `ApiInfoPage` | API documentation with embedded Swagger UI and endpoint overview |
 | `/info/mcp` | `McpInfoPage` | MCP server info (IdP setup GitHub / Microsoft / OIDC, Claude Desktop guide, tools incl. `prepare_*` / `save_*` AI-tool pairs + `get_sca_scan`, example prompts, configuration) |
+| `/support` | `SupportPage` | In-app support page with per-component version check (backend / frontend / scanner) that flags newer `main-<sha>` images on GHCR via `GET /api/v1/version` |
 
 The info pages live deliberately under `/info/*` so their paths cannot collide with the backend prefixes `/api*` and `/mcp*` when a reverse proxy forwards those by prefix. The legacy paths `/cicd`, `/api-docs`, and `/mcp-info` are client-side React Router redirects to the new paths (bookmark compatibility).
 
@@ -422,7 +427,7 @@ Pipeline (EUVD / NVD / KEV / CPE / CWE / CAPEC / CIRCL / GHSA / OSV)
 | HTTP client | httpx 0.28 (async), Axios 1.13 (frontend) |
 | Logging | structlog 25 |
 | AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) |
-| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, Skopeo, FastAPI |
+| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 8 runtime), Skopeo, FastAPI |
 | Notifications | Apprise (caronc/apprise) |
 | MCP server | mcp SDK, OAuth 2.0 (DCR + PKCE/S256), delegated auth via GitHub / Microsoft Entra / OIDC, Streamable HTTP |
-| CI/CD | Gitea Actions, Hecate Scan Action, SonarQube |
+| CI/CD | GitHub Actions, GitHub Container Registry (GHCR) |

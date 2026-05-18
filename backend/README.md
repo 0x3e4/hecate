@@ -18,7 +18,7 @@
 ```text
 app/
 ├── api/v1/                  REST endpoints
-│   ├── routes.py            Router registration (19 modules)
+│   ├── routes.py            Router registration (20 modules)
 │   ├── vulnerabilities.py   Search · lookup · refresh · AI analysis · attack-path graph (GET/POST /vulnerabilities/{id}/attack-path)
 │   ├── cwe.py               CWE queries (single + bulk)
 │   ├── capec.py             CAPEC queries · CWE→CAPEC mapping
