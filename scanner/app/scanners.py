@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import tempfile
 import time
 import urllib.request
@@ -18,6 +19,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# Never let a git subprocess block on an interactive credential prompt — without
+# a TTY git/GCM can hang indefinitely waiting for input, which the 20 s
+# ls-remote timeout can't always reclaim cleanly. Set once for the process so
+# every subprocess inherits it.
+os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
+os.environ.setdefault("GCM_INTERACTIVE", "never")
 
 from app.hecate_analyzer import run_analysis
 from app.malware_detector import run_detection
@@ -197,10 +205,18 @@ async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, in
     # locally when troubleshooting; INFO stays terse with just the binary name.
     logger.debug("subprocess.cmd name=%s argv=%r", name, cmd)
     try:
+        # start_new_session=True puts the child in its own process group so a
+        # timeout can SIGKILL the WHOLE tree. git in particular forks a
+        # git-remote-https grandchild that inherits the stdout/stderr pipes;
+        # killing only the direct git PID leaves the grandchild holding the
+        # pipe open, and the post-kill drain then blocks forever waiting for an
+        # EOF that never comes (observed as a 90 s backend /check ReadTimeout
+        # despite the 20 s subprocess cap).
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     except FileNotFoundError:
         logger.warning("subprocess.binary_missing name=%s", name)
@@ -208,8 +224,20 @@ async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, in
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        process.kill()
-        await process.communicate()
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        # Bounded drain: even after killing the group, reap the process under a
+        # short timeout so an orphaned descendant can't make this hang past the
+        # budget.
+        try:
+            await asyncio.wait_for(process.communicate(), timeout=5)
+        except Exception:  # noqa: BLE001 — drain is best-effort; never re-block here
+            pass
         elapsed = time.monotonic() - started_at
         logger.warning(
             "subprocess.timeout name=%s timeout=%ds elapsed=%.1fs",

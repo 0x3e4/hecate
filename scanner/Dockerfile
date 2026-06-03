@@ -1,8 +1,8 @@
-FROM aquasec/trivy:0.69.3 AS trivy
-FROM anchore/grype:v0.112.0 AS grype
-FROM anchore/syft:v1.44.0 AS syft
+FROM aquasec/trivy:0.71.0 AS trivy
+FROM anchore/grype:v0.113.0 AS grype
+FROM anchore/syft:v1.45.0 AS syft
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS dotnet
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl skopeo unzip \
@@ -26,11 +26,12 @@ RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.8/os
 RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_0.13.1_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin dive
 
-# Install Semgrep (SAST scanner) — needs setuptools<74 for pkg_resources (removed in 74+)
-RUN pip install --no-cache-dir "setuptools<74" semgrep==1.114.0
+# Install Semgrep (SAST scanner). semgrep>=1.16x no longer imports pkg_resources,
+# so the old setuptools<74 pin is unnecessary (and python:3.14-slim ships no setuptools).
+RUN pip install --no-cache-dir semgrep==1.164.0
 
 # Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.3/trufflehog_3.95.3_linux_amd64.tar.gz \
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.5/trufflehog_3.95.5_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
 
 # Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)

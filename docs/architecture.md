@@ -23,7 +23,7 @@ flowchart TB
         SPA[Dark-theme SPA]
     end
 
-    subgraph BE["Backend :8000 — FastAPI / Python 3.13 / Poetry"]
+    subgraph BE["Backend :8000 — FastAPI / Python 3.14 / Poetry"]
         API[REST API + SSE]
         Sched[Scheduler]
         Pipe[Pipelines]
@@ -420,7 +420,7 @@ Pipeline (EUVD / NVD / KEV / CPE / CWE / CAPEC / CIRCL / GHSA / OSV)
 
 | Component | Technology |
 | --- | --- |
-| Backend | Python 3.13, FastAPI 0.128, Uvicorn, Poetry |
+| Backend | Python 3.14, FastAPI 0.128, Uvicorn, Poetry |
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
 | Database | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |

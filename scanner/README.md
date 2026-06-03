@@ -2,7 +2,7 @@
 
 > Sidecar that powers the SCA (Software Composition Analysis) features of Hecate. Runs vulnerability scans, SBOM generation, and supply-chain malware detection against container images and source repositories.
 
-![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-served-009688?logo=fastapi&logoColor=white)
 ![Docker](https://img.shields.io/badge/runs%20in-Docker-2496ED?logo=docker&logoColor=white)
 
@@ -269,7 +269,7 @@ The detection rules are based on analysis of these real supply-chain attacks:
 ```json
 {
   "components": [
-    {"type": "container", "name": "python", "version": "3.13-slim", "...": "..."}
+    {"type": "container", "name": "python", "version": "3.14-slim", "...": "..."}
   ],
   "findings": [
     {
@@ -447,7 +447,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 ### Docker build
 
-Based on `python:3.13-slim`. Scanner binaries are copied from the official container images (Trivy, Grype, Syft). OSV Scanner is downloaded as a GitHub release.
+Based on `python:3.14-slim`. Scanner binaries are copied from the official container images (Trivy, Grype, Syft). OSV Scanner is downloaded as a GitHub release.
 
 ```sh
 docker build -t hecate-scanner ./scanner
@@ -460,7 +460,7 @@ docker run -p 8080:8080 hecate-scanner
 
 | Technology | Purpose |
 | --- | --- |
-| Python 3.13 | Runtime |
+| Python 3.14 | Runtime |
 | FastAPI | HTTP API |
 | Uvicorn | ASGI server |
 | Trivy | Vulnerability scanner |

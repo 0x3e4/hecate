@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.1.3] - 2026-06-03
+
+### Added
+
+### Changed
+- Runtime bump: backend and scanner container images now build on `python:3.14-slim` (was `python:3.13-slim`). The backend runtime-stage `site-packages` COPY path was updated `python3.13` → `python3.14` accordingly.
+- Scanner tool bumps: Trivy 0.69.3 → 0.71.0, Grype 0.112.0 → 0.113.0, Syft 1.44.0 → 1.45.0, Semgrep 1.114.0 → 1.164.0, TruffleHog 3.95.3 → 3.95.5. The obsolete `setuptools<74` pin was dropped from the Semgrep install — Semgrep 1.16x no longer imports `pkg_resources` and `python:3.14-slim` ships no setuptools.
+- Dependency bumps (backend / poetry): click 8.4.0 → 8.4.1, coverage 7.14.0 → 7.14.1, grpcio 1.80.0 → 1.81.0, idna 3.15 → 3.18, mcp 1.27.1 → 1.27.2, pyjwt 2.12.1 → 2.13.0, pytest-asyncio 1.3.0 → 1.4.0, python-multipart 0.0.29 → 0.0.30, rpds-py 0.30.0 → 2026.5.1, typer 0.25.1 → 0.26.7
+- Dependency bumps (scanner / poetry): click 8.4.0 → 8.4.1, fastapi 0.136.1 → 0.136.3, idna 3.15 → 3.18, starlette 1.0.0 → 1.2.1, uvicorn 0.47.0 → 0.48.0
+- Dependency bumps (frontend / pnpm): axios 1.16.0 → 1.16.1, mermaid 11.14.0 → 11.15.0, react-router-dom 7.15.0 → 7.15.1, @types/react 19.2.14 → 19.2.15
+- Documentation sync: Python 3.13 → 3.14 across README, docs/architecture.md, backend/README and scanner/README.
+
+### Fixed
+- Scanner /check no longer hangs on stuck git subprocesses
+
 ## [1.1.2] - 2026-05-21
 
 ### Added

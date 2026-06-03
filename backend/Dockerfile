@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,7 +19,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 COPY pyproject.toml poetry.lock* ./
 RUN poetry install --no-root
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ARG HECATE_BUILD_SHA=
 
@@ -29,7 +29,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /
 
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY app /app
 # Carry pyproject.toml into the runtime image so /api/v1/version can read the

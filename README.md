@@ -6,7 +6,7 @@
 
 Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV), normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, and DevSkim against your container images and source repos.
 
-![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -104,7 +104,7 @@ flowchart TB
         SPA[Dark-theme SPA]
     end
 
-    subgraph Backend["Backend · FastAPI / Python 3.13 :8000"]
+    subgraph Backend["Backend · FastAPI / Python 3.14 :8000"]
         API[REST API + SSE]
         Scheduler[APScheduler]
         Pipelines[Ingestion pipelines]
@@ -604,7 +604,7 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 
 | Component | Technology |
 | --- | --- |
-| Backend | Python 3.13, FastAPI 0.128, Uvicorn, Poetry |
+| Backend | Python 3.14, FastAPI 0.128, Uvicorn, Poetry |
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
 | Database | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |

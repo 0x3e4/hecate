@@ -2,7 +2,7 @@
 
 > FastAPI service that ingests, enriches, and exposes vulnerability information. Whole-project documentation lives in the [repository root README](../README.md).
 
-![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
 ![Poetry](https://img.shields.io/badge/Poetry-managed-60A5FA?logo=poetry&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-8-47A248?logo=mongodb&logoColor=white)
@@ -343,7 +343,7 @@ poetry run ruff check app
 
 ### Docker build
 
-Multi-stage build (builder → runtime) on top of `python:3.13-slim`. Port 8000.
+Multi-stage build (builder → runtime) on top of `python:3.14-slim`. Port 8000.
 
 ```sh
 docker build -t hecate-backend ./backend

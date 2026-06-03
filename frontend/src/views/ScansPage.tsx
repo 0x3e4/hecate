@@ -800,6 +800,7 @@ export const ScansPage = () => {
                         <div
                           role="button"
                           tabIndex={0}
+                          className="scan-group-header"
                           onClick={() => setCollapsedGroups({ ...collapsedGroups, [key]: !collapsed })}
                           onKeyDown={e => {
                             if (e.key === "Enter" || e.key === " ") {
@@ -808,9 +809,6 @@ export const ScansPage = () => {
                             }
                           }}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.75rem",
                             padding: "0.5rem 0.75rem",
                             marginBottom: "0.625rem",
                             borderRadius: "6px",
@@ -834,14 +832,14 @@ export const ScansPage = () => {
                             color: isUngrouped ? "rgba(255,255,255,0.55)" : "#ffd43b",
                             wordBreak: "break-word",
                           }}>{label}</span>
-                          <span style={{
-                            fontSize: "0.7rem",
-                            color: "rgba(255,255,255,0.4)",
-                            padding: "0.0625rem 0.4rem",
-                            borderRadius: "8px",
-                            background: "rgba(255,255,255,0.05)",
-                          }}>{items.length}</span>
-                          <div style={{ marginLeft: "auto" }}>
+                          <div className="scan-group-meta">
+                            <span style={{
+                              fontSize: "0.7rem",
+                              color: "rgba(255,255,255,0.4)",
+                              padding: "0.0625rem 0.4rem",
+                              borderRadius: "8px",
+                              background: "rgba(255,255,255,0.05)",
+                            }}>{items.length}</span>
                             <SeverityBadges summary={rollup} />
                           </div>
                         </div>
@@ -3168,14 +3166,19 @@ const AutoScanDiagnosticsTable = ({
   }
 
   // Newest probe first; targets that were never probed sink to the bottom.
+  // Tie-break unprobed targets by last-scan time so scanned-but-unprobed ones
+  // sit above targets that have neither been probed nor scanned.
   const sorted = [...autoScanTargets].sort((a, b) => {
     const ta = a.lastCheckAt ? Date.parse(a.lastCheckAt) : 0;
     const tb = b.lastCheckAt ? Date.parse(b.lastCheckAt) : 0;
-    return tb - ta;
+    if (tb !== ta) return tb - ta;
+    const sa = a.lastScanAt ? Date.parse(a.lastScanAt) : 0;
+    const sb = b.lastScanAt ? Date.parse(b.lastScanAt) : 0;
+    return sb - sa;
   });
 
-  const verdictPill = (verdict: ScanTarget["lastCheckVerdict"]): { label: string; bg: string; fg: string; border: string; tooltip: string } => {
-    switch (verdict) {
+  const verdictPill = (target: ScanTarget): { label: string; bg: string; fg: string; border: string; tooltip: string } => {
+    switch (target.lastCheckVerdict) {
       case "changed":
         return {
           label: t("changed → scan", "geändert → Scan"),
@@ -3231,7 +3234,24 @@ const AutoScanDiagnosticsTable = ({
             "Scanner-/check fehlgeschlagen und es gibt keinen früheren Fingerprint — Auto-Scan startete einen fail-open Initial-Scan."
           ),
         };
-      default:
+      default: {
+        // The change-detection /check probe hasn't run yet, but if the target
+        // already carries scan data (stored fingerprint or a last-scan time) it
+        // HAS been scanned — "never probed" would be misleading. Distinguish the
+        // two so a freshly-scanned target reads "scanned · probe pending".
+        const hasScanData = !!(target.lastImageDigest || target.lastCommitSha || target.lastScanAt);
+        if (hasScanData) {
+          return {
+            label: t("scanned · probe pending", "gescannt · Probe ausstehend"),
+            bg: "rgba(92,132,255,0.1)",
+            fg: "#5c84ff",
+            border: "rgba(92,132,255,0.25)",
+            tooltip: t(
+              "This target has been scanned, but the auto-scan change-detection probe hasn't run on it yet. The next auto-scan tick — or a click here — will populate the Last Check / Current columns.",
+              "Dieses Ziel wurde gescannt, aber die Auto-Scan-Änderungsprüfung lief noch nicht. Der nächste Auto-Scan-Lauf — oder ein Klick hier — füllt die Spalten Letzte Prüfung / Aktuell."
+            ),
+          };
+        }
         return {
           label: t("never probed", "noch nie geprüft"),
           bg: "rgba(255,255,255,0.04)",
@@ -3242,6 +3262,7 @@ const AutoScanDiagnosticsTable = ({
             "Der Auto-Scan-Scheduler hat dieses Ziel noch nicht geprüft. Der nächste Lauf füllt diese Zeile."
           ),
         };
+      }
     }
   };
 
@@ -3277,7 +3298,7 @@ const AutoScanDiagnosticsTable = ({
           </thead>
           <tbody>
             {sorted.map(target => {
-              const pill = verdictPill(target.lastCheckVerdict);
+              const pill = verdictPill(target);
               const stored = target.type === "container_image"
                 ? target.lastImageDigest
                 : target.lastCommitSha;
