@@ -484,6 +484,7 @@ class ScanHistoryEntrySchema(BaseModel):
 
 class ScanHistoryResponse(BaseModel):
     target_id: str = Field(alias="targetId", serialization_alias="targetId")
+    total: int = 0
     items: list[ScanHistoryEntrySchema]
 
     model_config = {"populate_by_name": True}

@@ -493,9 +493,11 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
             cmd = ["grype", f"dir:{scan_dir}", "-o", "json", "--quiet"]
 
         # Grype's DB load + matching on large images/trees regularly exceeds the
-        # generic 600s default, so it gets a higher 1200s floor (overridable via
-        # GRYPE_TIMEOUT_SECONDS).
-        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("grype", default=1200))
+        # generic 600s default, so it gets a higher 1800s floor (overridable via
+        # GRYPE_TIMEOUT_SECONDS). The DB download itself is moved off the scan
+        # budget by the entrypoint's background pre-warm; this floor covers the
+        # actual cataloging + matching on big targets.
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("grype", default=1800))
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "grype", "grype-json")

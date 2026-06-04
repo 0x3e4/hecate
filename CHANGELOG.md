@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.1] - 2026-06-04
+
+### Added
+
+- Per-target scan history is now paginated (Load more / Show all) and can page through all scans, not just the latest page.
+
+### Changed
+
+- Grype default scan timeout raised 1200 → 1800 s, and the grype vulnerability DB is pre-warmed at scanner startup so the first scan after a restart no longer spends its timeout budget downloading the DB. Persisting the DB across restarts is documented as an optional volume. If grype still times out on a very large target, raise `GRYPE_TIMEOUT_SECONDS` (e.g. 2400/3600) and recreate the scanner.
+- Manage per-target write passwords from a dedicated System → Access Control tab.
+
+### Fixed
+
 ## [1.2.0] - 2026-06-04
 
 ### Added

@@ -73,8 +73,8 @@ export const TargetAccessPanel = () => {
   };
 
   return (
-    <section className="card">
-      <h2>{t("Target Access", "Ziel-Zugriff")}</h2>
+    <div>
+      <h2 style={{ marginTop: 0 }}>{t("Target Access", "Ziel-Zugriff")}</h2>
       <p className="muted" style={{ marginTop: 4 }}>
         {t(
           "Assign a per-target write password so a target owner can manage their target's writes (scans, settings, findings) without the global admin password. Reads stay open for everyone. The global admin password always works as an override.",
@@ -168,6 +168,6 @@ export const TargetAccessPanel = () => {
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 };

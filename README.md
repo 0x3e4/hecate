@@ -13,7 +13,7 @@ Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, 
 ![MongoDB](https://img.shields.io/badge/MongoDB-8-47A248?logo=mongodb&logoColor=white)
 ![OpenSearch](https://img.shields.io/badge/OpenSearch-3-005EB8?logo=opensearch&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-[![Hecate](https://img.shields.io/endpoint?url=https%3A%2F%2Fhecate.pw%2Fapi%2Fv1%2Fscans%2Ftargets%2Fhttps%253A%252F%252Fgithub.com%252F0x3e4%252Fhecate%2Fshield?label=Hecate)](https://hecate.pw/scans)
+[![Hecate](https://img.shields.io/endpoint?url=https%3A%2F%2Fhecate.pw%2Fapi%2Fv1%2Fscans%2Ftargets%2Fhttps%253A%252F%252Fgithub.com%252F0x3e4%252Fhecate%2Fshield?label=Hecate)](https://hecate.pw/scans/targets/https%3A%2F%2Fgithub.com%2F0x3e4%2Fhecate)
 
 ---
 
@@ -274,7 +274,7 @@ scanner/
 | Scan detail | Findings (multi-select VEX, dismissal toggle), **Attack Chain**, SBOM, history, compare, security alerts, SAST, secrets, best practices, layer analysis, license compliance. |
 | Inventory | User-declared products + versions matched against the catalogue. |
 | Malware feed | Overview of all MAL-aliased OSV advisories (~417 k records, server-paginated). |
-| System | 4 tabs: General, Notifications, Data, Policies. |
+| System | 5 tabs: General, Access Control (per-target write passwords), Notifications, Data, Policies. |
 | Support | In-app diagnostics: per-component version check (backend / frontend / scanner) against the latest `main-<sha>` images on GHCR via `GET /api/v1/version`. |
 | CI/CD · API · MCP | Embedded docs and Swagger UI. |
 
@@ -528,10 +528,10 @@ Hecate exposes [shields.io endpoint badges](https://shields.io/endpoint) in two 
   `GET /api/v1/scans/targets/{target_id}/shield`
 - **A specific scan** (frozen at scan time): `GET /api/v1/scans/{scan_id}/shield`
 
-`target_id` is the value shown as `targetId` on the scan-detail JSON (e.g. a repo URL like `https://github.com/owner/repo` or a container image ref). Path-encode it once for the inner URL, then encode the whole inner URL again for the shields.io `?url=` parameter (so `/` in the repo URL becomes `%252F`).
+`target_id` is the value shown as `targetId` on the scan-detail JSON (e.g. a repo URL like `https://github.com/owner/repo` or a container image ref). Path-encode it once for the inner URL, then encode the whole inner URL again for the shields.io `?url=` parameter (so `/` in the repo URL becomes `%252F`). Wrap the image in a link to the target's detail page so the badge is clickable:
 
 ```markdown
-[![Vulnerability scan](https://img.shields.io/endpoint?url=https%3A%2F%2FYOUR_HOST%2Fapi%2Fv1%2Fscans%2Ftargets%2FYOUR_TARGET_ID%2Fshield)](https://YOUR_HOST/scans)
+[![Vulnerability scan](https://img.shields.io/endpoint?url=https%3A%2F%2FYOUR_HOST%2Fapi%2Fv1%2Fscans%2Ftargets%2FYOUR_TARGET_ID%2Fshield)](https://YOUR_HOST/scans/targets/YOUR_TARGET_ID)
 ```
 
 The badge message is a compact severity breakdown like `2C 5H 12M 4L` (critical / high / medium / low — zero buckets are dropped, `0 findings` when clean). The colour follows the worst severity present:

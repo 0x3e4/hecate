@@ -16,4 +16,13 @@ if [ -n "$HTTP_CA_BUNDLE" ] && [ -f "$HTTP_CA_BUNDLE" ]; then
     export HTTP_CA_BUNDLE="$COMBINED"
 fi
 
+# Pre-warm the grype vulnerability DB in the background so the first scan after a
+# (re)start doesn't pay the full DB download/extract INSIDE its own scan-timeout
+# budget. The cache (GRYPE_DB_CACHE_DIR) lives in tmpfs by default and is wiped
+# on restart, so without this the first big-target scan can blow past
+# GRYPE_TIMEOUT_SECONDS on the DB step alone. Best-effort and non-blocking:
+# grype keeps auto-update on, so a scan that starts before this finishes still
+# works; failures (e.g. offline) are ignored and the next scan retries.
+( grype db update >/tmp/grype-db-prewarm.log 2>&1 && echo "[entrypoint] grype DB pre-warmed" || echo "[entrypoint] grype DB pre-warm skipped (see /tmp/grype-db-prewarm.log)" ) &
+
 exec "$@"

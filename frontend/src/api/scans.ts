@@ -251,7 +251,7 @@ export const fetchScanLayers = async (scanId: string): Promise<ScanLayerAnalysis
 
 export const fetchTargetHistory = async (
   targetId: string,
-  params?: { since?: string; limit?: number },
+  params?: { since?: string; limit?: number; offset?: number },
 ): Promise<ScanHistoryResponse> => {
   const response = await api.get<ScanHistoryResponse>(
     `/v1/scans/targets/${encodeURIComponent(targetId)}/history`,

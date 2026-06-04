@@ -30,6 +30,8 @@ take a while — the UI is usable as data streams in.
 
 ## First steps in the UI
 
+![SCA Scans](img/hecate-sca.png)
+
 1. **Dashboard** — a live "Today" view of newly published CVEs.
 2. **Vulnerabilities** — search with the Keyword / DQL / Regex mode pill.
 3. **SCA Scans** — register a target (container image or repo) and run a scan. The target

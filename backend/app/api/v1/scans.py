@@ -243,13 +243,17 @@ async def list_target_groups(
 async def get_target_history(
     target_id: str,
     limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, description="Skip this many of the most-recent scans (pagination)"),
     since: datetime | None = Query(default=None, description="Only return scans started after this ISO datetime"),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanHistoryResponse:
-    """Get scan history for a target (for charts)."""
-    items = await service.get_target_history(target_id, limit=limit, since=since)
+    """Get scan history for a target (charts use the default page; the target
+    detail table paginates with ``offset`` + the returned ``total``)."""
+    items = await service.get_target_history(target_id, limit=limit, since=since, offset=offset)
+    total = await service.count_target_history(target_id, since=since)
     return ScanHistoryResponse(
         target_id=target_id,
+        total=total,
         items=[
             ScanHistoryEntrySchema(
                 scan_id=str(item.get("_id", "")),

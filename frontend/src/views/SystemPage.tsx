@@ -75,7 +75,7 @@ import type {
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
-type SystemTab = "general" | "notifications" | "data" | "policies";
+type SystemTab = "general" | "access" | "notifications" | "data" | "policies";
 
 type BackupDataset =
   | { id: "VULNERABILITIES"; label: string; description: string; type: "vuln"; source: VulnerabilitySource }
@@ -1191,6 +1191,7 @@ export const SystemPage = () => {
       <div className="tabs-scroll" style={{ display: "flex", gap: 0, marginTop: "1rem", marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         {([
           { key: "general" as SystemTab, label: t("General", "Allgemein") },
+          { key: "access" as SystemTab, label: t("Access Control", "Zugriffskontrolle") },
           { key: "notifications" as SystemTab, label: t("Notifications", "Benachrichtigungen") },
           { key: "data" as SystemTab, label: t("Data", "Daten") },
           { key: "policies" as SystemTab, label: t("Policies", "Richtlinien") },
@@ -2329,7 +2330,11 @@ export const SystemPage = () => {
       </div>
       </>)}
 
-      {tab === "general" && <TargetAccessPanel />}
+      {tab === "access" && (
+      <div style={firstSubsectionStyle}>
+        <TargetAccessPanel />
+      </div>
+      )}
 
       {tab === "general" && (
       <div style={subsectionStyle}>

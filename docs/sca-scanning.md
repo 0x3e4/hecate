@@ -4,6 +4,8 @@ Hecate scans **container images** and **source repositories** with ten scanners 
 hardened sidecar, then consolidates the output into findings, SBOMs, secrets, SAST results,
 malware indicators and license compliance.
 
+![Scan findings](img/hecate-scan-find.png)
+
 ## Targets
 
 A **target** is a scannable entity identified by a path-like id (e.g. `ghcr.io/org/app` or a repo
@@ -46,13 +48,16 @@ verdict pill is clickable to re-probe on demand.
 
 ## Status badges
 
-Public, no-auth shields.io endpoints render a severity badge for a scan or a target's latest scan:
+Public, no-auth shields.io endpoints render a severity badge for a scan or a target's latest scan.
+Wrap the shields.io image in a link to the target's detail page so the badge is clickable:
 
-```
-![findings](https://<host>/api/v1/scans/targets/<id>/shield)
+```markdown
+[![findings](https://img.shields.io/endpoint?url=https%3A%2F%2F<host>%2Fapi%2Fv1%2Fscans%2Ftargets%2F<id>%2Fshield)](https://<host>/scans/targets/<id>)
 ```
 
-The target detail page has a **Copy badge** button that copies this markdown.
+`<id>` is the path-encoded target id (e.g. `https%3A%2F%2Fgithub.com%2Forg%2Frepo`); it is encoded
+once more inside the shields.io `?url=` parameter. The target detail page's **Copy badge** button
+copies exactly this linked markdown for you.
 
 ## SBOM, VEX & licenses
 

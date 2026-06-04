@@ -51,8 +51,10 @@ never returned by the API — the target only exposes a boolean `writePasswordSe
 
 Setting or clearing a target password is always an admin action:
 
-- **System → General → Target Access** — a list of all targets with set/clear controls.
-- **The target detail page** (`/scans/targets/<id>` → *Write protection*).
+- **System → Access Control → Target Access** — a list of all targets with set/clear controls.
+
+The per-target detail page (`/scans/targets/<id>`) shows a 🔒 badge when a target is protected, but
+passwords are configured only from System → Access Control.
 
 A 🔒 badge marks protected targets. To use per-target passwords meaningfully, set
 `SYSTEM_PASSWORD` so these management endpoints are admin-gated.

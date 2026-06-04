@@ -2,60 +2,45 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
-  clearTargetWritePassword,
   deleteScanTarget,
   fetchGlobalFindings,
   fetchScanTarget,
   fetchTargetHistory,
-  setTargetWritePassword,
   submitManualScan,
   triggerTargetCheck,
 } from "../api/scans";
-import { clearTargetPassword, setTargetPassword } from "../api/writeAuth";
+import { SeverityBadges } from "../components/SeverityBadges";
 import { useI18n } from "../i18n/context";
 import type { ConsolidatedFinding, ScanHistoryEntry, ScanTarget } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
-const SEVERITIES: { key: keyof ScanSummaryLike; color: string; label: string }[] = [
-  { key: "critical", color: "#ff6b6b", label: "C" },
-  { key: "high", color: "#ff9f43", label: "H" },
-  { key: "medium", color: "#feca57", label: "M" },
-  { key: "low", color: "#54a0ff", label: "L" },
-  { key: "negligible", color: "#8395a7", label: "N" },
-  { key: "unknown", color: "#576574", label: "?" },
-];
-
-type ScanSummaryLike = {
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-  negligible: number;
-  unknown: number;
-  total: number;
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "#ff6b6b",
+  high: "#ff922b",
+  medium: "#fcc419",
+  low: "#69db7c",
+  negligible: "#8395a7",
+  unknown: "#8395a7",
 };
 
-const SeverityPills = ({ summary }: { summary?: ScanSummaryLike | null }) => {
-  if (!summary) return <span className="muted">—</span>;
-  const present = SEVERITIES.filter((s) => (summary[s.key] as number) > 0);
-  if (present.length === 0) return <span style={{ color: "#1dd1a1" }}>✓ 0 findings</span>;
+const SeverityTag = ({ severity }: { severity: string }) => {
+  const color = SEVERITY_COLORS[severity?.toLowerCase()] ?? "#8395a7";
   return (
-    <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
-      {present.map((s) => (
-        <span
-          key={s.key}
-          style={{
-            background: s.color,
-            color: "#0b0b12",
-            borderRadius: 6,
-            padding: "1px 8px",
-            fontWeight: 700,
-            fontSize: "0.8rem",
-          }}
-        >
-          {summary[s.key]} {s.label}
-        </span>
-      ))}
+    <span
+      style={{
+        display: "inline-block",
+        minWidth: 64,
+        textAlign: "center",
+        padding: "0.125rem 0.5rem",
+        borderRadius: 4,
+        fontSize: "0.7rem",
+        fontWeight: 600,
+        textTransform: "capitalize",
+        background: `${color}20`,
+        color,
+      }}
+    >
+      {severity}
     </span>
   );
 };
@@ -63,16 +48,45 @@ const SeverityPills = ({ summary }: { summary?: ScanSummaryLike | null }) => {
 const Chip = ({ children }: { children: React.ReactNode }) => (
   <span
     style={{
-      background: "rgba(255,255,255,0.06)",
-      border: "1px solid var(--border, #2a2a3a)",
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "0.125rem 0.625rem",
       borderRadius: 6,
-      padding: "2px 10px",
-      fontSize: "0.85rem",
+      fontSize: "0.75rem",
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      color: "rgba(255,255,255,0.75)",
     }}
   >
     {children}
   </span>
 );
+
+const HISTORY_PAGE = 25;
+
+const cardStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.02)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  borderRadius: 12,
+  padding: "1.5rem",
+  marginBottom: "1.25rem",
+};
+
+const sectionHeading: React.CSSProperties = {
+  margin: "0 0 1rem",
+  fontSize: "1.1rem",
+  fontWeight: 600,
+};
+
+const btn: React.CSSProperties = {
+  padding: "0.4rem 0.85rem",
+  borderRadius: 6,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.04)",
+  color: "rgba(255,255,255,0.85)",
+  cursor: "pointer",
+  fontSize: "0.8125rem",
+};
 
 export const ScanTargetDetailPage = () => {
   const { t } = useI18n();
@@ -84,15 +98,15 @@ export const ScanTargetDetailPage = () => {
   );
 
   const [target, setTarget] = useState<ScanTarget | null>(null);
+  // history is accumulated newest-first across server pages.
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [findings, setFindings] = useState<ConsolidatedFinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState("");
-
-  const [pwEditing, setPwEditing] = useState(false);
-  const [pwValue, setPwValue] = useState("");
 
   const flash = useCallback((msg: string) => {
     setToast(msg);
@@ -107,10 +121,14 @@ export const ScanTargetDetailPage = () => {
       const tg = await fetchScanTarget(targetId);
       setTarget(tg);
       const [hist, finds] = await Promise.all([
-        fetchTargetHistory(targetId, { limit: 50 }).catch(() => ({ items: [] as ScanHistoryEntry[] })),
+        fetchTargetHistory(targetId, { limit: HISTORY_PAGE, offset: 0 }).catch(
+          () => ({ items: [] as ScanHistoryEntry[], total: 0, targetId })
+        ),
         fetchGlobalFindings({ targetId, limit: 10 }).catch(() => ({ items: [] as ConsolidatedFinding[], total: 0 })),
       ]);
-      setHistory(hist.items ?? []);
+      // Server returns a page oldest-first; reverse to newest-first for the table.
+      setHistory([...(hist.items ?? [])].reverse());
+      setHistoryTotal(hist.total ?? (hist.items?.length ?? 0));
       setFindings(finds.items ?? []);
     } catch {
       setError(t("Target not found.", "Ziel nicht gefunden."));
@@ -118,6 +136,34 @@ export const ScanTargetDetailPage = () => {
       setLoading(false);
     }
   }, [targetId, t]);
+
+  // Fetch successive pages from the server, appending newest-first. `pageLimit`
+  // is capped at the endpoint's 500 max; "Show all" loops until everything loads.
+  const loadMoreHistory = useCallback(
+    async (showAll: boolean) => {
+      if (!targetId) return;
+      setHistoryBusy(true);
+      try {
+        let current = history;
+        do {
+          const remaining = historyTotal - current.length;
+          if (remaining <= 0) break;
+          const pageLimit = showAll ? Math.min(500, remaining) : HISTORY_PAGE;
+          const res = await fetchTargetHistory(targetId, { limit: pageLimit, offset: current.length });
+          const page = [...(res.items ?? [])].reverse();
+          if (page.length === 0) break;
+          current = [...current, ...page];
+          setHistory(current);
+          setHistoryTotal(res.total ?? historyTotal);
+        } while (showAll && current.length < historyTotal);
+      } catch {
+        /* ignore — keep what we have */
+      } finally {
+        setHistoryBusy(false);
+      }
+    },
+    [targetId, history, historyTotal]
+  );
 
   useEffect(() => {
     void load();
@@ -178,50 +224,22 @@ export const ScanTargetDetailPage = () => {
     }
   };
 
-  const handleSetPassword = async () => {
-    if (!target || !pwValue.trim()) return;
-    setBusy("pw");
-    try {
-      const updated = await setTargetWritePassword(target.id, pwValue.trim());
-      setTargetPassword(target.id, pwValue.trim());
-      setTarget(updated);
-      setPwEditing(false);
-      setPwValue("");
-      flash(t("Password set.", "Passwort gesetzt."));
-    } catch {
-      flash(t("Failed (admin password required).", "Fehlgeschlagen (Admin-Passwort erforderlich)."));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleClearPassword = async () => {
-    if (!target) return;
-    setBusy("pw");
-    try {
-      const updated = await clearTargetWritePassword(target.id);
-      clearTargetPassword(target.id);
-      setTarget(updated);
-      flash(t("Password cleared.", "Passwort entfernt."));
-    } catch {
-      flash(t("Failed (admin password required).", "Fehlgeschlagen (Admin-Passwort erforderlich)."));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const shieldUrl = useMemo(
-    () =>
-      target
-        ? `${window.location.origin}/api/v1/scans/targets/${encodeURIComponent(target.id)}/shield`
-        : "",
-    [target]
-  );
+  // Clickable shields.io badge markdown: the gold/grey severity badge image
+  // (rendered by shields.io from our JSON endpoint) linked to this target page.
+  const badgeMarkdown = useMemo(() => {
+    if (!target) return "";
+    const origin = window.location.origin;
+    const encId = encodeURIComponent(target.id);
+    const shieldEndpoint = `${origin}/api/v1/scans/targets/${encId}/shield`;
+    const imgUrl = `https://img.shields.io/endpoint?url=${encodeURIComponent(shieldEndpoint)}`;
+    const pageUrl = `${origin}/scans/targets/${encId}`;
+    return `[![findings](${imgUrl})](${pageUrl})`;
+  }, [target]);
 
   if (loading) {
     return (
       <div className="page">
-        <p className="muted">{t("Loading target…", "Ziel wird geladen…")}</p>
+        <p style={{ color: "rgba(255,255,255,0.5)" }}>{t("Loading target…", "Ziel wird geladen…")}</p>
       </div>
     );
   }
@@ -237,27 +255,25 @@ export const ScanTargetDetailPage = () => {
 
   return (
     <div className="page">
-      <div style={{ marginBottom: 12 }}>
-        <Link to="/scans" className="muted">
+      <div style={{ marginBottom: "1rem" }}>
+        <Link to="/scans" style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", fontSize: "0.875rem" }}>
           ← {t("Scan targets", "Scan-Ziele")}
         </Link>
       </div>
 
       {toast && (
-        <div className="card" style={{ borderColor: "#54a0ff", marginBottom: 12 }}>
-          {toast}
-        </div>
+        <div style={{ ...cardStyle, borderColor: "#5c84ff", padding: "0.75rem 1.25rem" }}>{toast}</div>
       )}
 
       {/* Header */}
-      <section className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ margin: 0 }}>
+      <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: "1.75rem" }}>
               {target.writePasswordSet && <span title={t("Write-protected", "Schreibgeschützt")}>🔒 </span>}
               {target.name}
             </h1>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
               <Chip>{target.type}</Chip>
               {target.group && <Chip>{t("App", "App")}: {target.group}</Chip>}
               {target.registry && <Chip>{target.registry}</Chip>}
@@ -265,61 +281,58 @@ export const ScanTargetDetailPage = () => {
                 {t("Auto-scan", "Auto-Scan")}: {target.autoScan ? t("on", "an") : t("off", "aus")}
               </Chip>
             </div>
-            <p className="muted" style={{ marginTop: 8, wordBreak: "break-all" }}>
+            <p style={{ marginTop: "0.75rem", color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", wordBreak: "break-all" }}>
               {target.repositoryUrl || target.id}
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <SeverityPills summary={target.latestSummary} />
+            <SeverityBadges summary={target.latestSummary} style={{ justifyContent: "flex-end" }} />
             {target.latestScanId && (
-              <div style={{ marginTop: 8 }}>
-                <Link to={`/scans/${target.latestScanId}`}>{t("View latest scan", "Neuesten Scan ansehen")} →</Link>
+              <div style={{ marginTop: "0.75rem" }}>
+                <Link to={`/scans/${target.latestScanId}`} style={{ fontSize: "0.875rem" }}>
+                  {t("View latest scan", "Neuesten Scan ansehen")} →
+                </Link>
               </div>
             )}
           </div>
         </div>
 
-        {/* Scanners */}
         {target.scanners?.length ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
             {target.scanners.map((s) => (
               <Chip key={s}>{s}</Chip>
             ))}
           </div>
         ) : null}
 
-        {/* Last check diagnostics */}
         {target.lastCheckAt && (
-          <p className="muted" style={{ marginTop: 12 }}>
-            {t("Last check", "Letzte Prüfung")}: {target.lastCheckVerdict ?? "—"} ·{" "}
-            {formatDateTime(target.lastCheckAt)}
+          <p style={{ marginTop: "1rem", color: "rgba(255,255,255,0.45)", fontSize: "0.8rem" }}>
+            {t("Last check", "Letzte Prüfung")}: {target.lastCheckVerdict ?? "—"} · {formatDateTime(target.lastCheckAt)}
             {target.lastCheckError ? ` · ${target.lastCheckError}` : ""}
           </p>
         )}
 
-        {/* Actions */}
         {!isImport && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
-            <button type="button" className="btn-primary" disabled={busy === "rescan"} onClick={handleRescan}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1.25rem" }}>
+            <button type="button" style={btn} disabled={busy === "rescan"} onClick={handleRescan}>
               ↻ {t("Rescan", "Neu scannen")}
             </button>
-            <button type="button" className="btn-secondary" disabled={busy === "check"} onClick={handleCheck}>
+            <button type="button" style={btn} disabled={busy === "check"} onClick={handleCheck}>
               {t("Run check", "Prüfung ausführen")}
             </button>
             <button
               type="button"
-              className="btn-secondary"
+              style={btn}
               onClick={() => {
-                void navigator.clipboard?.writeText(`![findings](${shieldUrl})`);
-                flash(t("Shield markdown copied.", "Shield-Markdown kopiert."));
+                void navigator.clipboard?.writeText(badgeMarkdown);
+                flash(t("Badge markdown copied.", "Badge-Markdown kopiert."));
               }}
             >
               {t("Copy badge", "Badge kopieren")}
             </button>
             <button
               type="button"
-              className="btn-secondary"
-              style={{ color: "#ff6b6b", borderColor: "rgba(255,107,107,0.3)" }}
+              style={{ ...btn, color: "#ff6b6b", borderColor: "rgba(255,107,107,0.3)" }}
               disabled={busy === "delete"}
               onClick={handleDelete}
             >
@@ -327,130 +340,86 @@ export const ScanTargetDetailPage = () => {
             </button>
           </div>
         )}
-      </section>
-
-      {/* Target access (write password) */}
-      {!isImport && (
-        <section className="card">
-          <h2>{t("Write protection", "Schreibschutz")}</h2>
-          <p className="muted" style={{ marginTop: 4 }}>
-            {target.writePasswordSet
-              ? t(
-                  "This target has its own write password. Holders can manage it without the admin password. Reads stay open.",
-                  "Dieses Ziel hat ein eigenes Schreib-Passwort. Inhaber können es ohne Admin-Passwort verwalten. Lesen bleibt offen."
-                )
-              : t(
-                  "No per-target password set. Set one so an owner can manage this target's writes without the admin password.",
-                  "Kein Ziel-Passwort gesetzt. Setze eines, damit ein Inhaber die Schreibaktionen dieses Ziels ohne Admin-Passwort verwalten kann."
-                )}
-          </p>
-          {pwEditing ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleSetPassword();
-              }}
-              style={{ display: "flex", gap: 6, marginTop: 8 }}
-            >
-              <input
-                type="password"
-                autoFocus
-                className="advanced-filter-input"
-                value={pwValue}
-                onChange={(e) => setPwValue(e.target.value)}
-                placeholder={t("New password", "Neues Passwort")}
-              />
-              <button type="submit" className="btn-primary" disabled={busy === "pw" || !pwValue.trim()}>
-                {t("Save", "Speichern")}
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => { setPwEditing(false); setPwValue(""); }}>
-                {t("Cancel", "Abbrechen")}
-              </button>
-            </form>
-          ) : (
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button type="button" className="btn-secondary" onClick={() => setPwEditing(true)}>
-                {target.writePasswordSet ? t("Change password", "Passwort ändern") : t("Set password", "Passwort setzen")}
-              </button>
-              {target.writePasswordSet && (
-                <button type="button" className="btn-secondary" disabled={busy === "pw"} onClick={handleClearPassword}>
-                  {t("Clear", "Entfernen")}
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-      )}
+      </div>
 
       {/* Top findings */}
       {findings.length > 0 && (
-        <section className="card">
-          <h2>{t("Top findings", "Top-Findings")}</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        <div style={cardStyle}>
+          <h2 style={sectionHeading}>{t("Top findings", "Top-Findings")}</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {findings.map((f, i) => (
               <div
                 key={`${f.vulnerabilityId ?? f.packageName}-${i}`}
-                style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+                style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}
               >
-                <span style={{ minWidth: 70 }}>
-                  <SeverityPills
-                    summary={{
-                      critical: f.severity === "critical" ? 1 : 0,
-                      high: f.severity === "high" ? 1 : 0,
-                      medium: f.severity === "medium" ? 1 : 0,
-                      low: f.severity === "low" ? 1 : 0,
-                      negligible: f.severity === "negligible" ? 1 : 0,
-                      unknown: 0,
-                      total: 1,
-                    }}
-                  />
-                </span>
+                <SeverityTag severity={f.severity} />
                 {f.vulnerabilityId ? (
                   <Link to={`/vulnerability/${f.vulnerabilityId}`}>{f.vulnerabilityId}</Link>
                 ) : (
                   <span>{f.title ?? f.packageName}</span>
                 )}
-                <span className="muted">
+                <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.85rem" }}>
                   {f.packageName}@{f.packageVersion}
                 </span>
               </div>
             ))}
           </div>
-        </section>
+        </div>
       )}
 
       {/* History */}
-      <section className="card">
-        <h2>{t("Scan history", "Scan-Verlauf")}</h2>
+      <div style={cardStyle}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.5rem" }}>
+          <h2 style={sectionHeading}>{t("Scan history", "Scan-Verlauf")}</h2>
+          {historyTotal > 0 && (
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>
+              {t("Showing", "Zeige")} {history.length} / {historyTotal}
+            </span>
+          )}
+        </div>
         {history.length === 0 ? (
-          <p className="muted">{t("No completed scans yet.", "Noch keine abgeschlossenen Scans.")}</p>
+          <p style={{ color: "rgba(255,255,255,0.45)" }}>{t("No completed scans yet.", "Noch keine abgeschlossenen Scans.")}</p>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "var(--muted, #8a8a9a)" }}>
-                <th style={{ padding: "6px 8px" }}>{t("Date", "Datum")}</th>
-                <th style={{ padding: "6px 8px" }}>{t("Status", "Status")}</th>
-                <th style={{ padding: "6px 8px" }}>{t("Findings", "Findings")}</th>
-                <th style={{ padding: "6px 8px" }}>{t("Scan", "Scan")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...history].reverse().map((h) => (
-                <tr key={h.scanId} style={{ borderTop: "1px solid var(--border, #2a2a3a)" }}>
-                  <td style={{ padding: "6px 8px" }}>{formatDateTime(h.startedAt)}</td>
-                  <td style={{ padding: "6px 8px" }}>{h.status}</td>
-                  <td style={{ padding: "6px 8px" }}>
-                    <SeverityPills summary={h.summary} />
-                  </td>
-                  <td style={{ padding: "6px 8px" }}>
-                    <Link to={`/scans/${h.scanId}`}>{h.scanId.slice(0, 8)}</Link>
-                  </td>
+          <>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "rgba(255,255,255,0.4)" }}>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Date", "Datum")}</th>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Status", "Status")}</th>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Findings", "Findings")}</th>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Scan", "Scan")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.scanId} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>{formatDateTime(h.startedAt)}</td>
+                    <td style={{ padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.6)" }}>{h.status}</td>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>
+                      <SeverityBadges summary={h.summary} />
+                    </td>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>
+                      <Link to={`/scans/${h.scanId}`}>{h.scanId.slice(0, 8)}</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {history.length < historyTotal && (
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                <button type="button" style={btn} disabled={historyBusy} onClick={() => loadMoreHistory(false)}>
+                  {historyBusy
+                    ? t("Loading…", "Lädt…")
+                    : `${t("Load more", "Mehr laden")} (${history.length} / ${historyTotal})`}
+                </button>
+                <button type="button" style={btn} disabled={historyBusy} onClick={() => loadMoreHistory(true)}>
+                  {t("Show all", "Alle anzeigen")}
+                </button>
+              </div>
+            )}
+          </>
         )}
-      </section>
+      </div>
     </div>
   );
 };

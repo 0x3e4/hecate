@@ -918,6 +918,7 @@ export interface ScanHistoryEntry {
 
 export interface ScanHistoryResponse {
   targetId: string;
+  total: number;
   items: ScanHistoryEntry[];
 }
 

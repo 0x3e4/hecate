@@ -4,19 +4,14 @@ docs_dir: docs
 
 theme:
   name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  # Dark-only to match the app (gold + grey). Exact colors come from assets/extra.css;
+  # black/amber are the closest named fallbacks if the CSS fails to load.
   palette:
     - scheme: slate
-      primary: deep purple
-      accent: deep purple
-      toggle:
-        icon: material/weather-night
-        name: Switch to light mode
-    - scheme: default
-      primary: deep purple
-      accent: deep purple
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to dark mode
+      primary: black
+      accent: amber
   features:
     - navigation.sections
     - navigation.top
@@ -25,6 +20,9 @@ theme:
     - search.suggest
     - search.highlight
     - toc.follow
+
+extra_css:
+  - assets/extra.css
 
 markdown_extensions:
   - admonition

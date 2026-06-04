@@ -24,6 +24,7 @@ import {
   triggerTargetCheck,
 } from "../api/scans";
 import { fetchLicenseOverview } from "../api/licensePolicy";
+import { SeverityBadges } from "../components/SeverityBadges";
 import { SkeletonBlock } from "../components/Skeleton";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
@@ -3008,38 +3009,6 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
           )}
         </div>
       </div>
-    </div>
-  );
-};
-
-const SeverityBadges = ({ summary, style }: { summary: ScanSummary; style?: React.CSSProperties }) => {
-  if (summary.total === 0) return <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)", ...style }}>—</span>;
-  const badges: { label: string; count: number; color: string }[] = [
-    { label: "C", count: summary.critical, color: "#ff6b6b" },
-    { label: "H", count: summary.high, color: "#ff922b" },
-    { label: "M", count: summary.medium, color: "#fcc419" },
-    { label: "L", count: summary.low, color: "#69db7c" },
-  ];
-  return (
-    <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", ...style }}>
-      {badges.filter(b => b.count > 0).map(b => (
-        <span
-          key={b.label}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.25rem",
-            padding: "0.125rem 0.5rem",
-            borderRadius: "4px",
-            fontSize: "0.75rem",
-            fontWeight: 600,
-            background: `${b.color}20`,
-            color: b.color,
-          }}
-        >
-          {b.label}: {b.count}
-        </span>
-      ))}
     </div>
   );
 };

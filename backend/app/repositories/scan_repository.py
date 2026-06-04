@@ -205,9 +205,14 @@ class ScanRepository:
             return None
 
     async def get_history(
-        self, target_id: str, limit: int = 30, since: datetime | None = None,
+        self, target_id: str, limit: int = 30, since: datetime | None = None, offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Return scan history for charting (most recent completed scans with summaries)."""
+        """Return a page of completed scans (most-recent first by `offset`).
+
+        Sorted newest→oldest, then the returned page is reversed to oldest-first
+        within the page so the chart can plot left→right; the paginated history
+        table reverses each page back to newest-first as it accumulates.
+        """
         try:
             query: dict[str, Any] = {"target_id": target_id, "status": "completed"}
             if since:
@@ -218,6 +223,7 @@ class ScanRepository:
                     {"_id": 1, "started_at": 1, "status": 1, "summary": 1, "duration_seconds": 1, "commit_sha": 1},
                 )
                 .sort("created_at", -1)
+                .skip(max(offset, 0))
                 .limit(limit)
             )
             items = []
@@ -229,6 +235,17 @@ class ScanRepository:
         except PyMongoError as exc:
             log.warning("scan_repository.get_history_failed", target_id=target_id, error=str(exc))
             return []
+
+    async def count_history(self, target_id: str, since: datetime | None = None) -> int:
+        """Total completed scans for a target (for history pagination)."""
+        query: dict[str, Any] = {"target_id": target_id, "status": "completed"}
+        if since:
+            query["started_at"] = {"$gte": since}
+        try:
+            return await self.collection.count_documents(query)
+        except PyMongoError as exc:
+            log.warning("scan_repository.count_history_failed", target_id=target_id, error=str(exc))
+            return 0
 
     async def delete(self, scan_id: str) -> bool:
         try:

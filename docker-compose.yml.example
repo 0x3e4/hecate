@@ -67,9 +67,13 @@ services:
           cpus: "4"
         reservations:
           cpus: "1"
-    # Custom CA
+    # Optional volumes. Uncomment as needed (a named volume is writable even with
+    # read_only: true above). Persisting the grype DB avoids re-downloading it on
+    # every restart (the default cache is on tmpfs and wiped each restart); pair
+    # this with GRYPE_DB_CACHE_DIR=/grype-db in your .env.
     # volumes:
-    #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro
+    #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro   # custom CA
+    #   - grype-db:/grype-db                                    # persistent grype DB cache
 
   apprise:
     image: caronc/apprise:latest
@@ -117,3 +121,6 @@ volumes:
   mongo-data:
   opensearch-data:
   apprise-config:
+  # Uncomment to persist the grype vulnerability DB across scanner restarts
+  # (see the scanner service's volumes block + GRYPE_DB_CACHE_DIR in .env).
+  # grype-db:

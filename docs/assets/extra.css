@@ -1,0 +1,57 @@
+/* Hecate docs theme — match the app's gold + near-black/grey palette.
+   App tokens: background #090b10, surfaces #05070d/#080a12, gold accent #ffd43b. */
+
+[data-md-color-scheme="slate"] {
+  /* Header / primary: dark grey bar with light text (the app header is dark, not gold). */
+  --md-primary-fg-color: #0b0d14;
+  --md-primary-fg-color--light: #14171f;
+  --md-primary-fg-color--dark: #05070d;
+  --md-primary-bg-color: rgba(255, 255, 255, 0.92);
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Accent: Hecate gold — used for links on hover, active nav, focus. */
+  --md-accent-fg-color: #ffd43b;
+  --md-accent-fg-color--transparent: rgba(255, 212, 59, 0.1);
+
+  /* Surfaces. */
+  --md-default-bg-color: #090b10;
+  --md-default-fg-color: rgba(255, 255, 255, 0.9);
+  --md-default-fg-color--light: rgba(255, 255, 255, 0.72);
+  --md-default-fg-color--lighter: rgba(255, 255, 255, 0.45);
+  --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
+
+  /* Code blocks. */
+  --md-code-bg-color: #05070d;
+  --md-code-fg-color: rgba(255, 255, 255, 0.85);
+
+  /* Links: gold. */
+  --md-typeset-a-color: #ffd43b;
+
+  /* Footer. */
+  --md-footer-bg-color: #05070d;
+  --md-footer-bg-color--dark: #05070d;
+}
+
+/* Slightly raised cards/admonitions to echo the app's translucent panels. */
+[data-md-color-scheme="slate"] .md-typeset .admonition,
+[data-md-color-scheme="slate"] .md-typeset details {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Gold underline on the active nav item and table headers, matching the UI tabs. */
+[data-md-color-scheme="slate"] .md-nav__link--active {
+  color: #ffd43b;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Screenshots: rounded, bordered, subtle shadow so they sit on the dark bg cleanly. */
+.md-typeset img.screenshot,
+.md-typeset p > img {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}

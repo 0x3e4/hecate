@@ -5,6 +5,8 @@ platform. It aggregates vulnerability intelligence from nine upstream feeds, ind
 fast search, scans your container images and source repositories, and surfaces what actually
 affects the products you run.
 
+![Hecate dashboard](img/hecate-dash.png)
+
 ## What it does
 
 - **Vulnerability aggregation** — EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV are
@@ -31,5 +33,5 @@ affects the products you run.
 
 !!! note "Documentation status"
     This site is built from the repository with MkDocs Material and published on Read the Docs.
-    The canonical, always-current reference for contributors remains `CLAUDE.md` and the
-    component `README.md` files in the repository.
+    For contributor-level detail, see the component `README.md` files in the repository
+    (`backend/`, `frontend/`, `scanner/`).
