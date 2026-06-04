@@ -235,6 +235,26 @@ _LOCKFILES = frozenset({
 })
 
 
+def _is_registry_npm_version(spec: str) -> bool:
+    """False for non-registry / unresolved npm version specifiers.
+
+    Manifest dependency values can be protocol specifiers rather than published
+    versions: pnpm `catalog:frontend`, npm/pnpm/yarn `workspace:*`, `link:`/
+    `file:`/`portal:` local paths, git/URL references, and bare `*`/`latest`.
+    These never match the vuln DB and only produce registry 404 noise during
+    provenance checks; the resolved versions already arrive separately from the
+    root lockfile (e.g. `parse_pnpm_lock_yaml`), so drop the manifest rows.
+    """
+    s = spec.strip().lower()
+    if s in {"", "*", "x", "latest"}:
+        return False
+    if ":" in s:  # workspace: catalog: npm: link: file: portal: git+…: http(s)://…
+        return False
+    if s.startswith(("git+", "github:", "git@", "/", "./", "../", "~/")):
+        return False
+    return True
+
+
 def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
     """Extract dependencies from package.json files that have no lockfile."""
     root = Path(source_dir)
@@ -267,6 +287,8 @@ def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
                 continue
             for dep_name, dep_version in deps.items():
                 if not isinstance(dep_name, str) or not isinstance(dep_version, str):
+                    continue
+                if not _is_registry_npm_version(dep_version):
                     continue
                 purl = f"pkg:npm/{dep_name}@{dep_version}"
                 components.append({

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Uplo
 from fastapi.responses import Response
 
 from app.core.config import settings
+from app.core.passwords import hash_password
 from app.repositories.license_policy_repository import LicensePolicyRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
 from app.repositories.scan_repository import ScanRepository
@@ -49,6 +50,7 @@ from app.schemas.scan import (
     ScanTargetResponse,
     SubmitScanRequest,
     SubmitScanResponse,
+    TargetWritePasswordRequest,
 )
 from app.schemas.vex import (
     FindingsDismissRequest,
@@ -61,6 +63,15 @@ from app.schemas.vex import (
     VexUpdateResponse,
 )
 from app.api.v1.vulnerabilities import _require_ai_analysis_password
+from app.core.write_auth import (
+    require_admin_write,
+    require_target_write_body_finding_ids,
+    require_target_write_body_target,
+    require_target_write_finding,
+    require_target_write_manual_scan,
+    require_target_write_path,
+    require_target_write_scan,
+)
 from app.schemas.ai import AIScanAnalysisRequest, AIScanAnalysisSubmitResponse
 from app.schemas.scan_attack_chain import (
     ScanAttackChainRequest,
@@ -155,6 +166,7 @@ async def submit_scan(
 @router.post("/manual", response_model=SubmitScanResponse, status_code=201)
 async def submit_manual_scan(
     request: SubmitScanRequest,
+    _auth: None = Depends(require_target_write_manual_scan),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
     """Submit a manual scan from the UI (no API key required)."""
@@ -268,6 +280,42 @@ async def get_target_shield(
     return _render_scan_shield(scan, label)
 
 
+# Write-password management is an ADMIN action (Layer A). Declared before the
+# bare ``/targets/{target_id:path}`` routes so the greedy path converter on the
+# bare DELETE doesn't swallow ``/write-password`` as part of the target id.
+
+
+@router.put("/targets/{target_id:path}/write-password", response_model=ScanTargetResponse)
+async def set_target_write_password(
+    target_id: str,
+    request: TargetWritePasswordRequest,
+    _auth: None = Depends(require_admin_write),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanTargetResponse:
+    """Set (or replace) the per-target write password. Admin-only."""
+    target = await service.target_repo.get(target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Scan target not found")
+    await service.target_repo.set_write_password(target_id, hash_password(request.password))
+    refreshed = await service.get_target(target_id)
+    return _map_target(refreshed)
+
+
+@router.delete("/targets/{target_id:path}/write-password", response_model=ScanTargetResponse)
+async def clear_target_write_password(
+    target_id: str,
+    _auth: None = Depends(require_admin_write),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanTargetResponse:
+    """Clear the per-target write password. Admin-only."""
+    target = await service.target_repo.get(target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Scan target not found")
+    await service.target_repo.set_write_password(target_id, None)
+    refreshed = await service.get_target(target_id)
+    return _map_target(refreshed)
+
+
 @router.get("/targets/{target_id:path}", response_model=ScanTargetResponse)
 async def get_target(
     target_id: str,
@@ -282,6 +330,7 @@ async def get_target(
 @router.post("/targets", response_model=ScanTargetResponse, status_code=201)
 async def create_target(
     request: ScanTargetCreateRequest,
+    _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     """Register a scan target manually."""
@@ -311,6 +360,7 @@ async def create_target(
 async def update_target(
     target_id: str,
     body: dict[str, Any] = None,
+    _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     """Update target settings (e.g., auto_scan, scanners, group)."""
@@ -332,6 +382,7 @@ async def update_target(
 @router.delete("/targets/{target_id:path}", status_code=204)
 async def delete_target(
     target_id: str,
+    _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
     deleted = await service.delete_target(target_id)
@@ -342,6 +393,7 @@ async def delete_target(
 @router.post("/targets/{target_id:path}/check", response_model=ScanTargetResponse)
 async def trigger_target_check(
     target_id: str,
+    _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     """Force an out-of-band ``/check`` probe and refresh diagnostics.
@@ -515,6 +567,7 @@ async def get_global_sbom_facets(
 @router.post("/import-sbom", response_model=SubmitScanResponse, status_code=201)
 async def import_sbom(
     request: ImportSbomRequest,
+    _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
     """Import an external SBOM file (CycloneDX or SPDX JSON)."""
@@ -543,6 +596,7 @@ async def import_sbom_upload(
     file: UploadFile = File(...),
     target_name: str | None = Query(default=None, alias="targetName"),
     format: str | None = Query(default=None),
+    _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
     """Import an external SBOM file via multipart file upload."""
@@ -603,6 +657,7 @@ async def get_license_overview(
 async def update_finding_vex(
     finding_id: str,
     request: VexUpdateRequest,
+    _auth: None = Depends(require_target_write_finding),
 ) -> VexUpdateResponse:
     """Update VEX status on a single finding. Pass null to clear."""
     valid_statuses = {"not_affected", "affected", "fixed", "under_investigation"}
@@ -625,6 +680,7 @@ async def update_finding_vex(
 @router.post("/vex/bulk-update", response_model=VexBulkUpdateResponse)
 async def bulk_update_vex(
     request: VexBulkUpdateRequest,
+    _auth: None = Depends(require_target_write_body_target),
 ) -> VexBulkUpdateResponse:
     """Bulk-apply VEX status to all findings matching vulnerability + target."""
     valid_statuses = {"not_affected", "affected", "fixed", "under_investigation"}
@@ -644,6 +700,7 @@ async def bulk_update_vex(
 @router.post("/vex/bulk-update-by-ids", response_model=VexBulkUpdateResponse)
 async def bulk_update_vex_by_ids(
     request: VexBulkUpdateByIdsRequest,
+    _auth: None = Depends(require_target_write_body_finding_ids),
 ) -> VexBulkUpdateResponse:
     """Apply VEX status to a specific list of finding IDs (for multi-select bulk edit)."""
     valid_statuses = {"not_affected", "affected", "fixed", "under_investigation"}
@@ -665,6 +722,7 @@ async def bulk_update_vex_by_ids(
 @router.post("/findings/dismiss", response_model=VexBulkUpdateResponse)
 async def dismiss_findings(
     request: FindingsDismissRequest,
+    _auth: None = Depends(require_target_write_body_finding_ids),
 ) -> VexBulkUpdateResponse:
     """Mark/unmark a list of findings as dismissed (personal-view filter, not VEX)."""
     if not request.finding_ids:
@@ -681,6 +739,7 @@ async def dismiss_findings(
 @router.post("/vex/import", response_model=VexImportResponse)
 async def import_vex(
     request: VexImportRequest,
+    _auth: None = Depends(require_target_write_body_target),
 ) -> VexImportResponse:
     """Import a CycloneDX VEX document and apply to matching findings."""
     finding_repo = await ScanFindingRepository.create()
@@ -696,6 +755,7 @@ async def import_vex(
 @router.post("/{scan_id}/cancel")
 async def cancel_scan(
     scan_id: str,
+    _auth: None = Depends(require_target_write_scan),
     service: ScanService = Depends(get_scan_service),
 ) -> dict:
     """Cancel a running scan."""
@@ -708,6 +768,7 @@ async def cancel_scan(
 @router.delete("/{scan_id}", status_code=204)
 async def delete_scan(
     scan_id: str,
+    _auth: None = Depends(require_target_write_scan),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
     deleted = await service.delete_scan(scan_id)
@@ -811,6 +872,7 @@ async def create_scan_ai_analysis(
     scan_id: str,
     payload: AIScanAnalysisRequest,
     _: None = Depends(_require_ai_analysis_password),
+    _write: None = Depends(require_target_write_scan),
     service: ScanService = Depends(get_scan_service),
     ai_client: AIClient = Depends(get_ai_client),
 ) -> AIScanAnalysisSubmitResponse:
@@ -933,6 +995,7 @@ async def create_scan_attack_chain_analysis(
     scan_id: str,
     payload: ScanAttackChainRequest,
     _: None = Depends(_require_ai_analysis_password),
+    _write: None = Depends(require_target_write_scan),
     service: ScanService = Depends(get_scan_service),
     ai_client: AIClient = Depends(get_ai_client),
     chain_service: ScanAttackChainService = Depends(get_scan_attack_chain_service),
@@ -1196,6 +1259,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         last_check_error=doc.get("last_check_error"),
         last_image_digest=doc.get("last_image_digest"),
         last_commit_sha=doc.get("last_commit_sha"),
+        write_password_set=bool(doc.get("write_password_hash")),
     )
 
 

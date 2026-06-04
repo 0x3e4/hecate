@@ -145,8 +145,20 @@ class ScanTargetResponse(BaseModel):
     last_commit_sha: str | None = Field(
         default=None, alias="lastCommitSha", serialization_alias="lastCommitSha"
     )
+    write_password_set: bool = Field(
+        default=False,
+        alias="writePasswordSet",
+        serialization_alias="writePasswordSet",
+        description="True when a per-target write password is configured (the hash itself is never returned)",
+    )
 
     model_config = {"populate_by_name": True}
+
+
+class TargetWritePasswordRequest(BaseModel):
+    """Admin request to set a per-target write password."""
+
+    password: str = Field(min_length=1, description="Plaintext password; stored hashed")
 
 
 class ScanTargetListResponse(BaseModel):

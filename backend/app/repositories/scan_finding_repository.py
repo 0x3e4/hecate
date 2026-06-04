@@ -59,6 +59,30 @@ class ScanFindingRepository:
             log.warning("scan_finding_repository.bulk_insert_failed", count=len(findings), error=str(exc))
             return 0
 
+    async def get_target_ids_for_findings(self, finding_ids: list[str]) -> set[str]:
+        """Return the distinct target_ids owning the given finding ids.
+
+        Used by the per-target write gate to authorize finding-level VEX /
+        dismiss actions that only carry finding ids (no targetId in the body).
+        Malformed ids are skipped silently.
+        """
+        object_ids: list[ObjectId] = []
+        for fid in finding_ids:
+            try:
+                object_ids.append(ObjectId(fid))
+            except Exception:
+                continue
+        if not object_ids:
+            return set()
+        try:
+            cursor = self.collection.find(
+                {"_id": {"$in": object_ids}}, {"target_id": 1}
+            )
+            return {doc["target_id"] async for doc in cursor if doc.get("target_id")}
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.get_target_ids_for_findings_failed", error=str(exc))
+            return set()
+
     async def upsert_mal_finding(
         self,
         *,

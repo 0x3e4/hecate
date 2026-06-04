@@ -1,0 +1,19 @@
+# Read the Docs configuration (v2)
+# https://docs.readthedocs.io/en/stable/config-file/v2.html
+#
+# Builds the MkDocs (Material) documentation site under ./docs into a hosted
+# Read the Docs project. Connect the repository at https://readthedocs.org and
+# RTD will pick up this file automatically on every push.
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.12"
+
+mkdocs:
+  configuration: mkdocs.yml
+
+python:
+  install:
+    - requirements: docs/requirements.txt

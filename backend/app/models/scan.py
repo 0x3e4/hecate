@@ -29,6 +29,11 @@ class ScanTargetDocument(BaseModel):
     group: str | None = Field(default=None, description="Application/group name this target belongs to")
     scanners: list[str] = Field(default_factory=list, description="Scanners used for this target")
     auto_scan: bool = Field(default=True, description="Include in auto-scan scheduling")
+    # Per-target write password (hashed via app.core.passwords). When set, write
+    # actions scoped to this target accept this target's password as an
+    # alternative to the global SYSTEM_PASSWORD admin override. Never serialised
+    # to the API — ScanTargetResponse only exposes the boolean ``writePasswordSet``.
+    write_password_hash: str | None = Field(default=None, description="Hashed per-target write password")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_scan_at: datetime | None = None

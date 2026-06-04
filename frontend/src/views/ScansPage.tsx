@@ -564,7 +564,7 @@ export const ScansPage = () => {
         target: target.id,
         type: target.type,
         scanners: target.scanners?.length ? target.scanners : fallbackScanners,
-      });
+      }, target.id);
       setTab("scans");
     } catch (err) {
       console.error("Rescan failed", err);
@@ -2751,13 +2751,12 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
             </span>
             {isRunning && <ScanningBadge status={target.runningScanStatus} />}
           </div>
-          {target.latestScanId ? (
-            <Link to={`/scans/${target.latestScanId}`} style={{ textDecoration: "none" }}>
-              <h3 style={{ margin: "0.25rem 0 0", fontSize: "1rem", fontWeight: 600, color: "#ffd43b", wordBreak: "break-word" }}>{target.name}</h3>
-            </Link>
-          ) : (
-            <h3 style={{ margin: "0.25rem 0 0", fontSize: "1rem", fontWeight: 600, wordBreak: "break-word" }}>{target.name}</h3>
-          )}
+          <Link to={`/scans/targets/${encodeURIComponent(target.id)}`} style={{ textDecoration: "none" }}>
+            <h3 style={{ margin: "0.25rem 0 0", fontSize: "1rem", fontWeight: 600, color: "#ffd43b", wordBreak: "break-word" }}>
+              {target.writePasswordSet && <span title={t("Write-protected", "Schreibgeschützt")}>🔒 </span>}
+              {target.name}
+            </h3>
+          </Link>
         </div>
         <button
           type="button"

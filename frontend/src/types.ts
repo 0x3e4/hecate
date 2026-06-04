@@ -681,6 +681,8 @@ export interface ScanTarget {
   lastCheckError?: string | null;
   lastImageDigest?: string | null;
   lastCommitSha?: string | null;
+  // True when a per-target write password is configured (hash never exposed).
+  writePasswordSet?: boolean;
 }
 
 export interface ScanTargetListResponse {

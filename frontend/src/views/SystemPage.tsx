@@ -48,6 +48,8 @@ import {
   resyncVulnerabilities,
 } from "../api/sync";
 import { fetchScanTargets } from "../api/scans";
+import { setAdminPassword } from "../api/writeAuth";
+import { TargetAccessPanel } from "../components/TargetAccessPanel";
 import { fetchInventoryItems } from "../api/inventory";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
@@ -143,6 +145,9 @@ export const SystemPage = () => {
       const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
       if (r.data.authenticated) {
         setAuthOk(true);
+        // Persist so the axios interceptor can attach X-System-Password to write
+        // requests from any page (delete target, manage notifications, etc.).
+        setAdminPassword(authPassword);
       }
     } catch {
       setAuthError(t("Invalid password.", "Falsches Passwort."));
@@ -2323,6 +2328,8 @@ export const SystemPage = () => {
         </div>
       </div>
       </>)}
+
+      {tab === "general" && <TargetAccessPanel />}
 
       {tab === "general" && (
       <div style={subsectionStyle}>

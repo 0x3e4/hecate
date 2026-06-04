@@ -17,8 +17,10 @@ type SidebarProps = {
   onMobileMenuClose?: () => void;
 };
 
-type NavItem = { to: string; label: string; icon: typeof LuLayoutDashboard };
+type NavItem = { to: string; label: string; icon: typeof LuLayoutDashboard; external?: boolean };
 type NavSection = { titleEn: string; titleDe: string; items: NavItem[] };
+
+const DOCS_URL = "https://docs.hecate.pw";
 
 const buildNavSections = (
   aiEnabled: boolean,
@@ -68,6 +70,7 @@ const buildNavSections = (
       { to: "/info/cicd", label: "CI/CD", icon: LuBookOpen },
       { to: "/info/api", label: "API", icon: LuBookOpen },
       { to: "/info/mcp", label: "MCP", icon: LuBookOpen },
+      { to: DOCS_URL, label: "Documentation", icon: LuBookOpen, external: true },
     ],
   }] : []),
   ...(supportPageEnabled ? [{
@@ -144,6 +147,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/info/cicd": "CI/CD",
     "/info/mcp": "MCP",
     "/support": "Unterstützung",
+    [DOCS_URL]: "Dokumentation",
   };
 
   const localizedSections = useMemo(
@@ -180,6 +184,22 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
               const isVulnerabilitySection = item.to === "/vulnerabilities";
               return (
                 <div key={item.to} className="sidebar-nav-group">
+                  {item.external ? (
+                    <a
+                      href={item.to}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={item.label}
+                      aria-label={item.label}
+                      className="sidebar-link"
+                      onClick={handleLinkClick}
+                    >
+                      <span className="sidebar-link-short">
+                        <Icon aria-hidden="true" focusable="false" />
+                      </span>
+                      <span className="sidebar-link-text">{item.label}</span>
+                    </a>
+                  ) : (
                   <NavLink
                     to={item.to}
                     title={item.label}
@@ -198,6 +218,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                     {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
                     {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" />}
                   </NavLink>
+                  )}
                   {item.to === "/" && !collapsed && recentVulnerabilities.length > 0 && (
                     <div className="sidebar-subnav" aria-label={t("Recently visited vulnerabilities", "Zuletzt besuchte Schwachstellen")}>
                       {recentVulnerabilities.map((visit) => {

@@ -5,6 +5,7 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { SavedSearchesProvider } from "../hooks/useSavedSearches";
 import { ScrollToTop } from "../components/ScrollToTop";
+import { WriteAuthProvider } from "../components/WriteAuthProvider";
 import { useTimezone } from "../timezone/context";
 
 export const AppLayout = () => {
@@ -26,6 +27,7 @@ export const AppLayout = () => {
 
   return (
     <SavedSearchesProvider>
+      <WriteAuthProvider>
       <div className="app-shell">
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -51,6 +53,7 @@ export const AppLayout = () => {
         )}
         <ScrollToTop />
       </div>
+      </WriteAuthProvider>
     </SavedSearchesProvider>
   );
 };

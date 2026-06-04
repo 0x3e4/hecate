@@ -102,30 +102,21 @@ async def _check_pypi(client: httpx.AsyncClient, name: str, version: str) -> Pro
 
     data = resp.json()
 
-    # Check for attestations via PEP 740 endpoint
-    try:
-        att_url = f"https://pypi.org/integrity/{quote(name)}/{version}/"
-        att_resp = await client.get(att_url)
-        if att_resp.status_code == 200:
-            att_data = att_resp.json()
-            if att_data.get("attestations"):
-                # Extract source repo from attestation if available
-                source_repo = None
-                for att in att_data.get("attestations", []):
-                    env = att.get("verification_material", {}).get("certificate", {})
-                    if "github.com" in str(env):
-                        source_repo = str(env)
-                        break
-                return ProvenanceResult(
-                    verified=True,
-                    source_repo=source_repo,
-                    build_system="Trusted Publisher",
-                    attestation_type="pep740",
-                )
-    except Exception:
-        pass
+    # PEP 740 attestations surface as a per-file `provenance` URL in the JSON
+    # metadata already fetched above — no separate request needed. The old
+    # `https://pypi.org/integrity/{name}/{version}/` call was malformed: the real
+    # integrity API is `/integrity/{project}/{version}/{filename}/provenance` and
+    # requires a filename, so it always 404'd here — even for packages that do
+    # publish attestations.
+    for file_entry in data.get("urls", []) or []:
+        if isinstance(file_entry, dict) and file_entry.get("provenance"):
+            return ProvenanceResult(
+                verified=True,
+                build_system="Trusted Publisher",
+                attestation_type="pep740",
+            )
 
-    # Check project URLs for source repo
+    # Fallback: surface the source repo even without attestations.
     info = data.get("info", {})
     project_urls = info.get("project_urls") or {}
     source_repo = (
@@ -331,6 +322,26 @@ def _normalize_version(version: str) -> str:
     return stripped
 
 
+# A legitimate package version never contains ':' in any of the 8 ecosystems we
+# check (npm/pypi/go/maven/rubygems/cargo/nuget/docker). ':' is the unambiguous
+# marker of a package-manager protocol specifier that leaked through unresolved:
+# workspace:*  catalog:frontend  npm:alias@1  link:../x  file:./y  portal:../y
+# git+ssh://…  http(s)://…  (Maven uses group:artifact in the NAME, not the
+# version; a Docker tag is the version and never carries a colon.) Feeding these
+# into a registry URL only produces 404 noise, so skip the lookup entirely.
+_NON_CONCRETE_VERSIONS = frozenset({"", "*", "x", "latest", "-", "any"})
+
+
+def _is_checkable_version(version: str) -> bool:
+    """True only for concrete versions worth a registry provenance lookup."""
+    v = version.strip().lower()
+    if v in _NON_CONCRETE_VERSIONS:
+        return False
+    if ":" in v:
+        return False
+    return True
+
+
 def _detect_ecosystem(component: dict[str, Any]) -> str | None:
     """Detect ecosystem from a CycloneDX component dict."""
     # Try purl first
@@ -364,11 +375,7 @@ async def check_provenance_batch(
         version = _normalize_version(comp.get("version", ""))
         ecosystem = _detect_ecosystem(comp)
 
-        if not ecosystem or not name:
-            comp["provenance"] = ProvenanceResult().to_dict()
-            return
-
-        if not version:
+        if not ecosystem or not name or not _is_checkable_version(version):
             comp["provenance"] = ProvenanceResult().to_dict()
             return
 

@@ -316,7 +316,7 @@ After SBOM extraction, the Hecate Analyzer optionally checks the provenance / at
 | Ecosystem | Registry | Check |
 | --- | --- | --- |
 | npm | `registry.npmjs.org` | Sigstore attestations, GitHub Actions build provenance |
-| PyPI | `pypi.org/integrity/` | PEP 740 attestations (Trusted Publishers, Sigstore) |
+| PyPI | `pypi.org/pypi/{name}/{version}/json` | PEP 740 attestations read from the per-file `urls[].provenance` URL in the JSON metadata (no separate `/integrity/` request) |
 | Go | `sum.golang.org` | Go Checksum Database (transparency log) |
 | Maven | `search.maven.org` | PGP signatures, Sigstore |
 | RubyGems | `rubygems.org/api/v2/` | SHA checksums, Sigstore |
@@ -328,6 +328,7 @@ After SBOM extraction, the Hecate Analyzer optionally checks the provenance / at
 - Async httpx with 5 s timeout per request, `asyncio.Semaphore(10)` for concurrency
 - In-memory cache per scan (no duplicate lookups)
 - Best-effort: errors are ignored and never break a scan
+- Non-concrete versions are skipped before any registry call (`_is_checkable_version`): any version containing `:` (pnpm `catalog:frontend`, npm/pnpm/yarn `workspace:*`, `npm:`/`link:`/`file:`/git/URL refs) or `*`/`x`/`latest` is treated as `unknown` instead of producing 404 noise. Such npm manifest specifiers are also dropped at SBOM extraction (`_is_registry_npm_version` in `hecate_analyzer.py`), since the resolved versions already come from the lockfile
 - Results stored as a `provenance` object on SBOM components (verified, source_repo, build_system, attestation_type)
 - Frontend shows the provenance status in the SBOM table (verified / unverified / unknown)
 
@@ -423,7 +424,9 @@ Backend-side configuration of the sidecar:
 | --- | --- | --- |
 | `SCA_SCANNER_URL` | `http://scanner:8080` | URL of the scanner sidecar |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `1560` | Floor for the backend → sidecar HTTP read timeout. The actual per-call timeout is `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s)`, so bumping a single scanner's subprocess budget auto-grants enough HTTP wait — no need to bump this in lock-step |
-| `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim subprocess timeout. The `<SCANNER>_TIMEOUT_SECONDS` convention works for any scanner wired through `_scanner_timeout()` in `scanner/app/scanners.py`; the backend reads the same env vars to size the sidecar HTTP timeout |
+| `GRYPE_TIMEOUT_SECONDS` | `1200` | Grype subprocess timeout (raised above the generic 600 s default because Grype's DB load + matching on large images regularly exceeds it) |
+| `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim subprocess timeout |
+| `<SCANNER>_TIMEOUT_SECONDS` | `600` | Generic per-scanner subprocess timeout override, wired through `_scanner_timeout()` in `scanner/app/scanners.py` for every scanner (`TRIVY_`, `SYFT_`, `OSV_SCANNER_`, `DOCKLE_`, `DIVE_`, `SEMGREP_`, `TRUFFLEHOG_` (default 300); hyphenated names use underscores). The backend reads the same env vars to auto-size the sidecar HTTP timeout |
 
 ---
 

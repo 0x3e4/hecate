@@ -179,8 +179,13 @@ async def run_scanner(
 
 def _scanner_timeout(scanner: str, default: int = 600) -> int:
     """Resolve a scanner-specific subprocess timeout from `<SCANNER>_TIMEOUT_SECONDS`,
-    falling back to *default* when unset, non-numeric, or non-positive."""
-    raw = os.environ.get(f"{scanner.upper()}_TIMEOUT_SECONDS")
+    falling back to *default* when unset, non-numeric, or non-positive.
+
+    Hyphens in the scanner name are normalised to underscores so a hyphenated
+    name like `osv-scanner` maps to the shell-friendly `OSV_SCANNER_TIMEOUT_SECONDS`
+    (a literal `OSV-SCANNER_TIMEOUT_SECONDS` isn't a valid env identifier). The
+    backend's `_resolve_sidecar_http_timeout` applies the same normalisation."""
+    raw = os.environ.get(f"{scanner.upper().replace('-', '_')}_TIMEOUT_SECONDS")
     if not raw:
         return default
     try:
@@ -463,7 +468,7 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
                 scan_dir = clone_dir
             cmd = ["trivy", "fs", "--format", "json", "--quiet", "--list-all-pkgs", scan_dir]
 
-        stdout, stderr, rc = await _run_command(cmd)
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("trivy"))
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=f"Trivy failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "trivy", "trivy-json")
@@ -487,7 +492,10 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
                 scan_dir = clone_dir
             cmd = ["grype", f"dir:{scan_dir}", "-o", "json", "--quiet"]
 
-        stdout, stderr, rc = await _run_command(cmd)
+        # Grype's DB load + matching on large images/trees regularly exceeds the
+        # generic 600s default, so it gets a higher 1200s floor (overridable via
+        # GRYPE_TIMEOUT_SECONDS).
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("grype", default=1200))
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "grype", "grype-json")
@@ -511,7 +519,7 @@ async def _run_syft(target: str, target_type: str, source_dir: str | None = None
                 scan_dir = clone_dir
             cmd = ["syft", f"dir:{scan_dir}", "-o", "cyclonedx-json", "--quiet"]
 
-        stdout, stderr, rc = await _run_command(cmd)
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("syft"))
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=f"Syft failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "syft", "cyclonedx-json")
@@ -634,7 +642,7 @@ async def _run_osv_scanner(
         # minimum versions for manifest files (produces false positives)
         cmd = ["osv-scanner", "scan", "--format", "json", "--no-resolve", "-r", scan_dir]
 
-        stdout, stderr, rc = await _run_command(cmd)
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("osv-scanner"))
         # osv-scanner returns exit code 1 when vulnerabilities are found (expected)
         # exit 128 with "No package sources found" means the repo has no lockfiles/manifests — not an error
         if rc not in (0, 1):
@@ -707,7 +715,7 @@ async def _run_dockle(target: str, target_type: str) -> ScannerResult:
 
     try:
         cmd = ["dockle", "--format", "json", "--exit-code", "0", target]
-        stdout, stderr, rc = await _run_command(cmd)
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("dockle"))
         if rc != 0 and not stdout.strip():
             return ScannerResult(
                 scanner="dockle", format="dockle-json", report={},
@@ -753,7 +761,7 @@ async def _run_dive(target: str, target_type: str) -> ScannerResult:
 
         # Step 2: Run Dive on the local archive
         cmd = ["dive", f"docker-archive://{archive_file}", "--json", output_file, "--ci"]
-        _, stderr, rc = await _run_command(cmd)
+        _, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("dive"))
 
         # Dive exit code 1 means CI checks failed (expected), only treat as error
         # if no output file was produced
@@ -810,7 +818,7 @@ async def _run_semgrep(
             scan_dir,
         ]
 
-        stdout, stderr, rc = await _run_command(cmd)
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("semgrep"))
         # Semgrep exit codes: 0 = no findings, 1 = findings found, other = error
         if rc not in (0, 1) and not stdout.strip():
             return ScannerResult(
@@ -929,7 +937,7 @@ async def _run_trufflehog(
             scan_dir,
         ]
 
-        stdout, stderr, rc = await _run_command(cmd, timeout=300)
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("trufflehog", default=300))
         # TruffleHog exit 0 = no secrets, 183 = secrets found
         if rc not in (0, 183):
             if not stdout.strip():

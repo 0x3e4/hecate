@@ -41,6 +41,7 @@ from app.services.event_bus import publish_job_completed, publish_job_failed, pu
 from app.services.inventory_service import InventoryService, get_inventory_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
+from app.core.write_auth import require_admin_write
 from app.utils.request import get_client_ip
 
 logger = structlog.get_logger()
@@ -76,6 +77,7 @@ async def search_vulnerabilities(
 )
 async def trigger_refresh(
     payload: VulnerabilityRefreshRequest,
+    _write: None = Depends(require_admin_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> VulnerabilityRefreshResponse:
     """Trigger a vulnerability feed refresh asynchronously.
@@ -424,6 +426,7 @@ async def create_ai_investigation(
     payload: AIInvestigationRequest,
     request: Request,
     _: None = Depends(_require_ai_analysis_password),
+    _write: None = Depends(require_admin_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
@@ -543,6 +546,7 @@ async def create_batch_ai_investigation(
     payload: AIBatchInvestigationRequest,
     request: Request,
     _: None = Depends(_require_ai_analysis_password),
+    _write: None = Depends(require_admin_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
@@ -790,6 +794,7 @@ async def create_attack_path_analysis(
     payload: AttackPathRequest,
     request: Request,
     _: None = Depends(_require_ai_analysis_password),
+    _write: None = Depends(require_admin_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),

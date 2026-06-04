@@ -64,6 +64,11 @@ class ScanTargetRepository:
             for field in ("latest_summary", "latest_scan_id", "has_running_scan", "running_scan_id", "running_scan_status"):
                 if field in existing:
                     payload[field] = existing[field]
+            # Preserve the per-target write password — a re-scan upsert ships a
+            # fresh ScanTargetDocument with write_password_hash=None and would
+            # otherwise wipe the operator-set password on every scan.
+            if existing.get("write_password_hash") and not payload.get("write_password_hash"):
+                payload["write_password_hash"] = existing["write_password_hash"]
 
         try:
             result = await self.collection.replace_one(
@@ -193,6 +198,31 @@ class ScanTargetRepository:
             return result.modified_count > 0
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_scanners_failed", target_id=target_id, error=str(exc))
+            return False
+
+    async def set_write_password(self, target_id: str, password_hash: str | None) -> bool:
+        """Set or clear the per-target write password hash. ``None`` clears it."""
+        try:
+            if password_hash is None:
+                update: dict[str, Any] = {
+                    "$set": {"updated_at": datetime.now(tz=UTC)},
+                    "$unset": {"write_password_hash": ""},
+                }
+            else:
+                update = {
+                    "$set": {
+                        "write_password_hash": password_hash,
+                        "updated_at": datetime.now(tz=UTC),
+                    }
+                }
+            result = await self.collection.update_one({"_id": target_id}, update)
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning(
+                "scan_target_repository.set_write_password_failed",
+                target_id=target_id,
+                error=str(exc),
+            )
             return False
 
     async def update_last_fingerprint(

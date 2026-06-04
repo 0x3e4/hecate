@@ -2282,7 +2282,10 @@ class ScanService:
         `max(SCA_SCANNER_TIMEOUT_SECONDS, max(per_scanner) + 60s)`."""
         configured: list[int] = []
         for s in scanners:
-            raw = os.environ.get(f"{s.upper()}_TIMEOUT_SECONDS")
+            # Normalise hyphens to underscores so `osv-scanner` resolves the same
+            # `OSV_SCANNER_TIMEOUT_SECONDS` key the scanner sidecar reads (see
+            # `_scanner_timeout` in scanner/app/scanners.py).
+            raw = os.environ.get(f"{s.upper().replace('-', '_')}_TIMEOUT_SECONDS")
             if not raw:
                 continue
             try:

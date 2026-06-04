@@ -133,8 +133,15 @@ export const fetchSbomFacets = async (targetId?: string): Promise<SbomFacets> =>
   return response.data;
 };
 
-export const submitManualScan = async (request: SubmitScanRequest): Promise<SubmitScanResponse> => {
-  const response = await api.post<SubmitScanResponse>("/v1/scans/manual", request);
+export const submitManualScan = async (
+  request: SubmitScanRequest,
+  targetId?: string
+): Promise<SubmitScanResponse> => {
+  // targetId lets the write gate attach this existing target's password on a
+  // rescan; omit for brand-new targets (admin-gated creation).
+  const response = await api.post<SubmitScanResponse>("/v1/scans/manual", request, {
+    meta: { targetId },
+  });
   return response.data;
 };
 
@@ -182,8 +189,28 @@ export const deleteScanTarget = async (targetId: string): Promise<void> => {
   await api.delete(`/v1/scans/targets/${encodeURIComponent(targetId)}`);
 };
 
-export const deleteScan = async (scanId: string): Promise<void> => {
-  await api.delete(`/v1/scans/${encodeURIComponent(scanId)}`);
+export const deleteScan = async (scanId: string, targetId?: string): Promise<void> => {
+  await api.delete(`/v1/scans/${encodeURIComponent(scanId)}`, { meta: { targetId } });
+};
+
+// Set (or replace) a per-target write password. Admin action.
+export const setTargetWritePassword = async (
+  targetId: string,
+  password: string
+): Promise<ScanTarget> => {
+  const response = await api.put<ScanTarget>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/write-password`,
+    { password }
+  );
+  return response.data;
+};
+
+// Clear a per-target write password. Admin action.
+export const clearTargetWritePassword = async (targetId: string): Promise<ScanTarget> => {
+  const response = await api.delete<ScanTarget>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/write-password`
+  );
+  return response.data;
 };
 
 export const updateScanTarget = async (
@@ -233,8 +260,10 @@ export const fetchTargetHistory = async (
   return response.data;
 };
 
-export const cancelScan = async (scanId: string): Promise<void> => {
-  await api.post(`/v1/scans/${encodeURIComponent(scanId)}/cancel`);
+export const cancelScan = async (scanId: string, targetId?: string): Promise<void> => {
+  await api.post(`/v1/scans/${encodeURIComponent(scanId)}/cancel`, undefined, {
+    meta: { targetId },
+  });
 };
 
 export const fetchScannerStats = async (): Promise<ScannerStats> => {
@@ -259,9 +288,12 @@ export const updateFindingVex = async (
     vexJustification?: string;
     vexDetail?: string;
     vexResponse?: string[];
-  }
+  },
+  targetId?: string
 ): Promise<{ success: boolean; findingId: string }> => {
-  const response = await api.put(`/v1/scans/vex/findings/${findingId}`, payload);
+  const response = await api.put(`/v1/scans/vex/findings/${findingId}`, payload, {
+    meta: { targetId },
+  });
   return response.data;
 };
 
@@ -271,26 +303,38 @@ export const bulkUpdateVex = async (payload: {
   vexStatus: string;
   vexJustification?: string;
 }): Promise<{ updated: number }> => {
-  const response = await api.post("/v1/scans/vex/bulk-update", payload);
+  const response = await api.post("/v1/scans/vex/bulk-update", payload, {
+    meta: { targetId: payload.targetId },
+  });
   return response.data;
 };
 
-export const bulkUpdateVexByIds = async (payload: {
-  findingIds: string[];
-  vexStatus: string;
-  vexJustification?: string;
-  vexDetail?: string;
-}): Promise<{ updated: number }> => {
-  const response = await api.post("/v1/scans/vex/bulk-update-by-ids", payload);
+export const bulkUpdateVexByIds = async (
+  payload: {
+    findingIds: string[];
+    vexStatus: string;
+    vexJustification?: string;
+    vexDetail?: string;
+  },
+  targetId?: string
+): Promise<{ updated: number }> => {
+  const response = await api.post("/v1/scans/vex/bulk-update-by-ids", payload, {
+    meta: { targetId },
+  });
   return response.data;
 };
 
-export const dismissFindings = async (payload: {
-  findingIds: string[];
-  dismissed: boolean;
-  reason?: string;
-}): Promise<{ updated: number }> => {
-  const response = await api.post("/v1/scans/findings/dismiss", payload);
+export const dismissFindings = async (
+  payload: {
+    findingIds: string[];
+    dismissed: boolean;
+    reason?: string;
+  },
+  targetId?: string
+): Promise<{ updated: number }> => {
+  const response = await api.post("/v1/scans/findings/dismiss", payload, {
+    meta: { targetId },
+  });
   return response.data;
 };
 

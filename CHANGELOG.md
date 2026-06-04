@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.0] - 2026-06-04
+
+### Added
+
+- Per-target SCA overview page at `/scans/targets/:targetId` (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings, quick actions, and per-target write-protection controls. Target card titles now link here.
+- Write protection for the REST API gated by `SYSTEM_PASSWORD`: all mutating requests (POST/PUT/PATCH/DELETE) require the `X-System-Password` admin header when set; reads stay open. Fail-open when unset.
+- Per-target write passwords: assign a target its own write password (System → Target Access, or the target detail page) so an owner can manage that target's writes (settings, scans, findings/VEX, scan AI) via `X-Target-Password` without the admin password. Stored hashed (PBKDF2); the admin password always overrides. A 🔒 badge marks protected targets.
+- AI analysis now requires the AI password (`AI_ANALYSIS_PASSWORD`) as a mandatory final layer on top of the write gate when configured.
+- Read the Docs documentation site (`.readthedocs.yaml` + MkDocs Material under `docs/`) with a Documentation link in the sidebar.
+
+### Changed
+
+- Every scanner's subprocess timeout is now configurable via `<SCANNER>_TIMEOUT_SECONDS` (Grype default raised to 1200 s; DevSkim 1500, TruffleHog 300, all others 600). Hyphenated names use underscores (`osv-scanner` → `OSV_SCANNER_TIMEOUT_SECONDS`), and the backend → sidecar HTTP timeout auto-derives from these so a single scanner bump no longer requires touching `SCA_SCANNER_TIMEOUT_SECONDS`.
+
+### Fixed
+
+- Scanner provenance checks no longer flood the log with registry 404s: unresolved pnpm/npm version specifiers (`catalog:frontend`, `workspace:*`, …) are skipped before any lookup and dropped from the SBOM (the lockfile already supplies the real resolved versions), and PyPI attestations are now read from the package's JSON metadata instead of a malformed `pypi.org/integrity/` URL that always 404'd.
+- Grype scans on large images / repositories no longer fail at the hardcoded 600 s subprocess timeout (default raised to 1200 s, configurable via `GRYPE_TIMEOUT_SECONDS`).
+
 ## [1.1.3] - 2026-06-03
 
 ### Added
