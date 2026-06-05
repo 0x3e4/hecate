@@ -46,7 +46,7 @@ flowchart TB
 ```
 
 - Docker Compose orchestration: backend, frontend, scanner, mongo, opensearch, apprise.
-- Container registry: `ghcr.io/<owner>/hecate-{backend,frontend,scanner}` — published as `latest`, `main-<sha>`, and semver tags.
+- Container registry: `ghcr.io/0x3e4/hecate-{backend,frontend,scanner}` (namespace configurable via `HECATE_GHCR_OWNER`) — published as `latest`, `main-<sha>`, and semver tags.
 - CI/CD: GitHub Actions ([`build-images.yml`](../.github/workflows/build-images.yml) — matrix build of all three images on every push to `main` and on semver tags, pushes to GHCR with `latest` / `main-<sha>` / semver; [`release.yml`](../.github/workflows/release.yml) — on semver tag push extracts the matching section from `CHANGELOG.md` and creates a GitHub Release).
 - Corporate-MITM support: backend and scanner containers load `HTTP_CA_BUNDLE` at startup via identical entrypoint scripts ([backend/entrypoint.sh](../backend/entrypoint.sh), [scanner/entrypoint.sh](../scanner/entrypoint.sh)). The mounted PEM is concatenated with `/etc/ssl/certs/ca-certificates.crt` into `/tmp/hecate-trust-bundle.pem`, and `HTTP_CA_BUNDLE` / `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` are re-exported to that combined path. The PEM therefore only has to contain the corporate / MITM CA and is used additively to the system store, not as a replacement (without the concatenation, every non-MITM-proxied egress destination would break with `CERTIFICATE_VERIFY_FAILED`).
 

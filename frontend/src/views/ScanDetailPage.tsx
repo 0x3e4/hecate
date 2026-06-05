@@ -14,6 +14,7 @@ import { useI18n } from "../i18n/context";
 import { useServerConfig } from "../server-config/context";
 import { ScanFindingAttackPath } from "../components/ScanFindingAttackPath";
 import { ScanAttackChainView } from "../components/ScanAttackChainView";
+import { Toast, useToast } from "../components/Toast";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -332,7 +333,10 @@ export const ScanDetailPage = () => {
   const [sbomFilterProvenance, setSbomFilterProvenance] = useState<string | null>(null);
   const [sbomExporting, setSbomExporting] = useState<string | null>(null);
   const [vexExporting, setVexExporting] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const { toast, showToast, dismiss } = useToast();
+  // Adapter so existing setToast({type,message}) / setToast(null) call sites keep working.
+  const setToast = (next: { message: string; type: "success" | "error" } | null) =>
+    next ? showToast(next.message, next.type) : dismiss();
 
   // License compliance
   const [licenseCompliance, setLicenseCompliance] = useState<LicenseComplianceResult | null>(null);
@@ -570,13 +574,6 @@ export const ScanDetailPage = () => {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevStatusRef = useRef<string | null>(null);
-
-  // Auto-dismiss toast after 5 seconds
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   useEffect(() => {
     document.title = t("Hecate Cyber Defense - Scan Details", "Hecate Cyber Defense - Scan-Details");
@@ -2995,27 +2992,7 @@ export const ScanDetailPage = () => {
         )}
       </section>
 
-      {/* Toast notification */}
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            bottom: "1.5rem",
-            right: "1.5rem",
-            padding: "1rem 1.5rem",
-            borderRadius: "0.5rem",
-            background: toast.type === "error" ? "rgba(255,82,82,0.95)" : "rgba(76,175,80,0.95)",
-            color: "#fff",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            zIndex: 9999,
-            maxWidth: "400px",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   );
 };

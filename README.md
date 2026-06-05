@@ -621,6 +621,7 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 
 ## Further reading
 
+- [Documentation site](https://docs.hecate.pw) (hosted on Read the Docs)
 - [Backend details](backend/README.md)
 - [Frontend details](frontend/README.md)
 - [Scanner sidecar](scanner/README.md)

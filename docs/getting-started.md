@@ -43,7 +43,8 @@ take a while — the UI is usable as data streams in.
 
 ## Updating
 
-Images are published to GHCR (`ghcr.io/<owner>/hecate-{backend,frontend,scanner}`). Pull the
+Images are published to GHCR (`ghcr.io/0x3e4/hecate-{backend,frontend,scanner}` — the namespace is
+configurable via `HECATE_GHCR_OWNER`, default `0x3e4`). Pull the
 newest and recreate:
 
 ```bash

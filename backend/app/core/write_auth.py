@@ -31,6 +31,11 @@ _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _ADMIN_HEADER = "X-System-Password"
 _TARGET_HEADER = "X-Target-Password"
 
+# Marker on every write-gate 401 so the frontend can tell a genuine write-gate
+# rejection apart from other 401s (e.g. a wrong AI/system password typed into a
+# page-level unlock dialog) and only then show the global write-password prompt.
+_WRITE_AUTH_HEADERS = {"X-Write-Auth-Required": "1"}
+
 
 def _admin_matches(provided: str | None) -> bool:
     return bool(settings.system_password) and provided == settings.system_password
@@ -54,6 +59,7 @@ async def require_admin_write(
     raise HTTPException(
         status_code=401,
         detail="System password required for write operations.",
+        headers=_WRITE_AUTH_HEADERS,
     )
 
 
@@ -83,6 +89,7 @@ async def _authorize_target(
     raise HTTPException(
         status_code=401,
         detail="Write password required for this target.",
+        headers=_WRITE_AUTH_HEADERS,
     )
 
 
@@ -110,6 +117,7 @@ async def _authorize_targets(
     raise HTTPException(
         status_code=401,
         detail="Admin password required: selection spans multiple targets.",
+        headers=_WRITE_AUTH_HEADERS,
     )
 
 

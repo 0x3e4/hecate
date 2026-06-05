@@ -511,7 +511,7 @@ async def _run_ai_investigation_background(
         await service.save_ai_assessment(identifier, assessment_payload)
 
         metadata: dict[str, Any] = {
-            "label": "AI-Analyse abgeschlossen",
+            "label": "AI analysis",
             "clientIp": client_ip,
             "provider": provider,
         }
@@ -643,7 +643,7 @@ async def _run_batch_ai_investigation_background(
         )
 
         metadata: dict[str, Any] = {
-            "label": "AI Batch-Analyse abgeschlossen",
+            "label": "AI batch analysis",
             "clientIp": client_ip,
             "provider": provider,
             "vulnerabilityCount": len(vulnerabilities),

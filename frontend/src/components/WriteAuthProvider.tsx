@@ -62,6 +62,7 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
             position: "fixed",
             inset: 0,
             background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(4px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -69,14 +70,21 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
           }}
         >
           <div
-            className="card"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 420, width: "90%" }}
+            style={{
+              background: "#1a1d23",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 10,
+              padding: "1.5rem",
+              width: "90%",
+              maxWidth: 440,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+            }}
           >
             <h3 style={{ marginTop: 0 }}>
-              {t("Write password required", "Schreib-Passwort erforderlich")}
+              {t("Password required", "Passwort erforderlich")}
             </h3>
             <p className="muted" style={{ marginTop: 4 }}>
               {pending.ctx.targetId

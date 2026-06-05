@@ -50,6 +50,7 @@ import {
 import { fetchScanTargets } from "../api/scans";
 import { setAdminPassword } from "../api/writeAuth";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
+import { Toast, useToast } from "../components/Toast";
 import { fetchInventoryItems } from "../api/inventory";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
@@ -158,8 +159,7 @@ export const SystemPage = () => {
 
   // --- Regular state ---
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const toastTimeoutRef = useRef<number | null>(null);
+  const { toast, showToast } = useToast();
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const { savedSearches, loading: savedSearchLoading, updateSavedSearch, removeSavedSearch, refresh: refreshSavedSearches } = useSavedSearches();
@@ -850,10 +850,6 @@ export const SystemPage = () => {
     }, sseConnected ? 30000 : 5000);
 
     return () => {
-      if (toastTimeoutRef.current !== null) {
-        window.clearTimeout(toastTimeoutRef.current);
-        toastTimeoutRef.current = null;
-      }
       if (syncIntervalRef.current !== null) {
         window.clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
@@ -930,17 +926,6 @@ export const SystemPage = () => {
     }
   };
 
-  const showToast = (message: string, type: "success" | "error") => {
-    if (toastTimeoutRef.current !== null) {
-      window.clearTimeout(toastTimeoutRef.current);
-      toastTimeoutRef.current = null;
-    }
-    setToast({ message, type });
-    toastTimeoutRef.current = window.setTimeout(() => {
-      setToast(null);
-      toastTimeoutRef.current = null;
-    }, 4000);
-  };
 
   const parseResyncIds = (input: string): string[] => {
     return input
@@ -2707,20 +2692,7 @@ export const SystemPage = () => {
       </div>
       )}
       </section>
-      {toast && (
-        <div style={toastContainerStyle}>
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              ...toastStyle,
-              ...(toast.type === "success" ? toastSuccessStyle : toastErrorStyle),
-            }}
-          >
-            {toast.message}
-          </div>
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
     )}
   </>
@@ -2752,33 +2724,6 @@ const savedSearchCodeStyle: CSSProperties = {
   wordBreak: "break-word",
 };
 
-const toastContainerStyle: CSSProperties = {
-  position: "fixed",
-  bottom: "2rem",
-  right: "2rem",
-  zIndex: 2100,
-};
-
-const toastStyle: CSSProperties = {
-  background: "rgba(15, 18, 30, 0.92)",
-  borderRadius: "10px",
-  padding: "0.75rem 1rem",
-  color: "#f5f7fa",
-  fontWeight: 600,
-  boxShadow: "0 18px 40px rgba(0, 0, 0, 0.38)",
-  border: "1px solid rgba(255, 255, 255, 0.18)",
-  minWidth: "240px",
-};
-
-const toastSuccessStyle: CSSProperties = {
-  borderColor: "rgba(92, 132, 255, 0.6)",
-  color: "#d6e4ff",
-};
-
-const toastErrorStyle: CSSProperties = {
-  borderColor: "rgba(252, 92, 101, 0.65)",
-  color: "#ffb4b6",
-};
 
 const subsectionStyle: CSSProperties = {
   marginTop: "2rem",

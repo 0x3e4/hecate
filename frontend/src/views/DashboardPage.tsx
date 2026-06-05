@@ -12,6 +12,7 @@ import { useSSE } from "../hooks/useSSE";
 import { getPublishedDisplay } from "../utils/published";
 import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
 import { ExploitationSummary } from "../components/ExploitationSummary";
+import { Toast, useToast } from "../components/Toast";
 import { getPreferredCvssMetric } from "../utils/cvss";
 
 export const DashboardPage = () => {
@@ -25,7 +26,10 @@ export const DashboardPage = () => {
   const [queryLoading, setQueryLoading] = useState<boolean>(false);
   const [queryNotFound, setQueryNotFound] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState<boolean>(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const { toast, showToast, dismiss } = useToast();
+  // Adapter so existing setToast({type,message}) / setToast(null) call sites keep working.
+  const setToast = (next: { message: string; type: "success" | "error" } | null) =>
+    next ? showToast(next.message, next.type) : dismiss();
   // Manual-sync is dispatched async (HTTP 202) and the real result lands on
   // the SSE bus as `vulnerability_refresh_<jobId>` — remember both the jobId
   // and the query ID so the matching effect below can navigate / toast.
@@ -73,13 +77,6 @@ export const DashboardPage = () => {
 
     load();
   }, [sseRefreshKey]);
-
-  // Auto-dismiss toast after 5 seconds
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const handleQuerySearch = useCallback(async () => {
     const trimmed = queryInput.trim().toUpperCase();
@@ -274,27 +271,7 @@ export const DashboardPage = () => {
       <TodayStats t={t} locale={locale} />
       <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />
 
-      {/* Toast notification */}
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            bottom: "1.5rem",
-            right: "1.5rem",
-            padding: "1rem 1.5rem",
-            borderRadius: "0.5rem",
-            background: toast.type === "error" ? "rgba(255,82,82,0.95)" : "rgba(76,175,80,0.95)",
-            color: "#fff",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            zIndex: 9999,
-            maxWidth: "400px",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   );
 };

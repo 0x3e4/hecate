@@ -31,7 +31,7 @@ async def create_saved_search(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     client_ip = get_client_ip(request)
     metadata = {
-        "label": "Gespeicherte Suche erstellt",
+        "label": "Saved search created",
         "clientIp": client_ip,
         "searchName": created.name,
     }
@@ -71,7 +71,7 @@ async def update_saved_search(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved search not found.")
     client_ip = get_client_ip(request)
     metadata = {
-        "label": "Gespeicherte Suche aktualisiert",
+        "label": "Saved search updated",
         "clientIp": client_ip,
         "searchName": updated.name,
     }
@@ -115,7 +115,7 @@ async def delete_saved_search(
 
     client_ip = get_client_ip(request)
     metadata = {
-        "label": "Gespeicherte Suche gelöscht",
+        "label": "Saved search deleted",
         "clientIp": client_ip,
         "searchName": existing.name,
     }

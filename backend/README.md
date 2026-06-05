@@ -68,6 +68,10 @@ app/
 │                                  prepare/save_scan_ai_analysis · prepare/save_scan_attack_chain_analysis
 ├── core/
 │   ├── config.py            Pydantic Settings (all env variables)
+│   ├── write_auth.py        REST write gate — global admin gate (require_admin_write) +
+│   │                          per-target authorization deps (X-System-Password / X-Target-Password);
+│   │                          write-gate 401s carry the X-Write-Auth-Required marker
+│   ├── passwords.py         PBKDF2 hash/verify for per-target write passwords
 │   └── logging_config.py    structlog configuration
 ├── db/
 │   ├── mongo.py             Motor (async MongoDB) connection

@@ -59,6 +59,15 @@ Wrap the shields.io image in a link to the target's detail page so the badge is 
 once more inside the shields.io `?url=` parameter. The target detail page's **Copy badge** button
 copies exactly this linked markdown for you.
 
+## Grype performance on container images
+
+For container-image targets, grype matches against an **SBOM that syft builds first**
+(`grype sbom:<file>`) instead of re-pulling and re-cataloging the image itself. Image cataloging is
+the slow step — feeding grype a ready SBOM leaves only the (fast) vulnerability matching, which keeps
+grype from blowing past `GRYPE_TIMEOUT_SECONDS` on large images. If the SBOM step fails, grype falls
+back to scanning the image directly. The DB is pre-warmed at scanner startup; for very large targets
+you can still raise `GRYPE_TIMEOUT_SECONDS`.
+
 ## SBOM, VEX & licenses
 
 - **SBOM** export in CycloneDX 1.5 and SPDX 2.3; external SBOM import is supported.

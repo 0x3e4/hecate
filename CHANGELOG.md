@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.2] - 2026-06-05
+
+### Added
+
+### Changed
+
+- Restyle the per-target detail page to match the scan detail page: back-link inside the header, mobile horizontal-scroll tables, and bottom-right toast notifications instead of an inline banner.
+- Unify all toast notifications onto one shared component, so success/error messages look and behave consistently across every page.
+- Documentation sync: complete environment-variable reference on the Configuration page, grype SBOM-scanning behaviour, the new frontend components and the per-target history endpoint.
+
+### Fixed
+
+- Grype no longer times out re-cataloging large container images — it now matches against an SBOM that syft builds first (`grype sbom:`), with a direct-image fallback if that step fails.
+- The write-password prompt is now a fully opaque, readable dialog titled "Password required".
+- Page-level unlock dialogs (AI Analysis, System) no longer pop a second, spurious write-password prompt — the global prompt now only appears for genuine write-gate rejections.
+- Container entrypoints are pinned to LF line endings so the scanner/frontend start from Windows/CRLF checkouts.
+
 ## [1.2.1] - 2026-06-04
 
 ### Added

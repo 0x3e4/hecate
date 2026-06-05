@@ -26,7 +26,9 @@ const JOB_LABELS: Record<string, string> = {
   ghsa_initial_sync: "GHSA Initial Sync",
   manual_refresh: "Manual Refresh",
   saved_search_created: "Saved search created",
+  saved_search_updated: "Saved search updated",
   saved_search_deleted: "Saved search deleted",
+  attack_path_analysis: "Attack Path narrative",
   ai_investigation: "AI analysis",
   ai_batch_investigation: "AI batch analysis",
   "sca-scan": "SCA Scan",
@@ -105,8 +107,12 @@ export const AuditLogPage = () => {
         return t("Manual Refresh", "Manueller Refresh");
       case "saved_search_created":
         return t("Saved search created", "Gespeicherte Suche erstellt");
+      case "saved_search_updated":
+        return t("Saved search updated", "Gespeicherte Suche aktualisiert");
       case "saved_search_deleted":
         return t("Saved search deleted", "Gespeicherte Suche gelöscht");
+      case "attack_path_analysis":
+        return t("Attack Path narrative", "Attack-Path-Szenario");
       case "ai_investigation":
         return t("AI analysis", "AI-Analyse");
       case "ai_batch_investigation":
@@ -289,7 +295,7 @@ export const AuditLogPage = () => {
           );
         }
 
-        const jobLabel = metaLabel ?? localizeJobLabel(entry.jobName, JOB_LABELS[entry.jobName] ?? entry.jobName);
+        const jobLabel = localizeJobLabel(entry.jobName, metaLabel ?? JOB_LABELS[entry.jobName] ?? entry.jobName);
 
         return (
           <tr key={entry.id}>

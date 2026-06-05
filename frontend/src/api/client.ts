@@ -52,14 +52,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response: on a 401 from a write, prompt for the password, then retry once.
+// Response: on a 401 that the backend marked as a write-gate rejection, prompt
+// for the password, then retry once. We gate on the `X-Write-Auth-Required`
+// marker (not just any 401 on a mutating request) so that wrong AI/system
+// passwords typed into a page's own unlock dialog — e.g. POST /status/ai-auth —
+// are handled by that page, not hijacked by the global write-password prompt.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error?.config;
     const status = error?.response?.status;
-    const method = (config?.method ?? "get").toLowerCase();
-    if (!config || status !== 401 || !MUTATING.has(method) || config._writeRetried) {
+    const needsWriteAuth =
+      String(error?.response?.headers?.["x-write-auth-required"] ?? "") === "1";
+    if (!config || status !== 401 || !needsWriteAuth || config._writeRetried) {
       return Promise.reject(error);
     }
     const targetId = resolveTargetId(config);

@@ -191,7 +191,7 @@ class ManualRefresher:
             started_at=started_at,
             metadata={
                 "type": "manual_refresh",
-                "label": "Manueller Refresh",
+                "label": "Manual Refresh",
                 "requested": prepared,
                 "source": source,
             },

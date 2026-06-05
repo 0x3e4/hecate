@@ -5,6 +5,7 @@ import { QueryEditor } from "../components/QueryBuilder/QueryEditor";
 import { FieldAggregation } from "../components/QueryBuilder/FieldAggregation";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useI18n } from "../i18n/context";
+import { Toast, useToast } from "../components/Toast";
 import { DQL_FIELD_HINTS } from "../constants/dqlFields";
 
 export const QueryBuilderPage = () => {
@@ -17,7 +18,7 @@ export const QueryBuilderPage = () => {
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const { toast, showToast } = useToast();
 
   const { createSearch } = useSavedSearches();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -122,10 +123,6 @@ export const QueryBuilderPage = () => {
     navigate(`/vulnerabilities?mode=dql&search=${encodeURIComponent(currentQuery)}`);
   };
 
-  const showToast = (message: string, type: "success" | "error") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
 
   // Get the field hint for expanded fields to show aggregations
   const expandedFieldsWithAggregation = Array.from(expandedFields).filter((fieldName) => {
@@ -223,12 +220,7 @@ export const QueryBuilderPage = () => {
         </div>
       )}
 
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`toast toast-${toast.type}`}>
-          {toast.message}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   );
 };

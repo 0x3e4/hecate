@@ -30,6 +30,8 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # So the SPA can read the write-gate marker on 401s in cross-origin setups.
+        expose_headers=["X-Write-Auth-Required"],
     )
 
     app.include_router(api_router, prefix=settings.api_prefix)

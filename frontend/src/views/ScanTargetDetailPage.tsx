@@ -10,6 +10,7 @@ import {
   triggerTargetCheck,
 } from "../api/scans";
 import { SeverityBadges } from "../components/SeverityBadges";
+import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
 import type { ConsolidatedFinding, ScanHistoryEntry, ScanTarget } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
@@ -64,12 +65,10 @@ const Chip = ({ children }: { children: React.ReactNode }) => (
 
 const HISTORY_PAGE = 25;
 
-const cardStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.02)",
-  border: "1px solid rgba(255,255,255,0.06)",
-  borderRadius: 12,
-  padding: "1.5rem",
-  marginBottom: "1.25rem",
+const backLinkStyle: React.CSSProperties = {
+  color: "rgba(255,255,255,0.4)",
+  textDecoration: "none",
+  fontSize: "0.8125rem",
 };
 
 const sectionHeading: React.CSSProperties = {
@@ -88,10 +87,14 @@ const btn: React.CSSProperties = {
   fontSize: "0.8125rem",
 };
 
+const thStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", fontWeight: 600, whiteSpace: "nowrap" };
+const tdStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", whiteSpace: "nowrap" };
+
 export const ScanTargetDetailPage = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const params = useParams();
+  const { toast, showToast } = useToast();
   const targetId = useMemo(
     () => (params.targetId ? decodeURIComponent(params.targetId) : ""),
     [params.targetId]
@@ -106,12 +109,6 @@ export const ScanTargetDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [toast, setToast] = useState("");
-
-  const flash = useCallback((msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(""), 3000);
-  }, []);
 
   const load = useCallback(async () => {
     if (!targetId) return;
@@ -187,9 +184,9 @@ export const ScanTargetDetailPage = () => {
         },
         target.id
       );
-      flash(t("Scan started.", "Scan gestartet."));
+      showToast(t("Scan started.", "Scan gestartet."), "success");
     } catch {
-      flash(t("Rescan failed.", "Rescan fehlgeschlagen."));
+      showToast(t("Rescan failed.", "Rescan fehlgeschlagen."), "error");
     } finally {
       setBusy(null);
     }
@@ -201,9 +198,9 @@ export const ScanTargetDetailPage = () => {
     try {
       const updated = await triggerTargetCheck(target.id);
       setTarget(updated);
-      flash(t("Check complete.", "Prüfung abgeschlossen."));
+      showToast(t("Check complete.", "Prüfung abgeschlossen."), "success");
     } catch {
-      flash(t("Check failed.", "Prüfung fehlgeschlagen."));
+      showToast(t("Check failed.", "Prüfung fehlgeschlagen."), "error");
     } finally {
       setBusy(null);
     }
@@ -219,7 +216,7 @@ export const ScanTargetDetailPage = () => {
       await deleteScanTarget(target.id);
       navigate("/scans");
     } catch {
-      flash(t("Delete failed.", "Löschen fehlgeschlagen."));
+      showToast(t("Delete failed.", "Löschen fehlgeschlagen."), "error");
       setBusy(null);
     }
   };
@@ -239,7 +236,14 @@ export const ScanTargetDetailPage = () => {
   if (loading) {
     return (
       <div className="page">
-        <p style={{ color: "rgba(255,255,255,0.5)" }}>{t("Loading target…", "Ziel wird geladen…")}</p>
+        <section className="card">
+          <Link to="/scans" style={backLinkStyle}>
+            ← {t("Scan targets", "Scan-Ziele")}
+          </Link>
+          <p style={{ color: "rgba(255,255,255,0.5)", marginTop: "0.75rem" }}>
+            {t("Loading target…", "Ziel wird geladen…")}
+          </p>
+        </section>
       </div>
     );
   }
@@ -247,33 +251,47 @@ export const ScanTargetDetailPage = () => {
   if (error || !target) {
     return (
       <div className="page">
-        <p style={{ color: "#ff6b6b" }}>{error || t("Target not found.", "Ziel nicht gefunden.")}</p>
-        <Link to="/scans">← {t("Back to scans", "Zurück zu Scans")}</Link>
+        <section className="card">
+          <Link to="/scans" style={backLinkStyle}>
+            ← {t("Scan targets", "Scan-Ziele")}
+          </Link>
+          <p style={{ color: "#ff6b6b", marginTop: "0.75rem" }}>
+            {error || t("Target not found.", "Ziel nicht gefunden.")}
+          </p>
+        </section>
       </div>
     );
   }
 
+  const externalUrl = target.repositoryUrl || null;
+
   return (
     <div className="page">
-      <div style={{ marginBottom: "1rem" }}>
-        <Link to="/scans" style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", fontSize: "0.875rem" }}>
-          ← {t("Scan targets", "Scan-Ziele")}
-        </Link>
-      </div>
-
-      {toast && (
-        <div style={{ ...cardStyle, borderColor: "#5c84ff", padding: "0.75rem 1.25rem" }}>{toast}</div>
-      )}
-
       {/* Header */}
-      <div style={cardStyle}>
+      <section className="card" style={{ overflow: "visible" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontSize: "1.75rem" }}>
-              {target.writePasswordSet && <span title={t("Write-protected", "Schreibgeschützt")}>🔒 </span>}
-              {target.name}
-            </h1>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+            <Link to="/scans" style={backLinkStyle}>
+              ← {t("Scan targets", "Scan-Ziele")}
+            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.5rem 0 0.25rem", flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0 }}>
+                {target.writePasswordSet && <span title={t("Write-protected", "Schreibgeschützt")}>🔒 </span>}
+                {target.name}
+              </h2>
+              {externalUrl && (
+                <a
+                  href={externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#ffd43b", textDecoration: "none", fontSize: "1rem", lineHeight: 1 }}
+                  title={externalUrl}
+                >
+                  ↗
+                </a>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
               <Chip>{target.type}</Chip>
               {target.group && <Chip>{t("App", "App")}: {target.group}</Chip>}
               {target.registry && <Chip>{target.registry}</Chip>}
@@ -285,7 +303,7 @@ export const ScanTargetDetailPage = () => {
               {target.repositoryUrl || target.id}
             </p>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div style={{ textAlign: "right", marginLeft: "auto" }}>
             <SeverityBadges summary={target.latestSummary} style={{ justifyContent: "flex-end" }} />
             {target.latestScanId && (
               <div style={{ marginTop: "0.75rem" }}>
@@ -325,7 +343,7 @@ export const ScanTargetDetailPage = () => {
               style={btn}
               onClick={() => {
                 void navigator.clipboard?.writeText(badgeMarkdown);
-                flash(t("Badge markdown copied.", "Badge-Markdown kopiert."));
+                showToast(t("Badge markdown copied.", "Badge-Markdown kopiert."), "success");
               }}
             >
               {t("Copy badge", "Badge kopieren")}
@@ -340,11 +358,11 @@ export const ScanTargetDetailPage = () => {
             </button>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Top findings */}
       {findings.length > 0 && (
-        <div style={cardStyle}>
+        <section className="card">
           <h2 style={sectionHeading}>{t("Top findings", "Top-Findings")}</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {findings.map((f, i) => (
@@ -364,11 +382,11 @@ export const ScanTargetDetailPage = () => {
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {/* History */}
-      <div style={cardStyle}>
+      <section className="card">
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.5rem" }}>
           <h2 style={sectionHeading}>{t("Scan history", "Scan-Verlauf")}</h2>
           {historyTotal > 0 && (
@@ -381,32 +399,34 @@ export const ScanTargetDetailPage = () => {
           <p style={{ color: "rgba(255,255,255,0.45)" }}>{t("No completed scans yet.", "Noch keine abgeschlossenen Scans.")}</p>
         ) : (
           <>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "rgba(255,255,255,0.4)" }}>
-                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Date", "Datum")}</th>
-                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Status", "Status")}</th>
-                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Findings", "Findings")}</th>
-                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t("Scan", "Scan")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((h) => (
-                  <tr key={h.scanId} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>{formatDateTime(h.startedAt)}</td>
-                    <td style={{ padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.6)" }}>{h.status}</td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <SeverityBadges summary={h.summary} />
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <Link to={`/scans/${h.scanId}`}>{h.scanId.slice(0, 8)}</Link>
-                    </td>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: "rgba(255,255,255,0.4)" }}>
+                    <th style={thStyle}>{t("Date", "Datum")}</th>
+                    <th style={thStyle}>{t("Status", "Status")}</th>
+                    <th style={thStyle}>{t("Findings", "Findings")}</th>
+                    <th style={thStyle}>{t("Scan", "Scan")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {history.map((h) => (
+                    <tr key={h.scanId} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                      <td style={tdStyle}>{formatDateTime(h.startedAt)}</td>
+                      <td style={{ ...tdStyle, color: "rgba(255,255,255,0.6)" }}>{h.status}</td>
+                      <td style={tdStyle}>
+                        <SeverityBadges summary={h.summary} />
+                      </td>
+                      <td style={tdStyle}>
+                        <Link to={`/scans/${h.scanId}`}>{h.scanId.slice(0, 8)}</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {history.length < historyTotal && (
-              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
                 <button type="button" style={btn} disabled={historyBusy} onClick={() => loadMoreHistory(false)}>
                   {historyBusy
                     ? t("Loading…", "Lädt…")
@@ -419,7 +439,9 @@ export const ScanTargetDetailPage = () => {
             )}
           </>
         )}
-      </div>
+      </section>
+
+      <Toast toast={toast} />
     </div>
   );
 };

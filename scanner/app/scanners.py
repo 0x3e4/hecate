@@ -480,11 +480,44 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
 
 
 async def _run_grype(target: str, target_type: str, source_dir: str | None = None) -> ScannerResult:
-    """Run Grype scanner."""
+    """Run Grype scanner.
+
+    For **container images** we first build an SBOM with syft and run
+    ``grype sbom:<file>`` instead of ``grype <image>``. Grype's own image pull +
+    cataloging is the slow/pathological step on some images — it can blow past
+    GRYPE_TIMEOUT_SECONDS while syft catalogs the *same* image well within its
+    budget — whereas matching a pre-built SBOM skips all image handling and only
+    does the (fast) vulnerability matching. If the SBOM pre-build fails for any
+    reason we fall back to scanning the image directly, so we never regress to
+    "no grype results". Source-repo scans keep the already-fast ``dir:`` path.
+    """
     clone_dir: str | None = None
+    sbom_dir: str | None = None
+    timeout = _scanner_timeout("grype", default=1800)
     try:
         if target_type == "container_image":
-            cmd = ["grype", target, "-o", "json", "--quiet"]
+            sbom_path: str | None = None
+            try:
+                sbom_dir = tempfile.mkdtemp(prefix="hecate-grype-sbom-")
+                sbom_path = os.path.join(sbom_dir, "sbom.cdx.json")
+                # syft writes the SBOM straight to the file (format=path syntax).
+                syft_cmd = ["syft", target, "-o", f"cyclonedx-json={sbom_path}", "--quiet"]
+                _, syft_err, syft_rc = await _run_command(syft_cmd, timeout=_scanner_timeout("syft"))
+                if syft_rc != 0 or not (os.path.exists(sbom_path) and os.path.getsize(sbom_path) > 0):
+                    logger.warning(
+                        "grype.sbom_prebuild_failed rc=%d err=%s — falling back to direct image scan",
+                        syft_rc, _sanitize_error(syft_err),
+                    )
+                    sbom_path = None
+            except Exception as exc:  # noqa: BLE001 — any failure falls back to direct image scan
+                logger.warning("grype.sbom_prebuild_error error=%s — falling back to direct image scan", exc)
+                sbom_path = None
+
+            cmd = (
+                ["grype", f"sbom:{sbom_path}", "-o", "json", "--quiet"]
+                if sbom_path
+                else ["grype", target, "-o", "json", "--quiet"]
+            )
         else:
             scan_dir = source_dir
             if not scan_dir:
@@ -492,12 +525,9 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
                 scan_dir = clone_dir
             cmd = ["grype", f"dir:{scan_dir}", "-o", "json", "--quiet"]
 
-        # Grype's DB load + matching on large images/trees regularly exceeds the
-        # generic 600s default, so it gets a higher 1800s floor (overridable via
-        # GRYPE_TIMEOUT_SECONDS). The DB download itself is moved off the scan
-        # budget by the entrypoint's background pre-warm; this floor covers the
-        # actual cataloging + matching on big targets.
-        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("grype", default=1800))
+        # The timeout floor (1800s, overridable via GRYPE_TIMEOUT_SECONDS) now
+        # mostly covers the SBOM-based match (fast) or the direct-scan fallback.
+        stdout, stderr, rc = await _run_command(cmd, timeout=timeout)
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "grype", "grype-json")
@@ -506,6 +536,8 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
+        if sbom_dir:
+            shutil.rmtree(sbom_dir, ignore_errors=True)
 
 
 async def _run_syft(target: str, target_type: str, source_dir: str | None = None) -> ScannerResult:

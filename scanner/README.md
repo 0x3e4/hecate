@@ -389,6 +389,17 @@ For `git clone` / `ls-remote`, the scanner additionally injects credentials as `
 > [!IMPORTANT]
 > No Docker-socket mounting. Scanner tools pull container images directly from the registry API.
 
+### Grype on container images
+
+For container-image targets, Grype matches against an **SBOM that Syft builds first**
+(`grype sbom:<file>`) instead of `grype <image>`. Grype's own image pull + cataloging is the slow
+step — it can exceed `GRYPE_TIMEOUT_SECONDS` even when Syft catalogs the same image well within its
+budget — whereas matching a ready SBOM only does the (fast) vulnerability matching. If the SBOM
+pre-build fails for any reason, Grype falls back to scanning the image directly, so a scan never
+regresses to "no Grype results". The Grype DB is also pre-warmed in the background at container
+startup so the first scan after a restart doesn't pay the DB download inside its timeout budget.
+Source-repo scans keep the already-fast `grype dir:` path.
+
 ---
 
 ## Source-repository scans
@@ -423,8 +434,9 @@ Backend-side configuration of the sidecar:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SCA_SCANNER_URL` | `http://scanner:8080` | URL of the scanner sidecar |
-| `SCA_SCANNER_TIMEOUT_SECONDS` | `1560` | Floor for the backend → sidecar HTTP read timeout. The actual per-call timeout is `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s)`, so bumping a single scanner's subprocess budget auto-grants enough HTTP wait — no need to bump this in lock-step |
-| `GRYPE_TIMEOUT_SECONDS` | `1200` | Grype subprocess timeout (raised above the generic 600 s default because Grype's DB load + matching on large images regularly exceeds it) |
+| `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP read timeout. The actual per-call timeout is `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s)`, so bumping a single scanner's subprocess budget auto-grants enough HTTP wait — no need to bump this in lock-step |
+| `GRYPE_TIMEOUT_SECONDS` | `1800` | Grype subprocess timeout (raised above the generic 600 s default; for container images grype now matches a pre-built SBOM — see *Grype on container images* — so it rarely needs the headroom) |
+| `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir (tmpfs by default; mount a persistent volume to avoid re-downloading the DB on restart) |
 | `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim subprocess timeout |
 | `<SCANNER>_TIMEOUT_SECONDS` | `600` | Generic per-scanner subprocess timeout override, wired through `_scanner_timeout()` in `scanner/app/scanners.py` for every scanner (`TRIVY_`, `SYFT_`, `OSV_SCANNER_`, `DOCKLE_`, `DIVE_`, `SEMGREP_`, `TRUFFLEHOG_` (default 300); hyphenated names use underscores). The backend reads the same env vars to auto-size the sidecar HTTP timeout |
 

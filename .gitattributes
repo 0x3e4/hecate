@@ -1,0 +1,7 @@
+# Shell scripts must keep LF line endings — they run inside Linux containers,
+# where a CRLF shebang (`#!/bin/sh\r`) makes the kernel fail with
+# "exec /entrypoint.sh: no such file or directory". This holds regardless of
+# the developer's git core.autocrlf setting on Windows.
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+docker-entrypoint.sh text eol=lf

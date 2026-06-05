@@ -67,10 +67,10 @@ const buildNavSections = (
   ...(scaEnabled ? [{
     titleEn: "Info", titleDe: "Info",
     items: [
+      { to: DOCS_URL, label: "Documentation", icon: LuBookOpen, external: true },
       { to: "/info/cicd", label: "CI/CD", icon: LuBookOpen },
       { to: "/info/api", label: "API", icon: LuBookOpen },
       { to: "/info/mcp", label: "MCP", icon: LuBookOpen },
-      { to: DOCS_URL, label: "Documentation", icon: LuBookOpen, external: true },
     ],
   }] : []),
   ...(supportPageEnabled ? [{
