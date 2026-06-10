@@ -15,6 +15,7 @@ import { useServerConfig } from "../server-config/context";
 import { ScanFindingAttackPath } from "../components/ScanFindingAttackPath";
 import { ScanAttackChainView } from "../components/ScanAttackChainView";
 import { Toast, useToast } from "../components/Toast";
+import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -3381,11 +3382,12 @@ const ScannerBreakdownPanel = ({ scan, findings }: { scan: Scan; findings: ScanF
 
 const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => void }) => {
   const { t } = useI18n();
+  const { showToast } = useToastContext();
+  const [aiAnalysisPassword] = usePersistentState<string>("ai_analysis_password", "");
   const [providers, setProviders] = useState<AIProviderInfo[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiLoading, setAiLoading] = useState<boolean>(false);
-  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -3402,12 +3404,11 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
   const handleStart = async () => {
     if (!selectedProvider) return;
     setAiLoading(true);
-    setAiError(null);
     try {
       await triggerScanAiAnalysis(scan.id, {
         provider: selectedProvider,
         additionalContext: additionalContext.trim() || undefined,
-      });
+      }, aiAnalysisPassword.trim() || undefined);
       // Background task — poll the scan a couple times to catch the result
       const poll = async (attempt: number) => {
         if (attempt > 30) { setAiLoading(false); return; }
@@ -3426,7 +3427,13 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
       };
       void poll(0);
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : String(err));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const message =
+        status === 401
+          ? t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig.")
+          : detail ?? (err instanceof Error ? err.message : String(err));
+      showToast(message, "error");
       setAiLoading(false);
     }
   };
@@ -3513,7 +3520,6 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
               }}
             />
           </div>
-          {aiError && <div className="ai-analysis__error">{aiError}</div>}
         </>
       )}
     </div>

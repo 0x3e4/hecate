@@ -74,6 +74,22 @@ So with both a write password and the AI password configured, you cannot trigger
 password — and you also need the relevant write access. The web UI sends both headers
 automatically once you've unlocked.
 
+## Typical setups
+
+A **single operator** running a private instance can simply set `SYSTEM_PASSWORD` (and
+`AI_ANALYSIS_PASSWORD` if AI is enabled), unlock the System page once, and let the UI attach the
+headers to every subsequent write. No per-target passwords are needed.
+
+A **shared instance with delegated ownership** keeps the admin password for yourself and hands each
+target owner a per-target password from **System → Access Control**. Owners can then manage their own
+target — settings, scans, findings, VEX, and scan-scoped AI — without ever holding the admin password,
+and they cannot touch other targets or admin-only resources (inventory, notifications, policies, sync,
+backups).
+
+A **CI/CD pipeline** uses neither the admin nor a target password: it submits scans with the
+`SCA_API_KEY` via the `X-API-Key` header, which is independent of the write gate. See
+[CI/CD](integrations/cicd.md).
+
 ## What this is not
 
 This is a shared-secret gate, **not** user-level authentication, and it does **not** encrypt

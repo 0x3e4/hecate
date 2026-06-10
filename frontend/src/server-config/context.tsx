@@ -7,6 +7,7 @@ export interface ServerConfig {
   scaEnabled: boolean;
   scaAutoScanEnabled: boolean;
   supportPageEnabled: boolean;
+  aiBatchMaxVulns: number;
 }
 
 const PESSIMISTIC_DEFAULTS: ServerConfig = {
@@ -14,6 +15,7 @@ const PESSIMISTIC_DEFAULTS: ServerConfig = {
   scaEnabled: false,
   scaAutoScanEnabled: false,
   supportPageEnabled: false,
+  aiBatchMaxVulns: 10,
 };
 
 const ServerConfigContext = createContext<ServerConfig | null>(null);

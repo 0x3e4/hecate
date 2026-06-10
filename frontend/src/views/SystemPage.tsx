@@ -50,7 +50,7 @@ import {
 import { fetchScanTargets } from "../api/scans";
 import { setAdminPassword } from "../api/writeAuth";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
-import { Toast, useToast } from "../components/Toast";
+import { useToastContext } from "../components/ToastProvider";
 import { fetchInventoryItems } from "../api/inventory";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
@@ -58,6 +58,7 @@ import { useI18n, type TranslateFn } from "../i18n/context";
 import type { AppLanguage } from "../i18n/language";
 import { useTimezone } from "../timezone/context";
 import { listSupportedTimezones } from "../timezone/storage";
+import { useServerConfig } from "../server-config/context";
 import type {
   NotificationChannel,
   NotificationEventKey,
@@ -119,13 +120,15 @@ export const SystemPage = () => {
   useEffect(() => {
     setTimezoneDraft(isBrowserDefault ? "" : timezone);
   }, [timezone, isBrowserDefault]);
+  const { aiBatchMaxVulns } = useServerConfig();
+  const [aiBatchDraft, setAiBatchDraft] = useState<string>(String(aiBatchMaxVulns));
+  const [aiBatchSaving, setAiBatchSaving] = useState(false);
   const navigate = useNavigate();
 
   // --- System password gate ---
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [authOk, setAuthOk] = useState(false);
   const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState("");
   const [authChecking, setAuthChecking] = useState(false);
   const [tab, setTab] = useState<SystemTab>("general");
 
@@ -141,7 +144,6 @@ export const SystemPage = () => {
 
   const handleAuthSubmit = async () => {
     setAuthChecking(true);
-    setAuthError("");
     try {
       const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
       if (r.data.authenticated) {
@@ -151,7 +153,7 @@ export const SystemPage = () => {
         setAdminPassword(authPassword);
       }
     } catch {
-      setAuthError(t("Invalid password.", "Falsches Passwort."));
+      showToast(t("Invalid password.", "Falsches Passwort."), "error");
     } finally {
       setAuthChecking(false);
     }
@@ -159,7 +161,25 @@ export const SystemPage = () => {
 
   // --- Regular state ---
   const [busyId, setBusyId] = useState<string | null>(null);
-  const { toast, showToast } = useToast();
+  const { showToast } = useToastContext();
+
+  const handleSaveAiBatchLimit = async () => {
+    const value = Number(aiBatchDraft);
+    if (!Number.isInteger(value) || value < 1 || value > 100) {
+      showToast(t("Enter a whole number between 1 and 100.", "Gib eine ganze Zahl zwischen 1 und 100 ein."), "error");
+      return;
+    }
+    setAiBatchSaving(true);
+    try {
+      const res = await api.put<{ aiBatchMaxVulns: number }>("/v1/app-settings", { aiBatchMaxVulns: value });
+      setAiBatchDraft(String(res.data.aiBatchMaxVulns));
+      showToast(t("Batch limit saved.", "Batch-Limit gespeichert."), "success");
+    } catch {
+      showToast(t("Could not save batch limit.", "Batch-Limit konnte nicht gespeichert werden."), "error");
+    } finally {
+      setAiBatchSaving(false);
+    }
+  };
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const { savedSearches, loading: savedSearchLoading, updateSavedSearch, removeSavedSearch, refresh: refreshSavedSearches } = useSavedSearches();
@@ -1137,7 +1157,6 @@ export const SystemPage = () => {
             placeholder={t("Password", "Passwort")}
             autoFocus
           />
-          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
           <div className="dialog-actions">
             <button
               type="button"
@@ -1292,6 +1311,38 @@ export const SystemPage = () => {
             `Aktive Zeitzone: ${timezone}${isBrowserDefault ? " (Browser-Standard)" : ""}`
           )}
         </p>
+      </div>
+
+      <div style={subsectionStyle}>
+        <h2 style={subsectionHeadingStyle}>{t("AI Analysis", "AI-Analyse")}</h2>
+        <p className="muted">
+          {t(
+            "Maximum number of vulnerabilities that can be analyzed together in one AI batch.",
+            "Maximale Anzahl an Schwachstellen, die zusammen in einer AI-Batch-Analyse ausgewertet werden können."
+          )}
+        </p>
+        <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <label htmlFor="ai-batch-limit-input" style={{ fontWeight: 600 }}>
+            {t("Batch limit", "Batch-Limit")}
+          </label>
+          <input
+            id="ai-batch-limit-input"
+            type="number"
+            min={1}
+            max={100}
+            value={aiBatchDraft}
+            onChange={(event) => setAiBatchDraft(event.target.value)}
+            style={{ width: "120px", padding: "0.5rem 0.75rem" }}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void handleSaveAiBatchLimit()}
+            disabled={aiBatchSaving}
+          >
+            {aiBatchSaving ? t("Saving…", "Speichere…") : t("Save", "Speichern")}
+          </button>
+        </div>
       </div>
 
       <div style={subsectionStyle}>
@@ -2692,7 +2743,6 @@ export const SystemPage = () => {
       </div>
       )}
       </section>
-      <Toast toast={toast} />
     </div>
     )}
   </>

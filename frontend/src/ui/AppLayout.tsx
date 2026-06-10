@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { SavedSearchesProvider } from "../hooks/useSavedSearches";
 import { ScrollToTop } from "../components/ScrollToTop";
 import { WriteAuthProvider } from "../components/WriteAuthProvider";
+import { ToastProvider } from "../components/ToastProvider";
 import { useTimezone } from "../timezone/context";
 
 export const AppLayout = () => {
@@ -28,6 +29,7 @@ export const AppLayout = () => {
   return (
     <SavedSearchesProvider>
       <WriteAuthProvider>
+      <ToastProvider>
       <div className="app-shell">
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -53,6 +55,7 @@ export const AppLayout = () => {
         )}
         <ScrollToTop />
       </div>
+      </ToastProvider>
       </WriteAuthProvider>
     </SavedSearchesProvider>
   );

@@ -30,6 +30,7 @@ _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 _ADMIN_HEADER = "X-System-Password"
 _TARGET_HEADER = "X-Target-Password"
+_AI_HEADER = "X-AI-Analysis-Password"
 
 # Marker on every write-gate 401 so the frontend can tell a genuine write-gate
 # rejection apart from other 401s (e.g. a wrong AI/system password typed into a
@@ -60,6 +61,62 @@ async def require_admin_write(
         status_code=401,
         detail="System password required for write operations.",
         headers=_WRITE_AUTH_HEADERS,
+    )
+
+
+def _ai_password_matches(provided: str | None) -> bool:
+    return bool(settings.ai_analysis_password) and provided == settings.ai_analysis_password
+
+
+async def require_ai_write(
+    request: Request,
+    x_ai_analysis_password: str | None = Header(default=None, alias=_AI_HEADER),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> None:
+    """Authorize a non-target AI write (single / batch investigation, attack-path).
+
+    When an AI-analysis password is configured, that password ALONE authorizes
+    the write — the global admin gate is intentionally not also required, so the
+    UI shows only the AI-password prompt. The mismatch 401 deliberately carries
+    NO ``X-Write-Auth-Required`` marker, so the page-level AI dialog handles it
+    instead of the global write-password prompt. When no AI password is
+    configured, fall back to the global admin gate (the system-password modal).
+    """
+    if settings.ai_analysis_password:
+        if not _ai_password_matches(x_ai_analysis_password):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing AI analysis password.",
+            )
+        return
+    await require_admin_write(request, x_system_password=x_system_password)
+
+
+async def require_ai_target_write_scan(
+    scan_id: str,
+    x_ai_analysis_password: str | None = Header(default=None, alias=_AI_HEADER),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+    x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    service: ScanService = Depends(get_scan_service),
+) -> None:
+    """Authorize a target-scoped AI write (scan AI analysis / attack chain).
+
+    Same precedence as ``require_ai_write``: the AI password alone authorizes
+    when configured; otherwise fall back to the per-target write gate (admin
+    override or the target's own write password).
+    """
+    if settings.ai_analysis_password:
+        if not _ai_password_matches(x_ai_analysis_password):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing AI analysis password.",
+            )
+        return
+    await require_target_write_scan(
+        scan_id,
+        x_system_password=x_system_password,
+        x_target_password=x_target_password,
+        service=service,
     )
 
 

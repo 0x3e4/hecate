@@ -54,39 +54,15 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
     <>
       {children}
       {pending && (
-        <div
-          className="modal-overlay"
-          role="presentation"
-          onClick={() => close(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-          }}
-        >
+        <div className="dialog-overlay" role="presentation" onClick={() => close(null)}>
           <div
+            className="dialog"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#1a1d23",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 10,
-              padding: "1.5rem",
-              width: "90%",
-              maxWidth: 440,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-            }}
           >
-            <h3 style={{ marginTop: 0 }}>
-              {t("Password required", "Passwort erforderlich")}
-            </h3>
-            <p className="muted" style={{ marginTop: 4 }}>
+            <h3>{t("Password required", "Passwort erforderlich")}</h3>
+            <p>
               {pending.ctx.targetId
                 ? t(
                     "This action modifies a protected target. Enter the target's write password (or the admin password).",
@@ -106,20 +82,18 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
               <input
                 ref={inputRef}
                 type="password"
-                className="advanced-filter-input"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={t("Password", "Passwort")}
-                style={{ width: "100%", marginBottom: 12 }}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") close(null);
                 }}
               />
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button type="button" className="btn-secondary" onClick={() => close(null)}>
+              <div className="dialog-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => close(null)}>
                   {t("Cancel", "Abbrechen")}
                 </button>
-                <button type="submit" className="btn-primary" disabled={!value.trim()}>
+                <button type="submit" className="btn btn-primary" disabled={!value.trim()}>
                   {t("Unlock", "Entsperren")}
                 </button>
               </div>

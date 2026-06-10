@@ -26,6 +26,7 @@ import {
 import { fetchLicenseOverview } from "../api/licensePolicy";
 import { SeverityBadges } from "../components/SeverityBadges";
 import { SkeletonBlock } from "../components/Skeleton";
+import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
@@ -164,6 +165,7 @@ const ScannerCheckboxGroup = ({ scanType, selected, onToggle, compact = false }:
 
 export const ScansPage = () => {
   const { t } = useI18n();
+  const { showToast } = useToastContext();
   const [tab, setTab] = useState<Tab>("targets");
   const [targets, setTargets] = useState<ScanTarget[]>([]);
   const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<string, boolean>>(
@@ -567,8 +569,10 @@ export const ScansPage = () => {
         scanners: target.scanners?.length ? target.scanners : fallbackScanners,
       }, target.id);
       setTab("scans");
+      showToast(t("Scan started.", "Scan gestartet."), "success");
     } catch (err) {
       console.error("Rescan failed", err);
+      showToast(t("Could not start scan.", "Scan konnte nicht gestartet werden."), "error");
     }
   };
 
@@ -583,8 +587,10 @@ export const ScansPage = () => {
         try {
           await deleteScanTarget(targetId);
           setTargets(prev => prev.filter(t => t.id !== targetId));
+          showToast(t("Target deleted.", "Ziel gelöscht."), "success");
         } catch (err) {
           console.error("Delete failed", err);
+          showToast(t("Could not delete target.", "Ziel konnte nicht gelöscht werden."), "error");
         }
         setConfirmModal(null);
       },
@@ -602,8 +608,10 @@ export const ScansPage = () => {
         try {
           await deleteScan(scanId);
           setScans(prev => prev.filter(s => s.id !== scanId));
+          showToast(t("Scan deleted.", "Scan gelöscht."), "success");
         } catch (err) {
           console.error("Delete scan failed", err);
+          showToast(t("Could not delete scan.", "Scan konnte nicht gelöscht werden."), "error");
         }
         setConfirmModal(null);
       },
@@ -614,8 +622,10 @@ export const ScansPage = () => {
     try {
       await cancelScan(scanId);
       loadData();
+      showToast(t("Scan cancelled.", "Scan abgebrochen."), "success");
     } catch (err) {
       console.error("Cancel scan failed", err);
+      showToast(t("Could not cancel scan.", "Scan konnte nicht abgebrochen werden."), "error");
     }
   };
 
@@ -626,6 +636,7 @@ export const ScansPage = () => {
       setTargets(prev => prev.map((tt: ScanTarget) => tt.id === target.id ? { ...tt, autoScan: newValue } : tt));
     } catch (err) {
       console.error("Toggle auto-scan failed", err);
+      showToast(t("Could not update auto-scan.", "Auto-Scan konnte nicht geändert werden."), "error");
     }
   };
 
@@ -635,6 +646,7 @@ export const ScansPage = () => {
       setTargets(prev => prev.map((tt: ScanTarget) => tt.id === targetId ? { ...tt, scanners: newScanners } : tt));
     } catch (err) {
       console.error("Update scanners failed", err);
+      showToast(t("Could not update scanners.", "Scanner konnten nicht aktualisiert werden."), "error");
     }
   };
 
@@ -645,6 +657,7 @@ export const ScansPage = () => {
       setTargets(prev => prev.map((tt: ScanTarget) => tt.id === targetId ? { ...tt, group: normalized } : tt));
     } catch (err) {
       console.error("Update group failed", err);
+      showToast(t("Could not update application group.", "Anwendungsgruppe konnte nicht aktualisiert werden."), "error");
     }
   };
 

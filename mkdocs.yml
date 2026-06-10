@@ -13,9 +13,13 @@ theme:
       primary: black
       accent: amber
   features:
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
+    - navigation.indexes
     - navigation.top
     - navigation.instant
+    - navigation.footer
     - content.code.copy
     - search.suggest
     - search.highlight
@@ -27,6 +31,7 @@ extra_css:
 markdown_extensions:
   - admonition
   - attr_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
@@ -36,12 +41,37 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Configuration: configuration.md
-  - SCA Scanning: sca-scanning.md
-  - Security & Access Control: security-access-control.md
-  - Architecture: architecture.md
+  - User Guide:
+      - guide/overview.md
+      - Dashboard: guide/dashboard.md
+      - Vulnerabilities: guide/vulnerabilities.md
+      - Search & Query Builder: guide/search.md
+      - Environment Inventory: guide/inventory.md
+      - AI Analysis & Attack Paths: guide/ai-analysis.md
+      - Statistics & Changelog: guide/statistics.md
+  - SCA Scanning:
+      - sca-scanning.md
+      - Reading Scan Results: sca/scan-results.md
+      - Attack Chain: sca/attack-chain.md
+      - Malware Detection & Feed: sca/malware.md
+      - License Compliance: sca/licenses.md
+  - Integrations:
+      - MCP Server: integrations/mcp.md
+      - CI/CD: integrations/cicd.md
+      - REST API: integrations/api.md
+      - Notifications: integrations/notifications.md
+  - Administration:
+      - System Settings: admin/system.md
+      - Security & Access Control: security-access-control.md
+      - Audit & Observability: admin/audit.md
+  - Reference:
+      - Configuration: configuration.md
+      - Architecture: architecture.md
   - Changelog: changelog.md

@@ -62,9 +62,9 @@ from app.schemas.vex import (
     VexUpdateRequest,
     VexUpdateResponse,
 )
-from app.api.v1.vulnerabilities import _require_ai_analysis_password
 from app.core.write_auth import (
     require_admin_write,
+    require_ai_target_write_scan,
     require_target_write_body_finding_ids,
     require_target_write_body_target,
     require_target_write_finding,
@@ -875,8 +875,7 @@ async def get_scan(
 async def create_scan_ai_analysis(
     scan_id: str,
     payload: AIScanAnalysisRequest,
-    _: None = Depends(_require_ai_analysis_password),
-    _write: None = Depends(require_target_write_scan),
+    _write: None = Depends(require_ai_target_write_scan),
     service: ScanService = Depends(get_scan_service),
     ai_client: AIClient = Depends(get_ai_client),
 ) -> AIScanAnalysisSubmitResponse:
@@ -998,8 +997,7 @@ async def get_scan_attack_chain(
 async def create_scan_attack_chain_analysis(
     scan_id: str,
     payload: ScanAttackChainRequest,
-    _: None = Depends(_require_ai_analysis_password),
-    _write: None = Depends(require_target_write_scan),
+    _write: None = Depends(require_ai_target_write_scan),
     service: ScanService = Depends(get_scan_service),
     ai_client: AIClient = Depends(get_ai_client),
     chain_service: ScanAttackChainService = Depends(get_scan_attack_chain_service),

@@ -985,7 +985,9 @@ def build_scan_attack_chain_prompts(
             "## Priorisierung\n"
             "Stichpunkte: Welche Stufe ist der Engpass für den Angreifer? Welche CVE "
             "sollte zuerst gepatcht werden, um die Kette zu brechen? Welche kompensierende "
-            "Kontrolle (z. B. Netzwerksegmentierung) reduziert das Risiko sofort?"
+            "Kontrolle (z. B. Netzwerksegmentierung) reduziert das Risiko sofort?\n\n"
+            "Dies ist eine einmalige Analyse, KEIN Dialog. Stelle KEINE Rückfragen und "
+            "ergänze nichts nach dem Abschnitt Priorisierung."
         )
     else:
         system_prompt = (
@@ -1007,7 +1009,9 @@ def build_scan_attack_chain_prompts(
             "## Prioritisation\n"
             "Bullet points: which stage is the bottleneck for the attacker? Which CVE should "
             "be patched first to break the chain? Which compensating control (e.g. network "
-            "segmentation, WAF rule) reduces risk immediately?"
+            "segmentation, WAF rule) reduces risk immediately?\n\n"
+            "This is a one-shot analysis, NOT a conversation. Do NOT ask follow-up questions "
+            "or add anything after the Prioritisation section."
         )
 
     user_prompt_parts: list[str] = []
@@ -1148,7 +1152,9 @@ async def build_attack_path_prompts(
             "Erreichbarkeit, EPSS/KEV-Status. "
             "Schließe mit einer kurzen Wahrscheinlichkeitsbewertung "
             "(very_low/low/medium/high/very_high) und benenne die geschäftlichen "
-            "Auswirkungen auf die im Inventar gelisteten Assets, falls vorhanden."
+            "Auswirkungen auf die im Inventar gelisteten Assets, falls vorhanden.\n\n"
+            "Dies ist eine einmalige Analyse, KEIN Dialog. Stelle KEINE Rückfragen und "
+            "ergänze nichts nach dem Abschnitt Voraussetzungen & Wahrscheinlichkeit."
         )
     else:
         system_prompt = (
@@ -1169,7 +1175,9 @@ async def build_attack_path_prompts(
             "Bullet points covering: privileges required, user interaction, reachability, "
             "EPSS / KEV status. Close with a short likelihood call "
             "(very_low / low / medium / high / very_high) and name the business impact "
-            "for the inventory items listed (if any)."
+            "for the inventory items listed (if any).\n\n"
+            "This is a one-shot analysis, NOT a conversation. Do NOT ask follow-up questions "
+            "or add anything after the Conditions & Likelihood section."
         )
 
     user_prompt_parts: list[str] = []
@@ -1829,7 +1837,11 @@ async def _build_batch_prompts(
         "### [CVE-ID]\n"
         "[2-3 sentences covering: what it is, why it matters, immediate action needed]\n"
         "If version info was provided in context: Add a clear statement about affected status (YES/NO) with reasoning.\n\n"
-        "Be concise and actionable. Avoid generic advice."
+        "Be concise and actionable. Avoid generic advice.\n\n"
+        "**IMPORTANT OUTPUT RULES:**\n"
+        "- This is a one-shot analysis report, NOT a conversation. Do NOT ask follow-up questions.\n"
+        "- Do NOT include phrases like 'Would you like me to...', 'Let me know if...', or 'Do you want me to...'.\n"
+        "- End your analysis with the Individual Vulnerability Notes section. Do not add anything after it."
     )
 
     context_section = f"VULNERABILITIES TO ANALYZE:\n\n{vulnerabilities_section}"

@@ -30,6 +30,9 @@ take a while — the UI is usable as data streams in.
 
 ## First steps in the UI
 
+Once the UI loads, the [User Guide](guide/overview.md) walks through every page in detail. The quickest
+way to get oriented:
+
 ![SCA Scans](img/hecate-sca.png)
 
 1. **Dashboard** — a live "Today" view of newly published CVEs.

@@ -27,16 +27,21 @@ import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useSSE } from "../hooks/useSSE";
+import { useServerConfig } from "../server-config/context";
+import { useSavedSearches } from "../hooks/useSavedSearches";
+import { useToastContext } from "../components/ToastProvider";
 
 export const AIAnalysePage = () => {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
+  const { aiBatchMaxVulns } = useServerConfig();
+  const { savedSearches } = useSavedSearches();
+  const { showToast } = useToastContext();
 
   // --- Page-level auth gate ---
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [authOk, setAuthOk] = useState(false);
   const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState("");
   const [authChecking, setAuthChecking] = useState(false);
 
   useEffect(() => {
@@ -51,7 +56,6 @@ export const AIAnalysePage = () => {
 
   const handleAuthSubmit = async () => {
     setAuthChecking(true);
-    setAuthError("");
     try {
       const r = await api.post<{ authenticated: boolean }>("/v1/status/ai-auth", { password: authPassword });
       if (r.data.authenticated) {
@@ -59,7 +63,7 @@ export const AIAnalysePage = () => {
         setAiAnalysisPassword(authPassword);
       }
     } catch {
-      setAuthError(t("Invalid password.", "Falsches Passwort."));
+      showToast(t("Invalid password.", "Falsches Passwort."), "error");
     } finally {
       setAuthChecking(false);
     }
@@ -73,7 +77,6 @@ export const AIAnalysePage = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingStartedAt, setLoadingStartedAt] = useState<number>(0);
   const [response, setResponse] = useState<AIBatchInvestigationResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const { jobs: sseJobs } = useSSE();
   const [typing, setTyping] = useState<boolean>(false);
   const [displayText, setDisplayText] = useState<string>("");
@@ -81,7 +84,6 @@ export const AIAnalysePage = () => {
   const [singleHistory, setSingleHistory] = useState<SingleAnalysisItem[]>([]);
   const [scanHistory, setScanHistory] = useState<ScanAiAnalysisHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState<number>(0);
   const [batchTotal, setBatchTotal] = useState<number>(0);
   const [singleTotal, setSingleTotal] = useState<number>(0);
@@ -111,16 +113,15 @@ export const AIAnalysePage = () => {
         console.error("Failed to load AI providers:", err);
         const status = (err as any)?.response?.status;
         if (status === 401) {
-          setError(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."));
+          showToast(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."), "error");
         }
       }
     };
     loadProviders();
-  }, [aiAnalysisPassword, t]);
+  }, [aiAnalysisPassword, t, showToast]);
 
   const loadHistory = useCallback(async (page: number) => {
     setHistoryLoading(true);
-    setHistoryError(null);
     try {
       const offset = page * HISTORY_PAGE_SIZE;
       const [batchData, singleData, scanData] = await Promise.all([
@@ -138,14 +139,14 @@ export const AIAnalysePage = () => {
       console.error("Failed to load AI analyses history:", err);
       const status = (err as any)?.response?.status;
       if (status === 401) {
-        setHistoryError(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."));
+        showToast(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."), "error");
       } else {
-        setHistoryError(t("Could not load AI analyses.", "AI-Analysen konnten nicht geladen werden."));
+        showToast(t("Could not load AI analyses.", "AI-Analysen konnten nicht geladen werden."), "error");
       }
     } finally {
       setHistoryLoading(false);
     }
-  }, [HISTORY_PAGE_SIZE, aiAnalysisPassword, t]);
+  }, [HISTORY_PAGE_SIZE, aiAnalysisPassword, t, showToast]);
 
   useEffect(() => {
     loadHistory(historyPage);
@@ -169,17 +170,17 @@ export const AIAnalysePage = () => {
           })
           .catch((err) => {
             console.error("Failed to fetch batch result", err);
-            setError(t("Error loading analysis result.", "Fehler beim Laden des Analyseergebnisses."));
+            showToast(t("Error loading analysis result.", "Fehler beim Laden des Analyseergebnisses."), "error");
           })
           .finally(() => setLoading(false));
       } else {
         setLoading(false);
       }
     } else if (job.status === "failed") {
-      setError(job.error ?? t("AI analysis failed.", "AI-Analyse fehlgeschlagen."));
+      showToast(job.error ?? t("AI analysis failed.", "AI-Analyse fehlgeschlagen."), "error");
       setLoading(false);
     }
-  }, [sseJobs, loading, aiAnalysisPassword, loadHistory, t]);
+  }, [sseJobs, loading, aiAnalysisPassword, loadHistory, t, showToast]);
 
   // Typing animation effect
   useEffect(() => {
@@ -221,16 +222,15 @@ export const AIAnalysePage = () => {
 
   const handleRunAnalysis = async (passwordOverride?: string) => {
     if (!selectedProvider) {
-      setError(t("Please select an AI provider.", "Bitte wählen Sie einen AI-Provider aus."));
+      showToast(t("Please select an AI provider.", "Bitte wählen Sie einen AI-Provider aus."), "error");
       return;
     }
 
     if (selectedVulnIds.length === 0) {
-      setError(t("Please select at least one vulnerability.", "Bitte wählen Sie mindestens eine Schwachstelle aus."));
+      showToast(t("Please select at least one vulnerability.", "Bitte wählen Sie mindestens eine Schwachstelle aus."), "error");
       return;
     }
 
-    setError(null);
     setLoading(true);
     setLoadingStartedAt(Date.now());
     setResponse(null);
@@ -251,22 +251,23 @@ export const AIAnalysePage = () => {
     } catch (err: any) {
       console.error("AI analysis failed:", err);
 
-      // Handle specific error cases
+      // Handle specific error cases — surfaced as a transient toast.
       if (err.response?.status === 429) {
-        setError(
+        showToast(
           t(
             "API quota exhausted. Please try again later or contact your administrator.",
             "API-Kontingent erschöpft. Bitte versuchen Sie es später erneut oder wenden Sie sich an Ihren Administrator."
-          )
+          ),
+          "error"
         );
       } else if (err.response?.status === 401) {
-        setError(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."));
+        showToast(t("AI password is missing or invalid.", "AI-Passwort fehlt oder ist ungültig."), "error");
       } else if (err.response?.status === 404) {
-        setError(t("One or more vulnerabilities were not found.", "Eine oder mehrere Schwachstellen wurden nicht gefunden."));
+        showToast(t("One or more vulnerabilities were not found.", "Eine oder mehrere Schwachstellen wurden nicht gefunden."), "error");
       } else if (err.response?.data?.detail) {
-        setError(err.response.data.detail);
+        showToast(String(err.response.data.detail), "error");
       } else {
-        setError(t("Error during AI analysis. Please try again.", "Fehler bei der AI-Analyse. Bitte versuchen Sie es erneut."));
+        showToast(t("Error during AI analysis. Please try again.", "Fehler bei der AI-Analyse. Bitte versuchen Sie es erneut."), "error");
       }
       shouldAnimateSummaryRef.current = false;
       setLoading(false);
@@ -309,7 +310,6 @@ export const AIAnalysePage = () => {
             placeholder={t("Password", "Passwort")}
             autoFocus
           />
-          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
           <div className="dialog-actions">
             <button
               type="button"
@@ -354,18 +354,12 @@ export const AIAnalysePage = () => {
         </p>
 
         {!hasAiProviders ? (
-          error ? (
-            <div className="alert alert-error" style={{ marginTop: "1.5rem" }}>
-              {error}
-            </div>
-          ) : (
-            <div className="alert alert-warning" style={{ marginTop: "1.5rem" }}>
-              {t(
-                "No AI providers configured. Please configure at least one provider in system settings.",
-                "Keine AI-Provider konfiguriert. Bitte konfigurieren Sie mindestens einen AI-Provider in den Systemeinstellungen."
-              )}
-            </div>
-          )
+          <div className="alert alert-warning" style={{ marginTop: "1.5rem" }}>
+            {t(
+              "No AI providers configured. Please configure at least one provider in system settings.",
+              "Keine AI-Provider konfiguriert. Bitte konfigurieren Sie mindestens einen AI-Provider in den Systemeinstellungen."
+            )}
+          </div>
         ) : (
           <div className="ai-analyse-layout">
             {/* Left column: Vulnerability selector */}
@@ -373,7 +367,8 @@ export const AIAnalysePage = () => {
               <VulnerabilitySelector
                 selectedIds={selectedVulnIds}
                 onSelectionChange={setSelectedVulnIds}
-                maxSelection={10}
+                maxSelection={aiBatchMaxVulns}
+                savedSearches={savedSearches}
               />
             </div>
 
@@ -422,12 +417,6 @@ export const AIAnalysePage = () => {
                 >
                   {loading ? t("Analysis running...", "Analyse läuft...") : t("Start analysis", "Analyse starten")}
                 </button>
-
-                {error && (
-                  <div className="alert alert-error" style={{ marginTop: "1rem" }}>
-                    {error}
-                  </div>
-                )}
               </div>
 
               {/* Analysis display */}
@@ -477,15 +466,10 @@ export const AIAnalysePage = () => {
         {historyLoading && (
           <div className="muted">{t("Loading AI analyses...", "AI-Analysen werden geladen...")}</div>
         )}
-        {historyError && (
-          <div className="alert alert-error" style={{ marginTop: "1rem" }}>
-            {historyError}
-          </div>
-        )}
-        {!historyLoading && !historyError && batchHistory.length === 0 && singleHistory.length === 0 && scanHistory.length === 0 && (
+        {!historyLoading && batchHistory.length === 0 && singleHistory.length === 0 && scanHistory.length === 0 && (
           <div className="muted">{t("No AI analyses available.", "Keine AI-Analysen vorhanden.")}</div>
         )}
-        {!historyLoading && !historyError && (batchHistory.length > 0 || singleHistory.length > 0 || scanHistory.length > 0) && (
+        {!historyLoading && (batchHistory.length > 0 || singleHistory.length > 0 || scanHistory.length > 0) && (
           <div className="ai-analysis__batch-list">
             {/* Combine and sort by timestamp */}
             {[

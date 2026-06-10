@@ -329,10 +329,13 @@ def register(mcp: FastMCP) -> None:
             return {"error": "Rate limit exceeded."}
 
         try:
+            from app.services.app_settings_service import get_app_settings_service
+
+            effective_max = await get_app_settings_service().get_ai_batch_max_vulns()
             if not vulnerability_ids:
-                return {"error": "Provide 1-10 vulnerability IDs."}
-            if len(vulnerability_ids) > 10:
-                return {"error": "Maximum 10 vulnerability IDs per batch."}
+                return {"error": f"Provide 1-{effective_max} vulnerability IDs."}
+            if len(vulnerability_ids) > effective_max:
+                return {"error": f"Maximum {effective_max} vulnerability IDs per batch."}
 
             clean_ids: list[str] = []
             for raw in vulnerability_ids:
@@ -435,10 +438,13 @@ def register(mcp: FastMCP) -> None:
             return {"error": f"Write access denied. {deny_reason}"}
 
         try:
+            from app.services.app_settings_service import get_app_settings_service
+
+            effective_max = await get_app_settings_service().get_ai_batch_max_vulns()
             if not vulnerability_ids:
-                return {"error": "Provide 1-10 vulnerability IDs."}
-            if len(vulnerability_ids) > 10:
-                return {"error": "Maximum 10 vulnerability IDs per batch."}
+                return {"error": f"Provide 1-{effective_max} vulnerability IDs."}
+            if len(vulnerability_ids) > effective_max:
+                return {"error": f"Maximum {effective_max} vulnerability IDs per batch."}
             if not summary or not summary.strip():
                 return {"error": "summary must not be empty."}
             if len(summary) > 200_000:

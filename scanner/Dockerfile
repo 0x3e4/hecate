@@ -1,6 +1,6 @@
 FROM aquasec/trivy:0.71.0 AS trivy
-FROM anchore/grype:v0.113.0 AS grype
-FROM anchore/syft:v1.45.0 AS syft
+FROM anchore/grype:v0.114.0 AS grype
+FROM anchore/syft:v1.45.1 AS syft
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS dotnet
 FROM python:3.14-slim
 

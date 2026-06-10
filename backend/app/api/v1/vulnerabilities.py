@@ -36,12 +36,13 @@ from app.schemas.vulnerability import (
     VulnerabilityRefreshResponse,
 )
 from app.services.ai_service import AIClient, AIProviderError, get_ai_client
+from app.services.app_settings_service import AppSettingsService, get_app_settings_service
 from app.services.attack_path_service import AttackPathService, get_attack_path_service
 from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
 from app.services.inventory_service import InventoryService, get_inventory_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
-from app.core.write_auth import require_admin_write
+from app.core.write_auth import require_admin_write, require_ai_write
 from app.utils.request import get_client_ip
 
 logger = structlog.get_logger()
@@ -425,8 +426,7 @@ async def create_ai_investigation(
     identifier: str,
     payload: AIInvestigationRequest,
     request: Request,
-    _: None = Depends(_require_ai_analysis_password),
-    _write: None = Depends(require_admin_write),
+    _write: None = Depends(require_ai_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
@@ -545,17 +545,24 @@ async def _run_ai_investigation_background(
 async def create_batch_ai_investigation(
     payload: AIBatchInvestigationRequest,
     request: Request,
-    _: None = Depends(_require_ai_analysis_password),
-    _write: None = Depends(require_admin_write),
+    _write: None = Depends(require_ai_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),
     inventory_service: InventoryService = Depends(get_inventory_service),
+    app_settings_service: AppSettingsService = Depends(get_app_settings_service),
 ) -> AIBatchInvestigationSubmitResponse:
     """
     Analyze multiple vulnerabilities together for combined insights.
-    Maximum 10 vulnerabilities per request.
+    The maximum batch size is the configurable AI batch limit (System page).
     """
+    effective_max = await app_settings_service.get_ai_batch_max_vulns()
+    if len(payload.vulnerability_ids) > effective_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {effective_max} vulnerabilities per batch.",
+        )
+
     # Fetch all vulnerabilities before launching background task
     vulnerabilities: list[VulnerabilityDetail] = []
     for vuln_id in payload.vulnerability_ids:
@@ -793,8 +800,7 @@ async def create_attack_path_analysis(
     identifier: str,
     payload: AttackPathRequest,
     request: Request,
-    _: None = Depends(_require_ai_analysis_password),
-    _write: None = Depends(require_admin_write),
+    _write: None = Depends(require_ai_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
     ai_client: AIClient = Depends(get_ai_client),
     audit_service: AuditService = Depends(get_audit_service),

@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.3] - 2026-06-10
+
+### Added
+
+- Configurable AI batch-analysis limit, editable in System → General
+- Pick vulnerabilities for AI Analyse from a saved search, not just live search
+
+### Changed
+
+- AI password alone authorizes AI analysis when set (no separate write password)
+- App-wide toast notifications for consistent action feedback across pages
+- AI analyses now return a one-shot report without follow-up questions
+- Scanner tool bumps: grype 0.113.0 → 0.114.0, syft 1.45.0 → 1.45.1
+- Expanded documentation site with admin, guide, integrations and SCA sections
+
+### Fixed
+
 ## [1.2.2] - 2026-06-05
 
 ### Added

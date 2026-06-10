@@ -11,6 +11,7 @@ import {
   type InventoryItemCreateInput,
 } from "../api/inventory";
 import { fetchProducts, fetchVendors } from "../api/assets";
+import { useToastContext } from "../components/ToastProvider";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import type {
   AffectedVulnerabilityItem,
@@ -237,6 +238,7 @@ const dangerActionStyle: CSSProperties = {
 
 export const InventoryPage = () => {
   const { t } = useI18n();
+  const { showToast } = useToastContext();
   const navigate = useNavigate();
 
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -247,7 +249,6 @@ export const InventoryPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<InventoryItemCreateInput>(emptyForm());
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [selectedVendor, setSelectedVendor] = useState<VendorOption | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
@@ -347,7 +348,6 @@ export const InventoryPage = () => {
     setSelectedProduct(null);
     setCreating(false);
     setEditingId(null);
-    setSaveError(null);
   };
 
   const startEditing = (item: InventoryItem) => {
@@ -377,21 +377,20 @@ export const InventoryPage = () => {
     });
     setEditingId(item.id);
     setCreating(true);
-    setSaveError(null);
   };
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.vendorSlug.trim() || !form.productSlug.trim() || !form.version.trim()) {
-      setSaveError(
+      showToast(
         t(
           "Name, vendor, product and version are required.",
           "Name, Hersteller, Produkt und Version sind erforderlich.",
         ),
+        "error",
       );
       return;
     }
     setSaving(true);
-    setSaveError(null);
     try {
       const payload: InventoryItemCreateInput = {
         ...form,
@@ -412,9 +411,15 @@ export const InventoryPage = () => {
       }
       resetForm();
       await loadItems();
+      showToast(
+        editingId
+          ? t("Inventory item updated.", "Inventar-Eintrag aktualisiert.")
+          : t("Inventory item created.", "Inventar-Eintrag erstellt."),
+        "success"
+      );
     } catch (exc: unknown) {
       const message = exc instanceof Error ? exc.message : String(exc);
-      setSaveError(message);
+      showToast(message, "error");
     } finally {
       setSaving(false);
     }
@@ -432,8 +437,9 @@ export const InventoryPage = () => {
       await deleteInventoryItem(itemId);
       if (editingId === itemId) resetForm();
       await loadItems();
+      showToast(t("Inventory item deleted.", "Inventar-Eintrag gelöscht."), "success");
     } catch (exc: unknown) {
-      setError(exc instanceof Error ? exc.message : String(exc));
+      showToast(exc instanceof Error ? exc.message : String(exc), "error");
     }
   };
 
@@ -807,12 +813,6 @@ export const InventoryPage = () => {
                 style={{ resize: "vertical", fontFamily: "inherit" }}
               />
             </div>
-
-            {saveError && (
-              <div style={fieldFullStyle}>
-                <div className="alert error">{saveError}</div>
-              </div>
-            )}
 
             <div style={{ ...fieldFullStyle, flexDirection: "row", gap: "0.5rem", flexWrap: "wrap" }}>
               <button type="button" onClick={() => void handleSave()} disabled={saving}>

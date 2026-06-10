@@ -55,3 +55,22 @@
   border-radius: 8px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
+
+/* Grid cards (home/overview): translucent panels with a gold hover edge, echoing the app. */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid > .card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover {
+  border-color: rgba(255, 212, 59, 0.55);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Card icons inherit the gold accent so they read as part of the brand. */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards .twemoji svg {
+  fill: #ffd43b;
+}

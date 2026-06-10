@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.write_auth import require_admin_write
 from app.api.v1 import (
+    app_settings,
     assets,
     audit,
     backup,
@@ -37,6 +38,7 @@ _admin_write = [Depends(require_admin_write)]
 
 api_router.include_router(status.router, prefix="/status", tags=["status"])
 api_router.include_router(config.router, tags=["config"])
+api_router.include_router(app_settings.router, tags=["app-settings"], dependencies=_admin_write)
 api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["vulnerabilities"])
 api_router.include_router(
     saved_searches.router, prefix="/saved-searches", tags=["saved-searches"], dependencies=_admin_write

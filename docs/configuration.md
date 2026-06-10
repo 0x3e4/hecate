@@ -26,6 +26,11 @@ differ from the code defaults.
 
 ## Access control (passwords)
 
+These three secrets are how you lock a shared or internet-reachable instance down. They are
+independent layers — set the ones you need — and each is fail-open: when unset, that gate is a no-op.
+The full model, including per-target write delegation, is described in
+[Security & Access Control](security-access-control.md).
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SYSTEM_PASSWORD` 🔑 | (unset) | Admin password. When set, **all REST writes** require header `X-System-Password`, and it unlocks the System page. |
@@ -34,9 +39,18 @@ differ from the code defaults.
 
 ## TLS / corporate proxy
 
+Only relevant if your network terminates outbound TLS at a MITM proxy with a private root CA. Point
+`HTTP_CA_BUNDLE` at a PEM containing just that corporate CA — Hecate merges it with the system roots
+at startup, so direct egress (for example to NVD) keeps working alongside proxied traffic.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `HTTP_CA_BUNDLE` | (unset) | Path inside the backend **and** scanner containers to a PEM with your corporate/MITM root CA (merged with system CAs); trusted for all outbound HTTPS. |
+
+!!! tip "Mount only the corporate CA"
+    The mounted PEM is additive to the container's system trust store, not a replacement. It therefore
+    needs to contain only your internal/MITM root — the public roots (Mozilla bundle) already ship in
+    the image.
 
 ## MongoDB
 
@@ -69,7 +83,12 @@ docs and rarely need changing.
 
 ## AI providers (all optional)
 
-Set any one provider to enable AI features.
+Set any one provider to enable AI features; configuring several lets you pick per analysis from the
+provider dropdown. As a rule of thumb: use **OpenAI** when you want reasoning plus live web search,
+**Anthropic** or **Gemini** for strong general summaries, and the generic **OpenAI-compatible**
+endpoint to keep everything on-premises through Ollama, vLLM, LM Studio or a gateway like OpenRouter.
+The compatible provider activates only once both its base URL and model are set. See
+[AI Analysis & Attack Paths](guide/ai-analysis.md) for how the features behave.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -90,7 +109,10 @@ Set any one provider to enable AI features.
 
 ## MCP server (optional)
 
-See the in-app MCP page (`/info/mcp`) for full OAuth setup.
+Enabling the MCP server lets AI assistants query Hecate in natural language. It is fail-closed: the
+endpoint mounts only when `MCP_ENABLED=true` *and* either a full IdP OAuth configuration is present or
+the dev-only `MCP_AUTH_DISABLED` bypass is set. See [MCP Server](integrations/mcp.md) for the connection
+walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 
 | Variable | Default | Description |
 | --- | --- | --- |

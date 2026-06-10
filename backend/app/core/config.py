@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     ai_response_language: str = "en"
     ai_web_search_enabled: bool = True
     ai_analysis_password: str | None = None
+    ai_batch_max_vulns: int = 10
     system_password: str | None = None
     mongo_url: str = "mongodb://mongo:27017"
     mongo_username: str | None = None
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     mongo_license_policies_collection: str = "license_policies"
     mongo_environment_inventory_collection: str = "environment_inventory"
     mongo_malware_intel_collection: str = "malware_intel"
+    mongo_app_settings_collection: str = "app_settings"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None

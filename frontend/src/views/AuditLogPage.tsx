@@ -5,6 +5,7 @@ import { fetchIngestionLogs } from "../api/audit";
 import { api } from "../api/client";
 import { IngestionLogEntry } from "../types";
 import { SkeletonBlock } from "../components/Skeleton";
+import { useToastContext } from "../components/ToastProvider";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 
@@ -52,13 +53,13 @@ const PAGE_SIZE = 50;
 
 export const AuditLogPage = () => {
   const { t, locale } = useI18n();
+  const { showToast } = useToastContext();
   const navigate = useNavigate();
 
   // --- System password gate ---
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [authOk, setAuthOk] = useState(false);
   const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState("");
   const [authChecking, setAuthChecking] = useState(false);
 
   useEffect(() => {
@@ -73,14 +74,13 @@ export const AuditLogPage = () => {
 
   const handleAuthSubmit = async () => {
     setAuthChecking(true);
-    setAuthError("");
     try {
       const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
       if (r.data.authenticated) {
         setAuthOk(true);
       }
     } catch {
-      setAuthError(t("Invalid password.", "Falsches Passwort."));
+      showToast(t("Invalid password.", "Falsches Passwort."), "error");
     } finally {
       setAuthChecking(false);
     }
@@ -357,7 +357,6 @@ export const AuditLogPage = () => {
             placeholder={t("Password", "Passwort")}
             autoFocus
           />
-          {authError && <p style={{ color: "#ffa3a3", fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{authError}</p>}
           <div className="dialog-actions">
             <button
               type="button"

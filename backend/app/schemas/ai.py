@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.services.app_settings_service import AI_BATCH_MAX_HARD_CAP
+
 AIProviderLiteral = Literal["openai", "anthropic", "gemini", "openai-compatible"]
 
 
@@ -59,9 +61,12 @@ class AIBatchInvestigationSubmitResponse(BaseModel):
 class AIBatchInvestigationRequest(BaseModel):
     vulnerability_ids: list[str] = Field(
         min_length=1,
-        max_length=10,
+        max_length=AI_BATCH_MAX_HARD_CAP,
         alias="vulnerabilityIds",
-        description="List of vulnerability identifiers to analyze together (1-10)",
+        description=(
+            "List of vulnerability identifiers to analyze together. The effective "
+            "limit is the configurable AI batch limit; this is the hard safety cap."
+        ),
     )
     provider: AIProviderLiteral
     language: str | None = None
