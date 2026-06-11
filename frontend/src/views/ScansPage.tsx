@@ -168,6 +168,8 @@ export const ScansPage = () => {
   const { showToast } = useToastContext();
   const [tab, setTab] = useState<Tab>("targets");
   const [targets, setTargets] = useState<ScanTarget[]>([]);
+  // Client-side name/URL filter for the Targets tab.
+  const [targetSearch, setTargetSearch] = useState("");
   const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<string, boolean>>(
     "hecate.scan.groupCollapsed",
     {},
@@ -733,7 +735,25 @@ export const ScansPage = () => {
         {/* Targets tab */}
         {tab === "targets" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", justifyContent: "flex-end", marginBottom: "1rem", flexWrap: "wrap" }}>
+              <input
+                type="text"
+                value={targetSearch}
+                onChange={e => setTargetSearch(e.target.value)}
+                placeholder={t("Search by name or URL…", "Nach Name oder URL suchen…")}
+                aria-label={t("Search targets", "Ziele suchen")}
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "#fff",
+                  fontSize: "0.8125rem",
+                  flex: "1 1 220px",
+                  maxWidth: "360px",
+                  minWidth: 0,
+                }}
+              />
               <button
                 type="button"
                 onClick={() => setNewScanModalOpen(true)}
@@ -749,6 +769,7 @@ export const ScansPage = () => {
                   cursor: "pointer",
                   fontSize: "0.8125rem",
                   fontWeight: 600,
+                  flexShrink: 0,
                 }}
               >
                 <span style={{ fontSize: "1rem", lineHeight: 1 }}>+</span>
@@ -766,10 +787,26 @@ export const ScansPage = () => {
               <p className="muted">{t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")}</p>
             )}
             {!loading && targets.length > 0 && (() => {
+              // Filter by the name/URL search box before grouping. Matches name,
+              // target id (URL/image ref), repository URL, registry, and group.
+              const q = targetSearch.trim().toLowerCase();
+              const visibleTargets = q
+                ? targets.filter(tgt =>
+                    [tgt.name, tgt.id, tgt.repositoryUrl, tgt.registry, tgt.group]
+                      .some(v => (v || "").toLowerCase().includes(q)),
+                  )
+                : targets;
+              if (visibleTargets.length === 0) {
+                return (
+                  <p className="muted">
+                    {t("No targets match", "Keine Ziele passen zu")} “{targetSearch.trim()}”.
+                  </p>
+                );
+              }
               // Group targets by their `group` field; ungrouped targets bucket last.
               const UNGROUPED = "__ungrouped__";
               const buckets = new Map<string, ScanTarget[]>();
-              for (const tgt of targets) {
+              for (const tgt of visibleTargets) {
                 const key = (tgt.group && tgt.group.trim()) || UNGROUPED;
                 if (!buckets.has(key)) buckets.set(key, []);
                 buckets.get(key)!.push(tgt);
@@ -779,7 +816,11 @@ export const ScansPage = () => {
                 if (b === UNGROUPED) return -1;
                 return a.localeCompare(b);
               });
-              const allGroupNames = orderedKeys.filter(k => k !== UNGROUPED);
+              // Group autocomplete should list every existing group, not just
+              // those surviving the current search filter.
+              const allGroupNames = Array.from(
+                new Set(targets.map(tg => (tg.group || "").trim()).filter(Boolean)),
+              ).sort((a, b) => a.localeCompare(b));
               const sumSummary = (items: ScanTarget[]): ScanSummary => {
                 const sum: ScanSummary = { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0, total: 0 };
                 for (const it of items) {

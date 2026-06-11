@@ -96,6 +96,15 @@ class ScanTargetRepository:
             log.warning("scan_target_repository.get_failed", target_id=target_id, error=str(exc))
             return None
 
+    async def list_ids(self) -> list[str]:
+        """All stored target ``_id``s (projection-only; targets number in the tens)."""
+        try:
+            cursor = self.collection.find({}, projection={"_id": 1})
+            return [str(doc["_id"]) async for doc in cursor]
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.list_ids_failed", error=str(exc))
+            return []
+
     async def list_targets(
         self,
         type_filter: str | None = None,

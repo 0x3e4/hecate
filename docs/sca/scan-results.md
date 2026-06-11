@@ -144,8 +144,10 @@ reason.
 
 ![Target overview](../img/hecate-target-detail.png)
 
-Each registered target also has its own overview page at `/scans/targets/:targetId`, reachable by clicking a target
-card on the SCA Scans page. Where the scan-detail page is about one run, the target page is about the asset over time.
+Each registered target also has its own overview page at `/scans/targets/<target-url>`, reachable by clicking a target
+card on the SCA Scans page. The page is deep-linkable even with hand-typed URLs: pasting the target's repository or
+image URL after `/scans/targets/` works un-encoded and without the `https://` scheme — the backend resolves such
+variants to the registered target automatically. Where the scan-detail page is about one run, the target page is about the asset over time.
 It shows the target's metadata (type, application group, registry, auto-scan state and the configured scanners), the
 severity rollup of its latest scan, and — when auto-scan is enabled — the last change-detection check with its verdict
 and any error, so you can see why an automatic rescan did or did not fire.

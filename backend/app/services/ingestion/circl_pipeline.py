@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from collections.abc import Mapping
 from typing import Any
@@ -170,6 +171,15 @@ class CirclPipeline:
                         # CIRCL became the source of truth) — pulls them back in
                         # for re-enrichment so CIRCL overwrites with the 0..1 value.
                         {"epss_score": {"$gt": 1}},
+                        # migration: legacy impactedProducts entries written before
+                        # unaffectedVersions existed. Scoped to docs CIRCL already
+                        # enriched (bounded backlog); each doc exits the selector
+                        # after one touch (builder overwrite or empty-key stamp in
+                        # upsert_from_circl). Removable once the corpus is healed.
+                        {
+                            "sources": {"$elemMatch": {"source": "CIRCL"}},
+                            "impactedProducts": {"$elemMatch": {"unaffectedVersions": {"$exists": False}}},
+                        },
                     ],
                 }
             },
@@ -203,12 +213,21 @@ class CirclPipeline:
         vendors, products, versions, product_version_map, cpes = _extract_product_info(circl_record)
         epss_score = _extract_epss(circl_record)
 
-        if not vendors and not products and not versions and epss_score is None:
+        # Parse CVE 5.x cpeApplicability into cpe_configurations (the repository
+        # only fills the field when empty — NVD/EUVD stay authoritative).
+        cpe_configurations, cpe_criteria, cpe_version_tokens = _extract_cpe_applicability(circl_record)
+
+        if not vendors and not products and not versions and epss_score is None and not cpe_configurations:
             log.debug("circl_pipeline.no_product_info", cve_id=cve_id)
             return "skipped"
 
         # Build impactedProducts from CVE 5.x affected data
         impacted_products = _build_impacted_products_from_affected(circl_record)
+
+        # cpeApplicability criteria are real CPE URIs — surface them to the
+        # fill-if-empty cpes write alongside the synthesized ones.
+        if cpe_criteria:
+            cpes = sorted(set(cpes) | set(cpe_criteria))
 
         # Update asset catalog
         try:
@@ -216,7 +235,7 @@ class CirclPipeline:
                 vendors=vendors,
                 product_versions=product_version_map,
                 cpes=cpes,
-                cpe_configurations=None,
+                cpe_configurations=cpe_configurations or None,
             )
         except Exception as exc:
             log.warning(
@@ -246,6 +265,8 @@ class CirclPipeline:
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
             impacted_products=impacted_products,
+            cpe_configurations=cpe_configurations,
+            cpe_version_tokens=cpe_version_tokens,
             epss_score=epss_score,
             circl_raw=circl_record,
             change_context=change_context,
@@ -441,6 +462,16 @@ def _extract_product_info(
     )
 
 
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{12,40}$")
+
+
+def _is_git_ref(version_type: Any, value: str) -> bool:
+    """True when a CVE 5.x version value is a git commit ref rather than a release version."""
+    if isinstance(version_type, str) and version_type.strip().lower() == "git":
+        return True
+    return bool(_GIT_SHA_RE.fullmatch(value)) and any(c in "abcdef" for c in value)
+
+
 def _format_cve5_version_range(ver_item: dict[str, Any]) -> str | None:
     """Format a CVE 5.x version entry into a human-readable version range string."""
     version = ver_item.get("version")
@@ -515,6 +546,7 @@ def _build_impacted_products_from_affected(record: dict[str, Any]) -> list[dict[
                 "vendor": {"name": vendor_name, "slug": vendor_slug},
                 "product": {"name": product_name, "slug": product_slug},
                 "versions": set(),
+                "unaffected_versions": set(),
                 "vulnerable": default_status != "unaffected",
                 "environments": set(),
             },
@@ -529,16 +561,23 @@ def _build_impacted_products_from_affected(record: dict[str, Any]) -> list[dict[
                 continue
 
             status = ver_item.get("status", "affected")
+            version_type = ver_item.get("versionType")
+
             if status == "unaffected":
-                continue
+                # Explicitly unaffected entry: record it instead of dropping it.
+                # Git refs are skipped — commit hashes are noise as "fixed in" info.
+                formatted = _format_cve5_version_range(ver_item)
+                if formatted and not _is_git_ref(version_type, formatted):
+                    entry["unaffected_versions"].add(formatted)
+            else:
+                # Format the main version range
+                formatted = _format_cve5_version_range(ver_item)
+                if formatted:
+                    entry["versions"].add(formatted)
+                    entry["vulnerable"] = True
 
-            # Format the main version range
-            formatted = _format_cve5_version_range(ver_item)
-            if formatted:
-                entry["versions"].add(formatted)
-                entry["vulnerable"] = True
-
-            # Process changes array for sub-ranges
+            # Process changes array for sub-ranges (also for unaffected base
+            # entries — the status can flip back to affected at a later bound)
             changes = ver_item.get("changes")
             if isinstance(changes, list):
                 for change in changes:
@@ -548,6 +587,17 @@ def _build_impacted_products_from_affected(record: dict[str, Any]) -> list[dict[
                         if change_status == "affected" and isinstance(at_ver, str) and at_ver.strip():
                             entry["versions"].add(f">= {at_ver.strip()}")
                             entry["vulnerable"] = True
+                        elif (
+                            change_status == "unaffected"
+                            and isinstance(at_ver, str)
+                            and at_ver.strip()
+                            and at_ver.strip() not in ("*", "-", "unspecified")
+                            and not _is_git_ref(version_type, at_ver.strip())
+                        ):
+                            # Bare fix-point version ("fixed in X"); ">= X" would
+                            # falsely imply everything above X is fixed across
+                            # parallel release branches.
+                            entry["unaffected_versions"].add(at_ver.strip())
 
     results: list[dict[str, Any]] = []
     for entry in aggregated.values():
@@ -556,6 +606,13 @@ def _build_impacted_products_from_affected(record: dict[str, Any]) -> list[dict[
                 "vendor": entry["vendor"],
                 "product": entry["product"],
                 "versions": sorted(entry["versions"], key=str.lower) if entry["versions"] else [],
+                # camelCase on purpose: impactedProducts entries are stored
+                # verbatim in MongoDB/OpenSearch (single-key camelCase invariant).
+                # Always emitted (possibly []) so the structural compare in
+                # upsert_from_circl and the migration selector converge.
+                "unaffectedVersions": sorted(entry["unaffected_versions"], key=str.lower)
+                if entry["unaffected_versions"]
+                else [],
                 "vulnerable": entry["vulnerable"],
                 "environments": sorted(entry["environments"], key=str.lower) if entry["environments"] else [],
             }
@@ -565,6 +622,25 @@ def _build_impacted_products_from_affected(record: dict[str, Any]) -> list[dict[
         results,
         key=lambda item: (item["vendor"]["name"].lower(), item["product"]["name"].lower()),
     )
+
+
+def _extract_cpe_applicability(record: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """
+    Parse CVE 5.x containers.cna.cpeApplicability into normalized cpe_configurations.
+
+    The block carries the same nodes[].cpeMatch[] shape as NVD's configurations
+    (criteria + versionStartIncluding/versionEndExcluding), so the NVD normalizer
+    is reused verbatim. Returns (configurations, criteria, version_tokens).
+    """
+    containers = record.get("containers") or {}
+    cna = containers.get("cna") or {}
+    cpe_applicability = cna.get("cpeApplicability")
+    if not isinstance(cpe_applicability, list) or not cpe_applicability:
+        return [], [], []
+
+    from app.services.ingestion.normalizer import _collect_cpe_data_from_nvd
+
+    return _collect_cpe_data_from_nvd({"configurations": cpe_applicability})
 
 
 def _extract_cpes(record: dict[str, Any]) -> list[str]:

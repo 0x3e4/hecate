@@ -189,8 +189,26 @@ async def _safe_json(request: Request) -> dict:
 # --- Per-route dependencies (Layer B) ---------------------------------------
 
 
-async def require_target_write_path(
+async def resolve_target_id_path(
     target_id: str,
+    service: ScanService = Depends(get_scan_service),
+) -> str:
+    """Canonicalize a ``{target_id:path}`` path param.
+
+    Target ids are URLs stored verbatim, so deep links may arrive
+    percent-decoded one level deeper than the stored id, scheme-less, or with
+    a trailing slash (see ``ScanService.resolve_target_id``). Falls back to
+    the raw value when unresolvable so downstream 404 semantics are unchanged.
+    Lives here (not in ``scans.py``) because that module already imports from
+    this one; FastAPI's dependency cache runs the resolution once per request
+    even when both the auth dep and the route handler declare it.
+    """
+    resolved = await service.resolve_target_id(target_id)
+    return resolved if resolved is not None else target_id
+
+
+async def require_target_write_path(
+    target_id: str = Depends(resolve_target_id_path),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
     service: ScanService = Depends(get_scan_service),

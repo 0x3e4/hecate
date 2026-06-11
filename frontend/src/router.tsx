@@ -33,7 +33,9 @@ export const router = createBrowserRouter([
       { path: "ai-analyse", element: <AIAnalysePage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "scans", element: <ScansPage /> },
-      { path: "scans/targets/:targetId", element: <ScanTargetDetailPage /> },
+      // Splat, not :targetId — target ids are URLs with literal slashes, so
+      // pasted un-encoded/scheme-less forms must match across segments.
+      { path: "scans/targets/*", element: <ScanTargetDetailPage /> },
       { path: "scans/:scanId", element: <ScanDetailPage /> },
       { path: "malware-feed", element: <MalwareFeedPage /> },
       { path: "blocklist", element: <Navigate to="/malware-feed" replace /> },

@@ -581,7 +581,8 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
     return (
       <section className="card" style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-          <SkeletonBlock height="1.2rem" width="200px" />
+          {/* Shrinkable so it never crowds the date-nav on narrow screens. */}
+          <SkeletonBlock height="1.2rem" width="160px" style={{ flexShrink: 1, minWidth: 0, marginRight: "0.75rem" }} />
           {dateNav}
         </div>
         <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))" }}>

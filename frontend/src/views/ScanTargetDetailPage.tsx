@@ -12,7 +12,7 @@ import {
 import { SeverityBadges } from "../components/SeverityBadges";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
-import type { ConsolidatedFinding, ScanHistoryEntry, ScanTarget } from "../types";
+import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -87,18 +87,199 @@ const btn: React.CSSProperties = {
   fontSize: "0.8125rem",
 };
 
-const thStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", fontWeight: 600, whiteSpace: "nowrap" };
-const tdStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", whiteSpace: "nowrap" };
+const btnPrimary: React.CSSProperties = {
+  ...btn,
+  background: "rgba(255,212,59,0.12)",
+  borderColor: "rgba(255,212,59,0.35)",
+  color: "#ffd43b",
+  fontWeight: 600,
+};
+
+const thStyle: React.CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  fontSize: "0.7rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
+};
+const tdStyle: React.CSSProperties = { padding: "0.6rem 0.75rem", whiteSpace: "nowrap" };
+
+// i18n label per target kind, shown in the header type chip.
+const TYPE_META: Record<string, { en: string; de: string }> = {
+  container_image: { en: "Container image", de: "Container-Image" },
+  source_repo: { en: "Source repo", de: "Quell-Repo" },
+  "sbom-import": { en: "SBOM import", de: "SBOM-Import" },
+};
+
+// Colour + label per auto-scan /check verdict (mirrors the Scanner-tab pills).
+const VERDICT_META: Record<string, { color: string; en: string; de: string }> = {
+  changed: { color: "#ff922b", en: "Changed", de: "Geändert" },
+  unchanged: { color: "#69db7c", en: "Unchanged", de: "Unverändert" },
+  first_scan: { color: "#4dabf7", en: "First scan", de: "Erster Scan" },
+  check_failed_skipped: { color: "#ff6b6b", en: "Check failed", de: "Prüfung fehlgeschlagen" },
+  check_failed_scanned: { color: "#fcc419", en: "Check failed", de: "Prüfung fehlgeschlagen" },
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  completed: "#69db7c",
+  failed: "#ff6b6b",
+  running: "#4dabf7",
+  pending: "#fcc419",
+  cancelled: "#8395a7",
+  canceled: "#8395a7",
+};
+
+const SEVERITY_BAR_ORDER: { key: keyof ScanSummary; color: string }[] = [
+  { key: "critical", color: "#ff6b6b" },
+  { key: "high", color: "#ff922b" },
+  { key: "medium", color: "#fcc419" },
+  { key: "low", color: "#69db7c" },
+  { key: "negligible", color: "#5c6b7a" },
+  { key: "unknown", color: "#5c6b7a" },
+];
+
+const worstSeverity = (s?: ScanSummary | null): string | null => {
+  if (!s) return null;
+  if (s.critical > 0) return "critical";
+  if (s.high > 0) return "high";
+  if (s.medium > 0) return "medium";
+  if (s.low > 0) return "low";
+  if (s.negligible > 0 || s.unknown > 0) return "unknown";
+  return null;
+};
+
+// Compact, language-neutral relative time ("3h", "2d") — the absolute value
+// rides along as a title tooltip so the unit suffix needs no translation.
+const formatRelative = (iso?: string | null): string => {
+  if (!iso) return "—";
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "—";
+  const d = Math.max(0, Date.now() - ms) / 1000;
+  if (d < 45) return "now";
+  if (d < 3600) return `${Math.round(d / 60)}m`;
+  if (d < 86400) return `${Math.round(d / 3600)}h`;
+  if (d < 604800) return `${Math.round(d / 86400)}d`;
+  if (d < 2629800) return `${Math.round(d / 604800)}w`;
+  if (d < 31557600) return `${Math.round(d / 2629800)}mo`;
+  return `${Math.round(d / 31557600)}y`;
+};
+
+const formatDuration = (sec?: number | null): string => {
+  if (sec == null) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+
+// Proportional stacked severity bar — instant visual read of the risk mix.
+const SeverityBar = ({ summary }: { summary?: ScanSummary | null }) => {
+  if (!summary || summary.total === 0) return null;
+  const segs = SEVERITY_BAR_ORDER.map((s) => ({ ...s, n: Number(summary[s.key]) || 0 })).filter((s) => s.n > 0);
+  if (segs.length === 0) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        height: 8,
+        borderRadius: 5,
+        overflow: "hidden",
+        background: "rgba(255,255,255,0.05)",
+      }}
+    >
+      {segs.map((s) => (
+        <div key={String(s.key)} title={`${String(s.key)}: ${s.n}`} style={{ flexGrow: s.n, flexBasis: 0, background: s.color }} />
+      ))}
+    </div>
+  );
+};
+
+const StatTile = ({
+  label,
+  value,
+  valueColor,
+  sub,
+}: {
+  label: string;
+  value: React.ReactNode;
+  valueColor?: string;
+  sub?: React.ReactNode;
+}) => (
+  <div
+    style={{
+      background: "rgba(255,255,255,0.03)",
+      border: "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 10,
+      padding: "0.8rem 0.95rem",
+      minWidth: 0,
+    }}
+  >
+    <div
+      style={{
+        fontSize: "0.66rem",
+        textTransform: "uppercase",
+        letterSpacing: "0.6px",
+        color: "rgba(255,255,255,0.4)",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {label}
+    </div>
+    <div
+      style={{
+        fontSize: "1.45rem",
+        fontWeight: 700,
+        lineHeight: 1.15,
+        marginTop: "0.35rem",
+        color: valueColor ?? "rgba(255,255,255,0.92)",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.4rem",
+      }}
+    >
+      {value}
+    </div>
+    {sub != null && (
+      <div
+        style={{
+          fontSize: "0.72rem",
+          color: "rgba(255,255,255,0.38)",
+          marginTop: "0.3rem",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {sub}
+      </div>
+    )}
+  </div>
+);
+
+const StatusPill = ({ status }: { status: string }) => {
+  const color = STATUS_COLORS[status?.toLowerCase()] ?? "#8395a7";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, display: "inline-block" }} />
+      {status}
+    </span>
+  );
+};
 
 export const ScanTargetDetailPage = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const params = useParams();
   const { toast, showToast } = useToast();
-  const targetId = useMemo(
-    () => (params.targetId ? decodeURIComponent(params.targetId) : ""),
-    [params.targetId]
-  );
+  // Splat param, NO extra decodeURIComponent: the router already percent-decodes
+  // once, and a second decode mangles ids whose stored form contains literal
+  // %-sequences (e.g. ".../ANK%C3%96/..." → ".../ANKÖ/..."). The backend
+  // resolves non-canonical forms (scheme-less / re-encoded) fuzzily anyway.
+  const targetId = params["*"] ?? "";
 
   const [target, setTarget] = useState<ScanTarget | null>(null);
   // history is accumulated newest-first across server pages.
@@ -111,17 +292,29 @@ export const ScanTargetDetailPage = () => {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!targetId) return;
+    if (!targetId) {
+      setError(t("Target not found.", "Ziel nicht gefunden."));
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const tg = await fetchScanTarget(targetId);
       setTarget(tg);
+      // Pasted non-canonical URLs (scheme-less, differently encoded) resolve
+      // server-side; replace the address bar with the canonical encoded form.
+      // Both guards make this loop-proof regardless of router param decoding.
+      if (targetId !== tg.id && targetId !== encodeURIComponent(tg.id)) {
+        navigate(`/scans/targets/${encodeURIComponent(tg.id)}`, { replace: true });
+      }
+      // Follow-up queries match exactly on the scans' target_id field — use the
+      // canonical id from the response, not the raw URL param.
       const [hist, finds] = await Promise.all([
-        fetchTargetHistory(targetId, { limit: HISTORY_PAGE, offset: 0 }).catch(
-          () => ({ items: [] as ScanHistoryEntry[], total: 0, targetId })
+        fetchTargetHistory(tg.id, { limit: HISTORY_PAGE, offset: 0 }).catch(
+          () => ({ items: [] as ScanHistoryEntry[], total: 0, targetId: tg.id })
         ),
-        fetchGlobalFindings({ targetId, limit: 10 }).catch(() => ({ items: [] as ConsolidatedFinding[], total: 0 })),
+        fetchGlobalFindings({ targetId: tg.id, limit: 10 }).catch(() => ({ items: [] as ConsolidatedFinding[], total: 0 })),
       ]);
       // Server returns a page oldest-first; reverse to newest-first for the table.
       setHistory([...(hist.items ?? [])].reverse());
@@ -132,13 +325,14 @@ export const ScanTargetDetailPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [targetId, t]);
+  }, [targetId, t, navigate]);
 
   // Fetch successive pages from the server, appending newest-first. `pageLimit`
   // is capped at the endpoint's 500 max; "Show all" loops until everything loads.
   const loadMoreHistory = useCallback(
     async (showAll: boolean) => {
-      if (!targetId) return;
+      const id = target?.id ?? targetId;
+      if (!id) return;
       setHistoryBusy(true);
       try {
         let current = history;
@@ -146,7 +340,7 @@ export const ScanTargetDetailPage = () => {
           const remaining = historyTotal - current.length;
           if (remaining <= 0) break;
           const pageLimit = showAll ? Math.min(500, remaining) : HISTORY_PAGE;
-          const res = await fetchTargetHistory(targetId, { limit: pageLimit, offset: current.length });
+          const res = await fetchTargetHistory(id, { limit: pageLimit, offset: current.length });
           const page = [...(res.items ?? [])].reverse();
           if (page.length === 0) break;
           current = [...current, ...page];
@@ -159,7 +353,7 @@ export const ScanTargetDetailPage = () => {
         setHistoryBusy(false);
       }
     },
-    [targetId, history, historyTotal]
+    [target, targetId, history, historyTotal]
   );
 
   useEffect(() => {
@@ -236,14 +430,21 @@ export const ScanTargetDetailPage = () => {
   if (loading) {
     return (
       <div className="page">
-        <section className="card">
+        <section className="card" style={{ borderLeft: "3px solid rgba(255,255,255,0.12)" }}>
           <Link to="/scans" style={backLinkStyle}>
             ← {t("Scan targets", "Scan-Ziele")}
           </Link>
-          <p style={{ color: "rgba(255,255,255,0.5)", marginTop: "0.75rem" }}>
-            {t("Loading target…", "Ziel wird geladen…")}
-          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", marginTop: "1rem" }}>
+            <div className="skeleton" style={{ width: "45%", height: 26 }} />
+            <div className="skeleton" style={{ width: "70%", height: 14 }} />
+            <div className="skeleton" style={{ width: "100%", height: 8 }} />
+          </div>
         </section>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.85rem", marginBottom: "1.5rem" }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="skeleton" style={{ height: 78, borderRadius: 10 }} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -264,18 +465,28 @@ export const ScanTargetDetailPage = () => {
   }
 
   const externalUrl = target.repositoryUrl || null;
+  const summary = target.latestSummary;
+  const worst = worstSeverity(summary);
+  const accent = worst ? SEVERITY_COLORS[worst] : "rgba(255,255,255,0.12)";
+  const typeMeta = TYPE_META[target.type] ?? { en: target.type, de: target.type };
+  const typeLabel = t(typeMeta.en, typeMeta.de);
+  const verdict = target.lastCheckVerdict ?? null;
+  const verdictMeta = verdict ? VERDICT_META[verdict] : null;
+  const verdictColor = verdictMeta?.color ?? "rgba(255,255,255,0.5)";
+  const verdictLabel = verdictMeta ? t(verdictMeta.en, verdictMeta.de) : "—";
 
   return (
     <div className="page">
-      {/* Header */}
-      <section className="card" style={{ overflow: "visible" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0 }}>
-            <Link to="/scans" style={backLinkStyle}>
-              ← {t("Scan targets", "Scan-Ziele")}
-            </Link>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.5rem 0 0.25rem", flexWrap: "wrap" }}>
-              <h2 style={{ margin: 0 }}>
+      {/* Header — severity-accented, with type icon and live scan state */}
+      <section className="card" style={{ overflow: "visible", borderLeft: `3px solid ${accent}` }}>
+        <Link to="/scans" style={backLinkStyle}>
+          ← {t("Scan targets", "Scan-Ziele")}
+        </Link>
+
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1.25rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+          <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0, fontSize: "1.5rem", wordBreak: "break-word" }}>
                 {target.writePasswordSet && <span title={t("Write-protected", "Schreibgeschützt")}>🔒 </span>}
                 {target.name}
               </h2>
@@ -290,24 +501,42 @@ export const ScanTargetDetailPage = () => {
                   ↗
                 </a>
               )}
+              {target.hasRunningScan && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontSize: "0.72rem",
+                    color: "#4dabf7",
+                    background: "rgba(77,171,247,0.12)",
+                    border: "1px solid rgba(77,171,247,0.3)",
+                    borderRadius: 999,
+                    padding: "0.15rem 0.65rem",
+                    animation: "tab-pulse 1.6s ease-in-out infinite",
+                  }}
+                >
+                  ● {t("Scan running", "Scan läuft")}
+                </span>
+              )}
             </div>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-              <Chip>{target.type}</Chip>
+
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.7rem" }}>
+              <Chip>{typeLabel}</Chip>
               {target.group && <Chip>{t("App", "App")}: {target.group}</Chip>}
               {target.registry && <Chip>{target.registry}</Chip>}
-              <Chip>
-                {t("Auto-scan", "Auto-Scan")}: {target.autoScan ? t("on", "an") : t("off", "aus")}
-              </Chip>
             </div>
-            <p style={{ marginTop: "0.75rem", color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", wordBreak: "break-all" }}>
+
+            <p style={{ marginTop: "0.7rem", color: "rgba(255,255,255,0.4)", fontSize: "0.8rem", wordBreak: "break-all" }}>
               {target.repositoryUrl || target.id}
             </p>
           </div>
-          <div style={{ textAlign: "right", marginLeft: "auto" }}>
-            <SeverityBadges summary={target.latestSummary} style={{ justifyContent: "flex-end" }} />
+
+          <div style={{ textAlign: "right", marginLeft: "auto", minWidth: 150 }}>
+            <SeverityBadges summary={summary} style={{ justifyContent: "flex-end" }} />
             {target.latestScanId && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <Link to={`/scans/${target.latestScanId}`} style={{ fontSize: "0.875rem" }}>
+              <div style={{ marginTop: "0.6rem" }}>
+                <Link to={`/scans/${target.latestScanId}`} style={{ fontSize: "0.85rem" }}>
                   {t("View latest scan", "Neuesten Scan ansehen")} →
                 </Link>
               </div>
@@ -315,28 +544,30 @@ export const ScanTargetDetailPage = () => {
           </div>
         </div>
 
+        {summary && summary.total > 0 && (
+          <div style={{ marginTop: "1rem" }}>
+            <SeverityBar summary={summary} />
+          </div>
+        )}
+
         {target.scanners?.length ? (
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem", alignItems: "center" }}>
+            <span style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.5px", color: "rgba(255,255,255,0.35)" }}>
+              {t("Scanners", "Scanner")}
+            </span>
             {target.scanners.map((s) => (
               <Chip key={s}>{s}</Chip>
             ))}
           </div>
         ) : null}
 
-        {target.lastCheckAt && (
-          <p style={{ marginTop: "1rem", color: "rgba(255,255,255,0.45)", fontSize: "0.8rem" }}>
-            {t("Last check", "Letzte Prüfung")}: {target.lastCheckVerdict ?? "—"} · {formatDateTime(target.lastCheckAt)}
-            {target.lastCheckError ? ` · ${target.lastCheckError}` : ""}
-          </p>
-        )}
-
         {!isImport && (
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1.25rem" }}>
-            <button type="button" style={btn} disabled={busy === "rescan"} onClick={handleRescan}>
-              ↻ {t("Rescan", "Neu scannen")}
+            <button type="button" style={btnPrimary} disabled={busy === "rescan"} onClick={handleRescan}>
+              ↻ {busy === "rescan" ? t("Starting…", "Startet…") : t("Rescan", "Neu scannen")}
             </button>
             <button type="button" style={btn} disabled={busy === "check"} onClick={handleCheck}>
-              {t("Run check", "Prüfung ausführen")}
+              {busy === "check" ? t("Checking…", "Prüft…") : t("Run check", "Prüfung ausführen")}
             </button>
             <button
               type="button"
@@ -360,27 +591,133 @@ export const ScanTargetDetailPage = () => {
         )}
       </section>
 
+      {/* Metrics strip */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: "0.85rem",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <StatTile
+          label={t("Findings", "Findings")}
+          value={summary?.total ?? 0}
+          valueColor={worst ? SEVERITY_COLORS[worst] : undefined}
+          sub={t("in latest scan", "im letzten Scan")}
+        />
+        <StatTile label={t("Scans run", "Scans")} value={target.scanCount ?? 0} sub={t("total runs", "Läufe gesamt")} />
+        <StatTile
+          label={t("Last scan", "Letzter Scan")}
+          value={<span title={target.lastScanAt ? formatDateTime(target.lastScanAt) : undefined}>{formatRelative(target.lastScanAt)}</span>}
+          sub={target.lastScanAt ? formatDateTime(target.lastScanAt) : t("never", "nie")}
+        />
+        {!isImport && (
+          <StatTile
+            label={t("Auto-scan", "Auto-Scan")}
+            value={
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem" }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: target.autoScan ? "#69db7c" : "#8395a7" }} />
+                {target.autoScan ? t("On", "An") : t("Off", "Aus")}
+              </span>
+            }
+            valueColor={target.autoScan ? "#69db7c" : "rgba(255,255,255,0.6)"}
+          />
+        )}
+        {!isImport && (target.lastCheckAt || target.autoScan) && (
+          <StatTile
+            label={t("Last check", "Letzte Prüfung")}
+            value={
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", fontSize: "1.02rem" }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: verdictColor }} />
+                {verdictLabel}
+              </span>
+            }
+            valueColor={verdictColor}
+            sub={
+              target.lastCheckError ? (
+                <span style={{ color: "#ff6b6b" }} title={target.lastCheckError}>
+                  {target.lastCheckError}
+                </span>
+              ) : target.lastCheckAt ? (
+                formatRelative(target.lastCheckAt)
+              ) : (
+                t("not yet probed", "noch nicht geprüft")
+              )
+            }
+          />
+        )}
+        <StatTile label={t("Scanners", "Scanner")} value={target.scanners?.length ?? 0} sub={t("configured", "konfiguriert")} />
+      </div>
+
       {/* Top findings */}
       {findings.length > 0 && (
         <section className="card">
-          <h2 style={sectionHeading}>{t("Top findings", "Top-Findings")}</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {findings.map((f, i) => (
-              <div
-                key={`${f.vulnerabilityId ?? f.packageName}-${i}`}
-                style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}
-              >
-                <SeverityTag severity={f.severity} />
-                {f.vulnerabilityId ? (
-                  <Link to={`/vulnerability/${f.vulnerabilityId}`}>{f.vulnerabilityId}</Link>
-                ) : (
-                  <span>{f.title ?? f.packageName}</span>
-                )}
-                <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.85rem" }}>
-                  {f.packageName}@{f.packageVersion}
-                </span>
-              </div>
-            ))}
+          <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", marginBottom: "1rem" }}>
+            <h2 style={{ ...sectionHeading, margin: 0 }}>{t("Top findings", "Top-Findings")}</h2>
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>{findings.length}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+            {findings.map((f, i) => {
+              const sevColor = SEVERITY_COLORS[f.severity?.toLowerCase()] ?? "#8395a7";
+              return (
+                <div
+                  key={`${f.vulnerabilityId ?? f.packageName}-${i}`}
+                  style={{
+                    display: "flex",
+                    gap: "0.85rem",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    padding: "0.65rem 0.85rem",
+                    background: "rgba(255,255,255,0.025)",
+                    borderRadius: 8,
+                    borderLeft: `3px solid ${sevColor}`,
+                  }}
+                >
+                  <SeverityTag severity={f.severity} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                      {f.vulnerabilityId ? (
+                        <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ fontWeight: 600 }}>
+                          {f.vulnerabilityId}
+                        </Link>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{f.title ?? f.packageName}</span>
+                      )}
+                      {f.cvssScore != null && (
+                        <span style={{ fontSize: "0.72rem", color: sevColor, fontWeight: 600 }}>
+                          CVSS {f.cvssScore.toFixed(1)}
+                        </span>
+                      )}
+                      {f.fixVersion && (
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "#69db7c",
+                            background: "rgba(105,219,124,0.12)",
+                            border: "1px solid rgba(105,219,124,0.25)",
+                            borderRadius: 5,
+                            padding: "0.05rem 0.4rem",
+                          }}
+                        >
+                          {t("fix", "Fix")}: {f.fixVersion}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.45)",
+                        fontSize: "0.8rem",
+                        fontFamily: "var(--mono, monospace)",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {f.packageName}@{f.packageVersion}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -406,16 +743,46 @@ export const ScanTargetDetailPage = () => {
                     <th style={thStyle}>{t("Date", "Datum")}</th>
                     <th style={thStyle}>{t("Status", "Status")}</th>
                     <th style={thStyle}>{t("Findings", "Findings")}</th>
+                    <th style={thStyle}>{t("Duration", "Dauer")}</th>
+                    <th style={thStyle}>{t("Commit", "Commit")}</th>
                     <th style={thStyle}>{t("Scan", "Scan")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((h) => (
-                    <tr key={h.scanId} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                      <td style={tdStyle}>{formatDateTime(h.startedAt)}</td>
-                      <td style={{ ...tdStyle, color: "rgba(255,255,255,0.6)" }}>{h.status}</td>
+                  {history.map((h, i) => (
+                    <tr
+                      key={h.scanId}
+                      style={{
+                        borderTop: "1px solid rgba(255,255,255,0.06)",
+                        background: i % 2 ? "rgba(255,255,255,0.015)" : "transparent",
+                      }}
+                    >
+                      <td style={tdStyle} title={formatDateTime(h.startedAt)}>
+                        {formatDateTime(h.startedAt)}
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill status={h.status} />
+                      </td>
                       <td style={tdStyle}>
                         <SeverityBadges summary={h.summary} />
+                      </td>
+                      <td style={{ ...tdStyle, color: "rgba(255,255,255,0.55)" }}>{formatDuration(h.durationSeconds)}</td>
+                      <td style={tdStyle}>
+                        {h.commitSha ? (
+                          <code
+                            style={{
+                              fontSize: "0.75rem",
+                              color: "rgba(255,255,255,0.6)",
+                              background: "rgba(255,255,255,0.05)",
+                              borderRadius: 4,
+                              padding: "0.1rem 0.4rem",
+                            }}
+                          >
+                            {h.commitSha.slice(0, 7)}
+                          </code>
+                        ) : (
+                          <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>
+                        )}
                       </td>
                       <td style={tdStyle}>
                         <Link to={`/scans/${h.scanId}`}>{h.scanId.slice(0, 8)}</Link>

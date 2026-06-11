@@ -498,7 +498,7 @@ react-select for the async multi-selects, and react-icons (Lucide) for iconograp
 | `/system` | `SystemPage` | Five tabs: General, Access Control, Notifications, Data, Policies |
 | `/scans` | `ScansPage` | SCA scan management with seven tabs (Targets, Scans, Findings, SBOM, Security Alerts, Licenses, Scanner) |
 | `/malware-feed` | `MalwareFeedPage` | Overview of all `MAL-*`-aliased OSV advisories (`/blocklist` is a legacy redirect) |
-| `/scans/targets/:targetId` | `ScanTargetDetailPage` | Per-target overview (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings, quick actions |
+| `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings, quick actions. Splat route — pasting the raw target URL (un-encoded or scheme-less) also resolves; the backend canonicalizes fuzzy ids |
 | `/scans/:scanId` | `ScanDetailPage` | Scan details: findings, Attack Chain, SBOM, history, AI analysis, compare, security alerts, SAST, secrets, best practices, layer analysis, license compliance, scanner breakdown |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD integration guide |
 | `/info/api` | `ApiInfoPage` | API documentation with embedded Swagger UI |

@@ -16,7 +16,11 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.vulnerability import VulnerabilityRefreshStatus
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.circl_client import CirclClient
-from app.services.ingestion.circl_pipeline import _build_impacted_products_from_affected, _extract_epss
+from app.services.ingestion.circl_pipeline import (
+    _build_impacted_products_from_affected,
+    _extract_cpe_applicability,
+    _extract_epss,
+)
 from app.services.ingestion.euvd_client import EUVDClient
 from app.services.ingestion.ghsa_client import GhsaClient
 from app.services.ingestion.nvd_client import NVDClient
@@ -1012,7 +1016,11 @@ class ManualRefresher:
         vendors, products, versions, product_version_map, cpes = _extract_circl_product_info(circl_record)
         epss_score = _extract_epss(circl_record)
 
-        if not vendors and not products and not versions and epss_score is None:
+        # Parse CVE 5.x cpeApplicability into cpe_configurations (the repository
+        # only fills the field when empty — NVD/EUVD stay authoritative).
+        cpe_configurations, cpe_criteria, cpe_version_tokens = _extract_cpe_applicability(circl_record)
+
+        if not vendors and not products and not versions and epss_score is None and not cpe_configurations:
             return VulnerabilityRefreshStatus(
                 identifier=original_identifier,
                 provider="CIRCL",
@@ -1020,13 +1028,18 @@ class ManualRefresher:
                 message="CIRCL record has no vendor/product/version/EPSS data.",
             )
 
+        # cpeApplicability criteria are real CPE URIs — surface them to the
+        # fill-if-empty cpes write alongside the synthesized ones.
+        if cpe_criteria:
+            cpes = sorted(set(cpes) | set(cpe_criteria))
+
         catalog_result = None
         try:
             catalog_result = await asset_catalog.record_assets(
                 vendors=vendors,
                 product_versions=product_version_map,
                 cpes=cpes,
-                cpe_configurations=None,
+                cpe_configurations=cpe_configurations or None,
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("manual_refresher.circl_asset_catalog_failed", cve_id=canonical_id, error=str(exc))
@@ -1049,6 +1062,8 @@ class ManualRefresher:
             product_version_ids=catalog_result.version_ids if catalog_result else [],
             cpes=cpes,
             impacted_products=impacted_products,
+            cpe_configurations=cpe_configurations,
+            cpe_version_tokens=cpe_version_tokens,
             epss_score=epss_score,
             circl_raw=circl_record,
             change_context=change_context,
@@ -1370,9 +1385,13 @@ class ManualRefresher:
             # Extract vendor/product/version from CIRCL
             vendors, products, versions, product_version_map, cpes = _extract_circl_product_info(circl_record)
             epss_score = _extract_epss(circl_record)
+            cpe_configurations, cpe_criteria, cpe_version_tokens = _extract_cpe_applicability(circl_record)
 
-            if not vendors and not products and not versions and epss_score is None:
+            if not vendors and not products and not versions and epss_score is None and not cpe_configurations:
                 return False
+
+            if cpe_criteria:
+                cpes = sorted(set(cpes) | set(cpe_criteria))
 
             # Update asset catalog
             catalog_result = None
@@ -1381,7 +1400,7 @@ class ManualRefresher:
                     vendors=vendors,
                     product_versions=product_version_map,
                     cpes=cpes,
-                    cpe_configurations=None,
+                    cpe_configurations=cpe_configurations or None,
                 )
             except Exception as exc:  # noqa: BLE001
                 log.warning(
@@ -1412,6 +1431,8 @@ class ManualRefresher:
                 product_version_ids=catalog_result.version_ids if catalog_result else [],
                 cpes=cpes,
                 impacted_products=impacted_products,
+                cpe_configurations=cpe_configurations,
+                cpe_version_tokens=cpe_version_tokens,
                 epss_score=epss_score,
                 circl_raw=circl_record,
                 change_context=change_context,

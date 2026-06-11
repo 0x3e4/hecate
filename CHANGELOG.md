@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.4] - 2026-06-11
+
+### Added
+
+- "Unaffected" / fixed-in versions column on the vulnerability detail page
+- Search field to filter scan targets by name or URL on the SCA Targets tab
+
+### Changed
+
+- Redesigned per-target SCA overview with a metrics strip and severity bar
+
+### Fixed
+
+- Open SCA target pages whose URL contains encoded or unescaped characters
+- Mobile dashboard "Today" loading bar no longer crowds the date arrows
+
 ## [1.2.3] - 2026-06-10
 
 ### Added

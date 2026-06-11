@@ -203,6 +203,8 @@ export interface ImpactedProduct {
   vendor: ImpactedEntity;
   product: ImpactedEntity;
   versions: string[];
+  unaffectedVersions?: string[];
+  patchedVersions?: string[];
   vulnerable?: boolean | null;
   environments?: string[];
 }

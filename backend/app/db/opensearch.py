@@ -61,6 +61,32 @@ def _ensure_index_settings(client: OpenSearch, index_name: str) -> bool:
     return True
 
 
+def _ensure_index_mappings(client: OpenSearch, index_name: str) -> None:
+    """
+    Additive mapping update for indices created before newer sub-fields existed.
+
+    Only declares fields that are safe to add: unaffectedVersions did not exist
+    before this mapping was introduced, so there is no dynamic-mapping conflict.
+    (patchedVersions is deliberately NOT declared here — past GHSA/OSV writes may
+    have dynamically mapped it as text, and a conflicting keyword mapping would
+    error; display reads come from _source, so its mapping type doesn't matter.)
+    """
+    mapping_body = {
+        "properties": {
+            "impactedProducts": {
+                "type": "nested",
+                "properties": {
+                    "unaffectedVersions": {"type": "keyword"},
+                },
+            },
+        }
+    }
+    try:
+        client.indices.put_mapping(index=index_name, body=mapping_body)
+    except (OSConnectionError, OpenSearchException) as exc:
+        log.warning("opensearch.ensure_mappings_failed", index=index_name, error=str(exc))
+
+
 def get_client() -> OpenSearch:
     global _client
     if _client is None:
@@ -114,6 +140,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
         if client.indices.exists(index=index_name):
             log.info("opensearch.index_already_exists", index=index_name)
             applied = _ensure_index_settings(client, index_name)
+            _ensure_index_mappings(client, index_name)
             _mark_opensearch_available()
             if applied:
                 _ensured_indices.add(index_name)
@@ -188,6 +215,8 @@ def ensure_vulnerability_index(index_name: str) -> None:
                             }
                         },
                         "versions": {"type": "keyword"},
+                        "unaffectedVersions": {"type": "keyword"},
+                        "patchedVersions": {"type": "keyword"},
                         "environments": {"type": "keyword"},
                         "vulnerable": {"type": "boolean"},
                     },

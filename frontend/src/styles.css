@@ -1970,6 +1970,19 @@ table thead th {
   letter-spacing: 0.01em;
 }
 
+.impacted-products__unaffected-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(105, 219, 124, 0.125);
+  color: rgba(105, 219, 124, 0.95);
+  border: 1px solid rgba(105, 219, 124, 0.25);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
 .impacted-products__link {
   color: rgba(128, 170, 255, 0.95);
   text-decoration: none;

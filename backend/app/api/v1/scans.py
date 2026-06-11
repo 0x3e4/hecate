@@ -71,6 +71,7 @@ from app.core.write_auth import (
     require_target_write_manual_scan,
     require_target_write_path,
     require_target_write_scan,
+    resolve_target_id_path,
 )
 from app.schemas.ai import AIScanAnalysisRequest, AIScanAnalysisSubmitResponse
 from app.schemas.scan_attack_chain import (
@@ -241,7 +242,7 @@ async def list_target_groups(
 
 @router.get("/targets/{target_id:path}/history", response_model=ScanHistoryResponse)
 async def get_target_history(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0, description="Skip this many of the most-recent scans (pagination)"),
     since: datetime | None = Query(default=None, description="Only return scans started after this ISO datetime"),
@@ -270,7 +271,7 @@ async def get_target_history(
 
 @router.get("/targets/{target_id:path}/shield")
 async def get_target_shield(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     label: str = Query(default="findings", max_length=64),
     service: ScanService = Depends(get_scan_service),
 ) -> dict[str, Any]:
@@ -291,8 +292,8 @@ async def get_target_shield(
 
 @router.put("/targets/{target_id:path}/write-password", response_model=ScanTargetResponse)
 async def set_target_write_password(
-    target_id: str,
     request: TargetWritePasswordRequest,
+    target_id: str = Depends(resolve_target_id_path),
     _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
@@ -307,7 +308,7 @@ async def set_target_write_password(
 
 @router.delete("/targets/{target_id:path}/write-password", response_model=ScanTargetResponse)
 async def clear_target_write_password(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
@@ -322,7 +323,7 @@ async def clear_target_write_password(
 
 @router.get("/targets/{target_id:path}", response_model=ScanTargetResponse)
 async def get_target(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     target = await service.get_target(target_id)
@@ -362,7 +363,7 @@ async def create_target(
 
 @router.patch("/targets/{target_id:path}", response_model=ScanTargetResponse)
 async def update_target(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     body: dict[str, Any] = None,
     _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
@@ -385,7 +386,7 @@ async def update_target(
 
 @router.delete("/targets/{target_id:path}", status_code=204)
 async def delete_target(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
@@ -396,7 +397,7 @@ async def delete_target(
 
 @router.post("/targets/{target_id:path}/check", response_model=ScanTargetResponse)
 async def trigger_target_check(
-    target_id: str,
+    target_id: str = Depends(resolve_target_id_path),
     _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:

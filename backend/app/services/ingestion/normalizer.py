@@ -1583,6 +1583,10 @@ def _build_impacted_products_payload(
                 "vendor": entry["vendor"],
                 "product": entry["product"],
                 "versions": sorted(entry["versions"], key=str.lower),
+                # CPE configurations carry no unaffected data; the key is emitted
+                # empty so every writer produces a uniform entry shape (the CIRCL
+                # builder is the only one that populates it).
+                "unaffectedVersions": [],
                 "vulnerable": entry["vulnerable"],
                 "environments": sorted(entry["environments"], key=str.lower),
             }
@@ -1634,6 +1638,7 @@ def _fallback_impacted_products_from_cpes_payload(
                 "vendor": entry["vendor"],
                 "product": entry["product"],
                 "versions": sorted(entry["versions"], key=str.lower),
+                "unaffectedVersions": [],
                 "vulnerable": entry["vulnerable"],
                 "environments": environments,
             }
@@ -2240,6 +2245,7 @@ def _extract_ghsa_package_info(
             "vendor": {"name": ecosystem_name, "slug": vendor_slug},
             "product": {"name": package_name, "slug": product_slug},
             "versions": ver_strings,
+            "unaffectedVersions": [],
             "patchedVersions": [patched.strip()] if isinstance(patched, str) and patched.strip() else [],
             "vulnerable": True,
             "environments": [ecosystem_name],
@@ -2497,6 +2503,7 @@ def _extract_osv_package_info(
             "vendor": {"name": ecosystem_name, "slug": vendor_slug},
             "product": {"name": package_name, "slug": product_slug},
             "versions": ver_strings,
+            "unaffectedVersions": [],
             "patchedVersions": patched_versions,
             "vulnerable": True,
             "environments": [ecosystem_name],

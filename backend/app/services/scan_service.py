@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import httpx
@@ -55,6 +56,31 @@ def _get_scan_semaphore() -> asyncio.Semaphore:
     if _scan_semaphore is None:
         _scan_semaphore = asyncio.Semaphore(settings.sca_max_concurrent_scans)
     return _scan_semaphore
+
+
+# Target ids are URLs stored verbatim as the Mongo _id, so a pasted detail-page
+# URL can arrive percent-decoded one level deeper than the stored value (e.g.
+# stored "https://host/ANK%C3%96/repo" arriving as "https://host/ANKÖ/repo"),
+# scheme-less, or with a trailing slash. resolve_target_id() normalizes both
+# sides for comparison. ":/+" tolerates reverse proxies that merge "//" → "/".
+_TARGET_SCHEME_RE = re.compile(r"^https?:/+", re.IGNORECASE)
+
+
+def _unquote_to_fixed_point(value: str, max_rounds: int = 3) -> str:
+    """Percent-decode until stable (invalid %-sequences pass through unchanged)."""
+    for _ in range(max_rounds):
+        decoded = unquote(value)
+        if decoded == value:
+            break
+        value = decoded
+    return value
+
+
+def _normalize_target_id(value: str, *, strip_scheme: bool) -> str:
+    normalized = _unquote_to_fixed_point(value.strip())
+    if strip_scheme:
+        normalized = _TARGET_SCHEME_RE.sub("", normalized)
+    return normalized.rstrip("/")
 
 
 class ScanService:
@@ -1028,6 +1054,54 @@ class ScanService:
                 if result:
                     target["running_scan_id"], target["running_scan_status"] = result
         return target
+
+    async def resolve_target_id(self, raw: str) -> str | None:
+        """Resolve a possibly non-canonical target id to the stored ``_id``.
+
+        Accepts percent-encoding variants, scheme-less forms, trailing slashes,
+        and (last resort) case differences. Staged so the least-lossy
+        normalization wins: each stage must produce exactly ONE candidate to be
+        authoritative — e.g. a pasted ``https://ghcr.io/foo/`` resolves to the
+        repo target at the scheme-preserving stage even when a scheme-less
+        image target ``ghcr.io/foo`` also exists. Ambiguity → ``None``.
+        """
+        raw = (raw or "").strip()
+        if not raw:
+            return None
+        # Stage 0: exact hit — covers all canonical traffic, no extra queries.
+        if await self.target_repo.get(raw) is not None:
+            return raw
+
+        stored_ids = await self.target_repo.list_ids()
+        if not stored_ids:
+            return None
+
+        stages = (
+            ("unquoted", _normalize_target_id(raw, strip_scheme=False), False, False),
+            ("schemeless", _normalize_target_id(raw, strip_scheme=True), True, False),
+            ("casefolded", _normalize_target_id(raw, strip_scheme=True).casefold(), True, True),
+        )
+        for stage, needle, strip_scheme, casefold in stages:
+            if not needle:
+                continue
+            candidates = []
+            for stored in stored_ids:
+                key = _normalize_target_id(stored, strip_scheme=strip_scheme)
+                if casefold:
+                    key = key.casefold()
+                if key == needle:
+                    candidates.append(stored)
+            if len(candidates) == 1:
+                return candidates[0]
+            if len(candidates) > 1:
+                log.warning(
+                    "scan_service.target_resolution_ambiguous",
+                    raw=raw,
+                    stage=stage,
+                    candidates=candidates,
+                )
+                return None
+        return None
 
     async def delete_target(self, target_id: str) -> bool:
         """Delete a target and all associated scan data."""
