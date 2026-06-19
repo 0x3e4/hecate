@@ -7,6 +7,7 @@ export interface ServerConfig {
   scaEnabled: boolean;
   scaAutoScanEnabled: boolean;
   supportPageEnabled: boolean;
+  eolEnabled: boolean;
   aiBatchMaxVulns: number;
 }
 
@@ -15,6 +16,7 @@ const PESSIMISTIC_DEFAULTS: ServerConfig = {
   scaEnabled: false,
   scaAutoScanEnabled: false,
   supportPageEnabled: false,
+  eolEnabled: false,
   aiBatchMaxVulns: 10,
 };
 

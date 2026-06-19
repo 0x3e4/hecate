@@ -19,6 +19,7 @@ export interface InventoryItemCreateInput {
   instanceCount: number;
   owner?: string | null;
   notes?: string | null;
+  eolProduct?: string | null;
 }
 
 export type InventoryItemUpdateInput = Partial<InventoryItemCreateInput>;

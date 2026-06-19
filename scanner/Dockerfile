@@ -19,7 +19,7 @@ RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/
     | tar xz -C /usr/local/bin dockle
 
 # Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_amd64 \
+RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
 
 # Install Dive (Docker image layer analysis)
@@ -31,7 +31,7 @@ RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_
 RUN pip install --no-cache-dir semgrep==1.164.0
 
 # Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.5/trufflehog_3.95.5_linux_amd64.tar.gz \
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.6/trufflehog_3.95.6_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
 
 # Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)

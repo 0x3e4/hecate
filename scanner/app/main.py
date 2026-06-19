@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
+import time
 import tomllib
+import uuid
 from pathlib import Path
 
 # Configure root logger BEFORE importing modules that grab their own logger.
@@ -24,8 +27,21 @@ logging.basicConfig(
 
 from fastapi import FastAPI, HTTPException
 
-from app.models import CheckRequest, CheckResponse, ScanMetadata, ScanRequest, ScanResponse, ScannerResult, StatsResponse
+from app.models import (
+    CheckRequest,
+    CheckResponse,
+    CleanupSourceRequest,
+    CleanupSourceResponse,
+    PrepareSourceRequest,
+    PrepareSourceResponse,
+    ScanMetadata,
+    ScanRequest,
+    ScanResponse,
+    ScannerResult,
+    StatsResponse,
+)
 from app.scanners import (
+    _clone_repo,
     extract_source_archive,
     get_git_commit_sha,
     get_image_digest,
@@ -34,8 +50,32 @@ from app.scanners import (
     setup_auth,
 )
 
+logger = logging.getLogger("app.scanner_sidecar")
+
 # Track active scan count
 _active_scans = 0
+
+# Shared source checkouts prepared once per scan via /prepare-source and reused
+# across all scanners of that scan (so a source repo is cloned once, not once
+# per scanner). token -> {"dir": str, "created_at": float, "refcount": int}.
+# Single event-loop access, so plain dict ops are safe without a lock.
+_source_checkouts: dict[str, dict] = {}
+
+
+def _source_checkout_ttl() -> int:
+    """Idle TTL (seconds) after which an unreferenced checkout is reaped.
+
+    Pure crash-leak backstop: a live checkout has refcount > 0 and is never
+    reaped regardless of age. Default 7200 comfortably exceeds the longest
+    plausible scan wall-clock (resource wait + concurrent grype/devskim)."""
+    raw = os.environ.get("SOURCE_CHECKOUT_TTL_SECONDS")
+    if not raw:
+        return 7200
+    try:
+        val = int(raw)
+    except ValueError:
+        return 7200
+    return val if val > 0 else 7200
 
 
 _PYPROJECT_CANDIDATES = (
@@ -67,11 +107,51 @@ app = FastAPI(title="Hecate Scanner Sidecar", version=_VERSION)
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
 
 
+async def _reap_source_checkouts_once() -> int:
+    """One reaping pass: remove unreferenced checkouts older than the TTL.
+
+    A checkout leaks only when the backend crashes between /prepare-source and
+    /cleanup-source. Such an entry has refcount 0 (all /scan calls finished or
+    never arrived) and ages past the TTL; entries with refcount > 0 are in active
+    use and are never reaped, so the reaper can't rmtree a dir out from under a
+    running scanner. Returns the number of checkouts removed."""
+    ttl = _source_checkout_ttl()
+    now = time.monotonic()
+    stale = [
+        token
+        for token, entry in list(_source_checkouts.items())
+        if entry.get("refcount", 0) <= 0 and (now - entry.get("created_at", now)) > ttl
+    ]
+    for token in stale:
+        entry = _source_checkouts.pop(token, None)
+        if not entry:
+            continue
+        logger.warning(
+            "source_checkout.reaped_stale token=%s dir=%s age=%.0fs",
+            token, entry.get("dir"), now - entry.get("created_at", now),
+        )
+        await asyncio.to_thread(shutil.rmtree, entry["dir"], ignore_errors=True)
+    return len(stale)
+
+
+async def _reap_stale_source_checkouts() -> None:
+    """Background loop that periodically reaps leaked source checkouts."""
+    while True:
+        try:
+            await asyncio.sleep(300)
+            await _reap_source_checkouts_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — reaper must never die on a transient error
+            logger.exception("source_checkout.reaper_error")
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     auth = os.environ.get("SCANNER_AUTH")
     if auth:
         setup_auth(auth)
+    asyncio.create_task(_reap_stale_source_checkouts())
 
 
 @app.get("/health")
@@ -185,6 +265,38 @@ async def check(request: CheckRequest) -> CheckResponse:
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
 
+@app.post("/prepare-source", response_model=PrepareSourceResponse)
+async def prepare_source(request: PrepareSourceRequest) -> PrepareSourceResponse:
+    """Clone a source repo once and register it for reuse across a scan's scanners.
+
+    Returns a sourceToken the backend threads into every /scan call so the repo
+    is cloned once instead of once per scanner. A clone failure is returned as a
+    200 with an `error` field (not a 4xx) so the backend can surface the clone
+    stderr and distinguish it from the sidecar being unreachable. The token is
+    owned by /cleanup-source (and the idle reaper as a backstop) — /scan never
+    deletes a token-resolved checkout."""
+    if request.type != "source_repo":
+        raise HTTPException(status_code=400, detail="prepare-source is only valid for source_repo scans")
+    try:
+        checkout_dir = await _clone_repo(request.target)
+    except RuntimeError as exc:
+        return PrepareSourceResponse(source_token=None, error=str(exc))
+    token = uuid.uuid4().hex
+    _source_checkouts[token] = {"dir": checkout_dir, "created_at": time.monotonic(), "refcount": 0}
+    return PrepareSourceResponse(source_token=token)
+
+
+@app.post("/cleanup-source", response_model=CleanupSourceResponse)
+async def cleanup_source(request: CleanupSourceRequest) -> CleanupSourceResponse:
+    """Remove a prepared source checkout. Idempotent — an unknown/expired token
+    returns removed=false without error. rmtree runs off the event loop."""
+    entry = _source_checkouts.pop(request.source_token, None)
+    if not entry:
+        return CleanupSourceResponse(removed=False)
+    await asyncio.to_thread(shutil.rmtree, entry["dir"], ignore_errors=True)
+    return CleanupSourceResponse(removed=True)
+
+
 @app.post("/scan", response_model=ScanResponse)
 async def scan(request: ScanRequest) -> ScanResponse:
     global _active_scans
@@ -198,14 +310,31 @@ async def scan(request: ScanRequest) -> ScanResponse:
     if request.type not in ("container_image", "source_repo"):
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
 
+    # Two mutually-exclusive ways to get a working tree: an uploaded archive
+    # (owned by this /scan call, extracted fresh each time) or a shared checkout
+    # prepared once via /prepare-source (owned by /cleanup-source — never deleted
+    # here). Archive takes precedence; the token is a strict elif so a request
+    # can never both extract an archive and resolve a token.
     source_dir: str | None = None
+    owns_source_dir = False
+    token_entry: dict | None = None
     if request.source_archive_base64:
         if request.type != "source_repo":
             raise HTTPException(status_code=400, detail="sourceArchiveBase64 is only valid for source_repo scans")
         try:
             source_dir = extract_source_archive(request.source_archive_base64)
+            owns_source_dir = True
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    elif request.source_token:
+        token_entry = _source_checkouts.get(request.source_token)
+        if not token_entry:
+            raise HTTPException(status_code=400, detail="Unknown or expired sourceToken")
+        source_dir = token_entry["dir"]
+        # Refresh + refcount so the idle reaper never removes a checkout with
+        # live /scan calls against it.
+        token_entry["created_at"] = time.monotonic()
+        token_entry["refcount"] = token_entry.get("refcount", 0) + 1
 
     results: list[ScannerResult] = []
     metadata = ScanMetadata()
@@ -225,7 +354,12 @@ async def scan(request: ScanRequest) -> ScanResponse:
             metadata.image_digest, _ = await get_image_digest(request.target)
     finally:
         _active_scans = max(0, _active_scans - 1)
-        if source_dir:
+        # Only delete a checkout this call owns (uploaded archive). A
+        # token-resolved checkout is released back to /cleanup-source — just drop
+        # the refcount so the reaper can reclaim it if the backend crashed.
+        if owns_source_dir and source_dir:
             shutil.rmtree(source_dir, ignore_errors=True)
+        elif token_entry is not None:
+            token_entry["refcount"] = max(0, token_entry.get("refcount", 0) - 1)
 
     return ScanResponse(target=request.target, type=request.type, results=results, metadata=metadata)

@@ -792,7 +792,14 @@ class StatsService:
                         ]
                     }
                 },
-                "_source": ["vuln_id", "title", "cvss.severity", "aliases"],
+                "_source": [
+                    "vuln_id",
+                    "title",
+                    "cvss.severity",
+                    "aliases",
+                    "vendorSlugs",
+                    "productSlugs",
+                ],
                 "sort": [{"published": {"order": "desc"}}],
                 "aggs": {
                     "vendors": {
@@ -905,11 +912,25 @@ class StatsService:
                 severity = (cvss.get("severity") or "unknown").lower()
             raw_aliases = source.get("aliases")
             aliases = raw_aliases if isinstance(raw_aliases, list) else []
+            raw_vendor_slugs = source.get("vendorSlugs")
+            vendor_slugs = (
+                [s for s in raw_vendor_slugs if isinstance(s, str)]
+                if isinstance(raw_vendor_slugs, list)
+                else []
+            )
+            raw_product_slugs = source.get("productSlugs")
+            product_slugs = (
+                [s for s in raw_product_slugs if isinstance(s, str)]
+                if isinstance(raw_product_slugs, list)
+                else []
+            )
             cves.append({
                 "vulnId": vuln_id,
                 "title": source.get("title", ""),
                 "severity": severity,
                 "aliases": aliases,
+                "vendorSlugs": vendor_slugs,
+                "productSlugs": product_slugs,
             })
 
         total = self._resolve_total(response)

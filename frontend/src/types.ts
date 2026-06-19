@@ -466,6 +466,7 @@ export interface InventoryItem {
   instanceCount: number;
   owner?: string | null;
   notes?: string | null;
+  eolProduct?: string | null;
   createdAt: string;
   updatedAt: string;
   affectedVulnCount?: number | null;
@@ -473,6 +474,38 @@ export interface InventoryItem {
 
 export interface InventoryItemListResponse {
   items: InventoryItem[];
+  total: number;
+}
+
+export type EolStatusKind = "active" | "security" | "eol" | "unknown";
+
+export interface EolStatus {
+  linked: boolean;
+  product?: string | null;
+  productLabel?: string | null;
+  productLink?: string | null;
+  matchedCycle?: string | null;
+  status: EolStatusKind;
+  statusLabel: string;
+  releaseDate?: string | null;
+  eoasDate?: string | null;
+  eolDate?: string | null;
+  isLts?: boolean;
+  latestVersion?: string | null;
+  latestReleaseDate?: string | null;
+  latestLink?: string | null;
+  isOutdated?: boolean;
+}
+
+export interface EolProductOption {
+  name: string;
+  label: string;
+  category?: string | null;
+  aliases?: string[];
+}
+
+export interface EolProductListResponse {
+  products: EolProductOption[];
   total: number;
 }
 

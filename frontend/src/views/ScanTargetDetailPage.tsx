@@ -513,10 +513,19 @@ export const ScanTargetDetailPage = () => {
                     border: "1px solid rgba(77,171,247,0.3)",
                     borderRadius: 999,
                     padding: "0.15rem 0.65rem",
-                    animation: "tab-pulse 1.6s ease-in-out infinite",
+                    animation: "pulse-badge 1.5s ease-in-out infinite",
                   }}
                 >
-                  ● {t("Scan running", "Scan läuft")}
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: "#4dabf7",
+                      animation: "pulse-dot 1.5s ease-in-out infinite",
+                    }}
+                  />
+                  {t("Scan running", "Scan läuft")}
                 </span>
               )}
             </div>

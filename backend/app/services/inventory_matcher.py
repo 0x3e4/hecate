@@ -223,11 +223,18 @@ def _match_cpe_entry(item_version: str, match: CpeMatch) -> bool:
     end_ex = match.version_end_excluding
 
     if not any((start_in, start_ex, end_in, end_ex)):
-        # No range and no exact version — treat as "any version of this
-        # product", which is the NVD semantic when only vendor+product match.
-        # Still return True because the caller has already verified the
-        # vendor/product slugs.
-        return True
+        # No range and no concrete version on the CPE — a bare
+        # ``vendor:product:*`` (or ``:-:``) match carries no version evidence,
+        # so we cannot confirm the item's specific version is affected. Fail
+        # closed (return False) rather than blindly matching "any version".
+        #
+        # Background: matching every version here produced false positives for
+        # inventory items whose vendor/product appears only as a secondary,
+        # version-less platform CPE on an old CVE (e.g. phpBB 3.3.17 wrongly
+        # flagged by CVEs about third-party phpBB *modules* that reference
+        # ``cpe:2.3:a:phpbb:phpbb:*``). This mirrors the tier-3 flat-CPE
+        # fallback, which already skips ``*`` / ``-`` versions.
+        return False
 
     cmp_result = _compare_bounds(
         item_version,
@@ -329,16 +336,31 @@ _VERSION_OP_RE = re.compile(
     r"(?P<op>>=|<=|!=|==|>|<|=)?\s*(?P<ver>[A-Za-z0-9][\w.+:\-*]*)"
 )
 
+# Broad, unconstrained range strings that effectively mean "all versions".
+# These carry no usable version information, so we fail closed rather than
+# match every version. ``>=0`` / ``>0`` are the "from zero upwards" sentinels
+# emitted by EUVD / MAL normalization — the same set the rest of the codebase
+# treats as broad (see ``_BROAD_VERSION_SENTINELS`` in vulnerability_service).
+_BROAD_RANGE_SENTINELS = {"", "*", "-", "any", ">=0", ">= 0", ">0", "> 0"}
+
+
+def _is_zero_version(value: str | None) -> bool:
+    """True when ``value`` is empty or parses to an all-zero release (``0``, ``0.0``)."""
+    if not value:
+        return True
+    parsed = parse_version(value)
+    return not parsed.release or all(seg == 0 for seg in parsed.release)
+
 
 def _version_in_range_string(version: str, range_str: str) -> bool:
     """Return True if ``version`` satisfies ``range_str``.
 
-    Unknown or unconstrained strings (``*``, ``-``, empty) return False —
-    they provide no usable information and we fail closed rather than match
-    everything.
+    Unknown or unconstrained strings (``*``, ``-``, ``>=0``, empty) return
+    False — they provide no usable information and we fail closed rather than
+    match everything.
     """
     s = (range_str or "").strip()
-    if not s or s in ("*", "-", "ANY", "any"):
+    if not s or s.lower() in _BROAD_RANGE_SENTINELS:
         return False
 
     clauses: list[tuple[str, str]] = []
@@ -380,6 +402,17 @@ def _version_in_range_string(version: str, range_str: str) -> bool:
             cmp_val = _compare_versions(version, v)
             if cmp_val == 0:
                 return True
+        return False
+
+    # A lower bound at version 0 with no upper bound (``>= 0`` / ``> 0`` in any
+    # spacing) is "all versions" — unconstrained, so fail closed. A non-zero
+    # standalone ``>= 5.1.0`` is intentionally left alone ("from 5.1.0 upwards").
+    if (
+        not exact_values
+        and end_in is None
+        and end_ex is None
+        and _is_zero_version(start_in if start_in is not None else start_ex)
+    ):
         return False
 
     return _compare_bounds(

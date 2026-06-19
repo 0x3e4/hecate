@@ -62,6 +62,8 @@ export interface TodayCve {
   title: string;
   severity: string;
   aliases: string[];
+  vendorSlugs?: string[];
+  productSlugs?: string[];
 }
 
 export interface TodaySummaryResponse {

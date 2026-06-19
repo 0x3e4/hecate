@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.3.0] - 2026-06-19
+
+### Added
+
+- End-of-life / support tracking for Environment Inventory items via endoflife.date: cards show active-support / security-support / end-of-life status, the cycle's latest release, and an "update available" hint. Products are auto-linked by name with a manual override (and clear) in the add/edit dialog. Configurable via `ENDOFLIFE_*` env vars and the `eolEnabled` runtime flag.
+- "Flagged CVEs" table on the Inventory page listing every distinct CVE affecting any configured item, sorted by severity, each linked to its vulnerability detail page.
+- Dashboard "Today" widgets now highlight configured-inventory vendors, products, and CVEs and float them to the top, with a count of how many of the day's CVEs touch your inventory.
+
+### Changed
+
+- The inventory add/edit form now opens in a modal dialog, and the "Your Inventory" section is renamed to "Configuration management".
+- Documentation sync for the endoflife.date integration, the inventory matcher fix, and the dashboard inventory highlight.
+
+### Fixed
+
+- Inventory matching is now strictly fail-closed for version-less references: a bare `vendor:product:*` CPE (with no version bounds) or a broad `>=0` range string no longer matches a specific installed version. This removes false positives such as old phpBB add-on-module CVEs (CVE-2008-6301, CVE-2007-5688, CVE-2006-7168, CVE-2007-5173) being reported as affecting phpBB 3.3.17.
+
 ## [1.2.4] - 2026-06-11
 
 ### Added

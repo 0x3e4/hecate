@@ -51,6 +51,12 @@ produce output for the matching target type. Container images are pulled directl
 APIs — no Docker socket is mounted — and Dive uses Skopeo to fetch the image as an archive. Registry
 and git credentials are supplied through the `SCANNER_AUTH` environment variable.
 
+For source-repo targets the repository is cloned **once per scan** and the working tree is shared
+across all scanners (rather than cloned once per scanner), so a scan no longer fires several
+concurrent `git clone` of the same repo that could contend for bandwidth and trip the clone timeout.
+The clone budget is `GIT_CLONE_TIMEOUT_SECONDS` (default 300 s); a clone failure surfaces as a single
+clean error and marks the scan failed.
+
 ## Auto-scan
 
 With `SCA_AUTO_SCAN_ENABLED=true`, the scheduler periodically probes each `autoScan` target through the

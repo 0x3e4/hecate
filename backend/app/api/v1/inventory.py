@@ -4,14 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.schemas.inventory import (
     AffectedVulnerabilitiesResponse,
+    EolProductListResponse,
+    EolStatusResponse,
     InventoryItemCreateRequest,
     InventoryItemListResponse,
     InventoryItemResponse,
     InventoryItemUpdateRequest,
 )
+from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_service import InventoryService, get_inventory_service
 
 router = APIRouter()
+
+
+@router.get("/eol/products", response_model=EolProductListResponse)
+async def list_eol_products(search: str | None = None) -> EolProductListResponse:
+    """List endoflife.date products for the manual-link picker (cached)."""
+    products = await get_endoflife_service().list_products(search)
+    return EolProductListResponse(products=products, total=len(products))
 
 
 @router.get("", response_model=InventoryItemListResponse)
@@ -81,3 +91,15 @@ async def get_affected_vulnerabilities(
         total=len(vulns),
         vulnerabilities=vulns,
     )
+
+
+@router.get("/{item_id}/eol", response_model=EolStatusResponse)
+async def get_inventory_item_eol(
+    item_id: str,
+    service: InventoryService = Depends(get_inventory_service),
+) -> EolStatusResponse:
+    """Return the endoflife.date support status for an inventory item."""
+    status = await service.get_item_eol_status(item_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    return status

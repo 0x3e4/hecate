@@ -65,7 +65,7 @@ src/
 │   ├── CiCdInfoPage.tsx         CI/CD integration guide
 │   ├── ApiInfoPage.tsx          API documentation with Swagger UI
 │   ├── McpInfoPage.tsx          MCP server info
-│   ├── InventoryPage.tsx        Environment inventory (CRUD + affected CVEs per item)
+│   ├── InventoryPage.tsx        Environment inventory (modal CRUD + flagged-CVE table + endoflife.date status per item)
 │   ├── MalwareFeedPage.tsx      Overview of all MAL-aliased OSV records (~417 k, server-paginated 100/page,
 │   │                              hard-coded ecosystem slugs, substring search routed to OpenSearch)
 │   ├── SupportPage.tsx          In-app diagnostics with per-component version check against GHCR `main-<sha>`
@@ -175,7 +175,7 @@ src/
 | `/stats` | `StatsPage` | Trend charts, top vendors / products, severity distribution |
 | `/audit` | `AuditLogPage` | Ingestion-job logs with status and metadata |
 | `/changelog` | `ChangelogPage` | Recent changes with pagination, date and job filters (incl. OSV in the job dropdown) |
-| `/inventory` | `InventoryPage` | Environment inventory: three `.card` sections (intro + chips summary, add / edit form, items grid). Vendor / Product via `AsyncSelect<Option, false>` (same look as AdvancedFilters). Deployment as a chip-button group, environment as a free text field with `<datalist>` suggestions (prod / staging / dev / test / dr + previously used values). Item cards as `.vuln-card` with severity border coloured by the highest affected CVE, expandable *Show CVEs* list per entry. |
+| `/inventory` | `InventoryPage` | Environment inventory: intro summary, an **Add** launcher, the **"Configuration management"** items grid, and a **"Flagged CVEs"** roll-up table (every distinct CVE across all items, severity-sorted, linked to vuln detail). Add / edit happens in a `.dialog--wide` **modal**; vendor / product via `AsyncSelect<Option, false>` (menu z-index raised above the modal backdrop). Item cards as `.vuln-card` with severity border coloured by the highest affected CVE, expandable *Show CVEs* list, and (when `eolEnabled`) an endoflife.date support badge (active / security / EOL + latest release + "update available"). The modal's "End-of-life tracking" picker auto-detects the endoflife.date product and allows manual override. |
 | `/system` | `SystemPage` | Single-card layout with header. 5 tabs: General (language, services, backup), Access Control (per-target write passwords via TargetAccessPanel), Notifications (channels, rules incl. `inventory` type with optional item filter via native multi-select, templates incl. `inventory_match`), Data (sync status, re-sync with multi-ID / wildcards / delete-only, searches), Policies (license policies) |
 | `/scans` | `ScansPage` | SCA scan management (Targets, Scans, Findings with links column + expandable detail row, SBOM with dynamic type filter from facets + summary cards + sorting + provenance filter, Security Alerts with category filter, Licenses, Scanner). Findings and SBOM rows show a links column with deps.dev, Snyk, Registry, socket.dev, bundlephobia (npm-only), npmgraph (npm-only). The Targets tab groups cards into **collapsible application sections** with severity roll-up (collapse state persisted via `usePersistentState('hecate.scan.groupCollapsed')`). Target cards: action row pinned bottom (flex column), inline-editable **App / Group** row with `<datalist>` suggestions from existing groups; SBOM-import targets without auto-scan, rescan, scanner-edit, and group-edit affordances. **Scanner tab**: live memory and disk charts plus an `AutoScanDiagnosticsTable` showing the latest `/check` probe per auto-scan target (timestamp, current vs. stored fingerprint, verdict pill with tooltip, error). Verdict pills are clickable buttons that trigger `POST /v1/scans/targets/{id}/check` and update the row in place — primary debug tool when a target is not auto-scanning. |
 | `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable; splat route registered before `/scans/:scanId` — pasted un-encoded or scheme-less target URLs resolve server-side and the address bar is replaced with the canonical encoded form). Card-based layout matching the scan detail page: in-header back link + `↗`, severity rollup, scanner chips, auto-scan `/check` diagnostics, quick actions (rescan / run check / copy badge / delete), top findings, and **server-paginated** scan history (Load more / Show all, horizontal-scroll on mobile). A 🔒 badge shows when the target is write-protected (passwords are managed in System → Access Control). Transient messages use the shared bottom-right `Toast`. |
@@ -189,7 +189,7 @@ src/
 > [!NOTE]
 > Info pages live under `/info/*` so their paths cannot collide with the backend prefixes `/api*` and `/mcp*` when a reverse proxy forwards those by prefix. The legacy paths `/cicd`, `/api-docs`, and `/mcp-info` still exist as client-side React Router redirects (`<Navigate replace>`) for bookmark compatibility — but they only kick in once the SPA entry has loaded. A hard refresh on the legacy paths can still fail depending on the proxy rule.
 
-Feature visibility (AI analysis, SCA scans, CI/CD, API, MCP) is determined at runtime via `GET /api/v1/config` and provided by `ServerConfigProvider` ([src/server-config/context.tsx](src/server-config/context.tsx)). The backend derives the flags from its own settings (AI = at least one provider key set, SCA = `sca_enabled`, auto-scan = `sca_auto_scan_enabled`). No image rebuild is required to change them — restart the backend.
+Feature visibility (AI analysis, SCA scans, CI/CD, API, MCP, inventory EOL tracking) is determined at runtime via `GET /api/v1/config` and provided by `ServerConfigProvider` ([src/server-config/context.tsx](src/server-config/context.tsx)). The backend derives the flags from its own settings (AI = at least one provider key set, SCA = `sca_enabled`, auto-scan = `sca_auto_scan_enabled`, `eolEnabled` = `endoflife_enabled`). No image rebuild is required to change them — restart the backend.
 
 ---
 
@@ -248,6 +248,7 @@ All other feature flags come from the backend at runtime through `GET /api/v1/co
 - **AI features** — active when at least one AI provider is configured (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`, or `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_MODEL` for Ollama / vLLM / OpenRouter / LocalAI / LM Studio)
 - **SCA features** — `SCA_ENABLED` (backend)
 - **Auto-scan toggle** — `SCA_AUTO_SCAN_ENABLED` (backend)
+- **Inventory EOL tracking** (`eolEnabled`) — `ENDOFLIFE_ENABLED` (backend); gates the endoflife.date support badge on inventory cards and the "End-of-life tracking" field in the add/edit modal
 
 Share URLs are derived from `globalThis.location.origin` — no `VITE_DOMAIN` any more.
 

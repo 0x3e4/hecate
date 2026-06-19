@@ -18,6 +18,7 @@ class PublicConfigResponse(BaseModel):
     support_page_enabled: bool = Field(
         alias="supportPageEnabled", serialization_alias="supportPageEnabled"
     )
+    eol_enabled: bool = Field(alias="eolEnabled", serialization_alias="eolEnabled")
     ai_batch_max_vulns: int = Field(
         alias="aiBatchMaxVulns", serialization_alias="aiBatchMaxVulns"
     )
@@ -51,5 +52,6 @@ async def get_public_config(
         sca_enabled=settings.sca_enabled,
         sca_auto_scan_enabled=settings.sca_auto_scan_enabled,
         support_page_enabled=settings.support_page_enabled,
+        eol_enabled=settings.endoflife_enabled,
         ai_batch_max_vulns=ai_batch_max_vulns,
     )

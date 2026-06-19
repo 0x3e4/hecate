@@ -404,7 +404,9 @@ Source-repo scans keep the already-fast `grype dir:` path.
 
 ## Source-repository scans
 
-For `type: "source_repo"` the sidecar clones the repository via `git clone --depth 1` into a temporary directory and runs the scanners against it (`trivy fs`, `grype dir:`, `osv-scanner -r`).
+For `type: "source_repo"` the sidecar clones the repository via `git clone --depth 1 --no-tags --single-branch` into a temporary directory and runs the scanners against it (`trivy fs`, `grype dir:`, `osv-scanner -r`).
+
+**Clone once per scan.** The backend runs each scanner as a separate `/scan` call (for incremental progress + per-scanner timeout isolation), so a URL target used to be cloned once *per scanner* — up to 7 concurrent `git clone` of the same repo into the RAM-backed `/tmp`, which under contention intermittently tripped the clone timeout and failed the whole scan. Now the backend clones once up front via `POST /prepare-source` (returns a `sourceToken`), threads the token into every `/scan` call so they share the single checkout, and releases it via `POST /cleanup-source` in a `finally`. A refcount-guarded idle reaper (`SOURCE_CHECKOUT_TTL_SECONDS`, default 7200 s) removes any checkout leaked by a backend crash; a checkout with live scanners against it is never reaped. The clone timeout is configurable via `GIT_CLONE_TIMEOUT_SECONDS` (default 300 s). Uploaded-archive and container-image scans are unaffected.
 
 ---
 
@@ -428,6 +430,8 @@ deploy:
 | `SCANNER_AUTH` | — | Authentication for registries and Git repos (`host:token`, comma-separated) |
 | `SYFT_DEFAULT_CATALOGERS` | `all` | Syft catalogers (set in the Dockerfile, enables binary detection) |
 | `HECATE_MALWARE_ALLOWLIST` | — | Comma-separated package names ignored by the malware detector |
+| `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` subprocess timeout for source-repo scans (the repo is cloned once per scan via `/prepare-source`). The backend auto-widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)` |
+| `SOURCE_CHECKOUT_TTL_SECONDS` | `7200` | Idle TTL after which the sidecar reaps a leaked shared checkout (crash-leak backstop; a checkout with live scanners is never reaped) |
 
 Backend-side configuration of the sidecar:
 

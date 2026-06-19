@@ -152,6 +152,18 @@ class Settings(BaseSettings):
     deps_dev_max_retries: int = 3
     deps_dev_retry_backoff_seconds: float = 2.0
 
+    # endoflife.date enrichment — annotates inventory items with support / EOL
+    # status, latest release and "update available" hints. Uses the v1 API
+    # (catalog `/products`, product `/products/{name}`). Best-effort and cached
+    # (~daily TTL); never blocks a write. No API key.
+    endoflife_enabled: bool = True
+    endoflife_base_url: str = "https://endoflife.date/api/v1"
+    endoflife_timeout_seconds: int = 15
+    endoflife_rate_limit_seconds: float = 0.5
+    endoflife_max_retries: int = 3
+    endoflife_retry_backoff_seconds: float = 2.0
+    endoflife_cache_ttl_hours: int = 24
+
     ingestion_user_agent: str = "hecate-ingestion/1.0"
     ingestion_running_timeout_minutes: int = 60
     ingestion_bootstrap_on_startup: bool = True

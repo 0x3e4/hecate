@@ -39,7 +39,7 @@ app/
 │   ├── events.py            Server-Sent Events (SSE) stream
 │   ├── notifications.py     Notifications (channels, rules, templates)
 │   ├── license_policies.py  License-policy management (CRUD, default policy, license groups)
-│   ├── inventory.py         Environment inventory (CRUD + /affected-vulnerabilities)
+│   ├── inventory.py         Environment inventory (CRUD + /affected-vulnerabilities + endoflife.date /eol + /eol/products)
 │   ├── malware.py           Malware intelligence (GET /malware-feed for the frontend overview)
 │   ├── config.py            Public runtime config (feature flags from backend settings for the frontend)
 │   └── status.py            Health check
@@ -124,7 +124,8 @@ app/
 | `SbomExport` | SBOM export builder (CycloneDX 1.5, SPDX 2.3). |
 | `VexService` | VEX export / import (CycloneDX VEX), VEX + dismissal carry-forward across scans. |
 | `LicenseComplianceService` | License-policy evaluation, automatic evaluation after scans. |
-| `InventoryService` / `inventory_matcher` | CRUD + matching with a pure-function CPE version-range matcher (self-contained version comparator). |
+| `InventoryService` / `inventory_matcher` | CRUD + matching with a pure-function CPE version-range matcher (self-contained version comparator). The matcher is uniformly **fail-closed for version-less references**: a bare `vendor:product:*` / `:-:` CPE with no bounds and broad range strings (`>=0`, `*`, `-`, empty) never match a specific installed version. Auto-links items to an endoflife.date product (`eol_product`) on create / product change. |
+| `EndOfLifeService` / `EndOfLifeClient` | endoflife.date v1-API enrichment (`app/services/enrichment/`). Cached catalog + per-product lookups (daily TTL); conservative slug/alias auto-match (`resolve_product`) and per-version support-status resolution (`get_status` → active / security / eol + latest release + `isOutdated`). Best-effort and fail-soft. |
 | `AttackPathService` | Deterministic attack-path graph builder (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`); orchestrates `CAPECService`, `CWEService`, `InventoryService`; derives the label set (likelihood, exploit_maturity, reachability, privileges_required, user_interaction, business_impact) deterministically from EPSS, KEV, and CVSS vector. Optionally accepts `assumptions=` for the MCP `refine_attack_path_analysis` workflow (allow-list `reachability` / `entry_point` / `network_exposure` / `privileges_required` / `user_interaction`, 200-char cap per value). |
 | `attack_chain_stages` | CWE → ATT&CK kill-chain stage map (`foothold` / `credential_access` / `priv_escalation` / `lateral_movement` / `impact`); `categorize_cve(cwes, severity)` with severity fallback. |
 | `ScanAttackChainService` | Cross-CVE attack-chain builder for the scan-detail tab. Filter + dedup findings → bulk-fetch CWEs → bucket per stage → top-5 per stage by CVSS → top-2 CAPECs per stage via `CAPECService` → `AttackPathGraph` (entry → stage anchors → CVE leaves). |
@@ -137,6 +138,11 @@ app/
 - `services/http/rate_limiter.py` — minimum interval between requests
 - `services/http/retry.py` — `request_with_retry()`: shared exponential-backoff helper (transient httpx errors, 5xx, 429 with `Retry-After`)
 - `services/http/ssl.py` — `get_http_verify()`: TLS trust store (`HTTP_CA_BUNDLE` or certifi)
+
+### Enrichment clients
+
+- `services/enrichment/endoflife_client.py` — endoflife.date v1-API client (`/products`, `/products/{name}`)
+- `services/enrichment/endoflife_service.py` — cached catalog + per-product lookups, conservative auto-match, per-version support-status resolution (`get_endoflife_service()` singleton)
 
 ### Ingestion clients & pipelines
 
@@ -193,7 +199,7 @@ services/ingestion/
 | `notification_channels` | — | Apprise channels (URL + tag) |
 | `notification_templates` | — | Title / body templates per event type |
 | `license_policies` | `LicensePolicyDocument` | License policies (allowed, denied, review-required) |
-| `environment_inventory` | `InventoryItemDocument` | User-declared product / version inventory (deployment, environment, instance count) |
+| `environment_inventory` | `InventoryItemDocument` | User-declared product / version inventory (deployment, environment, instance count, optional `eol_product` endoflife.date link) |
 | `malware_intel` | `MalwareIntelDocument` | Dynamic malware-intel entries; upsert key `(source, ecosystem, package_name, version)`; merged into the `/v1/malware/malware-feed` UI (currently unused, reserved for future threat-intel pipelines) |
 
 ### OpenSearch index (`hecate-vulnerabilities`)

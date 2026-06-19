@@ -1368,6 +1368,18 @@ textarea.vuln-search-input:focus {
   50% { opacity: 1; transform: scale(1.15); }
 }
 
+/* Gentle "scan running" badge pulse, shared by the SCA scans page and the
+   target detail page (kept in sync with the ScanningBadge in ScansPage.tsx). */
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.5; }
+}
+
 .detail-tabs__actions {
   display: flex;
   align-items: center;
@@ -3460,6 +3472,73 @@ table thead th {
   }
 }
 
+/* Wide variant for forms that exceed the 400px default dialog (e.g. the
+   inventory add/edit form). The dialog itself becomes the scroll container. */
+.dialog--wide {
+  min-width: 0;
+  width: min(760px, 90vw);
+  max-width: 760px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* The generic `.dialog input` rule adds a 1.25rem bottom margin meant for the
+   single-field password dialogs; inside the grid-based form it would create
+   uneven gaps (and doesn't touch number inputs / selects), so neutralize it. */
+.dialog--wide input[type="text"],
+.dialog--wide input[type="number"],
+.dialog--wide textarea {
+  margin-bottom: 0;
+}
+
+/* Modal header: title + optional description on the left, close button right. */
+.dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 1.05rem;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.dialog-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Compact "Add" button in the Configuration management section header. */
+.inventory-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .dialog--wide {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+  }
+}
+
 .dialog h3 {
   margin: 0 0 0.75rem 0;
   color: var(--text-primary);
@@ -3518,6 +3597,30 @@ table thead th {
     font-size: 0.875rem;
     min-height: 40px;
   }
+}
+
+/* Inventory cross-reference highlight (dashboard Today widgets). A blue accent
+   left-border + a compact "in inventory" chip mark vendors / products / CVEs
+   that match the user's configured environment. */
+.inventory-match {
+  border-left: 2px solid rgba(92, 132, 255, 0.7);
+  padding-left: 0.4rem;
+}
+
+.inventory-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: rgba(92, 132, 255, 0.2);
+  border: 1px solid rgba(92, 132, 255, 0.45);
+  color: #93bbfd;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* No Results */

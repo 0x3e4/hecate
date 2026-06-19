@@ -55,7 +55,7 @@ guide that covers it.
 
 -   :material-clipboard-list-outline: **Environment Inventory**
 
-    Declare what you run; see exactly which CVEs touch each entry.
+    Declare what you run; see exactly which CVEs touch each entry, plus its support / end-of-life status.
     → [Environment Inventory](inventory.md)
 
 -   :material-robot-outline: **AI Analysis**

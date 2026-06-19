@@ -308,8 +308,14 @@ async def _clone_repo(url: str) -> str:
 
     async def _attempt(args: list[str]) -> tuple[str, str, int]:
         tmp_dir = tempfile.mkdtemp(prefix="hecate-scan-")
-        cmd = ["git", *args, "clone", "--depth", "1", url, tmp_dir]
-        _, stderr, rc = await _run_command(cmd, timeout=120)
+        # --no-tags skips fetching every tag ref; --single-branch is already
+        # implied by --depth 1 (kept explicit for clarity). Do NOT add
+        # --filter=blob:none — trufflehog / semgrep / hecate need full file
+        # contents in the working tree. The timeout is configurable via
+        # GIT_CLONE_TIMEOUT_SECONDS (default 300) so a slow clone under
+        # contention doesn't trip the old hardcoded 120 s budget.
+        cmd = ["git", *args, "clone", "--depth", "1", "--no-tags", "--single-branch", url, tmp_dir]
+        _, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("git_clone", default=300))
         if rc != 0:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return "", stderr, rc

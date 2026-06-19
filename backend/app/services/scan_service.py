@@ -551,6 +551,10 @@ class ScanService:
         scanner_sbom_rows: dict[str, int] = {s: 0 for s in scanners}
         # Per-scanner error message; concatenated with "; " when multiple.
         scanner_errors: dict[str, str] = {}
+        # Token for a source checkout cloned once via /prepare-source and shared
+        # across all scanner fan-out calls. Read by the _run_single_scanner
+        # closure; stays None for container images and uploaded-archive scans.
+        source_token: str | None = None
 
         def _record_scanner_error(scanner_name: str, message: str) -> None:
             errors.append(f"{scanner_name}: {message}")
@@ -566,6 +570,7 @@ class ScanService:
                     target_type=target_type,
                     scanners=[scanner_name],
                     source_archive_base64=source_archive_base64,
+                    source_token=source_token,
                 )
                 if metadata and not scan_metadata:
                     scan_metadata = metadata
@@ -653,8 +658,34 @@ class ScanService:
                     sbom_component_count=len(unique_component_keys),
                 )
 
-        # Run all scanners concurrently — each stores results as it finishes
-        await asyncio.gather(*[_run_single_scanner(s) for s in scanners], return_exceptions=True)
+        # For URL source repos (no uploaded archive), clone once via
+        # /prepare-source and share the checkout across every scanner instead of
+        # cloning per scanner (the old behaviour caused N concurrent clones of
+        # the same repo, intermittently tripping the clone timeout under
+        # contention and failing the whole scan). Container images and
+        # uploaded-archive scans keep their existing path.
+        use_shared_checkout = target_type == "source_repo" and not source_archive_base64
+        try:
+            if use_shared_checkout:
+                source_token, clone_err = await self._prepare_source_checkout(target, target_type)
+                if clone_err:
+                    # One clean banner line (not one per scanner); mark every
+                    # requested scanner's breakdown row as errored without going
+                    # through _record_scanner_error (which would add N banner
+                    # lines). Skip the fan-out entirely.
+                    errors.append(f"Failed to clone repository: {clone_err}")
+                    for s in scanners:
+                        scanner_errors[s] = "repository clone failed"
+                    log.warning("scan_service.prepare_source_failed", scan_id=scan_id, error=clone_err)
+                else:
+                    # Run all scanners concurrently — each stores results as it finishes
+                    await asyncio.gather(*[_run_single_scanner(s) for s in scanners], return_exceptions=True)
+            else:
+                # Run all scanners concurrently — each stores results as it finishes
+                await asyncio.gather(*[_run_single_scanner(s) for s in scanners], return_exceptions=True)
+        finally:
+            if source_token:
+                await self._cleanup_source_checkout(source_token)
 
         # CVE fallback: try to match findings without CVE against local vulnerability DB
         await self._match_cve_for_unmatched_findings(scan_id, all_findings)
@@ -2384,8 +2415,13 @@ class ScanService:
         target_type: str,
         scanners: list[str],
         source_archive_base64: str | None = None,
+        source_token: str | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Call the scanner sidecar HTTP API. Returns (results, metadata)."""
+        """Call the scanner sidecar HTTP API. Returns (results, metadata).
+
+        `source_token` (from /prepare-source) and `source_archive_base64` are
+        mutually exclusive — the token points the sidecar at a checkout cloned
+        once for the whole scan instead of cloning per scanner."""
         url = f"{settings.sca_scanner_url}/scan"
         payload = {
             "target": target,
@@ -2394,12 +2430,45 @@ class ScanService:
         }
         if source_archive_base64:
             payload["sourceArchiveBase64"] = source_archive_base64
+        if source_token:
+            payload["sourceToken"] = source_token
         timeout = self._resolve_sidecar_http_timeout(scanners)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
             return data.get("results", []), data.get("metadata") or {}
+
+    async def _prepare_source_checkout(
+        self, target: str, target_type: str
+    ) -> tuple[str | None, str | None]:
+        """Clone a source repo once on the sidecar and return (sourceToken, error).
+
+        Returns (token, None) on success, (None, error) on clone failure or an
+        unreachable sidecar. The HTTP timeout reuses `_resolve_sidecar_http_timeout`
+        keyed on the synthetic "git-clone" scanner so it resolves to
+        max(SCA_SCANNER_TIMEOUT_SECONDS, GIT_CLONE_TIMEOUT_SECONDS + 60) — i.e.
+        raising the clone budget above the floor widens this automatically."""
+        url = f"{settings.sca_scanner_url}/prepare-source"
+        timeout = self._resolve_sidecar_http_timeout(["git-clone"])
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(url, json={"target": target, "type": target_type})
+                response.raise_for_status()
+                data = response.json()
+        except Exception as exc:  # noqa: BLE001 — surface any failure as a clone error
+            return None, str(exc).strip() or repr(exc)
+        return data.get("sourceToken"), data.get("error")
+
+    async def _cleanup_source_checkout(self, source_token: str) -> None:
+        """Release a prepared source checkout on the sidecar. Best-effort — the
+        sidecar's idle reaper reclaims it if this call fails."""
+        url = f"{settings.sca_scanner_url}/cleanup-source"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                await client.post(url, json={"sourceToken": source_token})
+        except Exception as exc:  # noqa: BLE001 — cleanup is best-effort
+            log.warning("scan_service.cleanup_source_failed", error=str(exc))
 
     @staticmethod
     def _derive_target_id(target: str, target_type: str) -> str:

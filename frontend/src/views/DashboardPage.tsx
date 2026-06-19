@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types";
 import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
 import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../api/stats";
+import { fetchInventoryItems } from "../api/inventory";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -51,6 +52,41 @@ export const DashboardPage = () => {
       setSseRefreshKey((k) => k + 1);
     }
   }, [sseJobs]);
+
+  // Inventory cross-reference for the Today widgets (highlight + float-to-top).
+  // Optional context — failures degrade silently to no highlighting.
+  const [inventoryPairs, setInventoryPairs] = useState<
+    { vendorSlug: string; productSlug: string }[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchInventoryItems()
+      .then((res) => {
+        if (cancelled) return;
+        setInventoryPairs(
+          res.items.map((i) => ({ vendorSlug: i.vendorSlug, productSlug: i.productSlug })),
+        );
+      })
+      .catch(() => {
+        /* inventory is optional context for the dashboard */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const invVendors = useMemo(
+    () => new Set(inventoryPairs.map((i) => i.vendorSlug).filter(Boolean)),
+    [inventoryPairs],
+  );
+  const invPairs = useMemo(
+    () =>
+      new Set(
+        inventoryPairs
+          .filter((i) => i.vendorSlug && i.productSlug)
+          .map((i) => `${i.vendorSlug}|${i.productSlug}`),
+      ),
+    [inventoryPairs],
+  );
 
   useEffect(() => {
     document.title = "Hecate Cyber Defense - Dashboard";
@@ -268,7 +304,13 @@ export const DashboardPage = () => {
         onKeyDown={handleQueryKeyDown}
         onClear={handleClear}
       />
-      <TodayStats t={t} locale={locale} />
+      <TodayStats
+        t={t}
+        locale={locale}
+        invVendors={invVendors}
+        invPairs={invPairs}
+        refreshKey={sseRefreshKey}
+      />
       <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />
 
       <Toast toast={toast} />
@@ -477,7 +519,41 @@ const SEVERITY_COLORS: Record<string, string> = {
   unknown: "#808080",
 };
 
-const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
+// A today-CVE counts as "in your environment" when one of its vendor slugs is
+// in the inventory AND a vendor|product pair matches (vendor-only fallback when
+// the CVE ships no product slugs). Soft, product-level signal — distinct from
+// the precise version-aware inventory matcher used elsewhere.
+const cveMatchesInventory = (
+  cve: TodayCve,
+  invVendors: Set<string>,
+  invPairs: Set<string>,
+): boolean => {
+  const vendors = cve.vendorSlugs ?? [];
+  if (vendors.length === 0) return false;
+  if (!vendors.some((v) => invVendors.has(v))) return false;
+  const products = cve.productSlugs ?? [];
+  if (products.length === 0) return true;
+  for (const v of vendors) {
+    for (const p of products) {
+      if (invPairs.has(`${v}|${p}`)) return true;
+    }
+  }
+  return false;
+};
+
+const TodayStats = ({
+  t,
+  locale,
+  invVendors,
+  invPairs,
+  refreshKey,
+}: {
+  t: TranslateFn;
+  locale: string;
+  invVendors: Set<string>;
+  invPairs: Set<string>;
+  refreshKey: number;
+}) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dayOffset, setDayOffset] = useState(0);
@@ -509,7 +585,9 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
       }
     };
     load();
-  }, [dayOffset]);
+    // refreshKey bumps when new vulnerabilities arrive over SSE, so today's
+    // widgets pick up freshly-published (and possibly inventory-relevant) CVEs.
+  }, [dayOffset, refreshKey]);
 
   const formatDisplayDate = (offset: number) => {
     const d = new Date();
@@ -630,6 +708,30 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
+  // Float inventory-configured vendors/products to the top (stable sort keeps
+  // the doc_count order within each group). No-op when inventory is empty.
+  const vendorInInventory = (slug: string) => invVendors.has(slug);
+  const productInInventory = (vendorSlug: string, slug: string) =>
+    invPairs.has(`${vendorSlug}|${slug}`);
+  const sortedVendors =
+    invVendors.size === 0
+      ? data.vendors
+      : [...data.vendors].sort(
+          (a, b) => Number(vendorInInventory(b.slug)) - Number(vendorInInventory(a.slug)),
+        );
+  const sortedProducts =
+    invPairs.size === 0
+      ? data.products
+      : [...data.products].sort(
+          (a, b) =>
+            Number(productInInventory(b.vendorSlug, b.slug)) -
+            Number(productInInventory(a.vendorSlug, a.slug)),
+        );
+  const invCveCount =
+    invVendors.size === 0
+      ? 0
+      : data.cves.filter((c) => cveMatchesInventory(c, invVendors, invPairs)).length;
+
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
@@ -641,6 +743,16 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
         {dateNav}
       </div>
 
+      {invCveCount > 0 && (
+        <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+          <span className="inventory-chip">{t("inventory", "Inventar")}</span>
+          {t(
+            `${invCveCount} ${invCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "today" : "this day"} affect your inventory`,
+            `${invCveCount} ${invCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "heute" : "an diesem Tag"} betreffen Ihr Inventar`,
+          )}
+        </div>
+      )}
+
       <div
         style={{
           display: "grid",
@@ -649,18 +761,20 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
         }}
       >
         <TodayMiniCard title={t("Vendors", "Hersteller")}>
-          {data.vendors.length === 0 ? (
+          {sortedVendors.length === 0 ? (
             <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
               {t("No vendor data.", "Keine Vendor-Daten.")}
             </p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
-              {data.vendors.map((v) => (
+              {sortedVendors.map((v) => (
                 <TodayListItem
                   key={v.slug}
                   to={vendorDql(v.slug)}
                   label={v.name}
                   count={v.doc_count}
+                  highlighted={vendorInInventory(v.slug)}
+                  inventoryLabel={t("in inventory", "im Inventar")}
                 />
               ))}
             </ul>
@@ -668,19 +782,21 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
         </TodayMiniCard>
 
         <TodayMiniCard title={t("Products", "Produkte")}>
-          {data.products.length === 0 ? (
+          {sortedProducts.length === 0 ? (
             <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
               {t("No product data.", "Keine Produkt-Daten.")}
             </p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.2rem" }}>
-              {data.products.map((p) => (
+              {sortedProducts.map((p) => (
                 <TodayListItem
                   key={`${p.vendorSlug}:${p.slug}`}
                   to={productDql(p.vendorSlug, p.slug)}
                   label={p.name}
                   sublabel={p.vendorName}
                   count={p.doc_count}
+                  highlighted={productInInventory(p.vendorSlug, p.slug)}
+                  inventoryLabel={t("in inventory", "im Inventar")}
                 />
               ))}
             </ul>
@@ -688,7 +804,13 @@ const TodayStats = ({ t, locale }: { t: TranslateFn; locale: string }) => {
         </TodayMiniCard>
 
         <TodayMiniCard title={t("CVEs by severity", "CVEs nach Schweregrad")}>
-          <TodayCveList cves={data.cves} todayDate={todayDate} />
+          <TodayCveList
+            cves={data.cves}
+            todayDate={todayDate}
+            invVendors={invVendors}
+            invPairs={invPairs}
+            inventoryLabel={t("in inventory", "im Inventar")}
+          />
         </TodayMiniCard>
       </div>
     </section>
@@ -712,7 +834,21 @@ const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode
   </div>
 );
 
-const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: string; sublabel?: string; count: number }) => {
+const TodayListItem = ({
+  to,
+  label,
+  sublabel,
+  count,
+  highlighted = false,
+  inventoryLabel,
+}: {
+  to: string;
+  label: string;
+  sublabel?: string;
+  count: number;
+  highlighted?: boolean;
+  inventoryLabel?: string;
+}) => {
   const [hovered, setHovered] = useState(false);
   return (
     <li style={{ minWidth: 0, overflow: "hidden" }}>
@@ -720,6 +856,7 @@ const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: stri
         to={to}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        className={highlighted ? "inventory-match" : undefined}
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -729,17 +866,24 @@ const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: stri
           color: "#f5f7fa",
           fontSize: "0.85rem",
           transition: "background 0.15s ease",
-          background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
+          background: hovered
+            ? "rgba(255,255,255,0.06)"
+            : highlighted
+              ? "rgba(92,132,255,0.08)"
+              : "transparent",
           minWidth: 0,
         }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-          {label}
-          {sublabel && (
-            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "0.4rem" }}>
-              {sublabel}
-            </span>
-          )}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+            {label}
+            {sublabel && (
+              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "0.4rem" }}>
+                {sublabel}
+              </span>
+            )}
+          </span>
+          {highlighted && inventoryLabel && <span className="inventory-chip">{inventoryLabel}</span>}
         </span>
         <span
           style={{
@@ -756,7 +900,28 @@ const TodayListItem = ({ to, label, sublabel, count }: { to: string; label: stri
   );
 };
 
-const TodayCveList = ({ cves, todayDate }: { cves: TodayCve[]; todayDate: string }) => {
+const TodayCveList = ({
+  cves,
+  todayDate,
+  invVendors,
+  invPairs,
+  inventoryLabel,
+}: {
+  cves: TodayCve[];
+  todayDate: string;
+  invVendors: Set<string>;
+  invPairs: Set<string>;
+  inventoryLabel?: string;
+}) => {
+  const matchedIds = useMemo(() => {
+    if (invVendors.size === 0) return new Set<string>();
+    const ids = new Set<string>();
+    for (const cve of cves) {
+      if (cveMatchesInventory(cve, invVendors, invPairs)) ids.add(cve.vulnId);
+    }
+    return ids;
+  }, [cves, invVendors, invPairs]);
+
   const grouped = useMemo(() => {
     const groups: Record<string, TodayCve[]> = {};
     for (const cve of cves) {
@@ -764,8 +929,16 @@ const TodayCveList = ({ cves, todayDate }: { cves: TodayCve[]; todayDate: string
       if (!groups[sev]) groups[sev] = [];
       groups[sev].push(cve);
     }
+    // Float inventory-relevant CVEs to the top of each severity group.
+    if (matchedIds.size > 0) {
+      for (const sev of Object.keys(groups)) {
+        groups[sev] = [...groups[sev]].sort(
+          (a, b) => Number(matchedIds.has(b.vulnId)) - Number(matchedIds.has(a.vulnId)),
+        );
+      }
+    }
     return groups;
-  }, [cves]);
+  }, [cves, matchedIds]);
 
   const severityDql = (severity: string) => {
     const q = `cvss.severity:${severity} AND published:>=${todayDate}`;
@@ -800,7 +973,13 @@ const TodayCveList = ({ cves, todayDate }: { cves: TodayCve[]; todayDate: string
             </Link>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.15rem" }}>
               {items.map((cve) => (
-                <TodayCveItem key={cve.vulnId} cve={cve} color={color} />
+                <TodayCveItem
+                  key={cve.vulnId}
+                  cve={cve}
+                  color={color}
+                  highlighted={matchedIds.has(cve.vulnId)}
+                  inventoryLabel={inventoryLabel}
+                />
               ))}
             </ul>
           </div>
@@ -810,7 +989,17 @@ const TodayCveList = ({ cves, todayDate }: { cves: TodayCve[]; todayDate: string
   );
 };
 
-const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
+const TodayCveItem = ({
+  cve,
+  color,
+  highlighted = false,
+  inventoryLabel,
+}: {
+  cve: TodayCve;
+  color: string;
+  highlighted?: boolean;
+  inventoryLabel?: string;
+}) => {
   const [hovered, setHovered] = useState(false);
   const aliases = (cve.aliases ?? []).filter(
     (a) => a && a.toUpperCase() !== cve.vulnId.toUpperCase()
@@ -821,6 +1010,7 @@ const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
         to={`/vulnerability/${encodeURIComponent(cve.vulnId)}`}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        className={highlighted ? "inventory-match" : undefined}
         style={{
           fontSize: "0.8rem",
           color: "#f5f7fa",
@@ -830,7 +1020,11 @@ const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
           alignItems: "baseline",
           borderRadius: "6px",
           transition: "background 0.15s ease",
-          background: hovered ? "rgba(255,255,255,0.06)" : "transparent",
+          background: hovered
+            ? "rgba(255,255,255,0.06)"
+            : highlighted
+              ? "rgba(92,132,255,0.08)"
+              : "transparent",
           flexWrap: "wrap",
         }}
       >
@@ -844,6 +1038,11 @@ const TodayCveItem = ({ cve, color }: { cve: TodayCve; color: string }) => {
         >
           {cve.vulnId}
         </span>
+        {highlighted && inventoryLabel && (
+          <span className="inventory-chip" style={{ alignSelf: "center" }}>
+            {inventoryLabel}
+          </span>
+        )}
         {aliases.map((alias) => (
           <span
             key={alias}

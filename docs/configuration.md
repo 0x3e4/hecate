@@ -149,6 +149,8 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `<SCANNER>_TIMEOUT_SECONDS` | grype `1800`, devskim `1500`, trufflehog `300`, others `600` | Per-scanner subprocess timeout. Hyphenated names use underscores (`osv-scanner` → `OSV_SCANNER_TIMEOUT_SECONDS`). The backend's HTTP timeout auto-derives from these. |
+| `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` timeout for source-repo scans. The repo is cloned once per scan (sidecar `/prepare-source`) and shared across all scanners. The backend widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)`. |
+| `SOURCE_CHECKOUT_TTL_SECONDS` | `7200` | Idle TTL after which the sidecar reaps a leaked shared checkout (crash-leak backstop; a checkout with live scanners is never reaped). |
 | `TRIVY_CACHE_DIR` | `/tmp/.trivy-cache` | Trivy DB cache dir (tmpfs by default; mount a volume to persist). |
 | `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir (tmpfs by default; mount a volume to persist). |
 | `SEMGREP_RULES` | `p/security-audit` | Semgrep ruleset(s). |
@@ -190,6 +192,20 @@ Each source shares the same knobs (`*_BASE_URL`, `*_TIMEOUT_SECONDS`, `*_RATE_LI
 | `OSV_INITIAL_SYNC_CONCURRENCY` | `16` | Workers for the OSV initial sync. |
 | `OSV_INITIAL_SYNC_BATCH_SIZE` | `32` | Batch size for the OSV initial sync. |
 | `DEPS_DEV_BASE_URL` | `https://api.deps.dev/v3` | deps.dev API for MAL-* version enrichment. |
+
+## Inventory enrichment (endoflife.date)
+
+Annotates [Environment Inventory](guide/inventory.md) items with support / end-of-life status from endoflife.date. Best-effort and cached; never blocks a write.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ENDOFLIFE_ENABLED` | `true` | Master toggle. Surfaced to the UI as the `eolEnabled` flag via `GET /config`; when off, the inventory EOL badge and the "End-of-life tracking" field are hidden. |
+| `ENDOFLIFE_BASE_URL` | `https://endoflife.date/api/v1` | endoflife.date v1 API base URL. |
+| `ENDOFLIFE_TIMEOUT_SECONDS` | `15` | Per-request HTTP timeout. |
+| `ENDOFLIFE_RATE_LIMIT_SECONDS` | `0.5` | Minimum interval between requests. |
+| `ENDOFLIFE_MAX_RETRIES` | `3` | Retry attempts on transient errors. |
+| `ENDOFLIFE_RETRY_BACKOFF_SECONDS` | `2.0` | Exponential-backoff base. |
+| `ENDOFLIFE_CACHE_TTL_HOURS` | `24` | Cache lifetime for the catalog + per-product lookups. |
 
 ## Scheduler
 

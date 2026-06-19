@@ -15,8 +15,41 @@ class ScanRequest(BaseModel):
     source_archive_base64: str | None = Field(
         default=None, alias="sourceArchiveBase64", serialization_alias="sourceArchiveBase64"
     )
+    # Token for a checkout prepared once via POST /prepare-source and shared
+    # across all scanners of a scan (avoids cloning the same repo per scanner).
+    # Mutually exclusive with sourceArchiveBase64; the /scan handler checks the
+    # archive first, then the token.
+    source_token: str | None = Field(
+        default=None, alias="sourceToken", serialization_alias="sourceToken"
+    )
 
     model_config = {"populate_by_name": True}
+
+
+class PrepareSourceRequest(BaseModel):
+    target: str = Field(description="Source repo URL to clone once for a scan")
+    type: str = Field(description="Must be source_repo")
+
+    model_config = {"populate_by_name": True}
+
+
+class PrepareSourceResponse(BaseModel):
+    source_token: str | None = Field(
+        default=None, alias="sourceToken", serialization_alias="sourceToken"
+    )
+    error: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class CleanupSourceRequest(BaseModel):
+    source_token: str = Field(alias="sourceToken", serialization_alias="sourceToken")
+
+    model_config = {"populate_by_name": True}
+
+
+class CleanupSourceResponse(BaseModel):
+    removed: bool = False
 
 
 class ScannerResult(BaseModel):

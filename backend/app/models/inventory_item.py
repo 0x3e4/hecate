@@ -30,5 +30,9 @@ class InventoryItemDocument(BaseModel):
     instance_count: int = Field(default=1, ge=1)
     owner: str | None = None
     notes: str | None = None
+    eol_product: str | None = Field(
+        default=None,
+        description="Linked endoflife.date product slug (e.g. 'phpbb'), auto-detected or set manually",
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

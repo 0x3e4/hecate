@@ -36,7 +36,7 @@ optional AI triage.
 
 -   :material-clipboard-list-outline: **Environment inventory**
 
-    Declare what you run and Hecate tells you which CVEs touch it, down to the version.
+    Declare what you run and Hecate tells you which CVEs touch it (down to the version) and its end-of-life status.
     → [Environment Inventory](guide/inventory.md)
 
 -   :material-robot-outline: **AI analysis**

@@ -13,10 +13,12 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.inventory import (
     AffectedInventoryItem,
     AffectedVulnerabilityItem,
+    EolStatusResponse,
     InventoryItemCreateRequest,
     InventoryItemResponse,
     InventoryItemUpdateRequest,
 )
+from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_matcher import (
     InventoryKey,
     items_for_vuln,
@@ -78,6 +80,7 @@ def _map_item(doc: dict[str, Any]) -> dict[str, Any]:
         "instanceCount": int(doc.get("instance_count", 1) or 1),
         "owner": doc.get("owner"),
         "notes": doc.get("notes"),
+        "eolProduct": doc.get("eol_product"),
         "createdAt": doc.get("created_at"),
         "updatedAt": doc.get("updated_at"),
     }
@@ -146,6 +149,15 @@ class InventoryService:
             "owner": payload.owner,
             "notes": payload.notes,
         }
+        # endoflife.date link: honor an explicit eolProduct verbatim (empty =
+        # unlink), otherwise auto-match by product wording. Fail-soft — a flaky
+        # endoflife.date call must never block creating an inventory item.
+        if "eol_product" in payload.model_fields_set:
+            data["eol_product"] = (payload.eol_product or "").strip() or None
+        else:
+            data["eol_product"] = await self._auto_resolve_eol(
+                data["product_slug"], payload.product_name
+            )
         doc = await repo.insert(item_id, data)
         _inventory_cache.invalidate()
         return InventoryItemResponse.model_validate(_map_item(doc))
@@ -182,6 +194,17 @@ class InventoryService:
         if payload.notes is not None:
             updates["notes"] = payload.notes
 
+        # endoflife.date link: explicit value wins (empty string unlinks);
+        # otherwise re-auto-match only when the product identity changed.
+        if "eol_product" in payload.model_fields_set:
+            updates["eol_product"] = (payload.eol_product or "").strip() or None
+        elif any(k in updates for k in ("product_slug", "product_name", "vendor_slug")):
+            new_product_slug = updates.get("product_slug", existing.get("product_slug"))
+            new_product_name = updates.get("product_name", existing.get("product_name"))
+            updates["eol_product"] = await self._auto_resolve_eol(
+                new_product_slug, new_product_name
+            )
+
         if updates:
             await repo.update(item_id, updates)
             _inventory_cache.invalidate()
@@ -197,6 +220,32 @@ class InventoryService:
         if deleted:
             _inventory_cache.invalidate()
         return deleted
+
+    # --- endoflife.date enrichment ---
+
+    async def _auto_resolve_eol(
+        self, product_slug: str | None, product_name: str | None
+    ) -> str | None:
+        """Best-effort auto-link to an endoflife.date product. Never raises."""
+        try:
+            return await get_endoflife_service().resolve_product(product_slug, product_name)
+        except Exception as exc:  # pragma: no cover - defensive, fail-soft
+            log.warning("inventory.eol_automatch_failed", error=str(exc))
+            return None
+
+    async def get_item_eol_status(self, item_id: str) -> EolStatusResponse | None:
+        """Return the endoflife.date support status for an item (None = not found)."""
+        repo = await self._get_repo()
+        doc = await repo.get(item_id)
+        if doc is None:
+            return None
+        try:
+            return await get_endoflife_service().get_status(
+                doc.get("eol_product"), str(doc.get("version") or "")
+            )
+        except Exception as exc:  # pragma: no cover - defensive, fail-soft
+            log.warning("inventory.eol_status_failed", item_id=item_id, error=str(exc))
+            return EolStatusResponse(linked=False)
 
     # --- Matching ---
 

@@ -81,7 +81,7 @@ prefix is `/api/v1` (configurable) and CORS is enabled for local integration.
 | Router | Responsibility |
 | --- | --- |
 | `status` | Health / liveness probe and scanner health. |
-| `config` | Public runtime config (`GET /config`) — derives `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled` from backend settings, replacing the former `VITE_*` flags. |
+| `config` | Public runtime config (`GET /config`) — derives `aiEnabled`, `scaEnabled`, `scaAutoScanEnabled`, `eolEnabled` from backend settings, replacing the former `VITE_*` flags. |
 | `vulnerabilities` | Search, lookup, refresh, AI analysis, and the attack-path graph. |
 | `cwe` | CWE queries (single + bulk). |
 | `capec` | CAPEC queries and the CWE→CAPEC mapping. |
@@ -365,11 +365,24 @@ in `inventory_matcher.py` connects them to vulnerabilities. It evaluates hits in
 — `impacted_products` (curated EUVD data, both snake_case and camelCase), then `cpe_configurations`
 (structured NVD range data), then the flat `cpes` list as a last resort — and each tier ends the
 search the moment it finds the vendor/product slug pair, treating "no match" as an authoritative
-answer. That design fixed two regression classes: Graylog 7.0.6 was wrongly flagged for CVE-2023-41041
-because the old fallback loop blindly matched a wildcard CPE after the ranges had correctly rejected
-it, and .NET 8.0.25 was wrongly cleared for CVE-2026-33116 because its authoritative ranges live only
-as `">= 8.0.0, < 8.0.26"` strings under the camelCase `impactedProducts` field that the old matcher
-never read.
+answer. The matcher is uniformly **fail-closed for version-less references**: a bare
+`vendor:product:*` / `:-:` CPE with no version bounds, and broad range strings (`>=0`, `*`, `-`,
+empty), carry no version evidence and never match a specific installed version. That design fixed
+three regression classes: Graylog 7.0.6 was wrongly flagged for CVE-2023-41041 because the old
+fallback loop blindly matched a wildcard CPE after the ranges had correctly rejected it; .NET 8.0.25
+was wrongly cleared for CVE-2026-33116 because its authoritative ranges live only as
+`">= 8.0.0, < 8.0.26"` strings under the camelCase `impactedProducts` field that the old matcher never
+read; and phpBB 3.3.17 was wrongly flagged for old phpBB add-on-module CVEs (e.g. CVE-2008-6301) whose
+only `phpbb:phpbb` reference is a version-less wildcard CPE, until the bound-less wildcard and `>=0`
+paths were made fail-closed.
+
+Inventory items are additionally enriched with **end-of-life status from endoflife.date** (v1 API,
+cached, best-effort). `EndOfLifeService` conservatively auto-links an item to an endoflife.date product
+by slug/alias and resolves the installed version's release cycle to an active-support / security-support
+/ end-of-life status plus the cycle's latest release — surfaced on the inventory cards and as the
+`eolEnabled` runtime flag. The Inventory page also renders a "Flagged CVEs" roll-up table across all
+items, and the dashboard "Today" widgets highlight and float inventory-matched vendors, products, and
+CVEs.
 
 The matcher runs in both directions. *Inventory → CVE* (used by the inventory detail page and the
 `inventory` notification rule) queries MongoDB with an `$or` over both the slug arrays and the raw
@@ -383,7 +396,7 @@ self-contained — no `packaging` dependency — handling dotted-numeric release
 the `v` prefix, length padding and wildcard ranges, and falling back to fail-closed case-insensitive
 equality for anything it cannot parse; slug normalisation reuses the asset catalogue's `slugify()` so
 `.net_8.0` and `net-8-0` match. The range-string parser understands exact versions, AND-chained bounds
-and single-sided bounds, treating unconstrained values (`*`, `-`, `ANY`, empty) as no match. Inventory
+and single-sided bounds, treating unconstrained values (`*`, `-`, `ANY`, `>=0`, empty) as no match. Inventory
 context is also threaded into AI prompts as a "YOUR ENVIRONMENT IMPACT" block and attached to the
 vulnerability detail response as `affectedInventory`.
 
@@ -494,7 +507,7 @@ react-select for the async multi-selects, and react-icons (Lucide) for iconograp
 | `/stats` | `StatsPage` | Trend charts, top vendors / products, severity distribution |
 | `/audit` | `AuditLogPage` | Ingestion-job logs with status and metadata |
 | `/changelog` | `ChangelogPage` | Recent changes (created / updated) |
-| `/inventory` | `InventoryPage` | Environment inventory: products and versions you run, with an expandable *Show CVEs* list per item |
+| `/inventory` | `InventoryPage` | Environment inventory: products and versions you run, with an expandable *Show CVEs* list per item, a "Flagged CVEs" roll-up table, a modal add/edit form, and endoflife.date support / end-of-life status per item |
 | `/system` | `SystemPage` | Five tabs: General, Access Control, Notifications, Data, Policies |
 | `/scans` | `ScansPage` | SCA scan management with seven tabs (Targets, Scans, Findings, SBOM, Security Alerts, Licenses, Scanner) |
 | `/malware-feed` | `MalwareFeedPage` | Overview of all `MAL-*`-aliased OSV advisories (`/blocklist` is a legacy redirect) |

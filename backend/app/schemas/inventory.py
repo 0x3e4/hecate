@@ -49,6 +49,12 @@ class InventoryItemCreateRequest(BaseModel):
     )
     owner: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=2000)
+    eol_product: str | None = Field(
+        default=None,
+        max_length=200,
+        alias="eolProduct",
+        serialization_alias="eolProduct",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -87,6 +93,12 @@ class InventoryItemUpdateRequest(BaseModel):
     )
     owner: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=2000)
+    eol_product: str | None = Field(
+        default=None,
+        max_length=200,
+        alias="eolProduct",
+        serialization_alias="eolProduct",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -115,6 +127,11 @@ class InventoryItemResponse(BaseModel):
     instance_count: int = Field(alias="instanceCount", serialization_alias="instanceCount")
     owner: str | None = None
     notes: str | None = None
+    eol_product: str | None = Field(
+        default=None,
+        alias="eolProduct",
+        serialization_alias="eolProduct",
+    )
     created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
     updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
     affected_vuln_count: int | None = Field(
@@ -178,5 +195,67 @@ class AffectedVulnerabilitiesResponse(BaseModel):
     item_id: str = Field(alias="itemId", serialization_alias="itemId")
     total: int
     vulnerabilities: list[AffectedVulnerabilityItem]
+
+    model_config = {"populate_by_name": True}
+
+
+# --- endoflife.date enrichment ---
+
+
+class EolProductOption(BaseModel):
+    """A single endoflife.date product, for the manual-link picker."""
+
+    name: str
+    label: str
+    category: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+
+
+class EolProductListResponse(BaseModel):
+    products: list[EolProductOption]
+    total: int
+
+
+class EolStatusResponse(BaseModel):
+    """Resolved endoflife.date support status for an inventory item."""
+
+    linked: bool = Field(description="True when the item is linked to an endoflife.date product")
+    product: str | None = None
+    product_label: str | None = Field(
+        default=None, alias="productLabel", serialization_alias="productLabel"
+    )
+    product_link: str | None = Field(
+        default=None, alias="productLink", serialization_alias="productLink"
+    )
+    matched_cycle: str | None = Field(
+        default=None, alias="matchedCycle", serialization_alias="matchedCycle"
+    )
+    # "active" | "security" | "eol" | "unknown"
+    status: str = "unknown"
+    status_label: str = Field(
+        default="Unknown", alias="statusLabel", serialization_alias="statusLabel"
+    )
+    release_date: str | None = Field(
+        default=None, alias="releaseDate", serialization_alias="releaseDate"
+    )
+    eoas_date: str | None = Field(
+        default=None, alias="eoasDate", serialization_alias="eoasDate"
+    )
+    eol_date: str | None = Field(
+        default=None, alias="eolDate", serialization_alias="eolDate"
+    )
+    is_lts: bool = Field(default=False, alias="isLts", serialization_alias="isLts")
+    latest_version: str | None = Field(
+        default=None, alias="latestVersion", serialization_alias="latestVersion"
+    )
+    latest_release_date: str | None = Field(
+        default=None, alias="latestReleaseDate", serialization_alias="latestReleaseDate"
+    )
+    latest_link: str | None = Field(
+        default=None, alias="latestLink", serialization_alias="latestLink"
+    )
+    is_outdated: bool = Field(
+        default=False, alias="isOutdated", serialization_alias="isOutdated"
+    )
 
     model_config = {"populate_by_name": True}
