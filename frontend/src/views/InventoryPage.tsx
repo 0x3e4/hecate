@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AsyncSelect from "react-select/async";
 import { LuPlus, LuX } from "react-icons/lu";
@@ -112,14 +112,29 @@ const eolStatusLabel = (status: EolStatusKind, t: TranslateFn): string => {
   }
 };
 
+// Support end date for the version's release cycle, phrased per status.
+const eolUntilLabel = (status: EolStatus, t: TranslateFn): string | null => {
+  if (status.status === "active") {
+    if (status.eoasDate) return t(`active until ${status.eoasDate}`, `aktiv bis ${status.eoasDate}`);
+    if (status.eolDate)
+      return t(`supported until ${status.eolDate}`, `unterstützt bis ${status.eolDate}`);
+    return null;
+  }
+  if (status.status === "security") {
+    return status.eolDate
+      ? t(`security until ${status.eolDate}`, `Security bis ${status.eolDate}`)
+      : null;
+  }
+  if (status.status === "eol") return status.eolDate ?? null;
+  return null;
+};
+
+// Compact badge for the row: status pill (+ date), LTS, and "update available"
+// only. The verbose detail (latest release, newer line, link, dates) lives in
+// the expandable `EolDetailBlock` below, to keep the row readable.
 const EolStatusBadge = ({ status, t }: { status: EolStatus; t: TranslateFn }) => {
   const tone = EOL_STATUS_TONE[status.status] ?? EOL_STATUS_TONE.unknown;
-  const dateSuffix =
-    status.status === "eol" && status.eolDate
-      ? ` · ${status.eolDate}`
-      : status.status === "security" && status.eoasDate
-        ? ` · ${status.eoasDate}`
-        : "";
+  const untilLabel = eolUntilLabel(status, t);
   return (
     <div
       style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", fontSize: "0.75rem" }}
@@ -130,23 +145,15 @@ const EolStatusBadge = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
         title={status.productLabel ?? undefined}
       >
         {eolStatusLabel(status.status, t)}
-        {dateSuffix}
+        {untilLabel ? ` · ${untilLabel}` : ""}
       </span>
-      {status.latestVersion && (
-        <span className="muted">
-          {t("Latest", "Neueste")}:{" "}
-          {status.latestLink ? (
-            <a
-              href={status.latestLink}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: "inherit" }}
-            >
-              {status.latestVersion}
-            </a>
-          ) : (
-            status.latestVersion
-          )}
+      {status.isLts && (
+        <span
+          className="chip"
+          style={{ background: "rgba(105,219,124,0.12)", color: "#69db7c" }}
+          title={status.ltsFrom ? `LTS since ${status.ltsFrom}` : undefined}
+        >
+          LTS
         </span>
       )}
       {status.isOutdated && (
@@ -154,6 +161,78 @@ const EolStatusBadge = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
           {t("update available", "Update verfügbar")}
         </span>
       )}
+    </div>
+  );
+};
+
+// Full endoflife.date detail, shown inside the row's expansion above the CVEs.
+const EolDetailBlock = ({ status, t }: { status: EolStatus; t: TranslateFn }) => {
+  const productHref =
+    status.productLink || (status.product ? `https://endoflife.date/${status.product}` : null);
+  const rows: { label: string; value: ReactNode }[] = [];
+  if (status.matchedCycle)
+    rows.push({ label: t("Release cycle", "Release-Zyklus"), value: status.matchedCycle });
+  if (status.releaseDate)
+    rows.push({ label: t("Released", "Veröffentlicht"), value: status.releaseDate });
+  if (status.eoasDate)
+    rows.push({ label: t("Active support until", "Aktiver Support bis"), value: status.eoasDate });
+  if (status.eolDate)
+    rows.push({ label: t("End of life", "End of Life"), value: status.eolDate });
+  if (status.isLts)
+    rows.push({
+      label: "LTS",
+      value: status.ltsFrom ? t(`since ${status.ltsFrom}`, `seit ${status.ltsFrom}`) : t("yes", "ja"),
+    });
+  if (status.latestVersion)
+    rows.push({
+      label: t("Latest release", "Neueste Version"),
+      value: (
+        <>
+          {status.latestLink ? (
+            <a href={status.latestLink} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+              {status.latestVersion}
+            </a>
+          ) : (
+            status.latestVersion
+          )}
+          {status.isOutdated ? ` — ${t("update available", "Update verfügbar")}` : ""}
+        </>
+      ),
+    });
+  if (!status.isLatestCycle && status.latestCycle)
+    rows.push({ label: t("Newer release line", "Neuere Release-Linie"), value: status.latestCycle });
+
+  return (
+    <div style={{ marginBottom: "0.75rem", fontSize: "0.78rem" }}>
+      <div
+        className="muted"
+        style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem", fontWeight: 600 }}
+      >
+        {t("End-of-life", "End of Life")}
+        {status.productLabel ? ` · ${status.productLabel}` : ""}
+        {productHref && (
+          <a
+            href={productHref}
+            target="_blank"
+            rel="noreferrer"
+            className="muted"
+            style={{ textDecoration: "none", whiteSpace: "nowrap", fontWeight: 400 }}
+            title="endoflife.date"
+          >
+            ↗ endoflife.date
+          </a>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: "flex", gap: "0.5rem" }}>
+            <span className="muted" style={{ minWidth: "9.5rem", flexShrink: 0 }}>
+              {r.label}
+            </span>
+            <span style={{ wordBreak: "break-word" }}>{r.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -278,16 +357,6 @@ const fieldStyle: CSSProperties = {
   flexDirection: "column",
   gap: "0.35rem",
   minWidth: 0,
-};
-
-const itemGridStyle: CSSProperties = {
-  display: "grid",
-  gap: "1rem",
-  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-  // Rows size to their content so expanding one card's "Show CVEs"
-  // section doesn't stretch every other card in the same row.
-  gridAutoRows: "min-content",
-  alignItems: "start",
 };
 
 // Shared pill-button style used by all four card-action buttons
@@ -555,10 +624,26 @@ export const InventoryPage = () => {
       if (eolTouched) {
         payload.eolProduct = selectedEol?.value ?? null;
       }
+      const wasEditingId = editingId;
       if (editingId) {
         await updateInventoryItem(editingId, payload);
       } else {
         await createInventoryItem(payload);
+      }
+      // Live refresh: drop the edited item's cached CVEs + EOL so the eager
+      // effects re-fetch and the row, EOL badge and Flagged-CVEs table update
+      // without a manual reload. (A new item gets a fresh id → fetched anyway.)
+      if (wasEditingId) {
+        setAffectedById((prev) => {
+          const next = { ...prev };
+          delete next[wasEditingId];
+          return next;
+        });
+        setEolById((prev) => {
+          const next = { ...prev };
+          delete next[wasEditingId];
+          return next;
+        });
       }
       resetForm();
       await loadItems();
@@ -664,7 +749,7 @@ export const InventoryPage = () => {
       epssScore?: number | null;
       exploited?: boolean | null;
       published?: string | null;
-      items: { id: string; name: string; version: string }[];
+      items: { id: string; product: string; version: string }[];
     };
     const byId = new Map<string, Row>();
     for (const item of items) {
@@ -693,7 +778,11 @@ export const InventoryPage = () => {
           if (v.title) row.title = v.title;
         }
         if (!row.items.some((it) => it.id === item.id)) {
-          row.items.push({ id: item.id, name: item.name, version: item.version });
+          row.items.push({
+            id: item.id,
+            product: item.productName || item.productSlug,
+            version: item.version,
+          });
         }
       }
     }
@@ -726,6 +815,14 @@ export const InventoryPage = () => {
     const parts: string[] = [];
     if (item.vendorSlug) parts.push(`vendorSlugs:${item.vendorSlug}`);
     if (item.productSlug) parts.push(`productSlugs:${item.productSlug}`);
+    // Include the declared version so the list is scoped to it. Exact versions
+    // are quoted; wildcards (e.g. `8.0.*`) pass through as a Lucene wildcard.
+    const version = item.version?.trim();
+    if (version) {
+      parts.push(
+        version.includes("*") ? `productVersions:${version}` : `productVersions:"${version}"`,
+      );
+    }
     return parts.join(" AND ");
   };
 
@@ -1151,7 +1248,7 @@ export const InventoryPage = () => {
             {t("No items match your search.", "Keine Einträge passen zur Suche.")}
           </p>
         ) : (
-          <div style={itemGridStyle}>
+          <div className="inventory-list">
             {filteredItems.map((item) => {
               const expanded = expandedItemId === item.id;
               const affected = affectedById[item.id];
@@ -1159,112 +1256,106 @@ export const InventoryPage = () => {
               const isError =
                 !!affected && typeof affected === "object" && !Array.isArray(affected) && "error" in affected;
               const vulns = Array.isArray(affected) ? affected : [];
+              const worst = vulns.length > 0 ? severityOf(vulns[0]?.severity as string | null) : "unknown";
+              const eolEntry = eolEnabled ? eolById[item.id] : undefined;
+              const eolStatus =
+                eolEntry && eolEntry !== "loading" && eolEntry.linked ? eolEntry : null;
 
               return (
-                <div
-                  key={item.id}
-                  className={`vuln-card ${
-                    isError
-                      ? "unknown"
-                      : vulns.length > 0
-                        ? severityOf(vulns[0]?.severity as string | null)
-                        : "unknown"
-                  }`}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.5rem",
-                    minWidth: 0,
-                    // Prevent CSS grid from stretching unrelated cards in
-                    // the same row when one card's "Show CVEs" section
-                    // expands.
-                    alignSelf: "start",
-                  }}
-                >
-                  <div className="vuln-header">
-                    <div className="vuln-id" style={{ flex: 1, flexWrap: "wrap" }}>
-                      <span className="chip">{item.version}</span>
+                <div key={item.id} className={`inventory-row ${worst}`}>
+                  <div
+                    className="inventory-row__main"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={expanded}
+                    onClick={() => toggleExpanded(item.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleExpanded(item.id);
+                      }
+                    }}
+                  >
+                    <span className={`inventory-row__dot ${worst}`} aria-hidden />
+                    <div className="inventory-row__id">
+                      <div className="inventory-row__name">{item.name}</div>
+                      <div className="inventory-row__sub muted">
+                        {[item.vendorName || item.vendorSlug, item.productName || item.productSlug]
+                          .filter(Boolean)
+                          .join(" / ")}{" "}
+                        · <strong>{item.version}</strong>
+                        {item.owner ? ` · ${item.owner}` : ""}
+                      </div>
+                    </div>
+                    <div className="inventory-row__meta">
                       <span className="chip">{deploymentLabel(item.deployment, t)}</span>
                       <span className="chip">{environmentLabel(item.environment, t)}</span>
                       <span className="chip">
-                        {item.instanceCount}{" "}
-                        {t(
-                          item.instanceCount === 1 ? "instance" : "instances",
-                          item.instanceCount === 1 ? "Instanz" : "Instanzen",
-                        )}
+                        {item.instanceCount}× {t("inst", "Inst")}
                       </span>
                     </div>
-                  </div>
-                  <h3 className="vuln-title" style={{ margin: 0, fontSize: "1rem", wordBreak: "break-word" }}>
-                    {item.name}
-                  </h3>
-                  <div className="muted" style={{ fontSize: "0.8rem", wordBreak: "break-word" }}>
-                    {[item.vendorName || item.vendorSlug, item.productName || item.productSlug]
-                      .filter(Boolean)
-                      .join(" / ")}
-                    {item.owner ? ` · ${item.owner}` : ""}
-                  </div>
-                  {item.notes && (
-                    <div className="muted" style={{ fontSize: "0.8rem", fontStyle: "italic", wordBreak: "break-word" }}>
-                      {item.notes}
-                    </div>
-                  )}
-                  <div className="muted" style={{ fontSize: "0.7rem" }}>
-                    {t("Updated", "Aktualisiert")}: {formatDateTime(item.updatedAt)}
-                  </div>
-                  {eolEnabled &&
-                    (() => {
-                      const e = eolById[item.id];
-                      if (!e || e === "loading" || !e.linked) return null;
-                      return <EolStatusBadge status={e} t={t} />;
-                    })()}
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-                    <button
-                      type="button"
-                      onClick={() => toggleExpanded(item.id)}
-                      style={neutralActionStyle}
-                    >
-                      {expanded ? t("Hide CVEs", "CVEs ausblenden") : t("Show CVEs", "CVEs anzeigen")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleOpenInList(item)}
-                      disabled={dqlLoadingId === item.id}
-                      title={t(
-                        "Open a pre-built DQL query for this item in the Vulnerabilities list",
-                        "Vorbereitete DQL-Abfrage für diesen Eintrag in der Schwachstellen-Liste öffnen",
-                      )}
-                      style={{
-                        ...primaryActionStyle,
-                        cursor: dqlLoadingId === item.id ? "wait" : "pointer",
-                      }}
-                    >
-                      {dqlLoadingId === item.id ? t("…", "…") : t("DQL", "DQL")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => startEditing(item)}
-                      style={neutralActionStyle}
-                    >
-                      {t("Edit", "Bearbeiten")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(item.id)}
-                      style={dangerActionStyle}
-                    >
-                      {t("Delete", "Löschen")}
-                    </button>
-                  </div>
-                  {expanded && (
+                    {eolStatus && (
+                      <div
+                        className="inventory-row__eol"
+                        onClick={(e) => e.stopPropagation()}
+                        role="presentation"
+                      >
+                        <EolStatusBadge status={eolStatus} t={t} />
+                      </div>
+                    )}
+                    <span className={`inventory-row__cve ${vulns.length > 0 ? worst : "none"}`}>
+                      {isLoading ? "…" : isError ? "!" : vulns.length}
+                      <span className="hide-mobile"> {t("CVEs", "CVEs")}</span>
+                    </span>
+                    <span className="inventory-row__chevron" aria-hidden>
+                      {expanded ? "▾" : "▸"}
+                    </span>
                     <div
-                      style={{
-                        marginTop: "0.75rem",
-                        paddingTop: "0.75rem",
-                        borderTop: "1px solid rgba(255,255,255,0.06)",
-                        minWidth: 0,
-                      }}
+                      className="inventory-row__actions"
+                      role="presentation"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenInList(item)}
+                        disabled={dqlLoadingId === item.id}
+                        title={t(
+                          "Open a pre-built DQL query for this item in the Vulnerabilities list",
+                          "Vorbereitete DQL-Abfrage für diesen Eintrag in der Schwachstellen-Liste öffnen",
+                        )}
+                        style={{ ...primaryActionStyle, cursor: dqlLoadingId === item.id ? "wait" : "pointer" }}
+                      >
+                        {dqlLoadingId === item.id ? t("…", "…") : t("DQL", "DQL")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startEditing(item)}
+                        title={t("Edit", "Bearbeiten")}
+                        aria-label={t("Edit", "Bearbeiten")}
+                        style={neutralActionStyle}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(item.id)}
+                        title={t("Delete", "Löschen")}
+                        aria-label={t("Delete", "Löschen")}
+                        style={dangerActionStyle}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+
+                  {item.notes && (
+                    <div className="inventory-row__notes muted">{item.notes}</div>
+                  )}
+
+                  {expanded && (
+                    <div className="inventory-row__expand">
+                      {eolStatus && <EolDetailBlock status={eolStatus} t={t} />}
                       {isLoading ? (
                         <p className="muted" style={{ margin: 0, fontSize: "0.8125rem" }}>
                           {t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")}
@@ -1437,7 +1528,7 @@ export const InventoryPage = () => {
                           <div className="impacted-products__version-list">
                             {row.items.map((it) => (
                               <span key={it.id} className="impacted-products__version-tag">
-                                {it.name} · {it.version}
+                                {it.product} · {it.version}
                               </span>
                             ))}
                           </div>

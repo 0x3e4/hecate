@@ -108,7 +108,8 @@ their bare dynamic counterparts (`/{scan_id}`, `/targets/{id:path}`), otherwise 
 converter swallows the literal suffix and 404s.
 
 In addition, the MCP server under `app/mcp/` is mounted as a separate ASGI sub-app at `/mcp` with
-**35 tools** spanning CVE search and detail, the asset catalogue, CWE/CAPEC, stats, the full range of
+**40 tools** spanning CVE search and detail, the asset catalogue, CWE/CAPEC, stats, environment-inventory
+CRUD (with endoflife.date status), the full range of
 SCA scan lookups, and the AI-analysis prepare/save pairs plus scan/sync triggers. The server is
 initialised as `FastMCP("hecate", ...)`. Its auth middleware is path-aware — it processes only paths
 that are exactly `/mcp` or start with `/mcp/` and returns 404 for everything else, so a misrouted SPA
@@ -379,10 +380,13 @@ paths were made fail-closed.
 Inventory items are additionally enriched with **end-of-life status from endoflife.date** (v1 API,
 cached, best-effort). `EndOfLifeService` conservatively auto-links an item to an endoflife.date product
 by slug/alias and resolves the installed version's release cycle to an active-support / security-support
-/ end-of-life status plus the cycle's latest release — surfaced on the inventory cards and as the
+/ end-of-life status plus the cycle's latest release — surfaced on the inventory rows and as the
 `eolEnabled` runtime flag. The Inventory page also renders a "Flagged CVEs" roll-up table across all
 items, and the dashboard "Today" widgets highlight and float inventory-matched vendors, products, and
-CVEs.
+CVEs. The same widgets additionally cross-reference **SCA scan coverage** via `GET /v1/scans/coverage`
+(`cveScan` / `productScan` maps from the latest scan of every target, by finding and SBOM package), tagging
+covered items "in scans"; both the inventory and scan tags deep-link (to the Inventory page and the
+most-recent covering scan).
 
 The matcher runs in both directions. *Inventory → CVE* (used by the inventory detail page and the
 `inventory` notification rule) queries MongoDB with an `$or` over both the slug arrays and the raw
@@ -507,7 +511,7 @@ react-select for the async multi-selects, and react-icons (Lucide) for iconograp
 | `/stats` | `StatsPage` | Trend charts, top vendors / products, severity distribution |
 | `/audit` | `AuditLogPage` | Ingestion-job logs with status and metadata |
 | `/changelog` | `ChangelogPage` | Recent changes (created / updated) |
-| `/inventory` | `InventoryPage` | Environment inventory: products and versions you run, with an expandable *Show CVEs* list per item, a "Flagged CVEs" roll-up table, a modal add/edit form, and endoflife.date support / end-of-life status per item |
+| `/inventory` | `InventoryPage` | Environment inventory: products and versions you run as compact status rows (click a row to expand its affecting CVEs and full endoflife.date detail), a "Flagged CVEs" roll-up table, a modal add/edit form, and endoflife.date support / end-of-life status per item |
 | `/system` | `SystemPage` | Five tabs: General, Access Control, Notifications, Data, Policies |
 | `/scans` | `ScansPage` | SCA scan management with seven tabs (Targets, Scans, Findings, SBOM, Security Alerts, Licenses, Scanner) |
 | `/malware-feed` | `MalwareFeedPage` | Overview of all `MAL-*`-aliased OSV advisories (`/blocklist` is a legacy redirect) |

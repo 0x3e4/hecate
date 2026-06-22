@@ -31,6 +31,7 @@ app/
 │   ├── audit.py             Ingestion logs
 │   ├── changelog.py         Recent changes (pagination, date / source filters)
 │   ├── scans.py             SCA scan management — submit, targets (group filter + manual /check trigger for auto-scan diagnostics),
+│   │                          dashboard coverage maps (GET /scans/coverage — cveScan/productScan for the Today SCA highlight),
 │   │                          target-group roll-up, history (since filter), findings (?includeDismissed), SBOM, SBOM export,
 │   │                          SBOM import, compare, VEX (incl. bulk-update-by-ids and import), findings dismiss,
 │   │                          license compliance, cross-CVE attack chain (GET/POST /scans/{id}/attack-chain),
@@ -53,7 +54,7 @@ app/
 │   ├── oauth_providers.py   Upstream IdP abstraction (GitHub / Microsoft Entra / generic OIDC)
 │   ├── security.py          Rate limiting · input sanitisation
 │   ├── audit.py             Dual audit (structlog + MongoDB) for tool invocations and OAuth events
-│   └── tools/               35 MCP tools (6 modules)
+│   └── tools/               40 MCP tools (7 modules; incl. inventory CRUD)
 │       ├── vulnerabilities.py   search_vulnerabilities · get_vulnerability · prepare/save_vulnerability_ai_analysis ·
 │       │                          prepare/save_vulnerabilities_ai_batch_analysis · prepare/save_attack_path_analysis ·
 │       │                          refine_attack_path_analysis
@@ -125,7 +126,7 @@ app/
 | `VexService` | VEX export / import (CycloneDX VEX), VEX + dismissal carry-forward across scans. |
 | `LicenseComplianceService` | License-policy evaluation, automatic evaluation after scans. |
 | `InventoryService` / `inventory_matcher` | CRUD + matching with a pure-function CPE version-range matcher (self-contained version comparator). The matcher is uniformly **fail-closed for version-less references**: a bare `vendor:product:*` / `:-:` CPE with no bounds and broad range strings (`>=0`, `*`, `-`, empty) never match a specific installed version. Auto-links items to an endoflife.date product (`eol_product`) on create / product change. |
-| `EndOfLifeService` / `EndOfLifeClient` | endoflife.date v1-API enrichment (`app/services/enrichment/`). Cached catalog + per-product lookups (daily TTL); conservative slug/alias auto-match (`resolve_product`) and per-version support-status resolution (`get_status` → active / security / eol + latest release + `isOutdated`). Best-effort and fail-soft. |
+| `EndOfLifeService` / `EndOfLifeClient` | endoflife.date v1-API enrichment (`app/services/enrichment/`). Cached catalog + per-product lookups (daily TTL); conservative slug/alias auto-match (`resolve_product`) and per-version support-status resolution (`get_status` → active / security / eol, support-until date, LTS, latest release + `isOutdated`, newest/next release line, and the `endoflife.date/{product}` link). Best-effort and fail-soft. `InventoryService.update_item` re-auto-matches only on an actual product change so a manual override survives unrelated edits. |
 | `AttackPathService` | Deterministic attack-path graph builder (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`); orchestrates `CAPECService`, `CWEService`, `InventoryService`; derives the label set (likelihood, exploit_maturity, reachability, privileges_required, user_interaction, business_impact) deterministically from EPSS, KEV, and CVSS vector. Optionally accepts `assumptions=` for the MCP `refine_attack_path_analysis` workflow (allow-list `reachability` / `entry_point` / `network_exposure` / `privileges_required` / `user_interaction`, 200-char cap per value). |
 | `attack_chain_stages` | CWE → ATT&CK kill-chain stage map (`foothold` / `credential_access` / `priv_escalation` / `lateral_movement` / `impact`); `categorize_cve(cwes, severity)` with severity fallback. |
 | `ScanAttackChainService` | Cross-CVE attack-chain builder for the scan-detail tab. Filter + dedup findings → bulk-fetch CWEs → bucket per stage → top-5 per stage by CVSS → top-2 CAPECs per stage via `CAPECService` → `AttackPathGraph` (entry → stage anchors → CVE leaves). |

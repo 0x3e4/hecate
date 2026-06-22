@@ -183,6 +183,7 @@ class EndOfLifeService:
                 latest_release_date=overall_latest[1],
                 latest_link=overall_latest[2],
                 is_outdated=_is_outdated(version, overall_latest[0]),
+                latest_cycle=str(releases[0].get("name") or "") or None,
             )
         if release is None:
             return EolStatusResponse(
@@ -196,6 +197,16 @@ class EndOfLifeService:
 
         status = _release_status(release)
         latest_name, latest_date, latest_link = _release_latest(release)
+        # Cycle navigation: releases are newest-first, so the newest line is
+        # releases[0] and the "next major" above the matched one is index-1.
+        try:
+            idx = releases.index(release)
+        except ValueError:  # pragma: no cover - defensive
+            idx = 0
+        latest_cycle = str(releases[0].get("name") or "") or None
+        next_cycle = (
+            (str(releases[idx - 1].get("name") or "") or None) if idx > 0 else None
+        )
         return EolStatusResponse(
             linked=True,
             product=str(product.get("name") or eol_product),
@@ -208,10 +219,14 @@ class EndOfLifeService:
             eoas_date=_as_date(release.get("eoasFrom")),
             eol_date=_as_date(release.get("eolFrom")),
             is_lts=bool(release.get("isLts")),
+            lts_from=_as_date(release.get("ltsFrom")),
             latest_version=latest_name,
             latest_release_date=latest_date,
             latest_link=latest_link,
             is_outdated=_is_outdated(version, latest_name),
+            latest_cycle=latest_cycle,
+            next_cycle=next_cycle,
+            is_latest_cycle=idx == 0,
         )
 
 

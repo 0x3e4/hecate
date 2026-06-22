@@ -491,10 +491,14 @@ export interface EolStatus {
   eoasDate?: string | null;
   eolDate?: string | null;
   isLts?: boolean;
+  ltsFrom?: string | null;
   latestVersion?: string | null;
   latestReleaseDate?: string | null;
   latestLink?: string | null;
   isOutdated?: boolean;
+  latestCycle?: string | null;
+  nextCycle?: string | null;
+  isLatestCycle?: boolean;
 }
 
 export interface EolProductOption {

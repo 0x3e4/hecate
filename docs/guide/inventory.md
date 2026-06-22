@@ -4,13 +4,13 @@ Most vulnerability feeds tell you what *exists* in the world; the inventory tell
 
 What makes this more than a keyword filter is the version matching. Hecate doesn't just look for CVEs that mention your product; it evaluates whether the version you declared falls inside each advisory's affected range. If you run version 8.0.25 and a CVE affects everything from 8.0.0 up to but not including 8.0.26, Hecate marks it as affecting you — and if the next minor release fixes it, your entry stops matching automatically as soon as you bump the version.
 
-Once an entry matches, the result surfaces in several places at once: an expandable list of affecting CVEs on the inventory card itself, a **Flagged CVEs** table rolling up every match across all your entries, a red "Affected in your environment" callout on the matching vulnerability detail pages, an environment-impact block injected into AI analyses, and an optional notification rule that alerts you when a newly published CVE touches your inventory. Each entry is also annotated with its **support / end-of-life status** from [endoflife.date](https://endoflife.date).
+Once an entry matches, the result surfaces in several places at once: an expandable list of affecting CVEs on the inventory row itself, a **Flagged CVEs** table rolling up every match across all your entries, a red "Affected in your environment" callout on the matching vulnerability detail pages, an environment-impact block injected into AI analyses, and an optional notification rule that alerts you when a newly published CVE touches your inventory. Each entry is also annotated with its **support / end-of-life status** from [endoflife.date](https://endoflife.date).
 
 ![The Environment Inventory page with declared items and their affecting CVEs](../img/hecate-inventory.png)
 
 ## Adding, editing and deleting entries
 
-The page is reached from the sidebar under the **Environment** group. It is laid out as stacked cards: a short summary at the top (with chips showing how many items and total instances you have declared), **Configuration management** — the grid of cards, one per entry — and **Flagged CVEs**, a single table rolling up every distinct CVE that affects any of your entries.
+The page is reached from the sidebar under the **Environment** group. It is laid out as stacked cards: a short summary at the top (with chips showing how many items and total instances you have declared), **Configuration management** — a compact list, one row per entry — and **Flagged CVEs**, a single table rolling up every distinct CVE that affects any of your entries.
 
 To create an entry, click the **Add** button in the top-right of the **Configuration management** header; a dialog opens with the form. Fill it in and press **Create**. To change an existing entry, click **Edit** on its card; the same dialog re-populates with the current values, and **Save** writes the changes back. Close the dialog with **Cancel**, the **✕** in its corner, the **Escape** key, or by clicking outside it. **Delete** removes an entry (you are asked to confirm first). Because the version is part of the match, the normal way to keep the inventory accurate is simply to edit the version field whenever you upgrade — there is no separate "mark as fixed" step.
 
@@ -48,9 +48,9 @@ The version comparison understands dotted version numbers, pre-release suffixes 
 
 ## Where matches show up
 
-### On the inventory card
+### On the inventory row
 
-Every card is colour-bordered by the severity of its worst current match, so a glance down the grid tells you which entries are exposed. Each card shows chips for version, deployment, environment and instance count, plus the vendor/product and any owner you set. Click **Show CVEs** to expand an in-line list of the affecting vulnerabilities, sorted by severity and CVSS, each linking straight to its detail page and flagged with a **KEV** chip when CISA lists it as known-exploited. The **DQL** button opens the same set of matches as a pre-built query in the [Vulnerabilities](vulnerabilities.md) list, which is handy when you want to sort, export or filter them with the full search UI.
+Each row carries a coloured status dot (and left border) for the severity of its worst current match, so a glance down the list tells you which entries are exposed. The row shows the item name, vendor/product and version, chips for deployment / environment / instance count, the endoflife.date support badge, and a CVE-count pill. **Click the row** to expand an in-line list of the affecting vulnerabilities, sorted by severity and CVSS, each linking straight to its detail page and flagged with a **KEV** chip when CISA lists it as known-exploited. The **DQL** button opens the same set of matches as a pre-built query in the [Vulnerabilities](vulnerabilities.md) list, which is handy when you want to sort, export or filter them with the full search UI. Edits made in the dialog (including a version bump) refresh the row, its CVEs and the **Flagged CVEs** table immediately — no reload.
 
 ### In the Flagged CVEs table
 
@@ -58,7 +58,7 @@ Below the grid, the **Flagged CVEs** table is a single roll-up of every distinct
 
 ### On vulnerability detail pages
 
-When you open a CVE that touches one of your inventory entries, its detail page shows a red-bordered **"Affected in your environment"** callout just below the summary, listing the matching entries (version, deployment, environment, instance count, owner) with a deep link back here. This is the reverse view of the inventory card: from any vulnerability, you can immediately see whether — and where — it lands in your estate. See [Vulnerabilities](vulnerabilities.md) for the rest of the detail page.
+When you open a CVE that touches one of your inventory entries, its detail page shows a red-bordered **"Affected in your environment"** callout just below the summary, listing the matching entries (version, deployment, environment, instance count, owner) with a deep link back here. This is the reverse view of the inventory row: from any vulnerability, you can immediately see whether — and where — it lands in your estate. See [Vulnerabilities](vulnerabilities.md) for the rest of the detail page.
 
 ### In AI analyses
 
@@ -76,7 +76,7 @@ Beyond CVEs, each entry is annotated with its **lifecycle status** from [endofli
 - **Security support** — active support has ended, but security fixes continue (with the date).
 - **End of life** — the cycle is no longer supported (with the date) — a strong signal to upgrade.
 
-The badge also shows the **latest release** in that cycle and an **"update available"** hint when you're behind it, so the inventory doubles as a quick "what's overdue for an upgrade" view. The lookup is best-effort and cached, so a temporary endoflife.date outage never blocks the page — the badge simply doesn't appear. An administrator can disable the whole feature server-side (see [Configuration](../configuration.md)).
+The compact badge on the row shows the status, the **support-until date** for your cycle (when active support ends, or when the cycle goes end-of-life), an **LTS** chip for long-term-support cycles, and an **"update available"** hint when you're behind the latest release. **Expand the row** for the full endoflife.date detail above the CVE list — the release cycle and its dates, the **latest release** in that cycle, a **"newer release line"** marker when a newer major line exists (so the inventory doubles as a quick "what's overdue for an upgrade" view), and a **↗ endoflife.date** link to the product's page (e.g. `endoflife.date/rabbitmq`) for the full release table. The lookup is best-effort and cached, so a temporary endoflife.date outage never blocks the page — the badge simply doesn't appear. An administrator can disable the whole feature server-side (see [Configuration](../configuration.md)).
 
 ## Backup and restore
 

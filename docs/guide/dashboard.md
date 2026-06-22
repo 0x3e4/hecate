@@ -72,6 +72,13 @@ affect your inventory. With no inventory configured, the card looks unchanged. B
 refresh live as new CVEs arrive, newly published inventory-relevant issues highlight as soon as they
 land.
 
+The same widgets also cross-reference your **SCA scans** (the latest completed scan of each target): a
+today-item is tagged (teal, with the **scan target's name**) and floated up when it's a package in your
+latest SBOMs or a CVE your scans found — so a brand-new CVE for a package you actually run stands out even
+if your last scan predates it. Both tags are **clickable**: the "in inventory" tag opens the
+[Inventory](inventory.md) page, and the SCA tag opens the most-recent [scan](../sca/scan-results.md) (for
+the named target) that covers the item.
+
 The day boundary is **timezone-aware**: "today" begins at local midnight in the timezone you set
 under **System → General**, not at UTC midnight. This matters near midnight, where a UTC-based view
 would briefly show the wrong day. Arrows beside the header let you step back to previous days

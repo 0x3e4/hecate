@@ -3531,6 +3531,132 @@ table thead th {
   flex-shrink: 0;
 }
 
+/* ── Configuration-management compact rows ─────────────────────────────────── */
+.inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.inventory-row {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid rgba(128, 128, 128, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.6rem 0.85rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.inventory-row:hover { background: rgba(255, 255, 255, 0.04); }
+.inventory-row.critical { border-left-color: rgba(255, 107, 107, 0.7); }
+.inventory-row.high { border-left-color: rgba(255, 146, 43, 0.7); }
+.inventory-row.medium { border-left-color: rgba(252, 196, 25, 0.7); }
+.inventory-row.low { border-left-color: rgba(105, 219, 124, 0.7); }
+.inventory-row.unknown { border-left-color: rgba(128, 128, 128, 0.35); }
+
+.inventory-row__main {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  cursor: pointer;
+  min-width: 0;
+}
+.inventory-row__main:focus-visible {
+  outline: 2px solid rgba(92, 132, 255, 0.6);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.inventory-row__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #808080;
+}
+.inventory-row__dot.critical { background: #ff6b6b; }
+.inventory-row__dot.high { background: #ff922b; }
+.inventory-row__dot.medium { background: #fcc419; }
+.inventory-row__dot.low { background: #69db7c; }
+.inventory-row__dot.unknown { background: rgba(128, 128, 128, 0.6); }
+
+.inventory-row__id { min-width: 0; flex: 1 1 220px; }
+.inventory-row__name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inventory-row__sub {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inventory-row__meta {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.inventory-row__meta .chip { font-size: 0.7rem; }
+
+.inventory-row__eol { flex-shrink: 0; }
+
+.inventory-row__cve {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  min-width: 2.2rem;
+  text-align: center;
+}
+.inventory-row__cve.critical { background: rgba(255, 107, 107, 0.18); color: #ff6b6b; }
+.inventory-row__cve.high { background: rgba(255, 146, 43, 0.18); color: #ff922b; }
+.inventory-row__cve.medium { background: rgba(252, 196, 25, 0.18); color: #fcc419; }
+.inventory-row__cve.low { background: rgba(105, 219, 124, 0.18); color: #69db7c; }
+.inventory-row__cve.none { color: rgba(255, 255, 255, 0.45); }
+
+.inventory-row__chevron {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+  width: 1rem;
+  text-align: center;
+}
+
+.inventory-row__actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.inventory-row__notes {
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  font-style: italic;
+  word-break: break-word;
+}
+
+.inventory-row__expand {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .inventory-row__main { flex-wrap: wrap; gap: 0.5rem 0.6rem; }
+  .inventory-row__id { flex-basis: 100%; }
+  .inventory-row__chevron { margin-left: auto; }
+}
+
 @media (max-width: 768px) {
   .dialog--wide {
     width: 100%;
@@ -3607,7 +3733,8 @@ table thead th {
   padding-left: 0.4rem;
 }
 
-.inventory-chip {
+.inventory-chip,
+.scan-chip {
   display: inline-flex;
   align-items: center;
   font-size: 0.6rem;
@@ -3616,11 +3743,21 @@ table thead th {
   letter-spacing: 0.03em;
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.inventory-chip {
   background: rgba(92, 132, 255, 0.2);
   border: 1px solid rgba(92, 132, 255, 0.45);
   color: #93bbfd;
-  flex-shrink: 0;
-  white-space: nowrap;
+}
+
+/* SCA "in scans" chip — teal, distinct from the blue inventory chip. */
+.scan-chip {
+  background: rgba(34, 197, 170, 0.18);
+  border: 1px solid rgba(34, 197, 170, 0.45);
+  color: #4fd1c5;
 }
 
 /* No Results */

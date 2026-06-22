@@ -451,3 +451,18 @@ export const importSbomFile = async (
   );
   return response.data;
 };
+
+export interface ScanCoverage {
+  /** CVE/GHSA id → most-recent scanId that found it (from scan findings). */
+  cveScan: Record<string, string>;
+  /** slugified package name → most-recent scanId that ships it (from SBOMs). */
+  productScan: Record<string, string>;
+  /** scanId → its target's display name (for the chip label + link). */
+  scanTargets: Record<string, string>;
+}
+
+/** Compact maps for the dashboard "Today" SCA cross-reference. */
+export const fetchScanCoverage = async (): Promise<ScanCoverage> => {
+  const response = await api.get<ScanCoverage>("/v1/scans/coverage");
+  return response.data;
+};

@@ -6,11 +6,12 @@ language. Instead of opening the web UI to look something up, you ask your assis
 by any vulnerabilities in OpenClaw 2026.02.24?*" and it queries Hecate directly, joins the answer to
 whatever else you are working on, and writes the result back where useful.
 
-The server is mounted at `/mcp` on the same host as the rest of Hecate and exposes 35 tools spanning
+The server is mounted at `/mcp` on the same host as the rest of Hecate and exposes 40 tools spanning
 CVE search and detail lookups, CPE and asset catalogues, CWE/CAPEC weakness data, database
 statistics, and a large set of SCA queries (findings, SBOMs, scan history, comparisons, security
-alerts). A handful of write tools can trigger scans and syncs, and a set of AI-analysis tool pairs
-let the assistant produce and persist vulnerability and scan triage using its own reasoning.
+alerts). A handful of write tools can trigger scans and syncs and manage the environment inventory
+(create/update/delete items, each with their endoflife.date support status), and a set of AI-analysis
+tool pairs let the assistant produce and persist vulnerability and scan triage using its own reasoning.
 
 Authentication is **delegated OAuth 2.0** — there is no static API key. Hecate acts as an
 authorization server toward your MCP client (Dynamic Client Registration + Authorization Code +
@@ -128,6 +129,7 @@ question — you never name a tool by hand.
 | Scans & history | read | `list_scan_targets`, `list_target_groups`, `list_scans`, `get_sca_scan`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `find_findings_by_cve`. |
 | Attack-path & chain | read | `prepare_attack_path_analysis`, `refine_attack_path_analysis`, `prepare_scan_attack_chain_analysis`. |
 | AI analysis (prepare) | read | `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`. |
+| Environment inventory | read + **write** | `list_inventory_items`, `get_inventory_item` (read; each item carries its endoflife.date status); `create_inventory_item`, `update_inventory_item`, `delete_inventory_item` (**write**). |
 | Actions & persistence | **write** | `trigger_scan`, `trigger_sync`, and every `save_*` analysis tool. |
 
 Every OAuth event and tool invocation is recorded with the caller's identity, email, source IP, and

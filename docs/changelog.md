@@ -15,6 +15,33 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.3.1] - 2026-06-22
+
+### Added
+
+- MCP tools to manage the Environment Inventory: `list_inventory_items` / `get_inventory_item` (read; each item carries its endoflife.date support status) and `create_inventory_item` / `update_inventory_item` / `delete_inventory_item` (write-scope gated). MCP tool count 35 → 40.
+- The endoflife.date badge now shows the version's support-until date, an LTS chip, a "newer release line" hint, and a link to the product's endoflife.date page.
+- The dashboard "Today" widgets now also highlight vendors/products/CVEs covered by your **SCA scans** (latest scan per target — by SBOM package or finding), floating them up with a teal tag labelled by the scan target. Both the inventory and scan tags are clickable — they open the Inventory page and the most-recent covering scan respectively.
+
+### Changed
+
+- Inventory items now render as compact status rows (click a row to expand its affecting CVEs) instead of cards, and the add/edit form opens from an **Add** icon button in the "Configuration management" header. Inventory edits refresh the row, its CVEs and the "Flagged CVEs" table instantly — no manual reload.
+- The "Flagged CVEs" table's "Affected items" column now shows `product · version` instead of the item name.
+- Documentation sync for the inventory MCP tools, the richer endoflife.date status, the compact-row UX, the auto-mapping fix, and the dashboard SCA cross-reference.
+- Dependency bumps. Backend: `mcp` 1.27.2 → 1.28.0, `cryptography` 48.0.0 → 49.0.0, `google-auth` 2.53.0 → 2.55.0, `pydantic-settings` 2.14.1 → 2.14.2, `python-multipart` 0.0.30 → 0.0.32, `sse-starlette` 3.4.4 → 3.4.5, `tzlocal` 5.3.1 → 5.4.3, plus `anyio` / `certifi` / `coverage` / `grpcio` / `protobuf` / `pywin32` refreshes. Scanner: `fastapi` 0.136.3 → 0.138.0, `starlette` 1.2.1 → 1.3.1, `uvicorn` 0.48.0 → 0.49.0, `anyio` 4.13.0 → 4.14.0. Frontend: `axios` 1.16.1 → 1.17.0, `react`/`react-dom` 19.2.6 → 19.2.7, `react-router-dom` 7.15.1 → 7.17.0, `vite` 7.3.3 → 7.3.5.
+
+### Fixed
+
+- Editing an inventory item (e.g. a version bump) no longer wipes a manual endoflife.date product link — the auto-mapping only re-runs when the product itself changes.
+
+## [1.3.0] - 2026-06-19
+
+### Added
+
 - End-of-life / support tracking for Environment Inventory items via endoflife.date: cards show active-support / security-support / end-of-life status, the cycle's latest release, and an "update available" hint. Products are auto-linked by name with a manual override (and clear) in the add/edit dialog. Configurable via `ENDOFLIFE_*` env vars and the `eolEnabled` runtime flag.
 - "Flagged CVEs" table on the Inventory page listing every distinct CVE affecting any configured item, sorted by severity, each linked to its vulnerability detail page.
 - Dashboard "Today" widgets now highlight configured-inventory vendors, products, and CVEs and float them to the top, with a count of how many of the day's CVEs touch your inventory.

@@ -5,6 +5,7 @@ import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types"
 import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
 import { fetchTodaySummary, type TodaySummaryResponse, type TodayCve } from "../api/stats";
 import { fetchInventoryItems } from "../api/inventory";
+import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -74,6 +75,26 @@ export const DashboardPage = () => {
       cancelled = true;
     };
   }, []);
+  // SCA scan coverage for the Today widgets (best-effort; empty → no SCA chips).
+  const [scanCoverage, setScanCoverage] = useState<ScanCoverage>({
+    cveScan: {},
+    productScan: {},
+    scanTargets: {},
+  });
+  useEffect(() => {
+    let cancelled = false;
+    fetchScanCoverage()
+      .then((res) => {
+        if (!cancelled) setScanCoverage(res);
+      })
+      .catch(() => {
+        /* scan coverage is optional context for the dashboard */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const invVendors = useMemo(
     () => new Set(inventoryPairs.map((i) => i.vendorSlug).filter(Boolean)),
     [inventoryPairs],
@@ -309,6 +330,9 @@ export const DashboardPage = () => {
         locale={locale}
         invVendors={invVendors}
         invPairs={invPairs}
+        scanCveScan={scanCoverage.cveScan}
+        scanProductScan={scanCoverage.productScan}
+        scanTargets={scanCoverage.scanTargets}
         refreshKey={sseRefreshKey}
       />
       <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />
@@ -541,17 +565,98 @@ const cveMatchesInventory = (
   return false;
 };
 
+// Resolve the most-recent scan covering a today-CVE: a finding hit on the CVE id,
+// else the first SBOM-package hit on one of its product slugs. Undefined = not scanned.
+const resolveCveScanId = (
+  cve: TodayCve,
+  scanCveScan: Record<string, string>,
+  scanProductScan: Record<string, string>,
+): string | undefined => {
+  if (scanCveScan[cve.vulnId]) return scanCveScan[cve.vulnId];
+  for (const p of cve.productSlugs ?? []) {
+    if (scanProductScan[p]) return scanProductScan[p];
+  }
+  return undefined;
+};
+
+// A highlight chip on a Today item. Inventory chips link to /inventory; scan
+// chips link to the covering scan's detail page.
+interface TodayChip {
+  label: string;
+  href: string;
+  title?: string;
+  scan?: boolean;
+}
+
+// An "in scans" chip labelled with the covering scan's target name (truncated),
+// linking to that scan's detail page. Falls back to a generic label.
+const scanChip = (
+  sid: string,
+  scanTargets: Record<string, string>,
+  fallbackLabel: string,
+): TodayChip => {
+  const target = scanTargets[sid];
+  const label = target && target.length > 26 ? `${target.slice(0, 25)}…` : target;
+  return {
+    label: label || fallbackLabel,
+    href: `/scans/${sid}`,
+    scan: true,
+    title: target || fallbackLabel,
+  };
+};
+
+// Renders chips as navigable spans inside the row's <Link> — preventDefault on
+// the chip cancels the row navigation so the chip's own link wins (no nested <a>).
+const ChipLinks = ({ chips }: { chips: TodayChip[] }) => {
+  const navigate = useNavigate();
+  if (chips.length === 0) return null;
+  return (
+    <>
+      {chips.map((c, i) => (
+        <span
+          key={`${c.scan ? "s" : "i"}-${i}`}
+          className={c.scan ? "scan-chip" : "inventory-chip"}
+          role="link"
+          tabIndex={0}
+          title={c.title}
+          style={{ cursor: "pointer" }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate(c.href);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation();
+              navigate(c.href);
+            }
+          }}
+        >
+          {c.label}
+        </span>
+      ))}
+    </>
+  );
+};
+
 const TodayStats = ({
   t,
   locale,
   invVendors,
   invPairs,
+  scanCveScan,
+  scanProductScan,
+  scanTargets,
   refreshKey,
 }: {
   t: TranslateFn;
   locale: string;
   invVendors: Set<string>;
   invPairs: Set<string>;
+  scanCveScan: Record<string, string>;
+  scanProductScan: Record<string, string>;
+  scanTargets: Record<string, string>;
   refreshKey: number;
 }) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
@@ -708,29 +813,66 @@ const TodayStats = ({
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
-  // Float inventory-configured vendors/products to the top (stable sort keeps
-  // the doc_count order within each group). No-op when inventory is empty.
+  // --- inventory + SCA cross-reference for the Today widgets ---
   const vendorInInventory = (slug: string) => invVendors.has(slug);
   const productInInventory = (vendorSlug: string, slug: string) =>
     invPairs.has(`${vendorSlug}|${slug}`);
+
+  // SCA coverage: derive "scanned" vendor/product/CVE → most-recent scanId from
+  // the SBOM-package map (productScan) plus the CVEs whose scans found/contain
+  // them. SBOM carries no vendor, so vendor coverage is CVE-derived.
+  const hasScanCoverage =
+    Object.keys(scanCveScan).length > 0 || Object.keys(scanProductScan).length > 0;
+  const scanProductMap = new Map<string, string>(Object.entries(scanProductScan));
+  const scanVendorMap = new Map<string, string>();
+  const cveToScan = new Map<string, string>();
+  if (hasScanCoverage) {
+    for (const cve of data.cves) {
+      const sid = resolveCveScanId(cve, scanCveScan, scanProductScan);
+      if (!sid) continue;
+      cveToScan.set(cve.vulnId, sid);
+      for (const p of cve.productSlugs ?? []) if (!scanProductMap.has(p)) scanProductMap.set(p, sid);
+      for (const v of cve.vendorSlugs ?? []) if (!scanVendorMap.has(v)) scanVendorMap.set(v, sid);
+    }
+  }
+
+  const invLabel = t("in inventory", "im Inventar");
+  const scanFallback = t("SCA scan", "SCA-Scan");
+  const vendorChips = (slug: string): TodayChip[] => {
+    const chips: TodayChip[] = [];
+    if (vendorInInventory(slug)) chips.push({ label: invLabel, href: "/inventory" });
+    const sid = scanVendorMap.get(slug);
+    if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
+    return chips;
+  };
+  const productChips = (vendorSlug: string, slug: string): TodayChip[] => {
+    const chips: TodayChip[] = [];
+    if (productInInventory(vendorSlug, slug)) chips.push({ label: invLabel, href: "/inventory" });
+    const sid = scanProductMap.get(slug);
+    if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
+    return chips;
+  };
+
+  // Float vendors/products matched by inventory OR scans to the top (stable sort).
   const sortedVendors =
-    invVendors.size === 0
+    invVendors.size === 0 && scanVendorMap.size === 0
       ? data.vendors
       : [...data.vendors].sort(
-          (a, b) => Number(vendorInInventory(b.slug)) - Number(vendorInInventory(a.slug)),
+          (a, b) => Number(vendorChips(b.slug).length > 0) - Number(vendorChips(a.slug).length > 0),
         );
   const sortedProducts =
-    invPairs.size === 0
+    invPairs.size === 0 && scanProductMap.size === 0
       ? data.products
       : [...data.products].sort(
           (a, b) =>
-            Number(productInInventory(b.vendorSlug, b.slug)) -
-            Number(productInInventory(a.vendorSlug, a.slug)),
+            Number(productChips(b.vendorSlug, b.slug).length > 0) -
+            Number(productChips(a.vendorSlug, a.slug).length > 0),
         );
   const invCveCount =
     invVendors.size === 0
       ? 0
       : data.cves.filter((c) => cveMatchesInventory(c, invVendors, invPairs)).length;
+  const scanCveCount = cveToScan.size;
 
   return (
     <section className="card" style={{ marginBottom: "1.5rem" }}>
@@ -743,12 +885,25 @@ const TodayStats = ({
         {dateNav}
       </div>
 
-      {invCveCount > 0 && (
-        <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
-          <span className="inventory-chip">{t("inventory", "Inventar")}</span>
-          {t(
-            `${invCveCount} ${invCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "today" : "this day"} affect your inventory`,
-            `${invCveCount} ${invCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "heute" : "an diesem Tag"} betreffen Ihr Inventar`,
+      {(invCveCount > 0 || scanCveCount > 0) && (
+        <div style={{ marginBottom: "0.75rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+          {invCveCount > 0 && (
+            <div className="muted" style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+              <span className="inventory-chip">{t("inventory", "Inventar")}</span>
+              {t(
+                `${invCveCount} ${invCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "today" : "this day"} affect your inventory`,
+                `${invCveCount} ${invCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "heute" : "an diesem Tag"} betreffen Ihr Inventar`,
+              )}
+            </div>
+          )}
+          {scanCveCount > 0 && (
+            <div className="muted" style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+              <span className="scan-chip">{t("scans", "Scans")}</span>
+              {t(
+                `${scanCveCount} ${scanCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "today" : "this day"} are in your SCA scans`,
+                `${scanCveCount} ${scanCveCount === 1 ? "CVE" : "CVEs"} ${isToday ? "heute" : "an diesem Tag"} sind in Ihren SCA-Scans`,
+              )}
+            </div>
           )}
         </div>
       )}
@@ -773,8 +928,7 @@ const TodayStats = ({
                   to={vendorDql(v.slug)}
                   label={v.name}
                   count={v.doc_count}
-                  highlighted={vendorInInventory(v.slug)}
-                  inventoryLabel={t("in inventory", "im Inventar")}
+                  chips={vendorChips(v.slug)}
                 />
               ))}
             </ul>
@@ -795,8 +949,7 @@ const TodayStats = ({
                   label={p.name}
                   sublabel={p.vendorName}
                   count={p.doc_count}
-                  highlighted={productInInventory(p.vendorSlug, p.slug)}
-                  inventoryLabel={t("in inventory", "im Inventar")}
+                  chips={productChips(p.vendorSlug, p.slug)}
                 />
               ))}
             </ul>
@@ -809,7 +962,11 @@ const TodayStats = ({
             todayDate={todayDate}
             invVendors={invVendors}
             invPairs={invPairs}
-            inventoryLabel={t("in inventory", "im Inventar")}
+            scanCveScan={scanCveScan}
+            scanProductScan={scanProductScan}
+            scanTargets={scanTargets}
+            invLabel={invLabel}
+            scanFallback={scanFallback}
           />
         </TodayMiniCard>
       </div>
@@ -839,17 +996,16 @@ const TodayListItem = ({
   label,
   sublabel,
   count,
-  highlighted = false,
-  inventoryLabel,
+  chips = [],
 }: {
   to: string;
   label: string;
   sublabel?: string;
   count: number;
-  highlighted?: boolean;
-  inventoryLabel?: string;
+  chips?: TodayChip[];
 }) => {
   const [hovered, setHovered] = useState(false);
+  const highlighted = chips.length > 0;
   return (
     <li style={{ minWidth: 0, overflow: "hidden" }}>
       <Link
@@ -883,7 +1039,7 @@ const TodayListItem = ({
               </span>
             )}
           </span>
-          {highlighted && inventoryLabel && <span className="inventory-chip">{inventoryLabel}</span>}
+          <ChipLinks chips={chips} />
         </span>
         <span
           style={{
@@ -905,22 +1061,40 @@ const TodayCveList = ({
   todayDate,
   invVendors,
   invPairs,
-  inventoryLabel,
+  scanCveScan,
+  scanProductScan,
+  scanTargets,
+  invLabel,
+  scanFallback,
 }: {
   cves: TodayCve[];
   todayDate: string;
   invVendors: Set<string>;
   invPairs: Set<string>;
-  inventoryLabel?: string;
+  scanCveScan: Record<string, string>;
+  scanProductScan: Record<string, string>;
+  scanTargets: Record<string, string>;
+  invLabel: string;
+  scanFallback: string;
 }) => {
-  const matchedIds = useMemo(() => {
-    if (invVendors.size === 0) return new Set<string>();
-    const ids = new Set<string>();
+  // Per-CVE chips (inventory and/or scan), keyed by vulnId.
+  const chipsByCve = useMemo(() => {
+    const map = new Map<string, TodayChip[]>();
+    const hasScan =
+      Object.keys(scanCveScan).length > 0 || Object.keys(scanProductScan).length > 0;
     for (const cve of cves) {
-      if (cveMatchesInventory(cve, invVendors, invPairs)) ids.add(cve.vulnId);
+      const chips: TodayChip[] = [];
+      if (invVendors.size > 0 && cveMatchesInventory(cve, invVendors, invPairs)) {
+        chips.push({ label: invLabel, href: "/inventory" });
+      }
+      if (hasScan) {
+        const sid = resolveCveScanId(cve, scanCveScan, scanProductScan);
+        if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
+      }
+      if (chips.length) map.set(cve.vulnId, chips);
     }
-    return ids;
-  }, [cves, invVendors, invPairs]);
+    return map;
+  }, [cves, invVendors, invPairs, scanCveScan, scanProductScan, scanTargets, invLabel, scanFallback]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, TodayCve[]> = {};
@@ -929,16 +1103,16 @@ const TodayCveList = ({
       if (!groups[sev]) groups[sev] = [];
       groups[sev].push(cve);
     }
-    // Float inventory-relevant CVEs to the top of each severity group.
-    if (matchedIds.size > 0) {
+    // Float matched (inventory or scan) CVEs to the top of each severity group.
+    if (chipsByCve.size > 0) {
       for (const sev of Object.keys(groups)) {
         groups[sev] = [...groups[sev]].sort(
-          (a, b) => Number(matchedIds.has(b.vulnId)) - Number(matchedIds.has(a.vulnId)),
+          (a, b) => Number(chipsByCve.has(b.vulnId)) - Number(chipsByCve.has(a.vulnId)),
         );
       }
     }
     return groups;
-  }, [cves, matchedIds]);
+  }, [cves, chipsByCve]);
 
   const severityDql = (severity: string) => {
     const q = `cvss.severity:${severity} AND published:>=${todayDate}`;
@@ -977,8 +1151,7 @@ const TodayCveList = ({
                   key={cve.vulnId}
                   cve={cve}
                   color={color}
-                  highlighted={matchedIds.has(cve.vulnId)}
-                  inventoryLabel={inventoryLabel}
+                  chips={chipsByCve.get(cve.vulnId) ?? []}
                 />
               ))}
             </ul>
@@ -992,15 +1165,14 @@ const TodayCveList = ({
 const TodayCveItem = ({
   cve,
   color,
-  highlighted = false,
-  inventoryLabel,
+  chips = [],
 }: {
   cve: TodayCve;
   color: string;
-  highlighted?: boolean;
-  inventoryLabel?: string;
+  chips?: TodayChip[];
 }) => {
   const [hovered, setHovered] = useState(false);
+  const highlighted = chips.length > 0;
   const aliases = (cve.aliases ?? []).filter(
     (a) => a && a.toUpperCase() !== cve.vulnId.toUpperCase()
   );
@@ -1038,11 +1210,9 @@ const TodayCveItem = ({
         >
           {cve.vulnId}
         </span>
-        {highlighted && inventoryLabel && (
-          <span className="inventory-chip" style={{ alignSelf: "center" }}>
-            {inventoryLabel}
-          </span>
-        )}
+        <span style={{ display: "inline-flex", gap: "0.3rem", alignSelf: "center" }}>
+          <ChipLinks chips={chips} />
+        </span>
         {aliases.map((alias) => (
           <span
             key={alias}

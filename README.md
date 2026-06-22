@@ -162,7 +162,7 @@ flowchart TB
 | **Attack-path graph** | Per-CVE deterministic Mermaid graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) with optional AI narrative. |
 | **Cross-CVE attack chain** | Per-scan ATT&CK kill-chain narrative bucketing all findings into Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact. |
 | **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type. |
-| **MCP server** | 35 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
+| **MCP server** | 40 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
 | **Notifications** | Apprise integration with rules, watch queries, message templates, and per-tag channel routing. |
 | **Bilingual UI** | German + English, browser detection, no external i18n framework. |
 
@@ -272,7 +272,7 @@ scanner/
 | Changelog | Recent vulnerability changes with date and job filters. |
 | SCA scans | Targets, scans, consolidated findings, SBOM (sortable, provenance filter), licenses, scanner monitoring. |
 | Scan detail | Findings (multi-select VEX, dismissal toggle), **Attack Chain**, SBOM, history, compare, security alerts, SAST, secrets, best practices, layer analysis, license compliance. |
-| Inventory | User-declared products + versions matched against the catalogue, with a "Flagged CVEs" roll-up table, an add/edit modal, and endoflife.date support / end-of-life status per item. |
+| Inventory | User-declared products + versions matched against the catalogue. Compact status rows (click to expand the affecting CVEs), a "Flagged CVEs" roll-up table, a modal add/edit form, and endoflife.date support / end-of-life status per item (with the product page link, support-until date and LTS). |
 | Malware feed | Overview of all MAL-aliased OSV advisories (~417 k records, server-paginated). |
 | System | 5 tabs: General, Access Control (per-target write passwords), Notifications, Data, Policies. |
 | Support | In-app diagnostics: per-component version check (backend / frontend / scanner) against the latest `main-<sha>` images on GHCR via `GET /api/v1/version`. |
@@ -487,10 +487,10 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `GET  /mcp/oauth/idp/callback` — IdP callback (internal redirect endpoint)
 - `POST /mcp/oauth/token` — token exchange with PKCE (S256)
 
-**35 tools** (server name: `hecate`):
+**40 tools** (server name: `hecate`):
 
-- *Read-only*: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`, `list_target_groups`, `list_scans`, `find_findings_by_cve`, `get_sca_scan`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`, `prepare_attack_path_analysis`, `refine_attack_path_analysis`, `prepare_scan_attack_chain_analysis`
-- *Write* (source IP must be in `MCP_WRITE_IP_SAFELIST` at authorize time): `trigger_scan`, `trigger_sync`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`, `save_scan_attack_chain_analysis`
+- *Read-only*: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`, `list_target_groups`, `list_scans`, `find_findings_by_cve`, `get_sca_scan`, `list_inventory_items`, `get_inventory_item`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`, `prepare_attack_path_analysis`, `refine_attack_path_analysis`, `prepare_scan_attack_chain_analysis`
+- *Write* (source IP must be in `MCP_WRITE_IP_SAFELIST` at authorize time): `trigger_scan`, `trigger_sync`, `create_inventory_item`, `update_inventory_item`, `delete_inventory_item`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`, `save_scan_attack_chain_analysis`
 
 > [!IMPORTANT]
 > AI analysis over MCP uses **prepare/save pairs**: `prepare_*` returns Hecate's predefined prompts plus context, the calling assistant generates the analysis with its own model, then writes it back through the matching `save_*` tool. The provider keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`) are only used by the web-UI flows.

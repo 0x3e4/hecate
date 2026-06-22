@@ -569,6 +569,19 @@ async def get_global_sbom_facets(
     }
 
 
+@router.get("/coverage")
+async def get_dashboard_coverage(
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, dict[str, str]]:
+    """Compact cross-reference maps for the dashboard "Today" SCA highlight.
+
+    ``{"cveScan": {cveId: scanId}, "productScan": {productSlug: scanId}}`` —
+    each value is the most-recent scan (across targets) covering the key,
+    from the latest completed scan of every target. Cached server-side.
+    """
+    return await service.get_dashboard_coverage()
+
+
 @router.post("/import-sbom", response_model=SubmitScanResponse, status_code=201)
 async def import_sbom(
     request: ImportSbomRequest,

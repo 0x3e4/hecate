@@ -43,6 +43,7 @@ def create_mcp_server() -> FastMCP:
     from app.mcp.tools.stats import register as register_stats
     from app.mcp.tools.cwe_capec import register as register_cwe_capec
     from app.mcp.tools.scans import register as register_scans
+    from app.mcp.tools.inventory import register as register_inventory
 
     register_vulnerabilities(mcp)
     register_cpe(mcp)
@@ -50,6 +51,7 @@ def create_mcp_server() -> FastMCP:
     register_stats(mcp)
     register_cwe_capec(mcp)
     register_scans(mcp)
+    register_inventory(mcp)
 
     return mcp
 

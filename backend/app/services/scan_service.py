@@ -104,6 +104,10 @@ class ScanService:
         # within the per-request timeout.
         self._last_stats: dict[str, Any] | None = None
         self._last_stats_at: float | None = None
+        # Dashboard SCA-coverage maps (cveScan / productScan), cached briefly
+        # since scans change infrequently relative to dashboard loads.
+        self._coverage_cache: dict[str, dict[str, str]] | None = None
+        self._coverage_cache_at: float = 0.0
 
     async def backfill_target_scan_state(self) -> int:
         """One-time migration: populate denormalized scan state on all targets."""
@@ -1418,6 +1422,83 @@ class ScanService:
     ) -> list[str]:
         """Get the latest completed scan ID for each target."""
         return await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
+
+    async def get_dashboard_coverage(self) -> dict[str, dict[str, str]]:
+        """Compact cross-reference maps for the dashboard "Today" SCA highlight.
+
+        Returns ``{"cveScan": {cve_id: scanId}, "productScan": {productSlug: scanId}}``
+        where each value is the **most-recent** scan (across targets) that covers
+        the key: ``cveScan`` from the latest scans' findings (by ``vulnerability_id``),
+        ``productScan`` from the latest scans' SBOM components (keyed on
+        ``slugify(package name)`` so it lines up with the vuln index's product
+        slugs). Cached for 5 min — scans change rarely relative to dashboard loads.
+        """
+        from app.utils.strings import slugify
+
+        now = time.monotonic()
+        if self._coverage_cache is not None and now - self._coverage_cache_at < 300:
+            return self._coverage_cache
+
+        empty = {"cveScan": {}, "productScan": {}, "scanTargets": {}}
+        scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
+        if not scan_ids:
+            self._coverage_cache, self._coverage_cache_at = empty, now
+            return empty
+
+        # created_at + target name per scan, for "most recent" selection and the
+        # target-name label on each chip.
+        created: dict[str, datetime] = {}
+        scan_targets: dict[str, str] = {}
+        try:
+            object_ids = [ObjectId(s) for s in scan_ids if ObjectId.is_valid(s)]
+            async for doc in self.scan_repo.collection.find(
+                {"_id": {"$in": object_ids}},
+                {"created_at": 1, "target_name": 1, "target_id": 1},
+            ):
+                sid = str(doc["_id"])
+                created[sid] = doc.get("created_at") or datetime.min.replace(tzinfo=UTC)
+                label = doc.get("target_name") or doc.get("target_id")
+                if isinstance(label, str) and label:
+                    scan_targets[sid] = label
+        except Exception as exc:  # noqa: BLE001 - coverage is best-effort
+            log.warning("scan_service.coverage_created_lookup_failed", error=str(exc))
+
+        def _newer(existing: str | None, candidate: str) -> str:
+            if existing is None:
+                return candidate
+            return candidate if created.get(candidate, datetime.min.replace(tzinfo=UTC)) > created.get(
+                existing, datetime.min.replace(tzinfo=UTC)
+            ) else existing
+
+        cve_scan: dict[str, str] = {}
+        product_scan: dict[str, str] = {}
+        try:
+            async for f in self.finding_repo.collection.find(
+                {"scan_id": {"$in": scan_ids}, "vulnerability_id": {"$ne": None}},
+                {"vulnerability_id": 1, "scan_id": 1},
+            ):
+                vid = f.get("vulnerability_id")
+                sid = f.get("scan_id")
+                if isinstance(vid, str) and vid and isinstance(sid, str):
+                    cve_scan[vid] = _newer(cve_scan.get(vid), sid)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("scan_service.coverage_findings_failed", error=str(exc))
+        try:
+            async for c in self.sbom_repo.collection.find(
+                {"scan_id": {"$in": scan_ids}}, {"name": 1, "scan_id": 1}
+            ):
+                name = c.get("name")
+                sid = c.get("scan_id")
+                if isinstance(name, str) and name and isinstance(sid, str):
+                    slug = slugify(name)
+                    if slug:
+                        product_scan[slug] = _newer(product_scan.get(slug), sid)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("scan_service.coverage_sbom_failed", error=str(exc))
+
+        result = {"cveScan": cve_scan, "productScan": product_scan, "scanTargets": scan_targets}
+        self._coverage_cache, self._coverage_cache_at = result, now
+        return result
 
     async def get_badge_counts(self) -> dict[str, int]:
         """Return lightweight counts for tab badges (findings, SBOM, licenses, alerts).

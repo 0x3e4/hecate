@@ -195,10 +195,19 @@ class InventoryService:
             updates["notes"] = payload.notes
 
         # endoflife.date link: explicit value wins (empty string unlinks);
-        # otherwise re-auto-match only when the product identity changed.
+        # otherwise re-auto-match ONLY when the product identity actually
+        # changed. The frontend always sends the full form, so the product
+        # fields are always present in `updates` — comparing against the stored
+        # value is what distinguishes a real product change from an unrelated
+        # edit (e.g. a version bump). Without this, every edit re-ran auto-match
+        # and a manual override on a product that doesn't auto-map was wiped.
+        product_changed = any(
+            k in updates and updates[k] != existing.get(k)
+            for k in ("product_slug", "product_name", "vendor_slug")
+        )
         if "eol_product" in payload.model_fields_set:
             updates["eol_product"] = (payload.eol_product or "").strip() or None
-        elif any(k in updates for k in ("product_slug", "product_name", "vendor_slug")):
+        elif product_changed:
             new_product_slug = updates.get("product_slug", existing.get("product_slug"))
             new_product_name = updates.get("product_name", existing.get("product_name"))
             updates["eol_product"] = await self._auto_resolve_eol(

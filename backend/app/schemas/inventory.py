@@ -245,6 +245,9 @@ class EolStatusResponse(BaseModel):
         default=None, alias="eolDate", serialization_alias="eolDate"
     )
     is_lts: bool = Field(default=False, alias="isLts", serialization_alias="isLts")
+    lts_from: str | None = Field(
+        default=None, alias="ltsFrom", serialization_alias="ltsFrom"
+    )
     latest_version: str | None = Field(
         default=None, alias="latestVersion", serialization_alias="latestVersion"
     )
@@ -256,6 +259,18 @@ class EolStatusResponse(BaseModel):
     )
     is_outdated: bool = Field(
         default=False, alias="isOutdated", serialization_alias="isOutdated"
+    )
+    # The newest release line of the product (e.g. "26"), the line immediately
+    # newer than the matched one (the "next major"), and whether the item is
+    # already on the newest line.
+    latest_cycle: str | None = Field(
+        default=None, alias="latestCycle", serialization_alias="latestCycle"
+    )
+    next_cycle: str | None = Field(
+        default=None, alias="nextCycle", serialization_alias="nextCycle"
+    )
+    is_latest_cycle: bool = Field(
+        default=False, alias="isLatestCycle", serialization_alias="isLatestCycle"
     )
 
     model_config = {"populate_by_name": True}
