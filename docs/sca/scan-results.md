@@ -65,6 +65,12 @@ deps.dev, Snyk, the package registry, socket.dev, bundlephobia and npmgraph — 
 the upstream source. Findings with a CVE expose a **Show attack path** button that renders the structural
 chain for that single vulnerability inline.
 
+The Fix column shows the scanner's recommended fix version. When the advisory in Hecate's vulnerability
+database also lists explicit unaffected or patched versions for the package, they appear next to it as a
+teal **`adv:`** chip — so you still get a remediation target even when the scanner itself reported no fix.
+This hint is read live from the vulnerability database, so it stays current as advisories are enriched,
+without needing to re-scan.
+
 A checkbox on every row plus a "select all visible" header turns on a sticky multi-select toolbar. From there
 you can apply a VEX status to the whole selection at once, or dismiss and restore findings in bulk. There is
 also a button to open every CVE in the current view as a single query on the Vulnerabilities page.
@@ -152,9 +158,13 @@ It shows the target's metadata (type, application group, registry, auto-scan sta
 severity rollup of its latest scan, and — when auto-scan is enabled — the last change-detection check with its verdict
 and any error, so you can see why an automatic rescan did or did not fire.
 
-Below that, a **Top findings** list summarises the worst of the latest scan, and a paginated **Scan history** table
-lists every completed run with a link into each. Quick-action buttons let you trigger a rescan, run a change-detection
-check on demand, copy a shields.io status badge for your README, or delete the target and all its data. When a target
+Below that, a **Top findings** list summarises the worst of the latest scan. An **SBOM changes** card then shows how
+the target's software bill of materials shifted between its two most-recent completed scans — components **added**,
+**updated** (with the old → new version), and **removed** — headed by the latest scan's time and commit short-hash so
+you can tie a dependency change to a specific commit. A target with only one completed scan shows a baseline line
+instead. A paginated **Scan history** table lists every completed run with a link into each. Quick-action buttons let
+you trigger a rescan, run a change-detection check on demand, copy a shields.io status badge for your README, or delete
+the target and all its data. When a target
 is write-protected, a lock badge appears next to its name and the action buttons require the appropriate password —
 see [Security & Access Control](../security-access-control.md). SBOM-import targets are read-only and do not show the
 rescan, check or delete actions.

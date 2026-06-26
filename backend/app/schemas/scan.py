@@ -277,6 +277,12 @@ class ScanFindingResponse(BaseModel):
     fix_state: str = Field(
         default="unknown", alias="fixState", serialization_alias="fixState"
     )
+    advisory_fix_versions: list[str] = Field(
+        default_factory=list,
+        alias="advisoryFixVersions",
+        serialization_alias="advisoryFixVersions",
+        description="Unaffected/patched versions from the vulnerability DB advisory (read-time enrichment).",
+    )
     data_source: str | None = Field(
         default=None, alias="dataSource", serialization_alias="dataSource"
     )
@@ -353,6 +359,81 @@ class SbomComponentResponse(BaseModel):
 class SbomComponentListResponse(BaseModel):
     total: int
     items: list[SbomComponentResponse]
+
+
+class SbomDiffEntry(BaseModel):
+    """A single SBOM component change between two scans."""
+
+    name: str
+    version: str = ""
+    previous_version: str | None = Field(
+        default=None, alias="previousVersion", serialization_alias="previousVersion"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class TargetSbomDiffResponse(BaseModel):
+    """SBOM delta between a target's two most-recent completed scans."""
+
+    target_id: str = Field(alias="targetId", serialization_alias="targetId")
+    latest_scan_id: str | None = Field(
+        default=None, alias="latestScanId", serialization_alias="latestScanId"
+    )
+    latest_scan_at: UtcDatetime | None = Field(
+        default=None, alias="latestScanAt", serialization_alias="latestScanAt"
+    )
+    latest_commit_sha: str | None = Field(
+        default=None, alias="latestCommitSha", serialization_alias="latestCommitSha"
+    )
+    previous_scan_id: str | None = Field(
+        default=None, alias="previousScanId", serialization_alias="previousScanId"
+    )
+    previous_scan_at: UtcDatetime | None = Field(
+        default=None, alias="previousScanAt", serialization_alias="previousScanAt"
+    )
+    component_total: int = Field(
+        default=0, alias="componentTotal", serialization_alias="componentTotal"
+    )
+    added_count: int = Field(default=0, alias="addedCount", serialization_alias="addedCount")
+    removed_count: int = Field(default=0, alias="removedCount", serialization_alias="removedCount")
+    updated_count: int = Field(default=0, alias="updatedCount", serialization_alias="updatedCount")
+    added: list[SbomDiffEntry] = Field(default_factory=list)
+    removed: list[SbomDiffEntry] = Field(default_factory=list)
+    updated: list[SbomDiffEntry] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class AffectedScanTarget(BaseModel):
+    """Compact representation of an SCA scan finding affected by a CVE.
+
+    Shown on the vulnerability detail page, mirroring AffectedInventoryItem.
+    """
+
+    scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+    target_id: str = Field(alias="targetId", serialization_alias="targetId")
+    target_name: str = Field(alias="targetName", serialization_alias="targetName")
+    package_name: str = Field(alias="packageName", serialization_alias="packageName")
+    package_version: str = Field(
+        default="", alias="packageVersion", serialization_alias="packageVersion"
+    )
+    severity: str = "unknown"
+    scanner: str = ""
+    fix_version: str | None = Field(
+        default=None, alias="fixVersion", serialization_alias="fixVersion"
+    )
+    cvss_score: float | None = Field(
+        default=None, alias="cvssScore", serialization_alias="cvssScore"
+    )
+    # "finding" = a confirmed scan finding; "sbom" = the package is in the
+    # target's latest-scan SBOM at an affected version but no finding exists yet
+    # (the scan predates the advisory — rescan to confirm).
+    match_type: str = Field(
+        default="finding", alias="matchType", serialization_alias="matchType"
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class ConsolidatedTargetSchema(BaseModel):

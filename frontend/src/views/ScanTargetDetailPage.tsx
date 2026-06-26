@@ -6,13 +6,14 @@ import {
   fetchGlobalFindings,
   fetchScanTarget,
   fetchTargetHistory,
+  fetchTargetSbomDiff,
   submitManualScan,
   triggerTargetCheck,
 } from "../api/scans";
 import { SeverityBadges } from "../components/SeverityBadges";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
-import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget } from "../types";
+import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget, TargetSbomDiff } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -270,6 +271,109 @@ const StatusPill = ({ status }: { status: string }) => {
   );
 };
 
+const SbomDiffGroup = ({
+  label,
+  color,
+  entries,
+  total,
+}: {
+  label: string;
+  color: string;
+  entries: { name: string; version: string; previousVersion?: string | null }[];
+  total: number;
+}) => {
+  if (total === 0) return null;
+  const shown = entries.slice(0, 12);
+  const overflow = total - shown.length;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+        <span style={{ fontSize: "0.8rem", fontWeight: 600, color }}>{label}</span>
+        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>{total}</span>
+      </div>
+      <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+        {shown.map((e, i) => (
+          <span
+            key={`${e.name}@${e.version}-${i}`}
+            style={{
+              fontSize: "0.72rem",
+              fontFamily: "var(--mono, monospace)",
+              background: `${color}14`,
+              border: `1px solid ${color}33`,
+              borderRadius: 5,
+              padding: "0.1rem 0.45rem",
+              color: "rgba(255,255,255,0.8)",
+              wordBreak: "break-all",
+            }}
+          >
+            {e.name}
+            {e.previousVersion ? ` ${e.previousVersion} → ${e.version}` : `@${e.version}`}
+          </span>
+        ))}
+        {overflow > 0 && (
+          <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.4)" }}>+{overflow}</span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SbomChangesCard = ({ diff }: { diff: TargetSbomDiff }) => {
+  const { t } = useI18n();
+  const hasChanges = diff.addedCount + diff.removedCount + diff.updatedCount > 0;
+  return (
+    <section className="card">
+      <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.85rem" }}>
+        <h2 style={{ ...sectionHeading, margin: 0 }}>{t("SBOM changes", "SBOM-Änderungen")}</h2>
+        <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.8rem", display: "inline-flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
+          {diff.latestScanAt && (
+            <span title={formatDateTime(diff.latestScanAt)}>
+              {t("scanned", "gescannt")} {formatRelative(diff.latestScanAt)}
+            </span>
+          )}
+          {diff.latestCommitSha && (
+            <>
+              <span>·</span>
+              <code
+                style={{
+                  fontSize: "0.72rem",
+                  color: "rgba(255,255,255,0.6)",
+                  background: "rgba(255,255,255,0.05)",
+                  borderRadius: 4,
+                  padding: "0.1rem 0.4rem",
+                }}
+              >
+                {diff.latestCommitSha.slice(0, 7)}
+              </code>
+            </>
+          )}
+          <span>·</span>
+          <span>{diff.componentTotal} {t("components", "Komponenten")}</span>
+        </span>
+      </div>
+      {!diff.previousScanId ? (
+        <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", margin: 0 }}>
+          {t(
+            `Baseline scan — ${diff.componentTotal} components, nothing to compare yet.`,
+            `Erster Scan — ${diff.componentTotal} Komponenten, noch nichts zu vergleichen.`,
+          )}
+        </p>
+      ) : !hasChanges ? (
+        <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", margin: 0 }}>
+          {t("No SBOM changes since the previous scan.", "Keine SBOM-Änderungen seit dem letzten Scan.")}
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <SbomDiffGroup label={t("Added", "Hinzugefügt")} color="#69db7c" entries={diff.added} total={diff.addedCount} />
+          <SbomDiffGroup label={t("Updated", "Aktualisiert")} color="#fcc419" entries={diff.updated} total={diff.updatedCount} />
+          <SbomDiffGroup label={t("Removed", "Entfernt")} color="#ff6b6b" entries={diff.removed} total={diff.removedCount} />
+        </div>
+      )}
+    </section>
+  );
+};
+
 export const ScanTargetDetailPage = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -287,6 +391,7 @@ export const ScanTargetDetailPage = () => {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [findings, setFindings] = useState<ConsolidatedFinding[]>([]);
+  const [sbomDiff, setSbomDiff] = useState<TargetSbomDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -310,16 +415,18 @@ export const ScanTargetDetailPage = () => {
       }
       // Follow-up queries match exactly on the scans' target_id field — use the
       // canonical id from the response, not the raw URL param.
-      const [hist, finds] = await Promise.all([
+      const [hist, finds, diff] = await Promise.all([
         fetchTargetHistory(tg.id, { limit: HISTORY_PAGE, offset: 0 }).catch(
           () => ({ items: [] as ScanHistoryEntry[], total: 0, targetId: tg.id })
         ),
         fetchGlobalFindings({ targetId: tg.id, limit: 10 }).catch(() => ({ items: [] as ConsolidatedFinding[], total: 0 })),
+        fetchTargetSbomDiff(tg.id).catch(() => null),
       ]);
       // Server returns a page oldest-first; reverse to newest-first for the table.
       setHistory([...(hist.items ?? [])].reverse());
       setHistoryTotal(hist.total ?? (hist.items?.length ?? 0));
       setFindings(finds.items ?? []);
+      setSbomDiff(diff);
     } catch {
       setError(t("Target not found.", "Ziel nicht gefunden."));
     } finally {
@@ -730,6 +837,9 @@ export const ScanTargetDetailPage = () => {
           </div>
         </section>
       )}
+
+      {/* SBOM changes */}
+      {!isImport && sbomDiff && sbomDiff.latestScanId && <SbomChangesCard diff={sbomDiff} />}
 
       {/* History */}
       <section className="card">

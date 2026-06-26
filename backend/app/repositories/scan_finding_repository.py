@@ -238,6 +238,42 @@ class ScanFindingRepository:
             log.warning("scan_finding_repository.find_by_cve_failed", cve=vulnerability_id, error=str(exc))
             return 0, []
 
+    async def find_by_vulnerability_ids(
+        self, vulnerability_ids: list[str], limit: int = 100, offset: int = 0
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Find non-dismissed scan findings matching any of the given vuln IDs.
+
+        Generalises `find_by_cve` to a set of identifiers (a CVE plus its
+        aliases) for the "Affected in your scans" block. Served by the
+        `vulnerability_id` index; dismissed findings are excluded.
+        """
+        if not vulnerability_ids:
+            return 0, []
+        query: dict[str, Any] = {
+            "vulnerability_id": {"$in": vulnerability_ids},
+            "dismissed": {"$ne": True},
+        }
+        try:
+            total = await self.collection.count_documents(query)
+            cursor = (
+                self.collection.find(query)
+                .sort("created_at", -1)
+                .skip(offset)
+                .limit(limit)
+            )
+            items = []
+            async for doc in cursor:
+                doc["_id"] = str(doc["_id"])
+                items.append(doc)
+            return total, items
+        except PyMongoError as exc:
+            log.warning(
+                "scan_finding_repository.find_by_vulnerability_ids_failed",
+                ids=vulnerability_ids,
+                error=str(exc),
+            )
+            return 0, []
+
     async def update_vulnerability_id(
         self,
         scan_id: str,

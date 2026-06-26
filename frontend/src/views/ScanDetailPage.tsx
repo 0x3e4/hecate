@@ -173,6 +173,7 @@ interface MergedFinding {
   description: string | null;
   fixVersion: string | null;
   fixState: string;
+  advisoryFixVersions: string[];
   dataSource: string | null;
   scanners: string[];
   cvssScore: number | null;
@@ -205,6 +206,9 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
     if (!existing.findingIds.includes(f.id)) existing.findingIds.push(f.id);
     if (!existing.scanners.includes(f.scanner)) existing.scanners.push(f.scanner);
     if (f.fixVersion) existing._fixCandidates.push(normalizeVersion(f.fixVersion));
+    for (const v of f.advisoryFixVersions ?? []) {
+      if (v && !existing.advisoryFixVersions.includes(v)) existing.advisoryFixVersions.push(v);
+    }
     if (!existing.cvssScore && f.cvssScore) existing.cvssScore = f.cvssScore;
     if (!existing.packageType && f.packageType) existing.packageType = f.packageType;
     if (!existing.matchedFrom && f.matchedFrom) existing.matchedFrom = f.matchedFrom;
@@ -285,6 +289,7 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
           description: f.description ?? null,
           fixVersion: f.fixVersion ?? null,
           fixState: f.fixState,
+          advisoryFixVersions: [...(f.advisoryFixVersions ?? [])],
           dataSource: f.dataSource ?? null,
           scanners: [f.scanner],
           cvssScore: f.cvssScore ?? null,
@@ -1362,13 +1367,34 @@ export const ScanDetailPage = () => {
                           <td style={tdStyle}>{f.packageVersion || "—"}</td>
                           <td style={tdStyle}><SeverityChip severity={f.severity} /></td>
                           <td style={tdStyle}>
-                            {f.fixVersion ? (
-                              <span style={{ color: "#69db7c", fontSize: "0.75rem" }}>{f.fixVersion}</span>
-                            ) : (
-                              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.75rem" }}>
-                                {f.fixState === "not_fixed" ? t("No fix", "Kein Fix") : "—"}
-                              </span>
-                            )}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", alignItems: "flex-start" }}>
+                              {f.fixVersion ? (
+                                <span style={{ color: "#69db7c", fontSize: "0.75rem" }}>{f.fixVersion}</span>
+                              ) : f.advisoryFixVersions.length === 0 ? (
+                                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.75rem" }}>
+                                  {f.fixState === "not_fixed" ? t("No fix", "Kein Fix") : "—"}
+                                </span>
+                              ) : null}
+                              {f.advisoryFixVersions.length > 0 && (
+                                <span
+                                  title={t(
+                                    `Unaffected/patched per advisory: ${f.advisoryFixVersions.join(", ")}`,
+                                    `Nicht betroffen/gepatcht laut Advisory: ${f.advisoryFixVersions.join(", ")}`,
+                                  )}
+                                  style={{
+                                    color: "#3bc9db",
+                                    fontSize: "0.7rem",
+                                    background: "rgba(59,201,219,0.1)",
+                                    border: "1px solid rgba(59,201,219,0.25)",
+                                    borderRadius: 5,
+                                    padding: "0.05rem 0.4rem",
+                                  }}
+                                >
+                                  {t("adv", "adv")}: {f.advisoryFixVersions.slice(0, 2).join(", ")}
+                                  {f.advisoryFixVersions.length > 2 ? ` +${f.advisoryFixVersions.length - 2}` : ""}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td style={tdStyle}>
                             <span style={{ color: "rgba(255,255,255,0.4)" }}>{f.scanners.join(", ")}</span>

@@ -32,7 +32,9 @@ app/
 │   ├── changelog.py         Recent changes (pagination, date / source filters)
 │   ├── scans.py             SCA scan management — submit, targets (group filter + manual /check trigger for auto-scan diagnostics),
 │   │                          dashboard coverage maps (GET /scans/coverage — cveScan/productScan for the Today SCA highlight),
-│   │                          target-group roll-up, history (since filter), findings (?includeDismissed), SBOM, SBOM export,
+│   │                          target-group roll-up, history (since filter), SBOM diff between the two latest completed scans
+│   │                          (GET /scans/targets/{id:path}/sbom-diff), findings (?includeDismissed; advisory unaffected/
+│   │                          patched versions enriched onto each finding at read time), SBOM, SBOM export,
 │   │                          SBOM import, compare, VEX (incl. bulk-update-by-ids and import), findings dismiss,
 │   │                          license compliance, cross-CVE attack chain (GET/POST /scans/{id}/attack-chain),
 │   │                          shields.io status badges (GET /scans/{id}/shield, GET /scans/targets/{id:path}/shield —

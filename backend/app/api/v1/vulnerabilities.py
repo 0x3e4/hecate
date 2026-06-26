@@ -40,6 +40,7 @@ from app.services.app_settings_service import AppSettingsService, get_app_settin
 from app.services.attack_path_service import AttackPathService, get_attack_path_service
 from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
 from app.services.inventory_service import InventoryService, get_inventory_service
+from app.services.scan_service import ScanService, get_scan_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
 from app.core.write_auth import require_admin_write, require_ai_write
@@ -396,6 +397,7 @@ async def get_vulnerability(
     identifier: str,
     service: VulnerabilityService = Depends(get_vulnerability_service),
     inventory_service: InventoryService = Depends(get_inventory_service),
+    scan_service: ScanService = Depends(get_scan_service),
 ) -> VulnerabilityDetail:
     """
     Retrieve a single vulnerability by its canonical identifier (CVE or source ID).
@@ -414,6 +416,25 @@ async def get_vulnerability(
         affected = []
     if affected:
         result.affected_inventory = [a.model_dump(by_alias=True) for a in affected]
+
+    # "Affected in your scans" — reverse lookup over SCA findings (CVE + aliases),
+    # plus a version-checked SBOM fallback for packages a stale scan never flagged.
+    try:
+        raw_ids = [result.vuln_id, *(result.aliases or [])]
+        vuln_ids = {i for i in raw_ids if i} | {i.upper() for i in raw_ids if i}
+        impacted = [p.model_dump(by_alias=False) for p in (result.impacted_products or [])]
+        affected_targets = await scan_service.affected_scan_targets_for_vuln(
+            list(vuln_ids), impacted_products=impacted, limit=25
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "scan.affected_targets_lookup_failed",
+            vuln_id=identifier,
+            error=str(exc),
+        )
+        affected_targets = []
+    if affected_targets:
+        result.affected_scan_targets = affected_targets
     return result
 
 

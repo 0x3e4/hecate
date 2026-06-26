@@ -175,6 +175,31 @@ class ScanRepository:
             log.warning("scan_repository.get_latest_failed", target_id=target_id, error=str(exc))
             return None
 
+    async def get_recent_completed(self, target_id: str, n: int = 2) -> list[dict[str, Any]]:
+        """Return the ``n`` most-recent completed scans for a target (newest first).
+
+        Used by the SBOM-diff card on the target detail page, which compares the
+        latest two completed scans. Unlike ``get_history`` (oldest-first pages for
+        the timeline chart), this returns plain newest-first.
+        """
+        try:
+            cursor = (
+                self.collection.find(
+                    {"target_id": target_id, "status": "completed"},
+                    {"_id": 1, "started_at": 1, "commit_sha": 1},
+                )
+                .sort("created_at", -1)
+                .limit(max(n, 0))
+            )
+            items: list[dict[str, Any]] = []
+            async for doc in cursor:
+                doc["_id"] = str(doc["_id"])
+                items.append(doc)
+            return items
+        except PyMongoError as exc:
+            log.warning("scan_repository.get_recent_completed_failed", target_id=target_id, error=str(exc))
+            return []
+
     async def has_running_scan(self, target_id: str) -> bool:
         """Check if a target has any running or pending scan."""
         try:

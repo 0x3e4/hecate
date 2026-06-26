@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.4.0] - 2026-06-26
+
+### Added
+
+- **SBOM changes** card on the scan-target detail page: shows how the software bill of materials changed between the target's two most-recent completed scans — components added, version-updated (`old → new`), and removed — annotated with the latest scan's date and commit short-hash. Shows a baseline line for targets with a single completed scan. Backed by a new `GET /api/v1/scans/targets/{id}/sbom-diff` endpoint.
+- **Advisory fix hint in scan findings**: the Findings tab now surfaces a vulnerability's unaffected/patched versions (from the advisory's impacted-products data) as a teal "adv" chip next to the scanner's own fix version — filling the gap when a scanner reports no fix. Computed at read time, so it always reflects the current vulnerability database.
+- **"Affected in your scans" block** on the vulnerability detail page (red, mirroring the "Affected in your environment" inventory callout): lists the SCA scan targets affected by this CVE (or its aliases), each linking to the covering scan. Two kinds of match — a confirmed scan **finding** (with scanner + fix), or an **SBOM** match where the package is in the target's latest scan at an affected version but the scan predates the advisory (tagged *in SBOM · rescan to confirm*), so newly-published CVEs surface even without a re-scan.
+
+### Changed
+
+- Documentation sync for the SBOM-changes card, the advisory fix hint in findings, and the affected-scans block on CVE detail.
+- Dependency bumps. Backend: `mcp` 1.28.0 → 1.28.1, `click` 8.4.1 → 8.4.2, `typer` 0.26.7 → 0.26.8, `google-auth` 2.55.0 → 2.55.1, `anyio` 4.14.0 → 4.14.1, `coverage` 7.14.2 → 7.14.3. Scanner: `fastapi` 0.138.0 → 0.138.1, `anyio` 4.14.0 → 4.14.1, `click` 8.4.1 → 8.4.2. Frontend: `dompurify` 3.4.8 → 3.4.10, `es-toolkit` 1.47.0 → 1.47.1, `ts-dedent` 2.2.0 → 2.3.0, plus transitive refreshes (`acorn`, `caniuse-lite`, `baseline-browser-mapping`, `electron-to-chromium`, `es-iterator-helpers`, `function.prototype.name`, `side-channel`).
+
+### Fixed
+
 ## [1.3.1] - 2026-06-22
 
 ### Added

@@ -50,6 +50,7 @@ from app.schemas.scan import (
     ScanTargetResponse,
     SubmitScanRequest,
     SubmitScanResponse,
+    TargetSbomDiffResponse,
     TargetWritePasswordRequest,
 )
 from app.schemas.vex import (
@@ -283,6 +284,19 @@ async def get_target_shield(
     if not scan:
         return _shield_payload("hecate", "no scans", "lightgrey", is_error=True)
     return _render_scan_shield(scan, label)
+
+
+# Declared before the bare ``/targets/{target_id:path}`` GET so the greedy path
+# converter doesn't capture ``/sbom-diff`` as part of the target id.
+@router.get("/targets/{target_id:path}/sbom-diff", response_model=TargetSbomDiffResponse)
+async def get_target_sbom_diff(
+    target_id: str = Depends(resolve_target_id_path),
+    service: ScanService = Depends(get_scan_service),
+) -> TargetSbomDiffResponse:
+    """SBOM delta (added/updated/removed components) between a target's two
+    most-recent completed scans, with the latest scan's date + commit."""
+    diff = await service.get_target_sbom_diff(target_id)
+    return TargetSbomDiffResponse(**diff)
 
 
 # Write-password management is an ADMIN action (Layer A). Declared before the
@@ -1324,6 +1338,7 @@ def _map_finding(doc: dict[str, Any]) -> ScanFindingResponse:
         description=doc.get("description"),
         fix_version=doc.get("fix_version"),
         fix_state=doc.get("fix_state", "unknown"),
+        advisory_fix_versions=doc.get("advisory_fix_versions", []),
         data_source=doc.get("data_source"),
         urls=doc.get("urls", []),
         cvss_score=doc.get("cvss_score"),

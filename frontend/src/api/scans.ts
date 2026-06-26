@@ -12,6 +12,7 @@ import type {
   ConsolidatedSbomListResponse,
   ScanLayerAnalysis,
   ScanHistoryResponse,
+  TargetSbomDiff,
   ScanComparisonResponse,
   ScannerStats,
   SubmitScanRequest,
@@ -256,6 +257,13 @@ export const fetchTargetHistory = async (
   const response = await api.get<ScanHistoryResponse>(
     `/v1/scans/targets/${encodeURIComponent(targetId)}/history`,
     { params },
+  );
+  return response.data;
+};
+
+export const fetchTargetSbomDiff = async (targetId: string): Promise<TargetSbomDiff> => {
+  const response = await api.get<TargetSbomDiff>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/sbom-diff`,
   );
   return response.data;
 };

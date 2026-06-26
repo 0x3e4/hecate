@@ -123,6 +123,21 @@ link straight to the inventory page. This is the bridge between "this CVE exists
 problem" — the matching logic and how to populate the inventory are covered in
 [Environment Inventory](inventory.md).
 
+### Affected in your scans
+
+When this CVE (or one of its aliases) turns up in your [SCA scan](../sca-scanning.md) results, a red
+**Affected in your scans** callout appears below the inventory block. It lists each affected scan
+target with the offending package and version, the scanner that flagged it and a fix version when one
+is known — every row linking straight to the covering scan. It's the reverse of the per-scan findings
+view: instead of "what does this scan contain", it answers "which of my scanned projects does this
+CVE touch".
+
+It surfaces two kinds of match. A confirmed **finding** comes straight from a scan that flagged the
+CVE. A package can also match through the **SBOM**: if a target's most recent scan catalogued the
+package at a version that falls in this CVE's affected range — but the scan ran before the advisory
+existed, so it was never flagged — the row is tagged *in SBOM · rescan to confirm*. Re-running that
+scan turns it into a normal finding.
+
 ### The detail tabs
 
 The body is organised into tabs, each badged with a count where one applies. They render only the

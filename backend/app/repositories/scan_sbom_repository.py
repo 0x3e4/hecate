@@ -369,6 +369,39 @@ class ScanSbomRepository:
             )
             return []
 
+    async def find_components_in_scans(
+        self, scan_ids: list[str], names: list[str]
+    ) -> list[dict[str, Any]]:
+        """Find SBOM components named in ``names`` across the given scans.
+
+        Used by the "Affected in your scans" CVE-detail block to catch a CVE
+        whose package sits in a target's SBOM but was never flagged as a finding
+        (the scan predates the advisory). The version check against the CVE's
+        affected ranges is the caller's responsibility. Served by the
+        ``(name, version)`` index via the ``name: {$in}`` prefix.
+        """
+        if not scan_ids or not names:
+            return []
+        query = {"scan_id": {"$in": scan_ids}, "name": {"$in": names}}
+        try:
+            cursor = self.collection.find(
+                query,
+                {"scan_id": 1, "target_id": 1, "name": 1, "version": 1, "purl": 1},
+            )
+            out: list[dict[str, Any]] = []
+            async for doc in cursor:
+                out.append({
+                    "scan_id": doc.get("scan_id"),
+                    "target_id": doc.get("target_id"),
+                    "name": doc.get("name"),
+                    "version": doc.get("version"),
+                    "purl": doc.get("purl"),
+                })
+            return out
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.find_components_in_scans_failed", error=str(exc))
+            return []
+
     async def delete_by_scan(self, scan_id: str) -> int:
         try:
             result = await self.collection.delete_many({"scan_id": scan_id})

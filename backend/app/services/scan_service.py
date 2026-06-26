@@ -83,6 +83,45 @@ def _normalize_target_id(value: str, *, strip_scheme: bool) -> str:
     return normalized.rstrip("/")
 
 
+def advisory_fixed_versions(
+    entries: list[dict[str, Any]], package_name: str, *, cap: int = 10
+) -> list[str]:
+    """Collect advisory unaffected/patched versions for a package.
+
+    Given a vulnerability document's ``impactedProducts`` entries, return the
+    union of ``unaffectedVersions`` + ``patchedVersions`` (both camelCase and
+    snake_case keys) for the entry whose product slug matches ``package_name``;
+    falls back to the union over all entries when no product name matches (same
+    CVE anyway). Pure function — used by the read-time findings enrichment.
+    """
+    from app.utils.strings import slugify
+
+    pkg_slug = slugify(package_name) if package_name else ""
+    matched: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        product = entry.get("product") or {}
+        prod_slug = product.get("slug") if isinstance(product, dict) else None
+        prod_name = product.get("name") if isinstance(product, dict) else None
+        cand_slugs = {slugify(str(v)) for v in (prod_slug, prod_name) if v}
+        if pkg_slug and pkg_slug in cand_slugs:
+            matched.append(entry)
+    source = matched or entries
+    seen: set[str] = set()
+    fixed: list[str] = []
+    for entry in source:
+        if not isinstance(entry, dict):
+            continue
+        for key in ("unaffectedVersions", "unaffected_versions", "patchedVersions", "patched_versions"):
+            for ver in entry.get(key, []) or []:
+                norm = str(ver).strip()
+                if norm and norm not in seen:
+                    seen.add(norm)
+                    fixed.append(norm)
+    return fixed[:cap]
+
+
 class ScanService:
     def __init__(
         self,
@@ -1356,7 +1395,56 @@ class ScanService:
                 scan_id, severity=severity, limit=limit, offset=offset, include_dismissed=include_dismissed
             )
 
+        # Read-time enrichment: surface advisory unaffected/patched versions as a
+        # fix hint (always fresh from the vuln DB; never persisted on the finding).
+        await self._enrich_advisory_fix_versions(items)
+
         return total, items
+
+    async def _enrich_advisory_fix_versions(self, items: list[dict[str, Any]]) -> None:
+        """Attach `advisory_fix_versions` to each finding from the vuln DB advisory.
+
+        For every finding with a `vulnerability_id`, look up the matching
+        vulnerability document and collect the `unaffectedVersions` +
+        `patchedVersions` of the impacted-products entry whose product matches
+        the finding's package (see `advisory_fixed_versions`). Read-only — the
+        value is not written back to the finding document.
+        """
+        from app.db.mongo import get_database
+
+        ids = {item.get("vulnerability_id") for item in items if item.get("vulnerability_id")}
+        if not ids:
+            return
+
+        db = await get_database()
+        vuln_col = db[settings.mongo_vulnerabilities_collection]
+        try:
+            cursor = vuln_col.find(
+                {"_id": {"$in": list(ids)}},
+                {"_id": 1, "impactedProducts": 1, "impacted_products": 1},
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("scan_service.advisory_fix_lookup_failed", error=str(exc))
+            return
+
+        # vuln_id -> list of impacted-product entries (camelCase preferred)
+        impacted_by_vuln: dict[str, list[dict[str, Any]]] = {}
+        async for doc in cursor:
+            entries = doc.get("impactedProducts") or doc.get("impacted_products") or []
+            if isinstance(entries, list):
+                impacted_by_vuln[doc["_id"]] = entries
+
+        if not impacted_by_vuln:
+            return
+
+        for item in items:
+            vuln_id = item.get("vulnerability_id")
+            entries = impacted_by_vuln.get(vuln_id) if vuln_id else None
+            if not entries:
+                continue
+            fixed = advisory_fixed_versions(entries, item.get("package_name", ""))
+            if fixed:
+                item["advisory_fix_versions"] = fixed
 
     async def _lazy_severity_override(self, scan_id: str) -> None:
         """One-time severity override for existing scans that predate the override feature."""
@@ -1731,6 +1819,237 @@ class ScanService:
         self, cve_id: str, limit: int = 50, offset: int = 0
     ) -> tuple[int, list[dict[str, Any]]]:
         return await self.finding_repo.find_by_cve(cve_id, limit=limit, offset=offset)
+
+    async def get_target_sbom_diff(self, target_id: str, list_cap: int = 50) -> dict[str, Any]:
+        """SBOM delta between a target's two most-recent completed scans.
+
+        Classifies each component as added (new name+version, name absent
+        before), updated (name present in both but a new version), or removed
+        (name+version gone, name absent now). With fewer than two completed
+        scans the response is a baseline payload (no diff lists).
+        """
+        recent = await self.scan_repo.get_recent_completed(target_id, n=2)
+        base: dict[str, Any] = {
+            "target_id": target_id,
+            "latest_scan_id": None,
+            "latest_scan_at": None,
+            "latest_commit_sha": None,
+            "previous_scan_id": None,
+            "previous_scan_at": None,
+            "component_total": 0,
+            "added_count": 0,
+            "removed_count": 0,
+            "updated_count": 0,
+            "added": [],
+            "removed": [],
+            "updated": [],
+        }
+        if not recent:
+            return base
+
+        latest = recent[0]
+        base["latest_scan_id"] = str(latest.get("_id"))
+        base["latest_scan_at"] = latest.get("started_at")
+        base["latest_commit_sha"] = latest.get("commit_sha")
+
+        # name -> set(versions) for each scan, plus the (name, version) set.
+        def _index(rows: list[dict[str, Any]]) -> tuple[dict[str, set[str]], set[tuple[str, str]]]:
+            by_name: dict[str, set[str]] = {}
+            pairs: set[tuple[str, str]] = set()
+            for row in rows:
+                name = row.get("name") or ""
+                version = row.get("version") or ""
+                if not name:
+                    continue
+                by_name.setdefault(name, set()).add(version)
+                pairs.add((name, version))
+            return by_name, pairs
+
+        latest_rows = await self.sbom_repo.list_all_by_scan(str(latest.get("_id")))
+        latest_by_name, latest_pairs = _index(latest_rows)
+        base["component_total"] = len(latest_pairs)
+
+        if len(recent) < 2:
+            return base
+
+        previous = recent[1]
+        base["previous_scan_id"] = str(previous.get("_id"))
+        base["previous_scan_at"] = previous.get("started_at")
+        previous_rows = await self.sbom_repo.list_all_by_scan(str(previous.get("_id")))
+        previous_by_name, previous_pairs = _index(previous_rows)
+
+        added: list[dict[str, Any]] = []
+        updated: list[dict[str, Any]] = []
+        for name, version in sorted(latest_pairs - previous_pairs):
+            if name in previous_by_name:
+                # name existed before with other version(s) → upgrade/downgrade
+                prev_versions = sorted(previous_by_name[name])
+                updated.append({
+                    "name": name,
+                    "version": version,
+                    "previous_version": ", ".join(prev_versions) if prev_versions else None,
+                })
+            else:
+                added.append({"name": name, "version": version})
+
+        removed: list[dict[str, Any]] = []
+        for name, version in sorted(previous_pairs - latest_pairs):
+            if name not in latest_by_name:
+                removed.append({"name": name, "version": version})
+
+        base["added_count"] = len(added)
+        base["updated_count"] = len(updated)
+        base["removed_count"] = len(removed)
+        base["added"] = added[:list_cap]
+        base["updated"] = updated[:list_cap]
+        base["removed"] = removed[:list_cap]
+        return base
+
+    async def affected_scan_targets_for_vuln(
+        self,
+        vuln_ids: list[str],
+        *,
+        impacted_products: list[dict[str, Any]] | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Scan targets affected by a CVE, deduped to one row per target+package.
+
+        Mirrors `InventoryService.affected_inventory_for_vuln` for the SCA side:
+        powers the "Affected in your scans" block on the vulnerability detail
+        page. Two passes, findings first:
+
+        1. **finding** — confirmed scan findings matching the CVE / aliases.
+        2. **sbom** — when `impacted_products` is given, the CVE's affected
+           packages are also matched against each target's latest-scan SBOM,
+           verifying the installed version falls in the CVE's affected range
+           (reusing the inventory version matcher). Catches a CVE whose package
+           sits in your SBOM but was never flagged because the scan predates the
+           advisory. SBOM-only rows carry `matchType="sbom"` and no scanner/fix.
+
+        Resolves each target's name from the (denormalised) scan document,
+        falling back to the target document.
+        """
+        from app.services.inventory_matcher import _slug, _version_in_range_string
+
+        scan_name_cache: dict[str, str | None] = {}
+        target_name_cache: dict[str, str | None] = {}
+
+        async def _resolve_target_name(scan_id: str | None, target_id: str) -> str:
+            if scan_id:
+                if scan_id not in scan_name_cache:
+                    scan = await self.scan_repo.get(scan_id)
+                    scan_name_cache[scan_id] = scan.get("target_name") if scan else None
+                name = scan_name_cache.get(scan_id)
+                if name:
+                    return name
+            if target_id not in target_name_cache:
+                target = await self.target_repo.get(target_id)
+                target_name_cache[target_id] = target.get("name") if target else None
+            return target_name_cache.get(target_id) or target_id
+
+        results: list[dict[str, Any]] = []
+        # Tracks (target_id, package-slug) already shown so an SBOM hit never
+        # duplicates a confirmed finding for the same package on the same target.
+        covered: set[tuple[str, str]] = set()
+
+        # --- Pass 1: confirmed findings ---
+        ids = [i for i in {v for v in vuln_ids if v} if i]
+        if ids:
+            _, findings = await self.finding_repo.find_by_vulnerability_ids(
+                ids, limit=max(limit * 4, limit), offset=0
+            )
+            seen_findings: set[tuple[str, str, str]] = set()
+            for f in findings:
+                target_id = f.get("target_id") or ""
+                pkg = f.get("package_name") or ""
+                ver = f.get("package_version") or ""
+                key = (target_id, pkg, ver)
+                if key in seen_findings:
+                    continue
+                seen_findings.add(key)
+                covered.add((target_id, _slug(pkg)))
+                scan_id = str(f.get("scan_id") or "") or None
+                target_name = await _resolve_target_name(scan_id, target_id)
+                results.append({
+                    "scanId": scan_id or "",
+                    "targetId": target_id,
+                    "targetName": target_name,
+                    "packageName": pkg,
+                    "packageVersion": ver,
+                    "severity": f.get("severity") or "unknown",
+                    "scanner": f.get("scanner") or "",
+                    "fixVersion": f.get("fix_version"),
+                    "cvssScore": f.get("cvss_score"),
+                    "matchType": "finding",
+                })
+                if len(results) >= limit:
+                    return results
+
+        # --- Pass 2: SBOM components at an affected version (stale-scan catch) ---
+        if not impacted_products:
+            return results
+
+        # product-slug -> affected version-range strings; candidate SBOM names.
+        versions_by_slug: dict[str, list[str]] = {}
+        candidate_names: set[str] = set()
+        for entry in impacted_products:
+            if not isinstance(entry, dict):
+                continue
+            product = entry.get("product") or {}
+            prod_slug = product.get("slug") if isinstance(product, dict) else None
+            prod_name = product.get("name") if isinstance(product, dict) else None
+            ranges = [str(v) for v in (entry.get("versions") or []) if str(v).strip()]
+            if not ranges:
+                continue
+            for raw in (prod_slug, prod_name):
+                if raw:
+                    candidate_names.add(str(raw))
+                    candidate_names.add(str(raw).lower())
+                    slug = _slug(raw)
+                    if slug:
+                        candidate_names.add(slug)
+                        versions_by_slug.setdefault(slug, []).extend(ranges)
+        if not versions_by_slug:
+            return results
+
+        latest_scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
+        components = await self.sbom_repo.find_components_in_scans(
+            latest_scan_ids, list(candidate_names)
+        )
+        seen_sbom: set[tuple[str, str, str]] = set()
+        for comp in components:
+            name = comp.get("name") or ""
+            version = comp.get("version") or ""
+            slug = _slug(name)
+            ranges = versions_by_slug.get(slug)
+            if not ranges or not version:
+                continue
+            if not any(_version_in_range_string(version, rng) for rng in ranges):
+                continue
+            target_id = comp.get("target_id") or ""
+            if (target_id, slug) in covered:
+                continue
+            key = (target_id, name, version)
+            if key in seen_sbom:
+                continue
+            seen_sbom.add(key)
+            scan_id = str(comp.get("scan_id") or "") or None
+            target_name = await _resolve_target_name(scan_id, target_id)
+            results.append({
+                "scanId": scan_id or "",
+                "targetId": target_id,
+                "targetName": target_name,
+                "packageName": name,
+                "packageVersion": version,
+                "severity": "unknown",
+                "scanner": "",
+                "fixVersion": None,
+                "cvssScore": None,
+                "matchType": "sbom",
+            })
+            if len(results) >= limit:
+                break
+        return results
 
     async def get_target_history(
         self, target_id: str, limit: int = 30, since: datetime | None = None, offset: int = 0,

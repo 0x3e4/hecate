@@ -331,6 +331,7 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   changeHistory?: VulnerabilityChangeEntry[];
   sources?: SourceEntry[];
   affectedInventory?: AffectedInventoryItem[];
+  affectedScanTargets?: AffectedScanTarget[];
   attackPath?: AttackPathNarrative | null;
 }
 
@@ -830,6 +831,7 @@ export interface ScanFinding {
   description?: string | null;
   fixVersion?: string | null;
   fixState: string;
+  advisoryFixVersions?: string[] | null;
   dataSource?: string | null;
   urls?: string[];
   cvssScore?: number | null;
@@ -959,6 +961,42 @@ export interface ScanHistoryResponse {
   targetId: string;
   total: number;
   items: ScanHistoryEntry[];
+}
+
+export interface SbomDiffEntry {
+  name: string;
+  version: string;
+  previousVersion?: string | null;
+}
+
+export interface TargetSbomDiff {
+  targetId: string;
+  latestScanId?: string | null;
+  latestScanAt?: string | null;
+  latestCommitSha?: string | null;
+  previousScanId?: string | null;
+  previousScanAt?: string | null;
+  componentTotal: number;
+  addedCount: number;
+  removedCount: number;
+  updatedCount: number;
+  added: SbomDiffEntry[];
+  removed: SbomDiffEntry[];
+  updated: SbomDiffEntry[];
+}
+
+export interface AffectedScanTarget {
+  scanId: string;
+  targetId: string;
+  targetName: string;
+  packageName: string;
+  packageVersion: string;
+  severity: string;
+  scanner: string;
+  fixVersion?: string | null;
+  cvssScore?: number | null;
+  /** "finding" = confirmed scan finding; "sbom" = in the SBOM at an affected version, no finding yet. */
+  matchType?: "finding" | "sbom" | string;
 }
 
 export interface ScanComparisonFinding {

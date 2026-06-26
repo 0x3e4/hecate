@@ -102,10 +102,11 @@ prefix is `/api/v1` (configurable) and CORS is enabled for local integration.
 | `version` | Build / release metadata that powers the in-app Support page. |
 
 Several routes in `scans` are order-sensitive: collection-style routes such as
-`GET /scans/ai-analyses`, the per-target `GET /scans/targets/{id}/history`, and the public
-`GET /scans/{scan_id}/shield` / `GET /scans/targets/{id}/shield` badges must all be declared *before*
-their bare dynamic counterparts (`/{scan_id}`, `/targets/{id:path}`), otherwise FastAPI's greedy path
-converter swallows the literal suffix and 404s.
+`GET /scans/ai-analyses`, the per-target `GET /scans/targets/{id}/history` and
+`GET /scans/targets/{id}/sbom-diff`, and the public `GET /scans/{scan_id}/shield` /
+`GET /scans/targets/{id}/shield` badges must all be declared *before* their bare dynamic counterparts
+(`/{scan_id}`, `/targets/{id:path}`), otherwise FastAPI's greedy path converter swallows the literal
+suffix and 404s.
 
 In addition, the MCP server under `app/mcp/` is mounted as a separate ASGI sub-app at `/mcp` with
 **40 tools** spanning CVE search and detail, the asset catalogue, CWE/CAPEC, stats, environment-inventory
@@ -515,7 +516,7 @@ react-select for the async multi-selects, and react-icons (Lucide) for iconograp
 | `/system` | `SystemPage` | Five tabs: General, Access Control, Notifications, Data, Policies |
 | `/scans` | `ScansPage` | SCA scan management with seven tabs (Targets, Scans, Findings, SBOM, Security Alerts, Licenses, Scanner) |
 | `/malware-feed` | `MalwareFeedPage` | Overview of all `MAL-*`-aliased OSV advisories (`/blocklist` is a legacy redirect) |
-| `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings, quick actions. Splat route — pasting the raw target URL (un-encoded or scheme-less) also resolves; the backend canonicalizes fuzzy ids |
+| `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings, an SBOM-changes card (added / updated / removed components between the two latest completed scans), quick actions. Splat route — pasting the raw target URL (un-encoded or scheme-less) also resolves; the backend canonicalizes fuzzy ids |
 | `/scans/:scanId` | `ScanDetailPage` | Scan details: findings, Attack Chain, SBOM, history, AI analysis, compare, security alerts, SAST, secrets, best practices, layer analysis, license compliance, scanner breakdown |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD integration guide |
 | `/info/api` | `ApiInfoPage` | API documentation with embedded Swagger UI |
