@@ -885,7 +885,8 @@ class StatsService:
         # highlight from firing on a CVE whose version range doesn't actually
         # cover the pinned inventory version (e.g. n8n 2.26.6 vs. a CVE affecting
         # only < 2.26.2).
-        raw_inventory_items = await get_inventory_service().list_all_cached()
+        inventory_service = await get_inventory_service()
+        raw_inventory_items = await inventory_service.list_all_cached()
 
         hits = response.get("hits", {}).get("hits", [])
         cves: list[dict[str, Any]] = []

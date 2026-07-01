@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hecate-scanner"
-version = "1.4.1"
+version = "1.4.2"
 description = "Scanner sidecar for Hecate SCA scanning (Trivy, Grype, Syft, OSV Scanner)."
 authors = ["Hecate Team <info@hecate.pw>"]
 readme = "README.md"
