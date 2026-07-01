@@ -1140,6 +1140,24 @@ textarea.vuln-search-input:focus {
   gap: 0.4rem 0.75rem;
 }
 
+/* Scan target detail page: "Top findings" + "SBOM changes" side-by-side on desktop */
+.target-detail-top-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.target-detail-top-row > .card {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1024px) {
+  .target-detail-top-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cvss-badge-row {
   display: flex;
   align-items: center;

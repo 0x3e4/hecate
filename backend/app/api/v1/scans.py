@@ -293,8 +293,9 @@ async def get_target_sbom_diff(
     target_id: str = Depends(resolve_target_id_path),
     service: ScanService = Depends(get_scan_service),
 ) -> TargetSbomDiffResponse:
-    """SBOM delta (added/updated/removed components) between a target's two
-    most-recent completed scans, with the latest scan's date + commit."""
+    """SBOM delta (added/updated/removed components) for a target — always the
+    most recent scan whose SBOM actually changed, even if trailing rescans
+    since then had no dependency movement."""
     diff = await service.get_target_sbom_diff(target_id)
     return TargetSbomDiffResponse(**diff)
 

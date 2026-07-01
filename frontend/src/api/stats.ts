@@ -50,6 +50,7 @@ export interface SlugBucket {
   slug: string;
   name: string;
   doc_count: number;
+  inventoryMatch?: boolean;
 }
 
 export interface ProductBucket extends SlugBucket {
@@ -64,6 +65,7 @@ export interface TodayCve {
   aliases: string[];
   vendorSlugs?: string[];
   productSlugs?: string[];
+  inventoryMatchIds?: string[];
 }
 
 export interface TodaySummaryResponse {

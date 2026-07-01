@@ -65,8 +65,9 @@ further. Clicking a severity header opens the list filtered to that severity for
 clicking any individual CVE jumps straight to its detail page. Each CVE row also shows its known
 aliases (GHSA, MAL, and so on) next to the primary ID.
 
-If you maintain an [Environment Inventory](inventory.md), the *Today* card cross-references it:
-vendors, products, and CVEs that touch software you run are marked with an **"in inventory"** tag and
+If you maintain an [Environment Inventory](inventory.md), the *Today* card cross-references it using
+the same version-aware matcher as the Inventory page itself: vendors, products, and CVEs confirmed to
+affect an entry you declared (not just a name match) are marked with an **"in inventory"** tag and
 floated to the top of their lists, and a line above the columns tells you how many of the day's CVEs
 affect your inventory. With no inventory configured, the card looks unchanged. Because the columns
 refresh live as new CVEs arrive, newly published inventory-relevant issues highlight as soon as they

@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.4.1] - 2026-07-01
+
+### Added
+
+### Changed
+
+- Deleting a scan target now removes it from the list immediately; its scans, findings, SBOM and layer-analysis data are cleaned up in the background, with a startup sweep that catches anything left over from an interrupted delete.
+- The dashboard "Today" inventory highlight now uses the same precise, version-aware matcher as the Inventory page instead of a vendor/product-only check.
+- The scan-target detail page now shows **Top findings** and **SBOM changes** side by side on desktop.
+- Documentation sync for the NetScaler version-matching fix, the SBOM-changes lookback, background target deletion, and the precise dashboard inventory highlight.
+
+### Fixed
+
+- **NetScaler ADC/Gateway** inventory version matching now treats each release branch's build counter independently, fixing cross-branch false positives/negatives (e.g. a patched build on one branch no longer matches an unrelated branch's fix threshold).
+- The **SBOM changes** card on the scan-target detail page now shows the most recent scan whose dependencies actually changed, walking back through scan history so a run of unchanged auto-rescans no longer hides an earlier real change.
+
 ## [1.4.0] - 2026-06-26
 
 ### Added

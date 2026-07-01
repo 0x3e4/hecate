@@ -158,13 +158,16 @@ It shows the target's metadata (type, application group, registry, auto-scan sta
 severity rollup of its latest scan, and — when auto-scan is enabled — the last change-detection check with its verdict
 and any error, so you can see why an automatic rescan did or did not fire.
 
-Below that, a **Top findings** list summarises the worst of the latest scan. An **SBOM changes** card then shows how
-the target's software bill of materials shifted between its two most-recent completed scans — components **added**,
-**updated** (with the old → new version), and **removed** — headed by the latest scan's time and commit short-hash so
-you can tie a dependency change to a specific commit. A target with only one completed scan shows a baseline line
-instead. A paginated **Scan history** table lists every completed run with a link into each. Quick-action buttons let
-you trigger a rescan, run a change-detection check on demand, copy a shields.io status badge for your README, or delete
-the target and all its data. When a target
+Below that, a **Top findings** list summarises the worst of the latest scan, and an **SBOM changes** card sits
+alongside it (stacked on narrower screens) showing how the target's software bill of materials last shifted —
+components **added**, **updated** (with the old → new version), and **removed** — headed by the changed scan's time
+and commit short-hash so you can tie a dependency change to a specific commit. If the target has had several
+unchanged rescans in a row, the card looks back through its history to the last scan that actually changed something
+and says so, rather than reporting "no changes" just because the most recent run happened to match its predecessor.
+A target with only one completed scan shows a baseline line instead. A paginated **Scan history** table lists every
+completed run with a link into each. Quick-action buttons let you trigger a rescan, run a change-detection check on
+demand, copy a shields.io status badge for your README, or delete the target and all its data — deleting removes the
+target from the list immediately, while its scan history is cleaned up in the background. When a target
 is write-protected, a lock badge appears next to its name and the action buttons require the appropriate password —
 see [Security & Access Control](../security-access-control.md). SBOM-import targets are read-only and do not show the
 rescan, check or delete actions.

@@ -46,6 +46,8 @@ Throughout, matching is **fail-closed for version-less references**: an "any ver
 
 The version comparison understands dotted version numbers, pre-release suffixes (so `8.0.25-preview.1` sorts before `8.0.25`), and a leading `v`. When a version string can't be parsed, Hecate falls back to a plain case-insensitive equality check rather than guessing an ordering — a deliberately conservative choice, so you get false negatives rather than false positives.
 
+A small number of vendors number releases as an independent build counter per branch rather than one continuous scale — Citrix NetScaler ADC/Gateway is the confirmed example, where a version like `14.1, 66.59` means "branch 14.1, build 66.59". For those vendors, Hecate matches the branch first and only then compares build numbers within it, so a fix threshold on one branch (e.g. "branch 14.1, build < 56.73") can never accidentally cover an installed build on a different branch.
+
 ## Where matches show up
 
 ### On the inventory row

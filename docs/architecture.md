@@ -376,7 +376,10 @@ was wrongly cleared for CVE-2026-33116 because its authoritative ranges live onl
 `">= 8.0.0, < 8.0.26"` strings under the camelCase `impactedProducts` field that the old matcher never
 read; and phpBB 3.3.17 was wrongly flagged for old phpBB add-on-module CVEs (e.g. CVE-2008-6301) whose
 only `phpbb:phpbb` reference is a version-less wildcard CPE, until the bound-less wildcard and `>=0`
-paths were made fail-closed.
+paths were made fail-closed. A small, explicitly-curated set of vendors — currently Citrix NetScaler
+ADC/Gateway — number releases as an independent build counter per branch rather than one linear scale;
+for those, the matcher compares the branch first and only then the build number within it, so a fix
+threshold on one branch can't accidentally cover an installed build on a different branch.
 
 Inventory items are additionally enriched with **end-of-life status from endoflife.date** (v1 API,
 cached, best-effort). `EndOfLifeService` conservatively auto-links an item to an endoflife.date product
@@ -384,7 +387,9 @@ by slug/alias and resolves the installed version's release cycle to an active-su
 / end-of-life status plus the cycle's latest release — surfaced on the inventory rows and as the
 `eolEnabled` runtime flag. The Inventory page also renders a "Flagged CVEs" roll-up table across all
 items, and the dashboard "Today" widgets highlight and float inventory-matched vendors, products, and
-CVEs. The same widgets additionally cross-reference **SCA scan coverage** via `GET /v1/scans/coverage`
+CVEs using the same version-aware matcher (not a name-only check), so a highlight only appears once a
+CVE's version range is confirmed to cover a declared inventory version. The same widgets additionally
+cross-reference **SCA scan coverage** via `GET /v1/scans/coverage`
 (`cveScan` / `productScan` maps from the latest scan of every target, by finding and SBOM package), tagging
 covered items "in scans"; both the inventory and scan tags deep-link (to the Inventory page and the
 most-recent covering scan).
@@ -516,7 +521,7 @@ react-select for the async multi-selects, and react-icons (Lucide) for iconograp
 | `/system` | `SystemPage` | Five tabs: General, Access Control, Notifications, Data, Policies |
 | `/scans` | `ScansPage` | SCA scan management with seven tabs (Targets, Scans, Findings, SBOM, Security Alerts, Licenses, Scanner) |
 | `/malware-feed` | `MalwareFeedPage` | Overview of all `MAL-*`-aliased OSV advisories (`/blocklist` is a legacy redirect) |
-| `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings, an SBOM-changes card (added / updated / removed components between the two latest completed scans), quick actions. Splat route — pasting the raw target URL (un-encoded or scheme-less) also resolves; the backend canonicalizes fuzzy ids |
+| `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable): metadata, severity rollup, auto-scan diagnostics, scan history, top findings shown alongside an SBOM-changes card (added / updated / removed components, walking back through scan history to the last pair that actually changed instead of always the two latest scans), quick actions. Splat route — pasting the raw target URL (un-encoded or scheme-less) also resolves; the backend canonicalizes fuzzy ids |
 | `/scans/:scanId` | `ScanDetailPage` | Scan details: findings, Attack Chain, SBOM, history, AI analysis, compare, security alerts, SAST, secrets, best practices, layer analysis, license compliance, scanner breakdown |
 | `/info/cicd` | `CiCdInfoPage` | CI/CD integration guide |
 | `/info/api` | `ApiInfoPage` | API documentation with embedded Swagger UI |

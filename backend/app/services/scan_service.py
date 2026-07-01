@@ -47,6 +47,10 @@ log = structlog.get_logger()
 # Module-level dict to track running scan tasks across ScanService instances
 _running_scan_tasks: dict[str, asyncio.Task] = {}
 
+# Module-level set to hold strong references to background target-cleanup tasks
+# (asyncio.create_task's return value must be referenced somewhere to avoid GC).
+_target_cleanup_tasks: set[asyncio.Task[Any]] = set()
+
 # Lazy-initialised semaphore to limit concurrent scans
 _scan_semaphore: asyncio.Semaphore | None = None
 
@@ -120,6 +124,59 @@ def advisory_fixed_versions(
                     seen.add(norm)
                     fixed.append(norm)
     return fixed[:cap]
+
+
+# Max consecutive scan-pairs get_target_sbom_diff() walks back through looking
+# for the most recent pair whose SBOM actually differs, before giving up and
+# falling back to the true latest/previous pair (see that method).
+SBOM_DIFF_LOOKBACK_LIMIT = 20
+
+
+def _index_sbom_rows(rows: list[dict[str, Any]]) -> tuple[dict[str, set[str]], set[tuple[str, str]]]:
+    """name -> set(versions) for a scan's SBOM rows, plus the full (name, version) pair set."""
+    by_name: dict[str, set[str]] = {}
+    pairs: set[tuple[str, str]] = set()
+    for row in rows:
+        name = row.get("name") or ""
+        version = row.get("version") or ""
+        if not name:
+            continue
+        by_name.setdefault(name, set()).add(version)
+        pairs.add((name, version))
+    return by_name, pairs
+
+
+def _classify_sbom_diff(
+    newer_by_name: dict[str, set[str]],
+    newer_pairs: set[tuple[str, str]],
+    older_by_name: dict[str, set[str]],
+    older_pairs: set[tuple[str, str]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Classify the delta from an older scan's SBOM to a newer one.
+
+    Returns (added, updated, removed): added = brand-new name+version pairs,
+    updated = a name that existed before under a different version, removed =
+    name+version pairs gone with the name absent from the newer scan too.
+    """
+    added: list[dict[str, Any]] = []
+    updated: list[dict[str, Any]] = []
+    for name, version in sorted(newer_pairs - older_pairs):
+        if name in older_by_name:
+            prev_versions = sorted(older_by_name[name])
+            updated.append({
+                "name": name,
+                "version": version,
+                "previous_version": ", ".join(prev_versions) if prev_versions else None,
+            })
+        else:
+            added.append({"name": name, "version": version})
+
+    removed: list[dict[str, Any]] = []
+    for name, version in sorted(older_pairs - newer_pairs):
+        if name not in newer_by_name:
+            removed.append({"name": name, "version": version})
+
+    return added, updated, removed
 
 
 class ScanService:
@@ -1178,11 +1235,59 @@ class ScanService:
         return None
 
     async def delete_target(self, target_id: str) -> bool:
-        """Delete a target and all associated scan data."""
-        await self.finding_repo.delete_by_target(target_id)
-        await self.sbom_repo.delete_by_target(target_id)
-        await self.scan_repo.delete_by_target(target_id)
-        return await self.target_repo.delete(target_id)
+        """Delete a target immediately; cascade-clean its scan data in the background.
+
+        Deleting the target row is a single fast document delete, so it runs first —
+        the target disappears from listings right away. The child collections (scans,
+        findings, SBOM components, layer analyses) can hold millions of rows for a
+        long-lived target, so their cleanup runs concurrently as a background task
+        instead of blocking the request.
+        """
+        deleted = await self.target_repo.delete(target_id)
+        if not deleted:
+            return False
+        task = asyncio.create_task(self._cleanup_target_data(target_id))
+        _target_cleanup_tasks.add(task)
+        task.add_done_callback(_target_cleanup_tasks.discard)
+        return True
+
+    async def _cleanup_target_data(self, target_id: str) -> None:
+        """Delete scans/findings/SBOM components/layer analyses for a (possibly already
+        deleted) target_id. Safe to call more than once for the same target_id."""
+        start = time.monotonic()
+        try:
+            findings, sbom, scans, layers = await asyncio.gather(
+                self.finding_repo.delete_by_target(target_id),
+                self.sbom_repo.delete_by_target(target_id),
+                self.scan_repo.delete_by_target(target_id),
+                self.layer_repo.delete_by_target(target_id),
+            )
+            log.info(
+                "scan_service.target_cleanup_completed",
+                target_id=target_id,
+                duration_s=round(time.monotonic() - start, 2),
+                findings_deleted=findings,
+                sbom_deleted=sbom,
+                scans_deleted=scans,
+                layers_deleted=layers,
+            )
+        except Exception as exc:
+            log.error("scan_service.target_cleanup_failed", target_id=target_id, error=str(exc))
+
+    async def reconcile_orphaned_target_data(self) -> int:
+        """Delete scan data left behind by a crash between the target-row delete and
+        the background cascade cleanup finishing. Idempotent; safe to run repeatedly."""
+        live_target_ids = set(await self.target_repo.list_ids())
+        orphan_ids: set[str] = set()
+        for repo in (self.finding_repo, self.sbom_repo, self.scan_repo, self.layer_repo):
+            distinct_ids = await repo.collection.distinct("target_id")
+            orphan_ids.update(tid for tid in distinct_ids if tid and tid not in live_target_ids)
+
+        if not orphan_ids:
+            return 0
+
+        await asyncio.gather(*(self._cleanup_target_data(tid) for tid in orphan_ids))
+        return len(orphan_ids)
 
     async def delete_scan(self, scan_id: str) -> bool:
         """Delete a single scan and its associated findings and SBOM components."""
@@ -1192,6 +1297,7 @@ class ScanService:
 
         await self.finding_repo.delete_by_scan(scan_id)
         await self.sbom_repo.delete_by_scan(scan_id)
+        await self.layer_repo.delete_by_scan(scan_id)
         deleted = await self.scan_repo.delete(scan_id)
 
         # Decrement the target's scan count and refresh denormalized state
@@ -1821,19 +1927,33 @@ class ScanService:
         return await self.finding_repo.find_by_cve(cve_id, limit=limit, offset=offset)
 
     async def get_target_sbom_diff(self, target_id: str, list_cap: int = 50) -> dict[str, Any]:
-        """SBOM delta between a target's two most-recent completed scans.
+        """SBOM delta for a target, always showing the most recent real change.
 
         Classifies each component as added (new name+version, name absent
         before), updated (name present in both but a new version), or removed
-        (name+version gone, name absent now). With fewer than two completed
-        scans the response is a baseline payload (no diff lists).
+        (name+version gone, name absent now). Fetches up to
+        ``SBOM_DIFF_LOOKBACK_LIMIT + 1`` recent completed scans and walks back
+        pairwise (latest vs. its predecessor, then that predecessor vs. its
+        own predecessor, ...) until a pair whose SBOM actually differs is
+        found, or the lookback window is exhausted. ``changed_scan_id`` /
+        ``changed_scan_at`` / ``changed_commit_sha`` describe the newer scan
+        of that pair (the scan the diff lists below are about);
+        ``previous_scan_id`` / ``previous_scan_at`` its predecessor.
+        ``latest_scan_id`` / ``latest_scan_at`` / ``latest_commit_sha`` and
+        ``component_total`` always describe the target's true most-recent
+        completed scan, regardless of where the changed pair was found. With
+        fewer than two completed scans the response is a baseline payload (no
+        diff lists).
         """
-        recent = await self.scan_repo.get_recent_completed(target_id, n=2)
+        recent = await self.scan_repo.get_recent_completed(target_id, n=SBOM_DIFF_LOOKBACK_LIMIT + 1)
         base: dict[str, Any] = {
             "target_id": target_id,
             "latest_scan_id": None,
             "latest_scan_at": None,
             "latest_commit_sha": None,
+            "changed_scan_id": None,
+            "changed_scan_at": None,
+            "changed_commit_sha": None,
             "previous_scan_id": None,
             "previous_scan_at": None,
             "component_total": 0,
@@ -1851,58 +1971,54 @@ class ScanService:
         base["latest_scan_id"] = str(latest.get("_id"))
         base["latest_scan_at"] = latest.get("started_at")
         base["latest_commit_sha"] = latest.get("commit_sha")
-
-        # name -> set(versions) for each scan, plus the (name, version) set.
-        def _index(rows: list[dict[str, Any]]) -> tuple[dict[str, set[str]], set[tuple[str, str]]]:
-            by_name: dict[str, set[str]] = {}
-            pairs: set[tuple[str, str]] = set()
-            for row in rows:
-                name = row.get("name") or ""
-                version = row.get("version") or ""
-                if not name:
-                    continue
-                by_name.setdefault(name, set()).add(version)
-                pairs.add((name, version))
-            return by_name, pairs
+        # Default: the changed scan is the latest scan itself. Overwritten
+        # below only if an unchanged trailing run pushes it further back.
+        base["changed_scan_id"] = base["latest_scan_id"]
+        base["changed_scan_at"] = base["latest_scan_at"]
+        base["changed_commit_sha"] = base["latest_commit_sha"]
 
         latest_rows = await self.sbom_repo.list_all_by_scan(str(latest.get("_id")))
-        latest_by_name, latest_pairs = _index(latest_rows)
-        base["component_total"] = len(latest_pairs)
+        newer_by_name, newer_pairs = _index_sbom_rows(latest_rows)
+        base["component_total"] = len(newer_pairs)
 
         if len(recent) < 2:
             return base
 
-        previous = recent[1]
-        base["previous_scan_id"] = str(previous.get("_id"))
-        base["previous_scan_at"] = previous.get("started_at")
-        previous_rows = await self.sbom_repo.list_all_by_scan(str(previous.get("_id")))
-        previous_by_name, previous_pairs = _index(previous_rows)
+        # Walk back pairwise, reusing each iteration's "older" fetch as the
+        # next iteration's "newer" side — every scan's SBOM is fetched at
+        # most once regardless of how far back the walk goes.
+        newer_scan = latest
+        for older_scan in recent[1:]:
+            older_rows = await self.sbom_repo.list_all_by_scan(str(older_scan.get("_id")))
+            older_by_name, older_pairs = _index_sbom_rows(older_rows)
 
-        added: list[dict[str, Any]] = []
-        updated: list[dict[str, Any]] = []
-        for name, version in sorted(latest_pairs - previous_pairs):
-            if name in previous_by_name:
-                # name existed before with other version(s) → upgrade/downgrade
-                prev_versions = sorted(previous_by_name[name])
-                updated.append({
-                    "name": name,
-                    "version": version,
-                    "previous_version": ", ".join(prev_versions) if prev_versions else None,
-                })
-            else:
-                added.append({"name": name, "version": version})
+            added, updated, removed = _classify_sbom_diff(
+                newer_by_name, newer_pairs, older_by_name, older_pairs
+            )
 
-        removed: list[dict[str, Any]] = []
-        for name, version in sorted(previous_pairs - latest_pairs):
-            if name not in latest_by_name:
-                removed.append({"name": name, "version": version})
+            if added or updated or removed:
+                base["changed_scan_id"] = str(newer_scan.get("_id"))
+                base["changed_scan_at"] = newer_scan.get("started_at")
+                base["changed_commit_sha"] = newer_scan.get("commit_sha")
+                base["previous_scan_id"] = str(older_scan.get("_id"))
+                base["previous_scan_at"] = older_scan.get("started_at")
+                base["added_count"] = len(added)
+                base["updated_count"] = len(updated)
+                base["removed_count"] = len(removed)
+                base["added"] = added[:list_cap]
+                base["updated"] = updated[:list_cap]
+                base["removed"] = removed[:list_cap]
+                return base
 
-        base["added_count"] = len(added)
-        base["updated_count"] = len(updated)
-        base["removed_count"] = len(removed)
-        base["added"] = added[:list_cap]
-        base["updated"] = updated[:list_cap]
-        base["removed"] = removed[:list_cap]
+            # No diff for this pair — step back one scan and keep looking.
+            newer_scan = older_scan
+            newer_by_name, newer_pairs = older_by_name, older_pairs
+
+        # Exhausted the lookback window with no diff anywhere: fall back to
+        # the true latest/previous pair so the existing "no changes since the
+        # previous scan" copy still applies.
+        base["previous_scan_id"] = str(recent[1].get("_id"))
+        base["previous_scan_at"] = recent[1].get("started_at")
         return base
 
     async def affected_scan_targets_for_vuln(

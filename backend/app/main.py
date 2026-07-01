@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
         asyncio.create_task(_backfill_target_scan_state())
         asyncio.create_task(_backfill_target_summaries_v4())
         asyncio.create_task(_backfill_sbom_component_count_v2())
+        asyncio.create_task(_reconcile_orphaned_target_data())
 
     async def _warm_stats_cache() -> None:  # pragma: no cover - cache warming
         """Warm up the stats cache on startup to improve first request performance."""
@@ -144,6 +145,21 @@ def create_app() -> FastAPI:
             import structlog
             log = structlog.get_logger()
             log.warning("startup.backfill_sbom_component_count_v2_failed", error=str(e))
+
+    async def _reconcile_orphaned_target_data() -> None:  # pragma: no cover - crash-recovery sweep
+        """Clean up scan data left behind by a target delete interrupted mid-cascade."""
+        try:
+            import structlog
+            log = structlog.get_logger()
+            from app.services.scan_service import get_scan_service
+            svc = await get_scan_service()
+            count = await svc.reconcile_orphaned_target_data()
+            if count:
+                log.info("startup.reconcile_orphaned_target_data_completed", targets_cleaned=count)
+        except Exception as e:
+            import structlog
+            log = structlog.get_logger()
+            log.warning("startup.reconcile_orphaned_target_data_failed", error=str(e))
 
     @app.on_event("shutdown")
     async def _shutdown_scheduler() -> None:  # pragma: no cover - wiring code

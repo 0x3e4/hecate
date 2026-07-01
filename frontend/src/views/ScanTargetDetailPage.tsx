@@ -327,31 +327,41 @@ const SbomChangesCard = ({ diff }: { diff: TargetSbomDiff }) => {
       <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.85rem" }}>
         <h2 style={{ ...sectionHeading, margin: 0 }}>{t("SBOM changes", "SBOM-Änderungen")}</h2>
         <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.8rem", display: "inline-flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
-          {diff.latestScanAt && (
-            <span title={formatDateTime(diff.latestScanAt)}>
-              {t("scanned", "gescannt")} {formatRelative(diff.latestScanAt)}
+          {diff.changedScanAt && (
+            <span title={formatDateTime(diff.changedScanAt)}>
+              {t("scanned", "gescannt")} {formatRelative(diff.changedScanAt)}
             </span>
           )}
-          {diff.latestCommitSha && (
+          {diff.changedCommitSha && diff.changedScanId && (
             <>
               <span>·</span>
-              <code
-                style={{
-                  fontSize: "0.72rem",
-                  color: "rgba(255,255,255,0.6)",
-                  background: "rgba(255,255,255,0.05)",
-                  borderRadius: 4,
-                  padding: "0.1rem 0.4rem",
-                }}
-              >
-                {diff.latestCommitSha.slice(0, 7)}
-              </code>
+              <Link to={`/scans/${diff.changedScanId}`}>
+                <code
+                  style={{
+                    fontSize: "0.72rem",
+                    color: "rgba(255,255,255,0.6)",
+                    background: "rgba(255,255,255,0.05)",
+                    borderRadius: 4,
+                    padding: "0.1rem 0.4rem",
+                  }}
+                >
+                  {diff.changedCommitSha.slice(0, 7)}
+                </code>
+              </Link>
             </>
           )}
           <span>·</span>
           <span>{diff.componentTotal} {t("components", "Komponenten")}</span>
         </span>
       </div>
+      {hasChanges && diff.changedScanId !== diff.latestScanId && (
+        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.78rem", margin: "0 0 0.85rem" }}>
+          {t(
+            "No SBOM changes in the latest scan — showing the last scan that changed dependencies.",
+            "Keine SBOM-Änderungen im letzten Scan — zeigt den letzten Scan mit Abhängigkeitsänderungen.",
+          )}
+        </p>
+      )}
       {!diff.previousScanId ? (
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", margin: 0 }}>
           {t(
@@ -766,80 +776,84 @@ export const ScanTargetDetailPage = () => {
         <StatTile label={t("Scanners", "Scanner")} value={target.scanners?.length ?? 0} sub={t("configured", "konfiguriert")} />
       </div>
 
-      {/* Top findings */}
-      {findings.length > 0 && (
-        <section className="card">
-          <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", marginBottom: "1rem" }}>
-            <h2 style={{ ...sectionHeading, margin: 0 }}>{t("Top findings", "Top-Findings")}</h2>
-            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>{findings.length}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-            {findings.map((f, i) => {
-              const sevColor = SEVERITY_COLORS[f.severity?.toLowerCase()] ?? "#8395a7";
-              return (
-                <div
-                  key={`${f.vulnerabilityId ?? f.packageName}-${i}`}
-                  style={{
-                    display: "flex",
-                    gap: "0.85rem",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    padding: "0.65rem 0.85rem",
-                    background: "rgba(255,255,255,0.025)",
-                    borderRadius: 8,
-                    borderLeft: `3px solid ${sevColor}`,
-                  }}
-                >
-                  <SeverityTag severity={f.severity} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", minWidth: 0, flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                      {f.vulnerabilityId ? (
-                        <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ fontWeight: 600 }}>
-                          {f.vulnerabilityId}
-                        </Link>
-                      ) : (
-                        <span style={{ fontWeight: 600 }}>{f.title ?? f.packageName}</span>
-                      )}
-                      {f.cvssScore != null && (
-                        <span style={{ fontSize: "0.72rem", color: sevColor, fontWeight: 600 }}>
-                          CVSS {f.cvssScore.toFixed(1)}
-                        </span>
-                      )}
-                      {f.fixVersion && (
-                        <span
-                          style={{
-                            fontSize: "0.7rem",
-                            color: "#69db7c",
-                            background: "rgba(105,219,124,0.12)",
-                            border: "1px solid rgba(105,219,124,0.25)",
-                            borderRadius: 5,
-                            padding: "0.05rem 0.4rem",
-                          }}
-                        >
-                          {t("fix", "Fix")}: {f.fixVersion}
-                        </span>
-                      )}
-                    </div>
-                    <span
+      {(findings.length > 0 || (!isImport && sbomDiff && sbomDiff.latestScanId)) && (
+        <div className="target-detail-top-row">
+          {/* Top findings */}
+          {findings.length > 0 && (
+            <section className="card">
+              <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", marginBottom: "1rem" }}>
+                <h2 style={{ ...sectionHeading, margin: 0 }}>{t("Top findings", "Top-Findings")}</h2>
+                <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>{findings.length}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                {findings.map((f, i) => {
+                  const sevColor = SEVERITY_COLORS[f.severity?.toLowerCase()] ?? "#8395a7";
+                  return (
+                    <div
+                      key={`${f.vulnerabilityId ?? f.packageName}-${i}`}
                       style={{
-                        color: "rgba(255,255,255,0.45)",
-                        fontSize: "0.8rem",
-                        fontFamily: "var(--mono, monospace)",
-                        wordBreak: "break-all",
+                        display: "flex",
+                        gap: "0.85rem",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        padding: "0.65rem 0.85rem",
+                        background: "rgba(255,255,255,0.025)",
+                        borderRadius: 8,
+                        borderLeft: `3px solid ${sevColor}`,
                       }}
                     >
-                      {f.packageName}@{f.packageVersion}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                      <SeverityTag severity={f.severity} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                          {f.vulnerabilityId ? (
+                            <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ fontWeight: 600 }}>
+                              {f.vulnerabilityId}
+                            </Link>
+                          ) : (
+                            <span style={{ fontWeight: 600 }}>{f.title ?? f.packageName}</span>
+                          )}
+                          {f.cvssScore != null && (
+                            <span style={{ fontSize: "0.72rem", color: sevColor, fontWeight: 600 }}>
+                              CVSS {f.cvssScore.toFixed(1)}
+                            </span>
+                          )}
+                          {f.fixVersion && (
+                            <span
+                              style={{
+                                fontSize: "0.7rem",
+                                color: "#69db7c",
+                                background: "rgba(105,219,124,0.12)",
+                                border: "1px solid rgba(105,219,124,0.25)",
+                                borderRadius: 5,
+                                padding: "0.05rem 0.4rem",
+                              }}
+                            >
+                              {t("fix", "Fix")}: {f.fixVersion}
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          style={{
+                            color: "rgba(255,255,255,0.45)",
+                            fontSize: "0.8rem",
+                            fontFamily: "var(--mono, monospace)",
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          {f.packageName}@{f.packageVersion}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
-      {/* SBOM changes */}
-      {!isImport && sbomDiff && sbomDiff.latestScanId && <SbomChangesCard diff={sbomDiff} />}
+          {/* SBOM changes */}
+          {!isImport && sbomDiff && sbomDiff.latestScanId && <SbomChangesCard diff={sbomDiff} />}
+        </div>
+      )}
 
       {/* History */}
       <section className="card">

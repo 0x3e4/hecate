@@ -32,6 +32,24 @@ log = structlog.get_logger()
 _SEGMENT_SPLIT_RE = re.compile(r"[._-]")
 _NUMERIC_RE = re.compile(r"^\d+$")
 
+# Splitter used only by the branch-scoped helpers below (see
+# ``_BRANCH_SCOPED_PRODUCTS``) -- unlike ``_SEGMENT_SPLIT_RE`` this also
+# treats comma and whitespace as segment separators, so a value entered as
+# "14.1, 66.59" tokenizes the same as "14.1.66.59".
+_BRANCH_SPLIT_RE = re.compile(r"[.,_\s-]+")
+
+# (vendor_slug, product_slug) -> number of leading dotted segments that form
+# the release "branch" identifier. Confirmed: Citrix NetScaler ADC/Gateway
+# run an INDEPENDENT build counter per branch, so a CVE's per-branch clause
+# ">= 14.1, < 56.73" means "branch 14.1, build < 56.73" -- not "version >=
+# 14.1 AND < 56.73 on one linear scale". Add an entry only when you've
+# confirmed the vendor's CVE data uses this convention; anyone not in this
+# table keeps the ordinary single-scale comparison.
+_BRANCH_SCOPED_PRODUCTS: dict[tuple[str, str], int] = {
+    ("netscaler", "adc"): 2,
+    ("netscaler", "gateway"): 2,
+}
+
 
 @dataclass(frozen=True)
 class ParsedVersion:
@@ -41,7 +59,9 @@ class ParsedVersion:
     ``pre`` is ``()`` for final releases and a tuple for pre-releases that
     sorts *before* the empty tuple by convention (see ``_tuple_for_compare``).
     ``raw`` is the original string for lexicographic fallback.
-    ``valid`` is True when the leading segment parsed as a number.
+    ``valid`` is True when the *entire* release portion (up to the first
+    ``-``) parsed as numeric dot/underscore/dash-delimited segments, with no
+    trailing non-numeric garbage.
     """
 
     release: tuple[int, ...]
@@ -79,10 +99,10 @@ def parse_version(raw: str) -> ParsedVersion:
         if _NUMERIC_RE.match(token):
             release_ints.append(int(token))
         else:
-            # First non-numeric token marks the end of the comparable release.
-            # If *nothing* parsed numerically, the whole version is invalid.
-            if not release_ints:
-                valid = False
+            # Trailing garbage after the numeric prefix (e.g. a stray comma
+            # from a malformed "14.1, 66.59" value) makes the whole version
+            # incomparable -- fail closed rather than silently truncating.
+            valid = False
             break
 
     pre_tokens: tuple[Any, ...] = ()
@@ -352,16 +372,15 @@ def _is_zero_version(value: str | None) -> bool:
     return not parsed.release or all(seg == 0 for seg in parsed.release)
 
 
-def _version_in_range_string(version: str, range_str: str) -> bool:
-    """Return True if ``version`` satisfies ``range_str``.
+def _parse_range_clauses(range_str: str) -> list[tuple[str, str]]:
+    """Split a range string into ``(op, version)`` clauses.
 
-    Unknown or unconstrained strings (``*``, ``-``, ``>=0``, empty) return
-    False — they provide no usable information and we fail closed rather than
-    match everything.
+    ``">= 1.0.0, < 5.0.9"`` -> ``[(">=", "1.0.0"), ("<", "5.0.9")]``. Returns
+    ``[]`` for broad sentinels / unconstrained / unparseable input.
     """
     s = (range_str or "").strip()
     if not s or s.lower() in _BROAD_RANGE_SENTINELS:
-        return False
+        return []
 
     clauses: list[tuple[str, str]] = []
     for part in (p.strip() for p in s.split(",")):
@@ -373,7 +392,120 @@ def _version_in_range_string(version: str, range_str: str) -> bool:
         op = match.group("op") or "="
         ver = match.group("ver")
         clauses.append((op, ver))
+    return clauses
 
+
+def _split_numeric_segments(text: str | None) -> tuple[int, ...] | None:
+    """Split ``text`` on ``_BRANCH_SPLIT_RE`` and require every token to be
+    numeric. Returns ``None`` on empty input or any non-numeric token (fail
+    closed) -- used where a complete, unambiguous parse is required (the item
+    version, and a range clause's end/threshold bound).
+    """
+    if not text:
+        return None
+    tokens = [t for t in _BRANCH_SPLIT_RE.split(text.strip()) if t]
+    if not tokens:
+        return None
+    result: list[int] = []
+    for token in tokens:
+        if not _NUMERIC_RE.match(token):
+            return None
+        result.append(int(token))
+    return tuple(result)
+
+
+def _leading_numeric_segments(text: str | None, count: int) -> tuple[int, ...] | None:
+    """Return the first ``count`` numeric segments of ``text``, tolerating
+    non-numeric trailing content (e.g. the "-FIPS" suffix on a branch label
+    like "12.1-FIPS"). Returns ``None`` if fewer than ``count`` numeric
+    segments are found before hitting non-numeric content.
+    """
+    if not text:
+        return None
+    tokens = [t for t in _BRANCH_SPLIT_RE.split(text.strip()) if t]
+    result: list[int] = []
+    for token in tokens:
+        if not _NUMERIC_RE.match(token):
+            break
+        result.append(int(token))
+        if len(result) == count:
+            break
+    if len(result) < count:
+        return None
+    return tuple(result)
+
+
+def _version_in_branch_scoped_range(version: str, range_str: str, branch_segments: int) -> bool:
+    """Evaluate a range clause for vendors whose CVE data encodes an
+    INDEPENDENT build counter per release branch (see
+    ``_BRANCH_SCOPED_PRODUCTS``). A clause of the form ">= <branch>, <
+    <threshold>" is treated as "branch must match exactly; build must be
+    below threshold" rather than a single-scale comparison of the whole
+    version -- otherwise an unrelated branch's threshold can numerically
+    (and incorrectly) bound a different branch's build number.
+
+    Clauses that aren't the "branch + threshold" shape (an exact version, or
+    an unbounded-below-only clause like ">= 14.1" with no upper bound) have
+    no branch role to play and fall back to the ordinary whole-scale
+    comparison unchanged -- this is a deliberate asymmetry, not an oversight.
+    """
+    clauses = _parse_range_clauses(range_str)
+    if not clauses:
+        return False
+
+    start_bound: str | None = None
+    end_in: str | None = None
+    end_ex: str | None = None
+    for op, ver in clauses:
+        if op in (">=", ">"):
+            start_bound = ver
+        elif op == "<=":
+            end_in = ver
+        elif op == "<":
+            end_ex = ver
+
+    if start_bound is None or (end_in is None and end_ex is None):
+        return _version_in_range_string(version, range_str)
+
+    item_all = _split_numeric_segments(version)
+    if item_all is None or len(item_all) <= branch_segments:
+        return False  # no branch+build info, or nothing beyond the branch
+
+    item_branch, item_build = item_all[:branch_segments], item_all[branch_segments:]
+
+    clause_branch = _leading_numeric_segments(start_bound, branch_segments)
+    if clause_branch is None or item_branch != clause_branch:
+        return False  # different branch (or unparseable) -- clause doesn't apply
+
+    end_bound = end_ex if end_ex is not None else end_in
+    end_all = _split_numeric_segments(end_bound)
+    if end_all is None:
+        return False
+    if len(end_all) > branch_segments:
+        # Fully-qualified end bound (branch repeated, e.g. "14.1.56.73") --
+        # verify it's consistent with the clause's own branch, then strip it.
+        if end_all[:branch_segments] != clause_branch:
+            log.debug(
+                "inventory_matcher.branch_scoped_end_bound_mismatch",
+                range_str=range_str,
+            )
+            return False
+        end_build = end_all[branch_segments:]
+    else:
+        end_build = end_all  # bare build threshold, used as-is
+
+    a, b = _pad(item_build, end_build)
+    return a < b if end_ex is not None else a <= b
+
+
+def _version_in_range_string(version: str, range_str: str) -> bool:
+    """Return True if ``version`` satisfies ``range_str``.
+
+    Unknown or unconstrained strings (``*``, ``-``, ``>=0``, empty) return
+    False — they provide no usable information and we fail closed rather than
+    match everything.
+    """
+    clauses = _parse_range_clauses(range_str)
     if not clauses:
         return False
 
@@ -530,6 +662,7 @@ def match_in_configuration(
         product_slug=item_product,
         version=item_version,
     )
+    branch_segments = _BRANCH_SCOPED_PRODUCTS.get((item_vendor, item_product))
 
     # --- Tier 1: impacted_products (curated EUVD / enrichment data) ---
     saw_product_in_impacted = False
@@ -544,7 +677,11 @@ def match_in_configuration(
             if not isinstance(raw_range, str):
                 continue
             try:
-                if _version_in_range_string(item_version, raw_range):
+                if branch_segments is not None:
+                    matched = _version_in_branch_scoped_range(item_version, raw_range, branch_segments)
+                else:
+                    matched = _version_in_range_string(item_version, raw_range)
+                if matched:
                     return True
             except Exception as exc:  # pragma: no cover - defensive
                 log.debug(

@@ -374,7 +374,19 @@ class SbomDiffEntry(BaseModel):
 
 
 class TargetSbomDiffResponse(BaseModel):
-    """SBOM delta between a target's two most-recent completed scans."""
+    """SBOM delta between a target's most recent scan and its predecessor.
+
+    ``latest_scan_id``/``latest_scan_at``/``latest_commit_sha`` and
+    ``component_total`` always describe the target's true most-recent
+    completed scan. ``changed_scan_id``/``changed_scan_at``/``changed_commit_sha``
+    describe the most recent scan whose SBOM actually differed from its
+    predecessor — the service walks back through scan history to find it, so
+    a run of unchanged rescans never hides an earlier real change. In the
+    common case (the latest scan already differs from its predecessor) the
+    two pairs are identical. ``previous_scan_id``/``previous_scan_at`` is the
+    predecessor of the *changed* scan, not necessarily the second-most-recent
+    scan overall.
+    """
 
     target_id: str = Field(alias="targetId", serialization_alias="targetId")
     latest_scan_id: str | None = Field(
@@ -385,6 +397,15 @@ class TargetSbomDiffResponse(BaseModel):
     )
     latest_commit_sha: str | None = Field(
         default=None, alias="latestCommitSha", serialization_alias="latestCommitSha"
+    )
+    changed_scan_id: str | None = Field(
+        default=None, alias="changedScanId", serialization_alias="changedScanId"
+    )
+    changed_scan_at: UtcDatetime | None = Field(
+        default=None, alias="changedScanAt", serialization_alias="changedScanAt"
+    )
+    changed_commit_sha: str | None = Field(
+        default=None, alias="changedCommitSha", serialization_alias="changedCommitSha"
     )
     previous_scan_id: str | None = Field(
         default=None, alias="previousScanId", serialization_alias="previousScanId"

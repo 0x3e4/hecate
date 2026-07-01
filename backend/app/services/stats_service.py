@@ -18,6 +18,8 @@ from app.core.config import settings
 from app.db.opensearch import async_search
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.inventory_matcher import items_for_vuln
+from app.services.inventory_service import get_inventory_service
 
 
 log = structlog.get_logger()
@@ -799,6 +801,11 @@ class StatsService:
                     "aliases",
                     "vendorSlugs",
                     "productSlugs",
+                    "vendors",
+                    "products",
+                    "impactedProducts",
+                    "cpeConfigurations",
+                    "cpes",
                 ],
                 "sort": [{"published": {"order": "desc"}}],
                 "aggs": {
@@ -866,39 +873,24 @@ class StatsService:
             for doc in product_docs:
                 product_name_map[doc["_id"]] = doc.get("displayName") or doc["_id"]
 
-        vendors: list[dict[str, Any]] = []
-        products: list[dict[str, Any]] = []
-        for vb in (vendors_agg.get("buckets") or []):
-            if not isinstance(vb, dict):
-                continue
-            vslug = vb.get("key")
-            if not vslug or not isinstance(vslug, str):
-                continue
-            vname = vendor_name_map.get(vslug, vslug.replace("-", " ").title())
-            vendors.append({"slug": vslug, "name": vname, "doc_count": int(vb.get("doc_count", 0))})
-
-            for pb in (vb.get("products", {}).get("buckets") or []):
-                if not isinstance(pb, dict):
-                    continue
-                pslug = pb.get("key")
-                if not pslug or not isinstance(pslug, str):
-                    continue
-                pname = product_name_map.get(pslug, pslug.replace("-", " ").title())
-                products.append({
-                    "slug": pslug,
-                    "name": pname,
-                    "doc_count": int(pb.get("doc_count", 0)),
-                    "vendorSlug": vslug,
-                    "vendorName": vname,
-                })
-
         severities = self._map_terms_aggregation(
             aggregations.get("severity_breakdown"),
             value_transform=lambda v: str(v).lower(),
         )
 
+        # Cross-reference each of today's CVEs against the environment inventory
+        # with the same precise, version-aware matcher used on the Inventory page
+        # and the vulnerability detail page (`items_for_vuln`) -- NOT a soft
+        # vendor/product slug membership check. This keeps the "in inventory"
+        # highlight from firing on a CVE whose version range doesn't actually
+        # cover the pinned inventory version (e.g. n8n 2.26.6 vs. a CVE affecting
+        # only < 2.26.2).
+        raw_inventory_items = await get_inventory_service().list_all_cached()
+
         hits = response.get("hits", {}).get("hits", [])
         cves: list[dict[str, Any]] = []
+        matched_vendor_slugs: set[str] = set()
+        matched_pairs: set[str] = set()
         for hit in hits:
             source = hit.get("_source", {})
             if not isinstance(source, dict):
@@ -924,6 +916,25 @@ class StatsService:
                 if isinstance(raw_product_slugs, list)
                 else []
             )
+
+            inventory_match_ids: list[str] = []
+            if raw_inventory_items:
+                try:
+                    matches = items_for_vuln(source, raw_inventory_items)
+                except Exception as exc:  # pragma: no cover - defensive
+                    log.debug(
+                        "stats.today_inventory_match_error",
+                        vuln_id=vuln_id,
+                        error=str(exc),
+                    )
+                    matches = []
+                inventory_match_ids = [str(m["_id"]) for m in matches if m.get("_id")]
+                if inventory_match_ids:
+                    for v in vendor_slugs:
+                        matched_vendor_slugs.add(v)
+                        for p in product_slugs:
+                            matched_pairs.add(f"{v}|{p}")
+
             cves.append({
                 "vulnId": vuln_id,
                 "title": source.get("title", ""),
@@ -931,7 +942,40 @@ class StatsService:
                 "aliases": aliases,
                 "vendorSlugs": vendor_slugs,
                 "productSlugs": product_slugs,
+                "inventoryMatchIds": inventory_match_ids,
             })
+
+        vendors: list[dict[str, Any]] = []
+        products: list[dict[str, Any]] = []
+        for vb in (vendors_agg.get("buckets") or []):
+            if not isinstance(vb, dict):
+                continue
+            vslug = vb.get("key")
+            if not vslug or not isinstance(vslug, str):
+                continue
+            vname = vendor_name_map.get(vslug, vslug.replace("-", " ").title())
+            vendors.append({
+                "slug": vslug,
+                "name": vname,
+                "doc_count": int(vb.get("doc_count", 0)),
+                "inventoryMatch": vslug in matched_vendor_slugs,
+            })
+
+            for pb in (vb.get("products", {}).get("buckets") or []):
+                if not isinstance(pb, dict):
+                    continue
+                pslug = pb.get("key")
+                if not pslug or not isinstance(pslug, str):
+                    continue
+                pname = product_name_map.get(pslug, pslug.replace("-", " ").title())
+                products.append({
+                    "slug": pslug,
+                    "name": pname,
+                    "doc_count": int(pb.get("doc_count", 0)),
+                    "vendorSlug": vslug,
+                    "vendorName": vname,
+                    "inventoryMatch": f"{vslug}|{pslug}" in matched_pairs,
+                })
 
         total = self._resolve_total(response)
 

@@ -178,9 +178,10 @@ class ScanRepository:
     async def get_recent_completed(self, target_id: str, n: int = 2) -> list[dict[str, Any]]:
         """Return the ``n`` most-recent completed scans for a target (newest first).
 
-        Used by the SBOM-diff card on the target detail page, which compares the
-        latest two completed scans. Unlike ``get_history`` (oldest-first pages for
-        the timeline chart), this returns plain newest-first.
+        Used by the SBOM-diff card on the target detail page, which walks back
+        through recent scans to find the last pair whose SBOM actually
+        differs. Unlike ``get_history`` (oldest-first pages for the timeline
+        chart), this returns plain newest-first.
         """
         try:
             cursor = (

@@ -2,10 +2,13 @@
 
 1. ``advisory_fixed_versions`` — advisory unaffected/patched versions surfaced
    as a fix hint in the Findings tab.
-2. ``ScanService.get_target_sbom_diff`` — SBOM delta between a target's two
-   most-recent completed scans (target detail "SBOM changes" card).
+2. ``ScanService.get_target_sbom_diff`` — SBOM delta for a target, walking
+   back through scan history to the last pair that actually changed (target
+   detail "SBOM changes" card).
 3. ``ScanService.affected_scan_targets_for_vuln`` — reverse lookup that powers
    the "Affected in your scans" block on the CVE detail page.
+4. ``ScanService.delete_target`` / ``delete_scan`` — cascade cleanup of scan
+   data, including the background-task deletion path.
 
 The service methods only touch the repos, so they're exercised with light
 fakes (no MongoDB).
@@ -14,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.services import scan_service as scan_service_module
 from app.services.scan_service import ScanService, advisory_fixed_versions
 
 
@@ -83,6 +87,8 @@ class _FakeScanRepo:
         self._recent = recent or []
         self._scans = scans or {}
         self._latest_ids = latest_ids or []
+        self.deleted_by_target = []
+        self.deleted_scan_ids = []
 
     async def get_recent_completed(self, target_id, n=2):
         return self._recent[:n]
@@ -93,11 +99,21 @@ class _FakeScanRepo:
     async def get_latest_completed_scan_ids(self, target_id=None):
         return list(self._latest_ids)
 
+    async def delete_by_target(self, target_id):
+        self.deleted_by_target.append(target_id)
+        return len([s for s in self._scans.values() if s.get("target_id") == target_id])
+
+    async def delete(self, scan_id):
+        self.deleted_scan_ids.append(scan_id)
+        return scan_id in self._scans
+
 
 class _FakeSbomRepo:
     def __init__(self, rows_by_scan=None, components=None):
         self._rows = rows_by_scan or {}
         self._components = components or []
+        self.deleted_by_target = []
+        self.deleted_by_scan = []
 
     async def list_all_by_scan(self, scan_id):
         return self._rows.get(scan_id, [])
@@ -110,10 +126,20 @@ class _FakeSbomRepo:
             if c.get("scan_id") in scan_set and c.get("name") in name_set
         ]
 
+    async def delete_by_target(self, target_id):
+        self.deleted_by_target.append(target_id)
+        return 0
+
+    async def delete_by_scan(self, scan_id):
+        self.deleted_by_scan.append(scan_id)
+        return 0
+
 
 class _FakeFindingRepo:
-    def __init__(self, findings):
-        self._findings = findings
+    def __init__(self, findings=None):
+        self._findings = findings or []
+        self.deleted_by_target = []
+        self.deleted_by_scan = []
 
     async def find_by_vulnerability_ids(self, ids, limit=100, offset=0):
         hits = [
@@ -122,22 +148,52 @@ class _FakeFindingRepo:
         ]
         return len(hits), hits[offset : offset + limit]
 
+    async def delete_by_target(self, target_id):
+        self.deleted_by_target.append(target_id)
+        return 0
+
+    async def delete_by_scan(self, scan_id):
+        self.deleted_by_scan.append(scan_id)
+        return 0
+
 
 class _FakeTargetRepo:
-    def __init__(self, targets):
-        self._targets = targets
+    def __init__(self, targets=None):
+        self._targets = targets or {}
+        self.deleted_ids = []
 
     async def get(self, target_id):
         return self._targets.get(target_id)
 
+    async def delete(self, target_id):
+        self.deleted_ids.append(target_id)
+        return self._targets.pop(target_id, None) is not None
 
-def _make_service(*, scan_repo=None, sbom_repo=None, finding_repo=None, target_repo=None):
+    async def list_ids(self):
+        return list(self._targets.keys())
+
+
+class _FakeLayerRepo:
+    def __init__(self):
+        self.deleted_by_target = []
+        self.deleted_by_scan = []
+
+    async def delete_by_target(self, target_id):
+        self.deleted_by_target.append(target_id)
+        return 0
+
+    async def delete_by_scan(self, scan_id):
+        self.deleted_by_scan.append(scan_id)
+        return 0
+
+
+def _make_service(*, scan_repo=None, sbom_repo=None, finding_repo=None, target_repo=None, layer_repo=None):
     return ScanService(
         target_repo=target_repo,
         scan_repo=scan_repo,
         finding_repo=finding_repo,
         sbom_repo=sbom_repo,
-        layer_repo=None,
+        layer_repo=layer_repo,
         audit_service=None,
     )
 
@@ -172,6 +228,8 @@ async def test_sbom_diff_two_scans_classifies_added_updated_removed():
     assert diff["previous_scan_id"] == "s1"
     assert diff["latest_commit_sha"] == "abc1234def"
     assert diff["component_total"] == 3
+    assert diff["changed_scan_id"] == "s2"
+    assert diff["changed_commit_sha"] == "abc1234def"
 
     assert [e["name"] for e in diff["added"]] == ["newpkg"]
     assert diff["added_count"] == 1
@@ -197,6 +255,7 @@ async def test_sbom_diff_baseline_single_scan():
     assert diff["previous_scan_id"] is None
     assert diff["component_total"] == 2
     assert diff["added"] == [] and diff["updated"] == [] and diff["removed"] == []
+    assert diff["changed_scan_id"] == "s1"
 
 
 @pytest.mark.asyncio
@@ -205,6 +264,61 @@ async def test_sbom_diff_no_scans():
     diff = await svc.get_target_sbom_diff("t1")
     assert diff["latest_scan_id"] is None
     assert diff["component_total"] == 0
+    assert diff["changed_scan_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_sbom_diff_lookback_finds_older_changed_pair():
+    # s4 (latest) identical to s3; s3 identical to s2; s2 differs from s1
+    # (adds "newpkg"). The card should report the s2-vs-s1 diff, not the
+    # unchanged s4-vs-s3 pair, while still reporting s4 as the true latest.
+    recent = [
+        {"_id": "s4", "started_at": "2026-06-29T10:00:00Z", "commit_sha": "c4"},
+        {"_id": "s3", "started_at": "2026-06-28T10:00:00Z", "commit_sha": "c3"},
+        {"_id": "s2", "started_at": "2026-06-27T10:00:00Z", "commit_sha": "c2"},
+        {"_id": "s1", "started_at": "2026-06-26T10:00:00Z", "commit_sha": "c1"},
+    ]
+    same = [{"name": "stable", "version": "1.0.0"}]
+    with_newpkg = same + [{"name": "newpkg", "version": "1.0.0"}]
+    rows = {
+        "s4": with_newpkg,
+        "s3": with_newpkg,
+        "s2": with_newpkg,  # first appeared here, vs. s1
+        "s1": same,
+    }
+    svc = _make_service(scan_repo=_FakeScanRepo(recent=recent), sbom_repo=_FakeSbomRepo(rows))
+    diff = await svc.get_target_sbom_diff("t1")
+
+    # True latest scan info is preserved...
+    assert diff["latest_scan_id"] == "s4"
+    assert diff["component_total"] == 2
+
+    # ...but the shown diff is the pair that actually changed (s2 vs s1).
+    assert diff["changed_scan_id"] == "s2"
+    assert diff["changed_commit_sha"] == "c2"
+    assert diff["previous_scan_id"] == "s1"
+    assert diff["added_count"] == 1
+    assert [e["name"] for e in diff["added"]] == ["newpkg"]
+
+
+@pytest.mark.asyncio
+async def test_sbom_diff_lookback_all_unchanged_falls_back_to_latest():
+    recent = [
+        {"_id": "s3", "started_at": "2026-06-28T10:00:00Z", "commit_sha": "c3"},
+        {"_id": "s2", "started_at": "2026-06-27T10:00:00Z", "commit_sha": "c2"},
+        {"_id": "s1", "started_at": "2026-06-26T10:00:00Z", "commit_sha": "c1"},
+    ]
+    same = [{"name": "stable", "version": "1.0.0"}]
+    rows = {"s3": same, "s2": same, "s1": same}
+    svc = _make_service(scan_repo=_FakeScanRepo(recent=recent), sbom_repo=_FakeSbomRepo(rows))
+    diff = await svc.get_target_sbom_diff("t1")
+
+    assert diff["latest_scan_id"] == "s3"
+    assert diff["changed_scan_id"] == "s3"  # falls back to the true latest scan
+    assert diff["previous_scan_id"] == "s2"  # immediate predecessor, not skipped further back
+    assert diff["added_count"] == 0
+    assert diff["updated_count"] == 0
+    assert diff["removed_count"] == 0
 
 
 # --------------------------------------------------------------------------
@@ -310,3 +424,82 @@ async def test_affected_scan_targets_sbom_skipped_when_finding_covers():
     )
     assert len(res) == 1
     assert res[0]["matchType"] == "finding"
+
+
+# --------------------------------------------------------------------------
+# delete_target / delete_scan — cascade cleanup, incl. background task path
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_target_returns_false_and_skips_cascade_when_missing():
+    target_repo = _FakeTargetRepo({})
+    finding_repo = _FakeFindingRepo()
+    sbom_repo = _FakeSbomRepo()
+    scan_repo = _FakeScanRepo()
+    layer_repo = _FakeLayerRepo()
+    svc = _make_service(
+        target_repo=target_repo, finding_repo=finding_repo, sbom_repo=sbom_repo,
+        scan_repo=scan_repo, layer_repo=layer_repo,
+    )
+
+    assert await svc.delete_target("missing") is False
+    assert finding_repo.deleted_by_target == []
+    assert sbom_repo.deleted_by_target == []
+    assert scan_repo.deleted_by_target == []
+    assert layer_repo.deleted_by_target == []
+    assert not scan_service_module._target_cleanup_tasks
+
+
+@pytest.mark.asyncio
+async def test_delete_target_deletes_row_immediately_and_cascades_in_background():
+    target_repo = _FakeTargetRepo({"t1": {"name": "Target One"}})
+    finding_repo = _FakeFindingRepo()
+    sbom_repo = _FakeSbomRepo()
+    scan_repo = _FakeScanRepo()
+    layer_repo = _FakeLayerRepo()
+    svc = _make_service(
+        target_repo=target_repo, finding_repo=finding_repo, sbom_repo=sbom_repo,
+        scan_repo=scan_repo, layer_repo=layer_repo,
+    )
+
+    result = await svc.delete_target("t1")
+
+    # The target row is gone synchronously, before the cascade has run.
+    assert result is True
+    assert target_repo.deleted_ids == ["t1"]
+    assert await target_repo.get("t1") is None
+
+    # A background cleanup task was scheduled; wait for it to finish, then
+    # verify all four child collections (incl. the previously-orphaned
+    # layer_repo) were cleaned up.
+    tasks = list(scan_service_module._target_cleanup_tasks)
+    assert len(tasks) == 1
+    await tasks[0]
+
+    assert finding_repo.deleted_by_target == ["t1"]
+    assert sbom_repo.deleted_by_target == ["t1"]
+    assert scan_repo.deleted_by_target == ["t1"]
+    assert layer_repo.deleted_by_target == ["t1"]
+    # Task set discards itself once done (no leaked references).
+    assert not scan_service_module._target_cleanup_tasks
+
+
+@pytest.mark.asyncio
+async def test_delete_scan_cleans_up_layer_analysis_too():
+    # No target_id on the scan doc so the post-delete scan-count/summary
+    # refresh branch (which needs a fuller target_repo fake) is skipped —
+    # this test is only concerned with the unconditional cascade deletes.
+    scan_repo = _FakeScanRepo(scans={"s1": {}})
+    finding_repo = _FakeFindingRepo()
+    sbom_repo = _FakeSbomRepo()
+    layer_repo = _FakeLayerRepo()
+    svc = _make_service(
+        scan_repo=scan_repo, finding_repo=finding_repo, sbom_repo=sbom_repo,
+        layer_repo=layer_repo,
+    )
+
+    assert await svc.delete_scan("s1") is True
+    assert finding_repo.deleted_by_scan == ["s1"]
+    assert sbom_repo.deleted_by_scan == ["s1"]
+    assert layer_repo.deleted_by_scan == ["s1"]

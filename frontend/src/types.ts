@@ -974,6 +974,9 @@ export interface TargetSbomDiff {
   latestScanId?: string | null;
   latestScanAt?: string | null;
   latestCommitSha?: string | null;
+  changedScanId?: string | null;
+  changedScanAt?: string | null;
+  changedCommitSha?: string | null;
   previousScanId?: string | null;
   previousScanAt?: string | null;
   componentTotal: number;
