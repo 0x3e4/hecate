@@ -49,6 +49,7 @@ from app.scanners import (
     run_scanner,
     setup_auth,
 )
+from app.target_validation import UnsafeScanTarget, validate_scan_target
 
 logger = logging.getLogger("app.scanner_sidecar")
 
@@ -249,6 +250,10 @@ async def check(request: CheckRequest) -> CheckResponse:
     past the first two to land in the DB as a spurious check_failed_skipped
     each auto-scan tick.
     """
+    try:
+        validate_scan_target(request.target, request.type)
+    except UnsafeScanTarget as exc:
+        raise HTTPException(status_code=400, detail=f"Unsafe scan target: {exc}") from exc
     if request.type == "container_image":
         digest, error = await get_image_digest(request.target)
         return CheckResponse(
@@ -277,6 +282,10 @@ async def prepare_source(request: PrepareSourceRequest) -> PrepareSourceResponse
     deletes a token-resolved checkout."""
     if request.type != "source_repo":
         raise HTTPException(status_code=400, detail="prepare-source is only valid for source_repo scans")
+    try:
+        validate_scan_target(request.target, request.type)
+    except UnsafeScanTarget as exc:
+        raise HTTPException(status_code=400, detail=f"Unsafe scan target: {exc}") from exc
     try:
         checkout_dir = await _clone_repo(request.target)
     except RuntimeError as exc:
@@ -309,6 +318,15 @@ async def scan(request: ScanRequest) -> ScanResponse:
 
     if request.type not in ("container_image", "source_repo"):
         raise HTTPException(status_code=400, detail="type must be 'container_image' or 'source_repo'")
+
+    # Reject a target that could inject into git/skopeo/trivy argv before it
+    # reaches any subprocess. Skipped when an uploaded archive supplies the
+    # working tree (the target is then only a label, never executed).
+    if not request.source_archive_base64:
+        try:
+            validate_scan_target(request.target, request.type)
+        except UnsafeScanTarget as exc:
+            raise HTTPException(status_code=400, detail=f"Unsafe scan target: {exc}") from exc
 
     # Two mutually-exclusive ways to get a working tree: an uploaded archive
     # (owned by this /scan call, extracted fresh each time) or a shared checkout

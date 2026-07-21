@@ -119,14 +119,11 @@ class EUVDClient:
         Returns the list of items, an empty list if the page is empty,
         or None if all retries were exhausted.
         """
-        last_error: Exception | None = None
-
         for attempt in range(self.max_retries + 1):
             try:
                 async with self._rate_limiter.slot():
                     response = await self._client.get(self.SEARCH_PATH, params=params)
             except httpx.HTTPError as exc:
-                last_error = exc
                 if attempt < self.max_retries:
                     delay = self.retry_backoff * (2 ** attempt)
                     log.warning(
@@ -149,11 +146,6 @@ class EUVDClient:
                 return None
 
             if response.status_code >= 500:
-                last_error = httpx.HTTPStatusError(
-                    f"Server error '{response.status_code} {response.reason_phrase}' for url '{response.url}'",
-                    request=response.request,
-                    response=response,
-                )
                 if attempt < self.max_retries:
                     delay = self.retry_backoff * (2 ** attempt)
                     log.warning(

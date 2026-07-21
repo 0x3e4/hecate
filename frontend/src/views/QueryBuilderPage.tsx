@@ -20,7 +20,7 @@ export const QueryBuilderPage = () => {
   const [saveName, setSaveName] = useState("");
   const { toast, showToast } = useToast();
 
-  const { createSearch } = useSavedSearches();
+  const { createSavedSearch } = useSavedSearches();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export const QueryBuilderPage = () => {
     }
 
     try {
-      await createSearch({
+      await createSavedSearch({
         name: saveName.trim(),
         queryParams: `mode=dql&search=${encodeURIComponent(currentQuery)}`,
         dqlQuery: currentQuery,

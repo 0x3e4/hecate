@@ -11,10 +11,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from app.core.config import settings
 from app.schemas.ai import (
     AIBatchInvestigationRequest,
-    AIBatchInvestigationResponse,
     AIBatchInvestigationSubmitResponse,
     AIInvestigationRequest,
-    AIInvestigationResponse,
     AIInvestigationSubmitResponse,
     AIProviderInfo,
 )
@@ -35,7 +33,7 @@ from app.schemas.vulnerability import (
     VulnerabilityRefreshRequest,
     VulnerabilityRefreshResponse,
 )
-from app.services.ai_service import AIClient, AIProviderError, get_ai_client
+from app.services.ai_service import AIClient, get_ai_client
 from app.services.app_settings_service import AppSettingsService, get_app_settings_service
 from app.services.attack_path_service import AttackPathService, get_attack_path_service
 from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started

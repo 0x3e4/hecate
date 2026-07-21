@@ -12,7 +12,7 @@ const extractFilename = (disposition?: string): string | undefined => {
   if (!disposition) {
     return undefined;
   }
-  const match = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(disposition);
+  const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
   if (!match) {
     return undefined;
   }

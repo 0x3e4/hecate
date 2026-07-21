@@ -576,7 +576,7 @@ Everything is driven through environment variables — see [`.env.example`](.env
 
 | Category | Key variables |
 | --- | --- |
-| **General** | `ENVIRONMENT`, `API_PREFIX`, `LOG_LEVEL`, `TZ`, `HTTP_CA_BUNDLE` (path to a PEM with corporate / MITM CA; merged with the system CAs at container start, so it only needs to contain the corporate CA) |
+| **General** | `ENVIRONMENT` (non-`development` values enable the insecure-default-secret startup check), `API_PREFIX`, `LOG_LEVEL`, `TZ`, `CORS_ORIGINS` (comma-separated allowed browser origins; `*` default serves wildcard reads without credentials — set explicit origins to scope them), `HTTP_CA_BUNDLE` (path to a PEM with corporate / MITM CA; merged with the system CAs at container start, so it only needs to contain the corporate CA) |
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_VERIFY_CERTS`, `OPENSEARCH_CA_CERT` |
 | **AI providers** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `OPENAI_COMPATIBLE_LABEL` (Ollama / vLLM / OpenRouter / LocalAI / LM Studio via `/v1/chat/completions`) |

@@ -291,11 +291,18 @@ corepack enable pnpm && pnpm install && pnpm run dev
 
 Dev server runs on port 3000 and proxies `/api` to `http://backend:8000` automatically.
 
-### Linting
+### Quality checks
 
 ```sh
-pnpm run lint
+pnpm run lint        # ESLint (flat config: eslint.config.js, typescript-eslint + react-hooks)
+pnpm run typecheck   # tsc --noEmit over tsconfig.json + tsconfig.node.json
+pnpm run test        # Vitest unit tests (pure utils, e.g. savedSearchQuery)
 ```
+
+ESLint uses the flat `eslint.config.js` (ESLint 9). Real correctness issues (rules-of-hooks, parse
+errors) are errors; the pre-existing style backlog (`no-explicit-any`, effect-dep hints) is `warn`
+for now. `vite build` transpiles without type-checking, so run `typecheck` separately. All three run
+in CI and gate the image build.
 
 ### Docker build
 

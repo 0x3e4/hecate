@@ -84,7 +84,6 @@ class AssetCatalogService:
 
         for product_name, versions in product_versions.items():
             alias_candidates = self._matching_cpe_products(product_name, parsed_cpes)
-            cpe_names = [candidate.replace(":", " ").replace("_", " ") for candidate in alias_candidates if candidate]
             try:
                 product_slug = await self.repository.upsert_product(
                     product_name,

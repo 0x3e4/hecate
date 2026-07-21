@@ -413,7 +413,7 @@ export const ScanDetailPage = () => {
     [merged],
   );
   const sastScannerLabel = useMemo(() => {
-    const names = Array.from(new Set(sastFindings.map(f => f.scanner).filter(Boolean)));
+    const names = Array.from(new Set(sastFindings.flatMap(f => f.scanners).filter(Boolean)));
     if (names.length === 0) return "SAST";
     return names.map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(", ");
   }, [sastFindings]);
@@ -834,7 +834,7 @@ export const ScanDetailPage = () => {
             style={tabStyle(tab === "findings")}
           >
             {t("Findings", "Ergebnisse")}
-            <TabBadge count={findings.length > 0 ? vulnFindings.length : (scan.findingsCount || findingsTotal)} />
+            <TabBadge count={findings.length > 0 ? vulnFindings.length : findingsTotal} />
           </button>
           <button
             type="button"
@@ -2219,7 +2219,7 @@ export const ScanDetailPage = () => {
         {tab === "layers" && (
           <>
             {layerLoading ? (
-              <SkeletonBlock lines={6} />
+              <SkeletonBlock height={160} />
             ) : !scan?.layerAnalysisAvailable ? (
               <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px" }}>
                 <p style={{ color: "rgba(255,255,255,0.4)", margin: 0, fontSize: "0.875rem" }}>
@@ -2648,7 +2648,7 @@ export const ScanDetailPage = () => {
                               }}>
                                 {sev}
                               </span>
-                              {finding.scanner && (
+                              {finding.scanners.length > 0 && (
                                 <span style={{
                                   padding: "0.125rem 0.5rem",
                                   borderRadius: "4px",
@@ -2658,7 +2658,7 @@ export const ScanDetailPage = () => {
                                   color: "#a78bfa",
                                   border: "1px solid rgba(167,139,250,0.25)",
                                 }}>
-                                  {finding.scanner}
+                                  {finding.scanners.join(", ")}
                                 </span>
                               )}
                               <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>

@@ -20,6 +20,17 @@ by a real identity service later.
 
 All gates are **fail-open**: if the corresponding secret is unset, that gate is a no-op.
 
+### Comparison & brute-force protection
+
+Every secret is compared in **constant time**, and the write gates plus the password-check endpoints
+(`POST /api/v1/status/system-auth`, `/status/ai-auth`) carry a **per-client throttle with lockout**:
+after repeated failures from the same client, further attempts are rejected with `HTTP 429` for a
+cooldown window before the secret is even checked. This caps online guessing so a weak password can't
+be brute-forced at full request rate. The client is identified from the reverse proxy's forwarded
+address where present (see [Reverse proxy / real client IP](configuration.md)); the throttle is
+in-memory and best-effort — defence in depth, not a substitute for a strong secret, TLS, and network
+ACLs.
+
 ## Layer A — global admin gate
 
 When `SYSTEM_PASSWORD` is set, every mutating REST endpoint requires `X-System-Password` to match.
@@ -97,6 +108,9 @@ traffic. For a live deployment, pair it with:
 
 - **TLS** at the reverse proxy.
 - **Network ACLs** / VPN to limit who can reach the API at all.
+- **Scoped CORS** via `CORS_ORIGINS` (see [Configuration](configuration.md)). Reads are open by
+  design, so the `*` default lets any browser origin read the API; set explicit origin(s) to keep
+  cross-origin reads scoped to your own frontend.
 
 MCP writes are independent: they require the OAuth `mcp:write` scope (granted by
 `MCP_WRITE_IP_SAFELIST`), not these passwords.

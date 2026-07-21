@@ -23,11 +23,11 @@ const STEPS_DE = [
 ];
 
 export const AILoadingIndicator = ({ compact = false, startedAt }: AILoadingIndicatorProps) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const origin = startedAt ?? Date.now();
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - origin) / 1000));
 
-  const steps = t(STEPS_EN, STEPS_DE) as unknown as string[];
+  const steps = language === "de" ? STEPS_DE : STEPS_EN;
 
   // Derive active step from elapsed time (8s per step)
   const activeStep = Math.min(Math.floor(elapsed / 8), steps.length - 1);

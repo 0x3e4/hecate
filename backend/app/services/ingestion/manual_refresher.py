@@ -275,7 +275,6 @@ class ManualRefresher:
     ) -> VulnerabilityRefreshStatus:
         upper_normalized = normalized_identifier.upper()
         is_cve = CVE_PATTERN.fullmatch(upper_normalized) is not None
-        is_euvd = EUVD_PATTERN.fullmatch(upper_normalized) is not None
         ingested_at = datetime.now(tz=UTC)
 
         # If a specific source is requested, only fetch from that source

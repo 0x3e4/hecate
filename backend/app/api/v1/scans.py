@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Uplo
 from fastapi.responses import Response
 
 from app.core.config import settings
-from app.core.passwords import hash_password
+from app.core.passwords import hash_password, secret_equals
 from app.repositories.license_policy_repository import LicensePolicyRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
 from app.repositories.scan_repository import ScanRepository
@@ -102,7 +102,7 @@ async def verify_sca_api_key(x_api_key: str = Header(..., alias="X-API-Key")) ->
     """Verify the SCA API key for write endpoints."""
     if not settings.sca_api_key:
         raise HTTPException(status_code=503, detail="SCA API key not configured on server")
-    if x_api_key != settings.sca_api_key:
+    if not secret_equals(x_api_key, settings.sca_api_key):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 

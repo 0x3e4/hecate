@@ -41,6 +41,7 @@ from app.services.scan_parser import (
     parse_trivy_json,
     parse_trufflehog_json,
 )
+from app.services.scan_target_validation import validate_scan_target
 
 log = structlog.get_logger()
 
@@ -335,6 +336,13 @@ class ScanService:
         if source_archive_base64 and target_type != "source_repo":
             raise ValueError("source archive is only supported for source_repo scans")
 
+        # Reject a target that could inject into the scanner's git/skopeo/trivy
+        # argv before it is stored or dispatched. An uploaded archive supplies
+        # the working tree itself, so the target is then only a label and is not
+        # executed — skip validation in that case.
+        if not source_archive_base64:
+            validate_scan_target(target, target_type)
+
         # 1. Upsert scan target (unless one-time scan)
         target_id = (
             f"one-time-upload:{uuid4().hex}"
@@ -501,7 +509,7 @@ class ScanService:
 
         # Create scan record
         started_at = datetime.now(tz=UTC)
-        from app.models.scan import ScanDocument, ScanSummary
+        from app.models.scan import ScanDocument
         scan_doc = ScanDocument(
             target_id=target_id,
             target_name=target_name,
@@ -639,7 +647,6 @@ class ScanService:
         source_archive_base64: str | None = None,
     ) -> None:
         """Inner scan logic, separated to allow CancelledError handling in the wrapper."""
-        from app.services.scan_parser import _filter_and_merge_sbom
 
         all_findings: list[ScanFindingDocument] = []
         all_components: list[ScanSbomComponentDocument] = []

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import UTC, datetime
 
-from fastapi import Depends
 import structlog
 
 from app.core.config import settings
