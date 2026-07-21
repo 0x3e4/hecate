@@ -3534,7 +3534,8 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     // Line
     ctx.beginPath();
     for (let i = 0; i < pts.length; i++) {
-      i === 0 ? ctx.moveTo(pts[i].x, pts[i].y) : ctx.lineTo(pts[i].x, pts[i].y);
+      if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
+      else ctx.lineTo(pts[i].x, pts[i].y);
     }
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;

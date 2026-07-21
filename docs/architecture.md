@@ -76,7 +76,8 @@ concatenation every non-proxied egress (for example direct calls to NVD) would f
 ### API layer
 
 Twenty router modules under `app/api/v1` group the REST surface into functional areas. The default
-prefix is `/api/v1` (configurable) and CORS is enabled for local integration.
+prefix is `/api/v1` (configurable). CORS defaults to wildcard reads without credentials and can be
+scoped to explicit origins via `CORS_ORIGINS`.
 
 | Router | Responsibility |
 | --- | --- |

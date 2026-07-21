@@ -10,7 +10,6 @@ from app.core.config import settings
 from app.db.opensearch import async_delete_document
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.sync import SyncStatesResponse, TriggerSyncRequest, TriggerSyncResponse
-from app.schemas.vulnerability import VulnerabilityRefreshResponse
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.sync_service import SyncService, get_sync_service
 

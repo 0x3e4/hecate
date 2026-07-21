@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 # every subprocess inherits it.
 os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
 os.environ.setdefault("GCM_INTERACTIVE", "never")
+# Restrict git to network transports only. GIT_ALLOW_PROTOCOL is an allow-list,
+# so this refuses the transport-helper (``ext::sh -c '…'``) and local
+# (``file://``) transports outright — the command-injection vector when a
+# user-supplied scan-target URL reaches ``git clone``/``ls-remote``. Every git
+# subprocess inherits it via os.environ (create_subprocess_exec passes no env).
+os.environ.setdefault("GIT_ALLOW_PROTOCOL", "http:https:git:ssh")
 
 from app.hecate_analyzer import run_analysis
 from app.malware_detector import run_detection
@@ -314,7 +320,10 @@ async def _clone_repo(url: str) -> str:
         # contents in the working tree. The timeout is configurable via
         # GIT_CLONE_TIMEOUT_SECONDS (default 300) so a slow clone under
         # contention doesn't trip the old hardcoded 120 s budget.
-        cmd = ["git", *args, "clone", "--depth", "1", "--no-tags", "--single-branch", url, tmp_dir]
+        # ``--`` ends option parsing so a ``-``-prefixed URL can't be read as a
+        # git flag (argument injection); validate_source_repo_target() has
+        # already rejected such targets, this is defence in depth.
+        cmd = ["git", *args, "clone", "--depth", "1", "--no-tags", "--single-branch", "--", url, tmp_dir]
         _, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("git_clone", default=300))
         if rc != 0:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -361,7 +370,8 @@ async def get_remote_commit_sha(url: str) -> tuple[str | None, str | None]:
     auth_args = _git_auth_args_for(url)
 
     async def _attempt(args: list[str]) -> tuple[str, str, int]:
-        cmd = ["git", *args, "ls-remote", url, "HEAD"]
+        # ``--`` ends option parsing (defence in depth against a ``-``-prefixed URL).
+        cmd = ["git", *args, "ls-remote", "--", url, "HEAD"]
         # 20 s — must be < the backend's /check HTTP timeout so a saturated
         # sidecar still returns a structured null fingerprint instead of
         # making the backend ReadTimeout.
@@ -397,7 +407,7 @@ async def get_image_digest(image_ref: str) -> tuple[str | None, str | None]:
     """
     # Try docker inspect first (works if image is pulled)
     docker_stdout, docker_stderr, docker_rc = await _run_command(
-        ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", image_ref], timeout=20,
+        ["docker", "inspect", "--format", "{{index .RepoDigests 0}}", "--", image_ref], timeout=20,
     )
     if docker_rc == 0 and docker_stdout.strip() and "@" in docker_stdout.strip():
         # Extract just the digest part: registry/name@sha256:abc... -> sha256:abc...

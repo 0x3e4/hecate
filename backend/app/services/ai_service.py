@@ -4,9 +4,15 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import httpx
+
+if TYPE_CHECKING:
+    # Runtime import lives inside the method (below) to avoid a circular import;
+    # this type-only import makes the forward-ref annotation resolvable for
+    # ruff/type-checkers.
+    from app.schemas.scan_attack_chain import ScanAttackChainNarrative
 
 try:  # pragma: no cover - optional dependency
     from google import genai

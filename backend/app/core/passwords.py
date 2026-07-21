@@ -6,9 +6,9 @@ stored format is a single self-describing string::
     pbkdf2_sha256$<iterations>$<salt_hex>$<hash_hex>
 
 Only used for the per-target write passwords stored in MongoDB. The global
-``SYSTEM_PASSWORD`` / ``AI_ANALYSIS_PASSWORD`` come from the environment and are
-compared in plaintext elsewhere — these are operator-entered secrets stored at
-rest, so they are hashed.
+``SYSTEM_PASSWORD`` / ``AI_ANALYSIS_PASSWORD`` / ``SCA_API_KEY`` come from the
+environment and are compared with :func:`secret_equals` (constant-time) — these
+per-target secrets stored at rest are hashed instead.
 """
 
 from __future__ import annotations
@@ -20,6 +20,19 @@ import secrets
 _ALGORITHM = "pbkdf2_sha256"
 _ITERATIONS = 200_000
 _SALT_BYTES = 16
+
+
+def secret_equals(provided: str | None, expected: str | None) -> bool:
+    """Constant-time comparison for plaintext shared secrets.
+
+    Used for the env-configured ``SYSTEM_PASSWORD`` / ``AI_ANALYSIS_PASSWORD`` /
+    ``SCA_API_KEY`` checks (replacing plain ``==``, which leaks length/prefix via
+    timing). Returns ``False`` when either side is missing so an unset secret
+    never matches. Encodes to bytes so non-ASCII secrets compare safely.
+    """
+    if not expected or provided is None:
+        return False
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
 
 
 def hash_password(password: str, *, iterations: int = _ITERATIONS) -> str:

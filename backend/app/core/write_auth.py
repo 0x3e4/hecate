@@ -22,8 +22,9 @@ from __future__ import annotations
 
 from fastapi import Depends, Header, HTTPException, Request
 
+from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
 from app.core.config import settings
-from app.core.passwords import verify_password
+from app.core.passwords import secret_equals, verify_password
 from app.services.scan_service import ScanService, get_scan_service
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -39,7 +40,7 @@ _WRITE_AUTH_HEADERS = {"X-Write-Auth-Required": "1"}
 
 
 def _admin_matches(provided: str | None) -> bool:
-    return bool(settings.system_password) and provided == settings.system_password
+    return secret_equals(provided, settings.system_password)
 
 
 async def require_admin_write(
@@ -55,8 +56,11 @@ async def require_admin_write(
         return
     if not settings.system_password:
         return
+    key = enforce_auth_throttle(request, "write:system")
     if _admin_matches(x_system_password):
+        record_auth_result(key, True)
         return
+    record_auth_result(key, False)
     raise HTTPException(
         status_code=401,
         detail="System password required for write operations.",
@@ -65,7 +69,7 @@ async def require_admin_write(
 
 
 def _ai_password_matches(provided: str | None) -> bool:
-    return bool(settings.ai_analysis_password) and provided == settings.ai_analysis_password
+    return secret_equals(provided, settings.ai_analysis_password)
 
 
 async def require_ai_write(
@@ -83,11 +87,14 @@ async def require_ai_write(
     configured, fall back to the global admin gate (the system-password modal).
     """
     if settings.ai_analysis_password:
+        key = enforce_auth_throttle(request, "write:ai")
         if not _ai_password_matches(x_ai_analysis_password):
+            record_auth_result(key, False)
             raise HTTPException(
                 status_code=401,
                 detail="Invalid or missing AI analysis password.",
             )
+        record_auth_result(key, True)
         return
     await require_admin_write(request, x_system_password=x_system_password)
 

@@ -15,10 +15,11 @@ differ from the code defaults.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `API_PREFIX` | `/api/v1` | URL prefix for all REST endpoints. |
-| `ENVIRONMENT` | `development` | Deployment label (affects logging only). |
+| `ENVIRONMENT` | `development` | Deployment label. Any non-development value also enables the startup check that logs a warning when a secret is left at a known example/placeholder value (e.g. `changeme`). |
 | `LOG_LEVEL` | `INFO` | Python log level: `DEBUG` / `INFO` / `WARNING` / `ERROR`. |
 | `TZ` | `UTC` | Container timezone; day-bucket boundaries and notification timestamps. |
-| `DOMAIN` | (unset) | Public hostname; used in CORS, OAuth callbacks, badge links. |
+| `DOMAIN` | (unset) | Public hostname label (OAuth callbacks, badge links). **Not** used for CORS — scope browser access with `CORS_ORIGINS`. |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed browser origins. The `*` default serves wildcard reads **without** credentials (Hecate authenticates via headers, not cookies). Set explicit origin(s) — e.g. `https://hecate.example.com` — to scope reads and re-enable credentials. |
 | `SUPPORT_PAGE_ENABLED` | `true` | Show the in-app Support page. |
 | `HECATE_GHCR_OWNER` | `0x3e4` | GHCR namespace for the three Hecate images (version-check on Support page). |
 | `HECATE_BUILD_SHA` | (build-injected) | Short git SHA of the running build (set at image build). |
@@ -36,6 +37,11 @@ The full model, including per-target write delegation, is described in
 | `SYSTEM_PASSWORD` 🔑 | (unset) | Admin password. When set, **all REST writes** require header `X-System-Password`, and it unlocks the System page. |
 | `AI_ANALYSIS_PASSWORD` 🔑 | (unset) | Required (header `X-AI-Analysis-Password`) to trigger any AI analysis — the final layer on top of the write gate. |
 | `SCA_API_KEY` 🔑 | (unset) | API key (header `X-API-Key`) for the CI/CD scan-submission endpoint `POST /api/v1/scans`. |
+
+All secret comparisons are constant-time, and the password endpoints carry a per-client throttle:
+after repeated failures from the same client the endpoint locks out (HTTP 429) for a cooldown, so a
+weak secret can't be brute-forced at full request rate. See
+[Security & Access Control](security-access-control.md).
 
 ## TLS / corporate proxy
 

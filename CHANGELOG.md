@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.5.0] - 2026-07-21
+
+### Added
+
+- **Brute-force protection & constant-time secrets** — the admin / AI / SCA-key checks are now constant-time, and the password-check endpoints (`POST /api/v1/status/system-auth`, `/status/ai-auth`) plus the write gates throttle repeated failures per client and lock out with `HTTP 429` after too many, so a weak secret can't be guessed at full request rate.
+- **`CORS_ORIGINS`** setting to scope which browser origins may read the API. The `*` default serves wildcard reads *without* credentials; set explicit origin(s) (e.g. `https://hecate.example.com`) to scope cross-origin access to your own frontend.
+- **Insecure-default-secret startup check** — in any non-`development` environment, Hecate logs a warning when a secret is left at a known example/placeholder value (e.g. `MONGO_PASSWORD=changeme`).
+- **CI quality gate** — container images now build only after the backend (ruff + pytest), scanner (pytest), and frontend (ESLint + TypeScript type-check + Vitest + build) checks pass; a red check blocks the push to the registry.
+
+### Changed
+
+- **CORS** no longer pairs a wildcard origin with `Access-Control-Allow-Credentials` (a spec-violating combination). Credentials are disabled under the `*` default; set `CORS_ORIGINS` to explicit origins to re-enable them.
+- Documentation sync for CORS scoping, the auth throttle / constant-time comparison, the insecure-default-secret check, scan-target validation, and the CI gate.
+- Dependency bumps. Backend: `apscheduler` 3.11.2 → 3.11.3, `google-auth` 2.55.1 → 2.56.0, `grpcio` 1.81.1 → 1.82.1, `typer` 0.26.8 → 0.27.0, `typing-extensions` 4.15.0 → 4.16.0, `websockets` 16.0 → 16.1.1, `sse-starlette` 3.4.5 → 3.4.6, `coverage` 7.14.3 → 7.15.2, plus transitive refreshes (`anyio`, `cffi`, `charset-normalizer`, `pyasn1`, `rpds-py`, `tzdata`, `tzlocal`). Scanner tools: Trivy 0.71.0 → 0.72.0, Grype v0.114.0 → v0.116.0, Syft v1.45.1 → v1.48.0, TruffleHog v3.95.6 → v3.95.9; deps `fastapi` 0.138.1 → 0.139.2, `uvicorn` 0.49.0 → 0.51.0. Frontend: `axios` ^1.17.0 → ^1.18.1, `mermaid` ^11.15.0 → ^11.16.0, `react-router-dom` ^7.17.0 → ^7.18.1, `vite` ^7.3.5 → ^7.3.6; added dev tooling `typescript-eslint`, `eslint-plugin-react-hooks`, `@eslint/js`, `globals`, `vitest`.
+
+### Fixed
+
+- **Scanner command-injection (RCE)** — a source-repo scan target's URL flowed unvalidated into `git clone` / `git ls-remote`, so a crafted target (a `ext::…` transport-helper or a `-`-prefixed value) could execute arbitrary commands inside the scanner container. Targets are now validated (scheme allowlist; `::` and leading `-` rejected) at both the API and the scanner, git runs with a restricted `GIT_ALLOW_PROTOCOL` and an end-of-options `--` separator, and the same guards cover the image-reference path.
+- **CVSS vector parsing** — modified-environmental metrics (`MAV` / `MAC` / `MPR` / `MUI` / `MS`) and CVSS v4 metrics (`attackRequirements`, `automatable`, `recovery`, `valueDensity`, `vulnerabilityResponseEffort`) were expanded from a flat abbreviation table with colliding single-letter keys, so their labels were wrong (e.g. `modifiedScope:U` showed as *UNKNOWN* instead of *UNCHANGED*, `recovery:A` as *ACTIVE* instead of *AUTOMATIC*). Each metric now maps through its own table; base and impact metrics are unchanged.
+- **Query Builder** — saving a search from the DQL Query Builder failed silently; it now saves correctly.
+- **Scan detail** — the SAST tab's scanner label rendered blank; it now shows the scanner name(s).
+
 ## [1.4.2] - 2026-07-01
 
 ### Added

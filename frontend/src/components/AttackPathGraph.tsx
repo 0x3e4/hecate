@@ -723,7 +723,7 @@ export function AttackPathGraphView({
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLDivElement).style.cursor = "grab";
               }}
-              // eslint-disable-next-line react/no-danger -- mermaid output rendered in strict securityLevel
+              // mermaid output rendered in strict securityLevel
               dangerouslySetInnerHTML={{ __html: svgMarkup }}
             />
             <div

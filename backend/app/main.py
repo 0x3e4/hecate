@@ -13,6 +13,26 @@ from app.services.cwe_service import get_cwe_service
 configure_logging()
 
 
+def _warn_on_insecure_default_secrets() -> None:
+    """Log a prominent warning when a known example/placeholder secret is in use
+    outside development (e.g. ``MONGO_PASSWORD=changeme`` copied from .env.example).
+
+    A warning rather than a hard boot-refusal so an upgrade of a running instance
+    is never bricked — but loud enough that it can't be missed in the logs."""
+    if not settings.is_production_like():
+        return
+    insecure = settings.insecure_default_warnings()
+    if insecure:
+        import structlog
+
+        structlog.get_logger().warning(
+            "config.insecure_default_secrets",
+            secrets=insecure,
+            environment=settings.environment,
+            hint="These secrets use a known example/placeholder value — change them before exposing this instance.",
+        )
+
+
 def create_app() -> FastAPI:
     """Application factory so tests can instantiate the app."""
     app = FastAPI(
@@ -24,10 +44,20 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc",
     )
 
+    # Never pair a wildcard origin with credentials (spec-violating, and it
+    # let any web page drive-by read the API). With explicit origins we can
+    # safely allow credentials; with the "*" default we serve wildcard reads
+    # but without credentials — Hecate authenticates via headers, not cookies.
+    cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if not cors_origins or cors_origins == ["*"]:
+        allow_origins, allow_credentials = ["*"], False
+    else:
+        allow_origins, allow_credentials = cors_origins, True
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=allow_origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
         # So the SPA can read the write-gate marker on 401s in cross-origin setups.
@@ -57,6 +87,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
+        _warn_on_insecure_default_secrets()
         await cleanup_stale_jobs()
         await get_scheduler().start()
         # Start MCP session manager if MCP is enabled

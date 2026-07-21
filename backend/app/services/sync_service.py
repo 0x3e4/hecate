@@ -6,7 +6,6 @@ from typing import Any
 
 import structlog
 
-from app.core.config import settings
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.schemas.sync import SyncState

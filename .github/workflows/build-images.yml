@@ -13,9 +13,81 @@ env:
   OWNER: ${{ github.repository_owner }}
 
 jobs:
+  # ── Quality gate ──────────────────────────────────────────────────────────
+  # These run before the build matrix and BLOCK it (build `needs:` all three),
+  # so a red lint/type/test check stops `latest` / `main-<sha>` from shipping to
+  # GHCR. Previously the images built and pushed with zero verification.
+  backend-test:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Ruff
+        run: poetry run ruff check .
+      - name: Pytest
+        run: poetry run pytest -q
+
+  scanner-test:
+    name: Scanner (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./scanner
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      # Test tooling is intentionally NOT in the runtime image (Dockerfile uses
+      # --only main); install it into the Poetry venv just for CI.
+      - name: Install test tooling
+        run: poetry run pip install pytest pytest-asyncio httpx
+      - name: Pytest
+        run: poetry run pytest -q
+
+  frontend-test:
+    name: Frontend (lint + typecheck + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Type-check
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
   build:
     name: Build and Push (${{ matrix.component }})
     runs-on: ubuntu-latest
+    needs: [backend-test, scanner-test, frontend-test]
     permissions:
       contents: read
       packages: write

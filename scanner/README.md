@@ -81,7 +81,7 @@ Run one or more scanners against a target.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `target` | string | Container-image reference or source-repo URL |
+| `target` | string | Container-image reference or source-repo URL. Validated before any subprocess runs — the scheme must be `https`/`http`/`git`/`ssh` for repos, and targets containing `::` (git transport helpers such as `ext::`) or starting with `-` are rejected (`400`). |
 | `type` | string | `container_image` or `source_repo` |
 | `scanners` | string[] | Scanners to run (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`, `semgrep`, `trufflehog`, `devskim`) |
 

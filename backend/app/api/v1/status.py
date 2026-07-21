@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import httpx
 
+from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
 from app.core.config import settings
+from app.core.passwords import secret_equals
 
 router = APIRouter()
 
@@ -61,12 +63,15 @@ async def system_auth_status() -> SystemAuthResponse:
 
 
 @router.post("/system-auth")
-async def system_auth_verify(payload: SystemAuthRequest) -> SystemAuthResponse:
-    """Verify the system password."""
+async def system_auth_verify(payload: SystemAuthRequest, request: Request) -> SystemAuthResponse:
+    """Verify the system password (constant-time + per-client throttled)."""
     if not settings.system_password:
         return SystemAuthResponse(required=False, authenticated=True)
-    if payload.password == settings.system_password:
+    key = enforce_auth_throttle(request, "system-auth")
+    if secret_equals(payload.password, settings.system_password):
+        record_auth_result(key, True)
         return SystemAuthResponse(required=True, authenticated=True)
+    record_auth_result(key, False)
     raise HTTPException(status_code=401, detail="Invalid password.")
 
 
@@ -80,10 +85,13 @@ async def ai_auth_status() -> SystemAuthResponse:
 
 
 @router.post("/ai-auth")
-async def ai_auth_verify(payload: SystemAuthRequest) -> SystemAuthResponse:
-    """Verify the AI analysis password."""
+async def ai_auth_verify(payload: SystemAuthRequest, request: Request) -> SystemAuthResponse:
+    """Verify the AI analysis password (constant-time + per-client throttled)."""
     if not settings.ai_analysis_password:
         return SystemAuthResponse(required=False, authenticated=True)
-    if payload.password == settings.ai_analysis_password:
+    key = enforce_auth_throttle(request, "ai-auth")
+    if secret_equals(payload.password, settings.ai_analysis_password):
+        record_auth_result(key, True)
         return SystemAuthResponse(required=True, authenticated=True)
+    record_auth_result(key, False)
     raise HTTPException(status_code=401, detail="Invalid password.")

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.schemas.cpe import CPEEntry, CPEQuery, CPEQueryResponse, CPEValueListResponse
 from app.services.cpe_service import CPEService, get_cpe_service

@@ -45,6 +45,70 @@ def extract_ghsa_ids(references: list[str]) -> list[str]:
     return ghsa_ids
 
 
+# Per-metric abbreviation → full-name maps for CVSS vector values. A single
+# flat dict CANNOT be used because the same letter means different things in
+# different metrics (e.g. "L" is LOCAL for attackVector but LOW for
+# attackComplexity, and "U" is UNCHANGED for scope but USER for recovery), so
+# every metric is dispatched to its own map. `_CVSS_NOT_DEFINED` (X) is merged
+# into the modified-environmental metrics, which alone may carry it.
+_CVSS_NOT_DEFINED = {"X": "NOT_DEFINED"}
+_CVSS_AV = {"N": "NETWORK", "A": "ADJACENT_NETWORK", "L": "LOCAL", "P": "PHYSICAL"}
+_CVSS_AC = {"L": "LOW", "H": "HIGH"}
+_CVSS_AT = {"N": "NONE", "P": "PRESENT"}  # v4 Attack Requirements
+_CVSS_PR = {"N": "NONE", "L": "LOW", "H": "HIGH", "M": "MULTIPLE", "S": "SINGLE"}
+_CVSS_UI = {"N": "NONE", "R": "REQUIRED", "A": "ACTIVE", "P": "PASSIVE"}
+_CVSS_SCOPE = {"U": "UNCHANGED", "C": "CHANGED"}
+_CVSS_IMPACT = {"N": "NONE", "L": "LOW", "H": "HIGH", "P": "PARTIAL", "C": "COMPLETE"}
+_CVSS_E = {"X": "NOT_DEFINED", "U": "UNPROVEN", "P": "PROOF_OF_CONCEPT", "F": "FUNCTIONAL", "H": "HIGH"}
+_CVSS_RL = {"X": "NOT_DEFINED", "O": "OFFICIAL_FIX", "T": "TEMPORARY_FIX", "W": "WORKAROUND", "U": "UNAVAILABLE"}
+_CVSS_RC = {"X": "NOT_DEFINED", "U": "UNKNOWN", "R": "REASONABLE", "C": "CONFIRMED"}
+_CVSS_REQ = {"X": "NOT_DEFINED", "L": "LOW", "M": "MEDIUM", "H": "HIGH"}
+# CVSS v4.0 Threat / Environmental metric values.
+_CVSS_AUTOMATABLE = {"N": "NO", "Y": "YES", "X": "NOT_DEFINED"}
+_CVSS_RECOVERY = {"A": "AUTOMATIC", "U": "USER", "I": "IRRECOVERABLE", "X": "NOT_DEFINED"}
+_CVSS_VALUE_DENSITY = {"D": "DIFFUSE", "C": "CONCENTRATED", "X": "NOT_DEFINED"}
+_CVSS_RESPONSE_EFFORT = {"L": "LOW", "M": "MODERATE", "H": "HIGH", "X": "NOT_DEFINED"}
+
+# full metric name → its value map. Modified environmental metrics mirror their
+# base metric's values plus X=NOT_DEFINED. providerUrgency is intentionally
+# absent — its values are already words (Clear/Green/Amber/Red) and are kept raw.
+_CVSS_VALUE_MAPS: dict[str, dict[str, str]] = {
+    "attackVector": _CVSS_AV,
+    "modifiedAttackVector": {**_CVSS_AV, **_CVSS_NOT_DEFINED},
+    "attackComplexity": _CVSS_AC,
+    "modifiedAttackComplexity": {**_CVSS_AC, **_CVSS_NOT_DEFINED},
+    "attackRequirements": _CVSS_AT,
+    "privilegesRequired": _CVSS_PR,
+    "authentication": _CVSS_PR,
+    "modifiedPrivilegesRequired": {**_CVSS_PR, **_CVSS_NOT_DEFINED},
+    "userInteraction": _CVSS_UI,
+    "modifiedUserInteraction": {**_CVSS_UI, **_CVSS_NOT_DEFINED},
+    "scope": _CVSS_SCOPE,
+    "modifiedScope": {**_CVSS_SCOPE, **_CVSS_NOT_DEFINED},
+    "exploitCodeMaturity": _CVSS_E,
+    "remediationLevel": _CVSS_RL,
+    "reportConfidence": _CVSS_RC,
+    "confidentialityRequirement": _CVSS_REQ,
+    "integrityRequirement": _CVSS_REQ,
+    "availabilityRequirement": _CVSS_REQ,
+    "automatable": _CVSS_AUTOMATABLE,
+    "recovery": _CVSS_RECOVERY,
+    "valueDensity": _CVSS_VALUE_DENSITY,
+    "vulnerabilityResponseEffort": _CVSS_RESPONSE_EFFORT,
+    # Impact-style metrics (base, vuln-, sub-, modified-, modifiedSub-) share one map.
+    **{
+        _impact_key: _CVSS_IMPACT
+        for _impact_key in (
+            "confidentialityImpact", "integrityImpact", "availabilityImpact",
+            "vulnConfidentialityImpact", "vulnIntegrityImpact", "vulnAvailabilityImpact",
+            "subConfidentialityImpact", "subIntegrityImpact", "subAvailabilityImpact",
+            "modifiedConfidentialityImpact", "modifiedIntegrityImpact", "modifiedAvailabilityImpact",
+            "modifiedSubConfidentialityImpact", "modifiedSubIntegrityImpact", "modifiedSubAvailabilityImpact",
+        )
+    },
+}
+
+
 def _parse_cvss_vector_string(vector_string: str) -> dict[str, str]:
     """
     Parse a CVSS vector string and extract individual metrics.
@@ -131,101 +195,13 @@ def _parse_cvss_vector_string(vector_string: str) -> dict[str, str]:
             "MSC": "modifiedSubConfidentialityImpact",
         }
 
-        # Map values to full names
-        value_mapping = {
-            # Attack Vector
-            "N": "NETWORK",
-            "A": "ADJACENT_NETWORK",
-            "L": "LOCAL",
-            "P": "PHYSICAL",
-            # Attack Complexity
-            "L": "LOW",
-            "H": "HIGH",
-            # Privileges Required / Authentication
-            "N": "NONE",
-            "L": "LOW",
-            "H": "HIGH",
-            "M": "MULTIPLE",
-            "S": "SINGLE",
-            # User Interaction
-            "N": "NONE",
-            "R": "REQUIRED",
-            "A": "ACTIVE",
-            "P": "PASSIVE",
-            # Scope
-            "U": "UNCHANGED",
-            "C": "CHANGED",
-            # Impact metrics
-            "N": "NONE",
-            "L": "LOW",
-            "H": "HIGH",
-            # Exploit Code Maturity
-            "X": "NOT_DEFINED",
-            "U": "UNPROVEN",
-            "P": "PROOF_OF_CONCEPT",
-            "F": "FUNCTIONAL",
-            "H": "HIGH",
-            # Remediation Level
-            "X": "NOT_DEFINED",
-            "O": "OFFICIAL_FIX",
-            "T": "TEMPORARY_FIX",
-            "W": "WORKAROUND",
-            "U": "UNAVAILABLE",
-            # Report Confidence
-            "X": "NOT_DEFINED",
-            "U": "UNKNOWN",
-            "R": "REASONABLE",
-            "C": "CONFIRMED",
-            # Requirements
-            "X": "NOT_DEFINED",
-            "L": "LOW",
-            "M": "MEDIUM",
-            "H": "HIGH",
-        }
-
         full_key = key_mapping.get(key, key.lower())
 
-        # Context-aware value mapping based on the metric type
-        value_upper = value.upper()
-
-        # Map values based on the specific metric context
-        if full_key == "attackVector":
-            av_map = {"N": "NETWORK", "A": "ADJACENT_NETWORK", "L": "LOCAL", "P": "PHYSICAL"}
-            full_value = av_map.get(value_upper, value)
-        elif full_key == "attackComplexity":
-            ac_map = {"L": "LOW", "H": "HIGH"}
-            full_value = ac_map.get(value_upper, value)
-        elif full_key in ["privilegesRequired", "authentication"]:
-            pr_map = {"N": "NONE", "L": "LOW", "H": "HIGH", "M": "MULTIPLE", "S": "SINGLE"}
-            full_value = pr_map.get(value_upper, value)
-        elif full_key == "userInteraction":
-            ui_map = {"N": "NONE", "R": "REQUIRED", "A": "ACTIVE", "P": "PASSIVE"}
-            full_value = ui_map.get(value_upper, value)
-        elif full_key == "scope":
-            s_map = {"U": "UNCHANGED", "C": "CHANGED"}
-            full_value = s_map.get(value_upper, value)
-        elif full_key in ["confidentialityImpact", "integrityImpact", "availabilityImpact",
-                          "vulnConfidentialityImpact", "vulnIntegrityImpact", "vulnAvailabilityImpact",
-                          "subConfidentialityImpact", "subIntegrityImpact", "subAvailabilityImpact",
-                          "modifiedConfidentialityImpact", "modifiedIntegrityImpact", "modifiedAvailabilityImpact",
-                          "modifiedSubConfidentialityImpact", "modifiedSubIntegrityImpact", "modifiedSubAvailabilityImpact"]:
-            impact_map = {"N": "NONE", "L": "LOW", "H": "HIGH", "P": "PARTIAL", "C": "COMPLETE"}
-            full_value = impact_map.get(value_upper, value)
-        elif full_key == "exploitCodeMaturity":
-            e_map = {"X": "NOT_DEFINED", "U": "UNPROVEN", "P": "PROOF_OF_CONCEPT", "F": "FUNCTIONAL", "H": "HIGH"}
-            full_value = e_map.get(value_upper, value)
-        elif full_key == "remediationLevel":
-            rl_map = {"X": "NOT_DEFINED", "O": "OFFICIAL_FIX", "T": "TEMPORARY_FIX", "W": "WORKAROUND", "U": "UNAVAILABLE"}
-            full_value = rl_map.get(value_upper, value)
-        elif full_key == "reportConfidence":
-            rc_map = {"X": "NOT_DEFINED", "U": "UNKNOWN", "R": "REASONABLE", "C": "CONFIRMED"}
-            full_value = rc_map.get(value_upper, value)
-        elif full_key in ["confidentialityRequirement", "integrityRequirement", "availabilityRequirement"]:
-            req_map = {"X": "NOT_DEFINED", "L": "LOW", "M": "MEDIUM", "H": "HIGH"}
-            full_value = req_map.get(value_upper, value)
-        else:
-            # Try generic mapping, otherwise keep as-is
-            full_value = value_mapping.get(value_upper, value)
+        # Context-aware value mapping: each metric has its own abbreviation map
+        # (see _CVSS_VALUE_MAPS). Metrics without a map — e.g. providerUrgency,
+        # whose values are already words — keep their raw value.
+        value_map = _CVSS_VALUE_MAPS.get(full_key)
+        full_value = value_map.get(value.upper(), value) if value_map else value
 
         metrics[full_key] = full_value
 

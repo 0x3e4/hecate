@@ -23,7 +23,7 @@ type Listener = (jobs: Map<string, JobEvent>, connected: boolean) => void;
 let _es: EventSource | null = null;
 let _jobs: Map<string, JobEvent> = new Map();
 let _connected = false;
-let _listeners: Set<Listener> = new Set();
+const _listeners: Set<Listener> = new Set();
 let _retryDelay = 1000;
 let _retryTimer: ReturnType<typeof setTimeout> | null = null;
 

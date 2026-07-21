@@ -74,7 +74,9 @@ app/
 │   ├── write_auth.py        REST write gate — global admin gate (require_admin_write) +
 │   │                          per-target authorization deps (X-System-Password / X-Target-Password);
 │   │                          write-gate 401s carry the X-Write-Auth-Required marker
-│   ├── passwords.py         PBKDF2 hash/verify for per-target write passwords
+│   ├── auth_throttle.py     Per-client failure throttle + lockout (429) for the password endpoints
+│   ├── passwords.py         PBKDF2 hash/verify for per-target write passwords +
+│   │                          secret_equals() constant-time compare for env secrets
 │   └── logging_config.py    structlog configuration
 ├── db/
 │   ├── mongo.py             Motor (async MongoDB) connection
@@ -350,9 +352,11 @@ poetry install
 ### Tests and linting
 
 ```sh
-poetry run pytest
-poetry run ruff check app
+poetry run pytest          # config in [tool.pytest.ini_options] (asyncio_mode = "auto")
+poetry run ruff check .    # config in [tool.ruff] (select = ["F"])
 ```
+
+Both run in CI (`.github/workflows/build-images.yml`) and gate the image build — a red check blocks the push to GHCR.
 
 ### Docker build
 

@@ -8,7 +8,7 @@ from typing import Any
 import structlog
 
 from app.core.config import settings
-from app.models.vulnerability import ExploitationMetadata, VulnerabilityDocument
+from app.models.vulnerability import ExploitationMetadata
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.kev_repository import KevRepository

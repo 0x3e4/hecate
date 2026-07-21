@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hecate-backend"
-version = "1.4.2"
+version = "1.5.0"
 description = "FastAPI backend for the Hecate cyber defense platform."
 authors = ["Hecate Team <info@hecate.pw>"]
 readme = "README.md"
@@ -32,3 +32,23 @@ pytest-cov = "^7.0.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+# auto mode marks every `async def test_*` without needing an explicit
+# @pytest.mark.asyncio, so a forgotten marker can't silently no-op as a false
+# green (pytest-asyncio 1.x defaults to strict).
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+# First pinned ruff config over a large, never-linted codebase. Scoped to the
+# pyflakes real-bug family ("F") for the first gate — deliberately NOT enabling
+# import-sort (I) / style (E) / pyupgrade (UP) yet, so this gate stays green on
+# day one and the mechanical reformat churn doesn't bury real changes. Widen the
+# `select` in dedicated follow-ups.
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]

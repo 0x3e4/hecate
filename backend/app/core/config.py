@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     environment: str = "development"
     log_level: str = "INFO"
+    # Comma-separated allowed CORS origins for the browser SPA. Default "*"
+    # keeps wildcard read access for existing deployments but is served WITHOUT
+    # `Access-Control-Allow-Credentials` (Hecate authenticates via headers, not
+    # cookies, so nothing breaks). Set to explicit origin(s) — e.g.
+    # "https://hecate.example.com" — to scope reads and re-enable credentials.
+    cors_origins: str = "*"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     openai_reasoning_effort: str = "medium"
@@ -272,6 +278,46 @@ class Settings(BaseSettings):
             return []
         items = [item.strip() for item in value.split(",")]
         return [item for item in items if item]
+
+    def is_production_like(self) -> bool:
+        """True for any ENVIRONMENT that isn't a local/dev/test label."""
+        return self.environment.strip().lower() not in {
+            "development",
+            "dev",
+            "local",
+            "test",
+            "testing",
+        }
+
+    def insecure_default_warnings(self) -> list[str]:
+        """Names of secrets left at a known example/placeholder value.
+
+        Surfaced at startup for non-development environments so an operator who
+        copied ``.env.example`` and forgot to change ``MONGO_PASSWORD=changeme``
+        (etc.) gets a loud signal instead of silently shipping a default secret.
+        """
+        placeholders = {
+            "changeme",
+            "change-me",
+            "changethis",
+            "password",
+            "secret",
+            "admin",
+            "hecate",
+            "example",
+        }
+        checked = {
+            "MONGO_PASSWORD": self.mongo_password,
+            "OPENSEARCH_PASSWORD": self.opensearch_password,
+            "SYSTEM_PASSWORD": self.system_password,
+            "AI_ANALYSIS_PASSWORD": self.ai_analysis_password,
+            "SCA_API_KEY": self.sca_api_key,
+        }
+        return [
+            name
+            for name, value in checked.items()
+            if value and value.strip().lower() in placeholders
+        ]
 
 
 @lru_cache(maxsize=1)
