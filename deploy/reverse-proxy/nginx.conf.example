@@ -1,0 +1,150 @@
+# =============================================================================
+# Hecate — nginx reverse-proxy template
+# =============================================================================
+# TLS termination + security headers in front of the Hecate frontend (SPA) and
+# backend (API / MCP). Copy to your nginx sites dir and replace the placeholders:
+#
+#   hecate.example.com                       -> your domain
+#   /etc/letsencrypt/live/hecate.example.com -> your certificate paths
+#   http://hecate-backend:8000               -> backend service:port
+#   http://hecate-frontend:4173              -> frontend service:port
+#
+# The frontend container is `serve -s dist` on :4173 (no headers of its own),
+# so ALL security headers belong here. Everything the SPA loads is bundled and
+# same-origin (no CDN), so the CSP can stay strict.
+#
+# After a re-scan you should land an A on securityheaders.com.
+# =============================================================================
+
+# ---- HTTP -> HTTPS redirect ----
+server {
+    listen 80;
+    listen [::]:80;
+    server_name hecate.example.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+
+    server_name hecate.example.com;
+    server_tokens off;
+
+    ssl_certificate     /etc/letsencrypt/live/hecate.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hecate.example.com/privkey.pem;
+
+    # Reject requests that don't carry the expected Host (defence in depth).
+    if ($host != "hecate.example.com") {
+        return 444;
+    }
+
+    # In Docker Compose, container IPs can change on restart. Docker's embedded
+    # DNS usually handles this, but to force per-request re-resolution use the
+    # resolver + variable-upstream trick, e.g.:
+    #   resolver 127.0.0.11 valid=30s;
+    #   set $backend  http://hecate-backend:8000;
+    #   proxy_pass $backend;
+    # The plain `proxy_pass http://hecate-backend:8000;` form below is portable.
+
+    # -----------------------------------------------------------------
+    # Security headers — server level. Inherited by every location that
+    # defines NO add_header of its own (i.e. all of them below except the
+    # /api/(docs|redoc) override, which re-declares the full set).
+    # NOTE: style-src 'unsafe-inline' is REQUIRED (react-select/emotion +
+    # Mermaid inject <style>); do not remove it.
+    # -----------------------------------------------------------------
+    add_header Strict-Transport-Security    "max-age=63072000" always;   # append "; includeSubDomains" only if every *.example.com is HTTPS
+    add_header X-Content-Type-Options        "nosniff" always;
+    add_header X-Frame-Options               "DENY" always;
+    add_header Referrer-Policy               "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy            "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()" always;
+    add_header Cross-Origin-Opener-Policy    "same-origin" always;
+    add_header Cross-Origin-Resource-Policy  "same-origin" always;
+    add_header Content-Security-Policy        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; manifest-src 'self'" always;
+
+    # ---- SSE (Server-Sent Events): live job/scan updates ----
+    location /api/v1/events {
+        proxy_pass http://hecate-backend:8000;
+        proxy_http_version 1.1;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400s;
+        proxy_set_header Connection '';
+        chunked_transfer_encoding off;
+    }
+
+    # ---- OPTIONAL: built-in Swagger UI / ReDoc.
+    #      They load JS/CSS from cdn.jsdelivr.net + use an inline init script,
+    #      so they need a relaxed CSP. Delete this whole block if you don't
+    #      expose the raw docs at /api/docs and /api/redoc. ----
+    location ~ ^/api/(docs|redoc)$ {
+        proxy_pass http://hecate-backend:8000;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+        proxy_read_timeout 300s;
+
+        # This location has its own add_header, so it does NOT inherit the
+        # server-level set — re-declare everything, with a docs-friendly CSP.
+        add_header Strict-Transport-Security   "max-age=63072000" always;
+        add_header X-Content-Type-Options       "nosniff" always;
+        add_header X-Frame-Options              "DENY" always;
+        add_header Referrer-Policy              "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy           "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()" always;
+        add_header Cross-Origin-Opener-Policy   "same-origin" always;
+        add_header Content-Security-Policy       "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self'" always;
+    }
+
+    # ---- Backend API ----
+    location /api {
+        proxy_pass http://hecate-backend:8000;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ---- MCP OAuth discovery metadata (/.well-known/oauth-authorization-server, etc.) ----
+    location /.well-known/oauth- {
+        proxy_pass http://hecate-backend:8000;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+        proxy_read_timeout 300s;
+    }
+
+    # ---- MCP server ----
+    location /mcp {
+        proxy_pass http://hecate-backend:8000;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+        proxy_read_timeout 300s;
+    }
+
+    # ---- Frontend SPA (everything else) ----
+    location / {
+        proxy_pass http://hecate-frontend:4173;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+    }
+
+    # ---- TLS (Mozilla "modern") ----
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:MozSSL:10m;
+    ssl_session_tickets off;
+    ssl_protocols TLSv1.3;
+    ssl_prefer_server_ciphers off;
+}

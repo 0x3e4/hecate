@@ -1,0 +1,97 @@
+# =============================================================================
+# Hecate — Traefik DYNAMIC config template (file provider)
+# =============================================================================
+# Routers + middlewares + services for Hecate. Pair with the static config in
+# traefik-static.yml.example (entrypoints + ACME + this file provider).
+# Replace the placeholders:
+#
+#   hecate.example.com     -> your domain
+#   hecate-backend:8000    -> backend service:port
+#   hecate-frontend:4173   -> frontend service:port
+#   letsencrypt            -> your certResolver name (must match the static config)
+#
+# Higher router priority wins, so the docs router (most specific) is evaluated
+# before the backend router, which is evaluated before the catch-all frontend.
+# Traefik sets X-Forwarded-* and forwards the original Host automatically; SSE
+# (/api/v1/events) streams without extra config.
+#
+# All security headers live here (the frontend `serve` process sets none).
+# NOTE: style-src 'unsafe-inline' is REQUIRED (react-select/emotion + Mermaid
+# inject <style>); do not remove it.
+# =============================================================================
+
+http:
+  routers:
+    # --- OPTIONAL: built-in Swagger UI / ReDoc (relaxed CSP). Remove this
+    #     router + the hecate-docs-headers middleware if you don't expose the
+    #     raw docs at /api/docs and /api/redoc. ---
+    hecate-docs:
+      rule: "Host(`hecate.example.com`) && (Path(`/api/docs`) || Path(`/api/redoc`))"
+      entryPoints:
+        - websecure
+      service: hecate-backend
+      middlewares:
+        - hecate-docs-headers
+      priority: 100
+      tls:
+        certResolver: letsencrypt
+
+    hecate-backend:
+      rule: "Host(`hecate.example.com`) && (PathPrefix(`/api`) || PathPrefix(`/mcp`) || PathPrefix(`/.well-known/oauth-`))"
+      entryPoints:
+        - websecure
+      service: hecate-backend
+      middlewares:
+        - hecate-security-headers
+      priority: 50
+      tls:
+        certResolver: letsencrypt
+
+    hecate-frontend:
+      rule: "Host(`hecate.example.com`)"
+      entryPoints:
+        - websecure
+      service: hecate-frontend
+      middlewares:
+        - hecate-security-headers
+      priority: 10
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    hecate-backend:
+      loadBalancer:
+        servers:
+          - url: "http://hecate-backend:8000"
+    hecate-frontend:
+      loadBalancer:
+        servers:
+          - url: "http://hecate-frontend:4173"
+
+  middlewares:
+    hecate-security-headers:
+      headers:
+        stsSeconds: 63072000
+        stsIncludeSubdomains: false   # set true only if every *.example.com is HTTPS
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()"
+        contentSecurityPolicy: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; manifest-src 'self'"
+        customResponseHeaders:
+          Cross-Origin-Opener-Policy: "same-origin"
+          Cross-Origin-Resource-Policy: "same-origin"
+          Server: ""   # strip the Server header
+
+    # Relaxed CSP for the built-in docs (jsdelivr + inline init script).
+    hecate-docs-headers:
+      headers:
+        stsSeconds: 63072000
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()"
+        contentSecurityPolicy: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self'"
+        customResponseHeaders:
+          Cross-Origin-Opener-Policy: "same-origin"
+          Server: ""

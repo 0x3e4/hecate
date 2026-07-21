@@ -1,0 +1,48 @@
+# =============================================================================
+# Hecate — Traefik STATIC config template
+# =============================================================================
+# Entrypoints, HTTP->HTTPS redirect, ACME (Let's Encrypt), and the file provider
+# that loads traefik-dynamic.yml.example. Mount as /etc/traefik/traefik.yml.
+# Replace the placeholders:
+#
+#   admin@example.com          -> your ACME contact e-mail
+#   letsencrypt                -> certResolver name (must match the dynamic file)
+#   /etc/traefik/dynamic       -> directory holding traefik-dynamic.yml
+# =============================================================================
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+  # If you prefer container labels instead of the dynamic file, enable Docker:
+  # docker:
+  #   exposedByDefault: false
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /etc/traefik/acme.json      # chmod 600
+      tlsChallenge: {}
+
+# Don't leak the Traefik version in error pages / headers.
+global:
+  sendAnonymousUsage: false
+
+api:
+  dashboard: false

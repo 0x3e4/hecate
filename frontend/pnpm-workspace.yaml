@@ -2,3 +2,15 @@ onlyBuiltDependencies:
   - esbuild
 
 minimumReleaseAge: 20160
+
+# brace-expansion 1.1.16 (the CVE-2026-13149 fix on the v1 maintenance line) was
+# published 8 Jul 2026 — still inside the 14-day maturity window above. Exempt
+# this single well-known package so the security patch can be pulled now; the
+# guard stays in force for everything else.
+minimumReleaseAgeExclude:
+  - brace-expansion
+
+# Force the transitive brace-expansion 1.x (pulled via minimatch@3.1.5) to the
+# patched 1.1.16 that fixes CVE-2026-13149 (the 5.x line already ships 5.0.7).
+overrides:
+  brace-expansion@1: 1.1.16

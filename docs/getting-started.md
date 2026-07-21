@@ -44,6 +44,19 @@ way to get oriented:
 5. **System** — language, timezone, notifications, data sync, license policies, and (if you set
    `SYSTEM_PASSWORD`) **Target Access** for per-target write delegation.
 
+## Reverse proxy & TLS
+
+For anything beyond a local trial, put Hecate behind a TLS-terminating reverse proxy. The
+`deploy/reverse-proxy/` folder ships ready-to-adapt templates for **nginx**, **Caddy**, and
+**Traefik** that terminate HTTPS, route `/api`, `/mcp` and the SSE stream to the backend and
+everything else to the frontend, and set a hardened HTTP security-header set (HSTS, a strict
+Content-Security-Policy, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
+`Permissions-Policy`, and the cross-origin isolation headers).
+
+Copy the template for your proxy, replace the placeholder domain and upstream hostnames, and
+reload. Pair it with scoped `CORS_ORIGINS` and, on a shared instance, a `SYSTEM_PASSWORD`
+(see [Security & Access Control](security-access-control.md)).
+
 ## Updating
 
 Images are published to GHCR (`ghcr.io/0x3e4/hecate-{backend,frontend,scanner}` — the namespace is

@@ -7,7 +7,7 @@
 Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV), normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, and DevSkim against your container images and source repos.
 
 ![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-8-47A248?logo=mongodb&logoColor=white)
@@ -325,6 +325,13 @@ docker compose up --build
 | Scanner sidecar | <http://localhost:8080> |
 | Apprise (internal) | `http://apprise:8000` |
 
+### Behind a reverse proxy
+
+For a live deployment, terminate TLS at a reverse proxy. Ready-to-adapt **nginx**, **Caddy**, and
+**Traefik** templates — terminating HTTPS, routing `/api` / `/mcp` / SSE to the backend, and setting
+a hardened HTTP security-header set (HSTS, a strict CSP, `X-Frame-Options`, `Permissions-Policy`, …) —
+live in [`deploy/reverse-proxy/`](deploy/reverse-proxy/).
+
 ---
 
 ## Local development
@@ -606,7 +613,7 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 
 | Component | Technology |
 | --- | --- |
-| Backend | Python 3.14, FastAPI 0.128, Uvicorn, Poetry |
+| Backend | Python 3.14, FastAPI 0.139, Uvicorn, Poetry |
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
 | Database | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |

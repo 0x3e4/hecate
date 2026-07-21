@@ -241,3 +241,6 @@ Annotates [Environment Inventory](guide/inventory.md) items with support / end-o
 | `TRUSTED_PROXY_IPS` | (unset) | CSV of proxy IPs whose forwarded headers we trust. |
 | `TRUSTED_PROXY_FORWARD_HEADER` | `x-forwarded-for` | Header carrying the client-IP chain. |
 | `TRUSTED_PROXY_REAL_IP_HEADER` | `x-real-ip` | Header carrying the originating client IP. |
+
+Ready-to-adapt nginx / Caddy / Traefik templates that terminate TLS, forward these client-IP
+headers, and set a hardened HTTP security-header set live in `deploy/reverse-proxy/`.

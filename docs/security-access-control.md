@@ -106,7 +106,8 @@ A **CI/CD pipeline** uses neither the admin nor a target password: it submits sc
 This is a shared-secret gate, **not** user-level authentication, and it does **not** encrypt
 traffic. For a live deployment, pair it with:
 
-- **TLS** at the reverse proxy.
+- **TLS** at the reverse proxy — ready-to-adapt nginx / Caddy / Traefik templates (with a
+  hardened security-header set) live in `deploy/reverse-proxy/`.
 - **Network ACLs** / VPN to limit who can reach the API at all.
 - **Scoped CORS** via `CORS_ORIGINS` (see [Configuration](configuration.md)). Reads are open by
   design, so the `*` default lets any browser origin read the API; set explicit origin(s) to keep

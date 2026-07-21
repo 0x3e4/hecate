@@ -15,9 +15,13 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- **Reverse-proxy templates** — ready-to-adapt nginx, Caddy, and Traefik configs in `deploy/reverse-proxy/` that terminate TLS in front of Hecate and set a hardened HTTP security-header set (HSTS, a strict Content-Security-Policy, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and the cross-origin isolation headers). Documented in Getting Started, with cross-links from Security & Access Control and Configuration.
+
 ### Changed
 
 ### Fixed
+
+- **Dependency vulnerabilities** — upgraded packages to clear seven CVEs flagged by SCA scanning: `starlette` 0.52.1 → 1.3.1 (fixes CVE-2026-48710, CVE-2026-48817, CVE-2026-48818, CVE-2026-54282, CVE-2026-54283), which required `fastapi` 0.128.5 → 0.139.2 because older FastAPI pinned `starlette` below 1.0; `pytest` 9.0.2 → 9.0.3 (CVE-2025-71176, dev-only); and the frontend transitive `brace-expansion` 1.1.15 → 1.1.16 (CVE-2026-13149), forced to the patched build via a pnpm override.
 
 ## [1.5.0] - 2026-07-21
 

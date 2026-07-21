@@ -3,7 +3,7 @@
 > FastAPI service that ingests, enriches, and exposes vulnerability information. Whole-project documentation lives in the [repository root README](../README.md).
 
 ![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?logo=fastapi&logoColor=white)
 ![Poetry](https://img.shields.io/badge/Poetry-managed-60A5FA?logo=poetry&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-8-47A248?logo=mongodb&logoColor=white)
 ![OpenSearch](https://img.shields.io/badge/OpenSearch-3-005EB8?logo=opensearch&logoColor=white)

@@ -63,6 +63,12 @@ Actions workflows drive CI/CD: `build-images.yml` builds all three images on eve
 on semver tags, while `release.yml` extracts the matching section from `CHANGELOG.md` and cuts a
 GitHub Release whenever a semver tag is pushed.
 
+For a live deployment the stack sits behind a TLS-terminating reverse proxy. The
+`deploy/reverse-proxy/` folder provides ready-to-adapt nginx, Caddy and Traefik templates that
+terminate HTTPS, route `/api`, `/mcp` and the SSE stream to the backend and everything else to the
+frontend, and add a hardened HTTP security-header set (HSTS, a strict Content-Security-Policy,
+`X-Frame-Options`, `Permissions-Policy` and the cross-origin isolation headers).
+
 Deployments that sit behind a corporate MITM proxy are supported through `HTTP_CA_BUNDLE`. At startup
 the backend and scanner entrypoints concatenate the mounted PEM with the system CA bundle
 (`/etc/ssl/certs/ca-certificates.crt`) into a single combined trust store and re-export
@@ -657,7 +663,7 @@ OpenSearch (with a MongoDB fallback).
 
 | Component | Technology |
 | --- | --- |
-| Backend | Python 3.14, FastAPI 0.128, Uvicorn, Poetry |
+| Backend | Python 3.14, FastAPI 0.139, Uvicorn, Poetry |
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
 | Database | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |

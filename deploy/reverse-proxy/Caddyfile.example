@@ -1,0 +1,53 @@
+# =============================================================================
+# Hecate — Caddy reverse-proxy template
+# =============================================================================
+# Caddy obtains and renews TLS certificates automatically (Let's Encrypt),
+# redirects HTTP->HTTPS by default, and streams SSE out of the box — so this
+# file is short. Replace the placeholders:
+#
+#   hecate.example.com          -> your domain
+#   admin@example.com           -> your ACME contact e-mail (optional block below)
+#   hecate-backend:8000         -> backend service:port
+#   hecate-frontend:4173        -> frontend service:port
+#
+# All security headers live here (the frontend `serve` process sets none).
+# Everything the SPA loads is bundled and same-origin, so the CSP is strict.
+# =============================================================================
+
+# Optional: set your ACME e-mail globally.
+# {
+#     email admin@example.com
+# }
+
+hecate.example.com {
+    # --- Security headers (applied to every response) ---
+    # NOTE: style-src 'unsafe-inline' is REQUIRED (react-select/emotion +
+    # Mermaid inject <style>); do not remove it.
+    header {
+        Strict-Transport-Security "max-age=63072000"   # append "; includeSubDomains" only if every *.example.com is HTTPS
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()"
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Resource-Policy "same-origin"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; manifest-src 'self'"
+        -Server   # strip Caddy's Server header
+    }
+
+    # --- OPTIONAL: built-in Swagger UI / ReDoc need a relaxed CSP
+    #     (cdn.jsdelivr.net + inline init script). This matcher-scoped header
+    #     overrides the strict CSP above for those two paths only. Remove both
+    #     lines if you don't expose the raw docs. ---
+    @docs path /api/docs /api/redoc
+    header @docs Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self'"
+
+    # --- Backend: API, MCP, OAuth discovery ---
+    # Caddy sets X-Forwarded-For/Proto/Host and preserves the incoming Host.
+    # SSE (/api/v1/events) streams automatically — no extra config needed.
+    @backend path /api* /mcp* /.well-known/oauth-*
+    reverse_proxy @backend hecate-backend:8000
+
+    # --- Frontend SPA (everything else) ---
+    reverse_proxy hecate-frontend:4173
+}
