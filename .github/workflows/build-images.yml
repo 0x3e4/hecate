@@ -68,6 +68,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
+        with:
+          # package.json lives in ./frontend, not the repo root, so point the
+          # action at it to read the pinned `packageManager` (pnpm@…) version.
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
