@@ -55,6 +55,39 @@ One convenience is worth knowing: a `source:` clause is automatically expanded s
 primary source and any source alias on a record. Writing `source:NVD` finds entries whose primary feed is
 NVD *and* entries that NVD merely contributed to, so you don't have to know which feed "owns" a given CVE.
 
+#### Searching by the version you run
+
+`productVersions:7.0.1` asks a narrow question — "which advisories *name* the string 7.0.1?" — and
+advisories rarely enumerate every affected release. CVE-2026-63030 covers "WordPress 7.0.x before 7.0.2"
+and stores only the boundaries `6.9`, `6.9.5`, `7.0`, `7.0.2`, so a term query for 7.0.1 finds nothing
+even though 7.0.1 is squarely affected.
+
+`affectedVersion:` asks the question you actually mean — *"which advisories affect the version I run?"* —
+by comparing against the version ranges each advisory declares:
+
+```text
+vendorSlugs:"wordpress" AND productSlugs:"wordpress" AND affectedVersion:7.0.1
+```
+
+Boundaries are honoured exactly: `< 7.0.2` excludes 7.0.2 itself, `<= 6.8.2` includes it. Advisories with
+no usable version bound (`*`, `-`, `n/a`, `>=0`) never match — an unconstrained range carries no
+information, so it fails closed rather than matching every version.
+
+Clicking a version chip on a result card builds this query for you, pinned to that chip's vendor and
+product. Combine `affectedVersion:` with a vendor/product filter whenever you can: on its own, `7.0.1`
+matches every product that ever shipped a 7.0.1.
+
+!!! note "Requires an up-to-date index"
+    Range matching reads a field that is written when a record is indexed. Records ingested or refreshed
+    after the feature landed have it; to backfill the existing corpus run
+    `poetry run python -m app.cli reindex-opensearch` once.
+
+Slug fields (`vendorSlugs`, `productSlugs`, `productVersions`, `productVersionIds`, `sourceNames`) match
+the **whole** value, so `vendorSlugs:"wordpress"` returns WordPress itself and not every vendor whose name
+happens to contain the word — "Dokan WordPress Plugin", "WPMU DEV – Your All-in-One WordPress Platform".
+For substring behaviour use a wildcard (`vendorSlugs:*wordpress*`) or query the display-name fields
+`vendors:` / `products:`, which stay word-based on purpose.
+
 The Vulnerabilities page links the [OpenSearch DQL reference](https://docs.opensearch.org/latest/dashboards/dql/)
 directly from the helper line under the search bar. If a DQL query is malformed the page surfaces the
 backend's validation message rather than silently returning nothing.

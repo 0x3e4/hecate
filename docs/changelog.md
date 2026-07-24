@@ -15,6 +15,23 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- **Affected-version search** — the new `affectedVersion:` DQL field answers "which advisories affect the version I actually run?" by comparing against the version *ranges* an advisory declares, instead of only matching versions it names verbatim. An advisory for "WordPress 7.0.x before 7.0.2" records just the boundaries `7.0` and `7.0.2`, so searching for `7.0.1` previously found nothing despite 7.0.1 being affected; `vendorSlugs:"wordpress" AND productSlugs:"wordpress" AND affectedVersion:7.0.1` now returns it. Boundaries are exact (`< 7.0.2` excludes 7.0.2, `<= 6.8.2` includes it), and advisories with no usable version bound (`*`, `-`, `n/a`, `>=0`) never match rather than matching everything. Backed by a new nested `versionRanges` index built from curated range strings, NVD CPE bounds and concrete CPEs. **Records ingested or refreshed after this release get it automatically; run `poetry run python -m app.cli reindex-opensearch` once to backfill the existing corpus.**
+- **Version chips now carry their vendor and product** — clicking a version on a result row builds a query for "this product at this version" instead of a bare version string that matched every product ever shipping that number. Concrete releases use the new range-covering match; advisory range strings that aren't a single version keep the literal term match.
+
+### Changed
+
+- Documentation sync for affected-version search, exact slug matching, the range-string normalisation, and the index-rebuild step in Getting Started.
+
+### Fixed
+
+- **DQL slug searches returned unrelated vendors and products** — `vendorSlugs:"wordpress"` also matched "Dokan WordPress Plugin", "WPMU DEV - Your All-in-One WordPress Platform" and "WordPress.com", because on indexes created before those fields were explicitly typed they were inferred as analyzed text and matched word-by-word. Hecate now inspects the live index mapping at startup and points slug / identifier clauses (`vendorSlugs`, `productSlugs`, `productVersions`, `productVersionIds`, `sourceNames`) at whichever path is exact, so existing deployments get precise matching without rebuilding the index. Wildcards (`vendorSlugs:*wordpress*`) still work and now span the whole slug; the display-name fields `vendors:` / `products:` stay word-based on purpose.
+- **Inventory missed advisories whose version ranges use typographic operators** — a large share of European advisories express ranges as `4.7 ≤4.7.30`, `0 ≤2.4.7` or `n/a ≤6.8.2`. The parser read only the leading token and treated a whole-release-line range as the *exact* version `4.7`, so an inventory entry running 4.7.20 was never flagged. All of these shapes are now normalised before comparison, which also feeds the new affected-version index. A bare `n/a` is treated as "no version information" instead of an exact version.
+- **Rebuilding the search index silently dropped data** — `reindex-opensearch` lost each record's impacted products, CPE configurations and CPE version tokens, because those fields could only be read back under their camelCase spelling while MongoDB stores them in snake_case. Affected-product data is now preserved across a rebuild.
+
+## [1.5.1] - 2026-07-21
+
+### Added
+
 - **Reverse-proxy templates** — ready-to-adapt nginx, Caddy, and Traefik configs in `deploy/reverse-proxy/` that terminate TLS in front of Hecate and set a hardened HTTP security-header set (HSTS, a strict Content-Security-Policy, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and the cross-origin isolation headers). Documented in Getting Started, with cross-links from Security & Access Control and Configuration.
 
 ### Changed

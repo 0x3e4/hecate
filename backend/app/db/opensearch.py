@@ -61,6 +61,17 @@ def _ensure_index_settings(client: OpenSearch, index_name: str) -> bool:
     return True
 
 
+VERSION_RANGES_MAPPING: dict[str, Any] = {
+    "type": "nested",
+    "properties": {
+        "vendorSlug": {"type": "keyword"},
+        "productSlug": {"type": "keyword"},
+        "startNumeric": {"type": "long"},
+        "endNumeric": {"type": "long"},
+    },
+}
+
+
 def _ensure_index_mappings(client: OpenSearch, index_name: str) -> None:
     """
     Additive mapping update for indices created before newer sub-fields existed.
@@ -70,6 +81,11 @@ def _ensure_index_mappings(client: OpenSearch, index_name: str) -> None:
     (patchedVersions is deliberately NOT declared here — past GHSA/OSV writes may
     have dynamically mapped it as text, and a conflicting keyword mapping would
     error; display reads come from _source, so its mapping type doesn't matter.)
+
+    ``versionRanges`` is likewise brand new (see app.services.version_ranges), so
+    declaring it here is conflict-free and lets long-lived indices gain
+    affected-version search after a plain ``reindex-opensearch`` — no index
+    recreation required.
     """
     mapping_body = {
         "properties": {
@@ -79,12 +95,92 @@ def _ensure_index_mappings(client: OpenSearch, index_name: str) -> None:
                     "unaffectedVersions": {"type": "keyword"},
                 },
             },
+            "versionRanges": VERSION_RANGES_MAPPING,
         }
     }
     try:
         client.indices.put_mapping(index=index_name, body=mapping_body)
     except (OSConnectionError, OpenSearchException) as exc:
         log.warning("opensearch.ensure_mappings_failed", index=index_name, error=str(exc))
+
+
+# --- Exact-match field resolution -------------------------------------------
+#
+# Fields such as ``vendorSlugs`` are declared ``keyword`` in
+# ``ensure_vulnerability_index``, but indices created before that declaration
+# existed had them dynamically mapped as analyzed ``text`` + a ``.keyword``
+# sub-field. On such an index a DQL clause like ``vendorSlugs:"wordpress"``
+# runs through the standard analyzer and matches every slug that merely
+# *contains* the token — ``dokan-wordpress-plugin`` tokenizes to
+# ``[dokan, wordpress, plugin]``.
+#
+# Mapping types cannot be changed in place, so instead of fighting the drift we
+# detect it once and route DQL clauses to whichever path is exact on *this*
+# index. Structured filters already hedge the same way with ``terms`` queries
+# on both paths (see VulnerabilityService._build_query).
+
+_exact_field_paths: dict[str, dict[str, str]] = {}
+
+
+def _walk_mapping_properties(
+    properties: dict[str, Any],
+    prefix: str,
+    out: dict[str, str],
+) -> None:
+    for name, definition in (properties or {}).items():
+        if not isinstance(definition, dict):
+            continue
+        path = f"{prefix}{name}"
+        field_type = definition.get("type")
+        fields = definition.get("fields") or {}
+        if field_type == "text" and isinstance(fields, dict) and "keyword" in fields:
+            out[path] = f"{path}.keyword"
+        elif field_type is not None:
+            out[path] = path
+        nested = definition.get("properties")
+        if isinstance(nested, dict):
+            _walk_mapping_properties(nested, f"{path}.", out)
+
+
+def refresh_exact_field_paths(index_name: str) -> dict[str, str]:
+    """Read ``index_name``'s live mapping and cache the exact-match path per field.
+
+    Returns a ``{field: exact_path}`` map where ``exact_path`` is either the
+    field itself (already ``keyword``) or ``field.keyword`` (analyzed ``text``
+    with a keyword sub-field). Unknown fields are simply absent, and callers
+    fall back to the field name unchanged.
+    """
+    client = get_client()
+    resolved: dict[str, str] = {}
+    try:
+        mapping = client.indices.get_mapping(index=index_name)
+    except (OSConnectionError, OpenSearchException) as exc:
+        log.warning("opensearch.get_mapping_failed", index=index_name, error=str(exc))
+        return _exact_field_paths.get(index_name, {})
+
+    for body in (mapping or {}).values():
+        properties = ((body or {}).get("mappings") or {}).get("properties") or {}
+        _walk_mapping_properties(properties, "", resolved)
+
+    _exact_field_paths[index_name] = resolved
+    drifted = sorted(field for field, path in resolved.items() if path != field)
+    if drifted:
+        log.info(
+            "opensearch.text_mapped_fields_detected",
+            index=index_name,
+            fields=drifted[:25],
+            count=len(drifted),
+        )
+    return resolved
+
+
+def exact_field_path(field: str, index_name: str | None = None) -> str:
+    """Exact-match path for ``field`` on the live index (``field`` when unknown)."""
+    index = index_name or settings.opensearch_index
+    cached = _exact_field_paths.get(index)
+    if cached is None:
+        return field
+    return cached.get(field, field)
 
 
 def get_client() -> OpenSearch:
@@ -141,6 +237,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
             log.info("opensearch.index_already_exists", index=index_name)
             applied = _ensure_index_settings(client, index_name)
             _ensure_index_mappings(client, index_name)
+            refresh_exact_field_paths(index_name)
             _mark_opensearch_available()
             if applied:
                 _ensured_indices.add(index_name)
@@ -255,6 +352,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "productVersionIds": {"type": "keyword"},
                 "vendors": {"type": "keyword"},
                 "products": {"type": "keyword"},
+                "versionRanges": VERSION_RANGES_MAPPING,
                 "cvss": {
                     "properties": {
                         "version": {"type": "keyword"},
@@ -276,6 +374,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
     try:
         client.indices.create(index=index_name, body=body)
         log.info("opensearch.index_created", index=index_name)
+        refresh_exact_field_paths(index_name)
         _mark_opensearch_available()
         _ensured_indices.add(index_name)
     except (RequestError, OSConnectionError, OpenSearchException) as exc:

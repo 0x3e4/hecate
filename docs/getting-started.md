@@ -68,3 +68,17 @@ docker compose pull && docker compose up -d
 ```
 
 The in-app **Support** page compares your running build SHA against the latest published image.
+
+### Rebuilding the search index
+
+Most updates need nothing beyond the pull above. Occasionally a release adds a field the search index
+has to compute per record — [affected-version search](guide/search.md#searching-by-the-version-you-run)
+is the current example. Records ingested or refreshed after the update get it automatically; to backfill
+everything already stored, run once:
+
+```bash
+docker compose exec backend poetry run python -m app.cli reindex-opensearch
+```
+
+It reads from MongoDB, so nothing is lost if you skip or interrupt it — search simply keeps returning
+results from whatever has been indexed so far. Expect it to take a while on a large corpus.

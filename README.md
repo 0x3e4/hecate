@@ -252,6 +252,7 @@ scanner/
 ### Search & analysis
 
 - **OpenSearch full-text** with DQL (Domain-Specific Query Language) and relevance ranking, plus a **regex search mode** (`regexQuery` parameter) that runs Lucene `regexp` patterns over a curated field set (summary, title, vendors, products, aliases, ID, versions, references, CWEs).
+- **Affected-version search** — `affectedVersion:7.0.1` matches advisories that *cover* a version in a range, not only those that name it literally (an advisory for "7.0.x before 7.0.2" lists neither 7.0.1 nor anything between its boundaries). Backed by a nested `versionRanges` index built from curated range strings, NVD CPE bounds and concrete CPEs; unconstrained ranges never match. Slug fields (`vendorSlugs`, `productSlugs`, …) match the whole value, so a vendor query doesn't pull in every vendor whose name contains that word.
 - **AI assessments** via OpenAI (Responses API + reasoning + web search), Anthropic, Google Gemini, or any OpenAI-compatible endpoint (Ollama, vLLM, OpenRouter, LocalAI, LM Studio).
 - **Attack-path graph** rendered with Mermaid: deterministic structural layer plus optional AI narrative.
 - **Cross-CVE attack chain** synthesises every finding of a scan into a multi-stage ATT&CK story.

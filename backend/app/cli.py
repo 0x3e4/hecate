@@ -457,6 +457,10 @@ async def run_opensearch_reindex() -> dict[str, Any]:
         total = await repo.collection.count_documents({})
         log.info("opensearch.reindex_total", total=total)
         print(f"Reindexing {total} vulnerabilities to OpenSearch...")
+        print(
+            "This also backfills the 'versionRanges' field that powers "
+            "affectedVersion: search."
+        )
 
         client = get_client()
         indexed = 0

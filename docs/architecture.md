@@ -327,6 +327,24 @@ back full-text search, `.keyword` fields back aggregations, and a nested `source
 per-source provenance. Advanced search uses DQL (a Domain-Specific Query Language). The index is
 provisioned with `max_result_window` at 200 000 and `total_fields.limit` at 2 000.
 
+A nested `versionRanges` field makes "which advisories affect the version I run?" answerable in a
+single query. Advisories describe affected versions in three different shapes — curated range strings,
+structured NVD bounds, and plain CPE identifiers — and the denormalised version list only ever holds
+the boundaries an advisory actually names, so an advisory covering "7.0.x before 7.0.2" never mentions
+7.0.1. At index time all three shapes are folded into flat half-open numeric intervals scoped to their
+vendor and product, which reduces the question to one range comparison. The fold is deliberately
+fail-closed: an unconstrained range (`*`, `n/a`, "from 0 upwards") and a version-less wildcard CPE
+carry no information and are not indexed at all, rather than being treated as "matches everything".
+The field is derived when a document is indexed rather than stored in MongoDB, so every write path
+produces it and a reindex backfills the existing corpus.
+
+Identifier-style fields (the vendor / product / version slugs) are matched whole rather than
+word-by-word. Indices created before those fields were explicitly typed had them inferred as analyzed
+text, where a query for one vendor also matched every vendor whose name merely contained that word.
+Because a field's type cannot be changed in place, Hecate inspects the live index mapping at startup
+and points such queries at whichever path is exact on that index — so an existing deployment gets
+precise matching without a rebuild, while wildcard queries keep working as before.
+
 ### SCA scanning (Software Composition Analysis)
 
 SCA is the active half of Hecate. A request — from CI/CD or the web UI — reaches the backend, which

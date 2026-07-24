@@ -50,6 +50,12 @@ to answer "what affects the software I actually run" without writing a query by 
 filter from a list row's chips automatically switches you into DQL mode and appends the matching
 clause, so you can start by clicking and refine by typing.
 
+Version chips carry their vendor and product with them: clicking one appends all three clauses, so
+you get "this product at this version" rather than every product that ever shipped that version
+number. When the chip is a concrete release the query is built with `affectedVersion:`, which matches
+advisories that merely *cover* the version in a range as well as those that name it outright — see
+[Searching by the version you run](search.md#searching-by-the-version-you-run).
+
 ### The advanced filter panel
 
 Below the asset filters, **Advanced Filters** expands a panel for everything that isn't a free-text

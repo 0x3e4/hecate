@@ -361,7 +361,25 @@ _VERSION_OP_RE = re.compile(
 # match every version. ``>=0`` / ``>0`` are the "from zero upwards" sentinels
 # emitted by EUVD / MAL normalization — the same set the rest of the codebase
 # treats as broad (see ``_BROAD_VERSION_SENTINELS`` in vulnerability_service).
-_BROAD_RANGE_SENTINELS = {"", "*", "-", "any", ">=0", ">= 0", ">0", "> 0"}
+_BROAD_RANGE_SENTINELS = {
+    "",
+    "*",
+    "-",
+    "any",
+    ">=0",
+    ">= 0",
+    ">0",
+    "> 0",
+    # EUVD writes a literal "n/a" when it has no version bound at all. Left
+    # unhandled it parsed as the exact version "n" (the clause scanner stops at
+    # the first non-version character), which matched nothing and read as a
+    # deliberate constraint rather than missing data.
+    "n/a",
+    "na",
+    "n.a.",
+    "unknown",
+    "?",
+}
 
 
 def _is_zero_version(value: str | None) -> bool:
@@ -372,13 +390,76 @@ def _is_zero_version(value: str | None) -> bool:
     return not parsed.release or all(seg == 0 for seg in parsed.release)
 
 
+# EUVD ships a chunk of its ``product_version`` strings with typographic
+# comparison glyphs and an implicit lower bound rather than the ASCII
+# ``">= a, <= b"`` shape ``_format_version_range`` emits:
+#
+#   "4.7 ≤4.7.30"     -> from 4.7 through 4.7.30
+#   "0 ≤2.4.7"        -> everything up to and including 2.4.7
+#   "n/a ≤6.8.2"      -> upper bound only, lower unspecified
+#   "n/a ≤≤ 1.50.2"   -> same, with a doubled operator
+#
+# Without normalization the clause scanner reads only the leading token and
+# reports ``[("=", "4.7")]`` — "exactly 4.7" — so an advisory covering the
+# whole 4.7.x line matches nothing but 4.7 itself. That silently suppressed
+# inventory matches for most EUVD-sourced advisories.
+_UNICODE_OP_MAP = {
+    "≤": "<=",
+    "⩽": "<=",
+    "≦": "<=",
+    "≥": ">=",
+    "⩾": ">=",
+    "≧": ">=",
+    "＜": "<",
+    "＞": ">",
+    "－": "-",
+}
+
+# "<=<=" / ">=>" and friends: keep only the last operator in a run.
+_DUP_OP_RE = re.compile(r"(?:<=|>=|<|>)\s*(?=<=|>=|<|>)")
+
+# "<bare token> <op> <version>" — an implicit lower bound.
+_IMPLICIT_RANGE_RE = re.compile(
+    r"^\s*(?P<low>[^\s<>=,]+)\s*(?P<op><=|<)\s*(?P<high>[^\s<>=,]+)\s*$"
+)
+
+# Lower-bound placeholders that carry no version information.
+_IMPLICIT_LOWER_PLACEHOLDERS = {"n/a", "na", "n.a.", "*", "-", "any", "unknown", "?"}
+
+
+def _normalize_range_string(value: str) -> str:
+    """Rewrite typographic / implicit range shapes into the ASCII clause form."""
+    s = (value or "").strip()
+    if not s:
+        return s
+    for glyph, ascii_op in _UNICODE_OP_MAP.items():
+        if glyph in s:
+            s = s.replace(glyph, ascii_op)
+    s = _DUP_OP_RE.sub("", s)
+
+    match = _IMPLICIT_RANGE_RE.match(s)
+    if match:
+        low = match.group("low")
+        op = match.group("op")
+        high = match.group("high")
+        # A placeholder or all-zero lower bound adds nothing; keeping it as
+        # ">= 0" would also trip the unconstrained guard downstream.
+        if low.lower() in _IMPLICIT_LOWER_PLACEHOLDERS or _is_zero_version(low):
+            return f"{op} {high}"
+        return f">= {low}, {op} {high}"
+    return s
+
+
 def _parse_range_clauses(range_str: str) -> list[tuple[str, str]]:
     """Split a range string into ``(op, version)`` clauses.
 
     ``">= 1.0.0, < 5.0.9"`` -> ``[(">=", "1.0.0"), ("<", "5.0.9")]``. Returns
     ``[]`` for broad sentinels / unconstrained / unparseable input.
+
+    Input is normalized first (see ``_normalize_range_string``) so EUVD's
+    ``"4.7 ≤4.7.30"`` shape is understood as the range it actually denotes.
     """
-    s = (range_str or "").strip()
+    s = _normalize_range_string(range_str or "")
     if not s or s.lower() in _BROAD_RANGE_SENTINELS:
         return []
 

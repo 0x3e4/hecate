@@ -46,6 +46,8 @@ Throughout, matching is **fail-closed for version-less references**: an "any ver
 
 The version comparison understands dotted version numbers, pre-release suffixes (so `8.0.25-preview.1` sorts before `8.0.25`), and a leading `v`. When a version string can't be parsed, Hecate falls back to a plain case-insensitive equality check rather than guessing an ordering — a deliberately conservative choice, so you get false negatives rather than false positives.
 
+Feeds don't all write their ranges the same way. Alongside the plain `>= 8.0.0, < 8.0.26` form, a large share of European advisories arrive with a typographic operator and an implied lower bound — `4.7 ≤4.7.30` ("from 4.7 through 4.7.30"), `0 ≤2.4.7` ("everything up to 2.4.7"), `n/a ≤6.8.2` ("up to 6.8.2, lower bound unstated"). Hecate normalises all of these before comparing, so an advisory that covers a whole release line is matched across that line rather than only at its first version. A range with no usable bound at all (`*`, `-`, `n/a` on its own) still counts as no information and never matches.
+
 A small number of vendors number releases as an independent build counter per branch rather than one continuous scale — Citrix NetScaler ADC/Gateway is the confirmed example, where a version like `14.1, 66.59` means "branch 14.1, build 66.59". For those vendors, Hecate matches the branch first and only then compares build numbers within it, so a fix threshold on one branch (e.g. "branch 14.1, build < 56.73") can never accidentally cover an installed build on a different branch.
 
 ## Where matches show up

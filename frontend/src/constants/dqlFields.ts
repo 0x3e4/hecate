@@ -90,8 +90,9 @@ export const DQL_FIELD_HINTS: DQLFieldHint[] = [
   { field: "vendorSlugs", description: "Hersteller-Slugs (normalisiert, z.B. fortinet)", type: "array", aggregatable: true },
   { field: "products", description: "Liste der Produkte", type: "array", aggregatable: true },
   { field: "productSlugs", description: "Produkt-Slugs (normalisiert, z.B. fortiswitch)", type: "array", aggregatable: true },
-  { field: "product_versions", description: "Produktversionen (Text)", type: "array", aggregatable: true },
+  { field: "product_versions", description: "Produktversionen (Text, exakter Treffer auf die genannte Zeichenkette)", type: "array", aggregatable: true },
   { field: "product_version_ids", description: "Produktversions-IDs aus dem Katalog", type: "array", aggregatable: true },
+  { field: "affectedVersion", description: "Version, die du einsetzt (z.B. 7.0.1) – trifft auch Advisories, die die Version nur als Bereich abdecken", type: "string", aggregatable: false },
 
   // Dates
   { field: "published", description: "Datum der Veröffentlichung (z.B. 2025-11-03)", type: "date", aggregatable: false },
@@ -188,7 +189,15 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
   },
   {
     name: "Assets & Products",
-    fields: ["vendors", "vendorSlugs", "products", "productSlugs", "product_versions", "product_version_ids"]
+    fields: [
+      "vendors",
+      "vendorSlugs",
+      "products",
+      "productSlugs",
+      "product_versions",
+      "product_version_ids",
+      "affectedVersion"
+    ]
   },
   {
     name: "Dates",

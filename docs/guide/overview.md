@@ -50,7 +50,7 @@ guide that covers it.
 
 -   :material-code-braces: **Search & Query Builder**
 
-    Keyword, DQL and regex modes, the visual field browser, and saved searches.
+    Keyword, DQL and regex modes, affected-version lookup, the visual field browser, and saved searches.
     → [Search & Query Builder](search.md)
 
 -   :material-clipboard-list-outline: **Environment Inventory**

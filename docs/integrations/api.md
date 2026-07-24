@@ -57,6 +57,8 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 
 Searching is the one place where the same resource is exposed under two methods. `GET /api/v1/vulnerabilities` is convenient for quick, URL-shaped queries; `POST /api/v1/vulnerabilities` takes a JSON body and is the path to use for DQL or regex searches, since it avoids escaping complex query syntax into a query string. Both are reads and need no credential.
 
+A `dqlQuery` may include `affectedVersion:<version>`, which matches advisories whose declared version ranges *cover* that version rather than only those naming it verbatim — the API-side equivalent of "is the release I run affected?". Combine it with `vendorSlugs:` / `productSlugs:` to scope the answer to one product. See [Searching by the version you run](../guide/search.md#searching-by-the-version-you-run).
+
 The `GET /api/v1/events` stream is how the UI stays live without polling. Subscribe to it and you receive events as ingestion runs, scans complete, and AI analyses finish — the same signals that refresh the browser refresh your own integration.
 
 ## Response format and conventions
