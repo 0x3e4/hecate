@@ -11,7 +11,7 @@ interface FieldBrowserProps {
 }
 
 export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: FieldBrowserProps) => {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(FIELD_CATEGORIES.map(c => c.name))
@@ -23,10 +23,12 @@ export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: Fi
       return DQL_FIELD_HINTS;
     }
     const term = searchTerm.toLowerCase();
+    // Search both descriptions so a term typed in either language still matches.
     return DQL_FIELD_HINTS.filter(
       field =>
         field.field.toLowerCase().includes(term) ||
-        field.description.toLowerCase().includes(term)
+        field.description.toLowerCase().includes(term) ||
+        field.descriptionDe.toLowerCase().includes(term)
     );
   }, [searchTerm]);
 
@@ -80,7 +82,9 @@ export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: Fi
                 type="button"
               >
                 {isExpanded ? <LuChevronDown /> : <LuChevronRight />}
-                <span className="category-name">{category.name}</span>
+                <span className="category-name">
+                  {language === "de" ? category.nameDe : category.name}
+                </span>
                 <span className="category-count">({category.fields.length})</span>
               </button>
 

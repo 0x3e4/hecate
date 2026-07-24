@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.5.3] - 2026-07-24
+
+### Added
+
+### Changed
+
+- Updated bundled syft and trufflehog scanner versions
+
+### Fixed
+
+- Query Builder field list stayed partly German in English mode
+
 ## [1.5.2] - 2026-07-24
 
 ### Added

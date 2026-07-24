@@ -1,6 +1,6 @@
 FROM aquasec/trivy:0.72.0 AS trivy
 FROM anchore/grype:v0.116.0 AS grype
-FROM anchore/syft:v1.48.0 AS syft
+FROM anchore/syft:v1.49.0 AS syft
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS dotnet
 FROM python:3.14-slim
 
@@ -31,7 +31,7 @@ RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_
 RUN pip install --no-cache-dir semgrep==1.164.0
 
 # Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.95.9/trufflehog_3.95.9_linux_amd64.tar.gz \
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
 
 # Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)
