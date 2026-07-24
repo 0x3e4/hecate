@@ -236,6 +236,66 @@ def test_versionless_wildcard_cpe_contributes_nothing():
     assert build_version_ranges(cpes=["cpe:2.3:a:phpbb:phpbb:-:*:*:*:*:*:*:*"]) == []
 
 
+def test_versionless_wildcard_cpe_node_is_not_a_catch_all_range():
+    """Regression: a cpeConfiguration match with a vendor/product but NO version
+    bounds and no concrete version must not be indexed as ``[0, MAX)``.
+
+    WordPress core CVEs almost always carry a bare ``wordpress:wordpress:*`` node
+    alongside their real bounded ranges. Folding it to an open interval made
+    *every* ``affectedVersion:`` query match those CVEs — an inventory running
+    7.0.1 came back for advisories patched years before 7.0 existed."""
+    configs = [
+        {
+            "nodes": [
+                {
+                    "matches": [
+                        {  # the real, bounded range — patched in 5.4.1
+                            "criteria": "cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:*",
+                            "vendor": "wordpress",
+                            "product": "wordpress",
+                            "versionStartIncluding": "3.7",
+                            "versionEndExcluding": "5.4.1",
+                        },
+                        {  # the bare wildcard node — no bounds, no version
+                            "criteria": "cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:*",
+                            "vendor": "wordpress",
+                            "product": "wordpress",
+                        },
+                    ]
+                }
+            ]
+        }
+    ]
+    ranges = build_version_ranges(cpe_configurations=configs)
+    assert len(ranges) == 1  # only the bounded range survives
+    assert _covers(ranges, "5.0.0")
+    assert not _covers(ranges, "7.0.1")
+
+
+def test_zero_lower_bound_with_upper_is_kept():
+    """`versionStartIncluding: "0"` is a real bound ("everything before X"), not
+    the all-None case — it must still produce a range."""
+    configs = [
+        {
+            "nodes": [
+                {
+                    "matches": [
+                        {
+                            "vendor": "wordpress",
+                            "product": "wordpress",
+                            "versionStartIncluding": "0",
+                            "versionEndExcluding": "5.4",
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+    ranges = build_version_ranges(cpe_configurations=configs)
+    assert _covers(ranges, "5.0.0")
+    assert not _covers(ranges, "7.0.1")
+
+
 def test_concrete_flat_cpe_pins_its_version():
     ranges = build_version_ranges(cpes=["cpe:2.3:a:phpbb:phpbb:3.3.17:*:*:*:*:*:*:*"])
     assert _covers(ranges, "3.3.17")

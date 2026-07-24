@@ -52,8 +52,10 @@ clause, so you can start by clicking and refine by typing.
 
 Version chips carry their vendor and product with them: clicking one appends all three clauses, so
 you get "this product at this version" rather than every product that ever shipped that version
-number. When the chip is a concrete release the query is built with `affectedVersion:`, which matches
-advisories that merely *cover* the version in a range as well as those that name it outright — see
+number. The query is built with `affectedVersion:`, which matches advisories that merely *cover* the
+version in a range as well as those that name it outright. When the chip is a range itself (some
+advisories list "`>= 7.0.0, < 7.0.2`" instead of individual versions) Hecate resolves it to a version
+inside that range, so the click still lands on real results — see
 [Searching by the version you run](search.md#searching-by-the-version-you-run).
 
 ### The advanced filter panel

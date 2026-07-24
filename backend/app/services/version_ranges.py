@@ -161,33 +161,47 @@ def _half_open(
     ``>= X`` -> ``start = enc(X)``; ``> X`` -> ``start = enc(X) + 1``.
     ``< X``  -> ``end = enc(X)``;   ``<= X`` -> ``end = enc(X) + 1``.
 
-    A bound that is present but unencodable aborts the range (``None``) so we
-    never silently widen it to the sentinel.
+    Returns ``None`` when:
+
+    * no bound is supplied at all — a version-less wildcard CPE node
+      (``cpe:2.3:a:wordpress:wordpress:*`` with no ``versionStart/End*``)
+      carries no version evidence and must **not** be indexed as ``[0, MAX)``,
+      which would make every version query match it (fail-closed, mirroring
+      ``inventory_matcher._match_cpe_entry``); or
+    * a bound is present but unencodable — dropped rather than silently widened
+      to the sentinel.
     """
     start = 0
     end = VERSION_NUMERIC_MAX
+    saw_bound = False
 
     if start_in is not None:
         encoded = encode_version(start_in)
         if encoded is None:
             return None
         start = max(start, encoded)
+        saw_bound = True
     if start_ex is not None:
         encoded = encode_version(start_ex)
         if encoded is None:
             return None
         start = max(start, encoded + 1)
+        saw_bound = True
     if end_in is not None:
         encoded = encode_version(end_in)
         if encoded is None:
             return None
         end = min(end, encoded + 1)
+        saw_bound = True
     if end_ex is not None:
         encoded = encode_version(end_ex)
         if encoded is None:
             return None
         end = min(end, encoded)
+        saw_bound = True
 
+    if not saw_bound:
+        return None
     if start >= end:
         return None
     return start, end

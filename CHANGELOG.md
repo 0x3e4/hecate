@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.5.4] - 2026-07-24
+
+### Added
+
+### Changed
+
+### Fixed
+
+- **`affectedVersion:` matched advisories it shouldn't** — a search like `affectedVersion:7.0.1` returned WordPress advisories patched years before 7.0 existed, because a version-less wildcard CPE node (`cpe:2.3:a:wordpress:wordpress:*` with no bounds), which core advisories almost always carry, was indexed as an "all versions" range. Such bound-less wildcard nodes are now ignored, consistent with the rest of the version matching.
+- **Clicking a version chip that is a range showed nothing** — chips built from an advisory's own range (`>= 7.0.0, < 7.0.2`) searched for that string literally and never matched. The chip now resolves to a concrete version inside the range and searches by coverage, so the click lands on the advisories affecting that version.
+
 ## [1.5.3] - 2026-07-24
 
 ### Added
