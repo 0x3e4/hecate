@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.6.0] - 2026-09-04
+
+### Added
+
+### Changed
+
+- Bundled scanner toolchain updated: Grype 0.116.0 → 0.118.0, Syft 1.49.0 → 1.51.1, OSV Scanner 2.4.0 → 2.5.1, TruffleHog 3.96.0 → 3.97.4
+- Python floor raised to 3.14 in `backend/pyproject.toml` and `scanner/pyproject.toml` (`^3.13` → `^3.14`), together with ruff's `target-version` (`py313` → `py314`). The container images and CI already ran 3.14 exclusively, so this only drops an untested 3.13 compatibility claim — dependency resolution is byte-identical. Local development environments now have to be created on Python 3.14.
+- Tooling pin: `packageManager` in `frontend/package.json` bumped from pnpm 10.33.4 → 11.22.0 (picked up automatically via Corepack in the frontend Dockerfile and by `pnpm/action-setup` in CI). pnpm 11 removed `onlyBuiltDependencies`, so `frontend/pnpm-workspace.yaml` now declares the equivalent `allowBuilds` map; with `strictDepBuilds` on by default an unapproved dependency install script fails the install instead of being skipped silently.
+- Frontend linting moved to ESLint 10 (9.39.4 → 10.9.0). The unused `eslint-plugin-react` dependency was dropped — it was never referenced by `eslint.config.js` and was the only package blocking the upgrade. Lint results are unchanged.
+- Dependency bumps (frontend / pnpm): axios 1.18.1 → 1.19.0, mermaid 11.16.0 → 11.17.0, react + react-dom 19.2.7 → 19.2.8, react-router-dom 7.18.1 → 7.18.2, typescript-eslint 8.63.0 → 8.67.0, vitest 4.1.10 → 4.1.11, globals 17.7.0 → 17.11.0, @types/react 19.2.17 → 19.2.18, @types/react-dom 19.2.3 → 19.2.4
+- Dependency bumps (backend / poetry): cryptography 49.0.0 → 50.0.1, mcp 1.28.1 → 1.29.1, pymongo 4.17.0 → 4.18.0, pydantic-settings 2.14.2 → 2.15.0, google-auth 2.56.0 → 2.57.1, grpcio 1.82.1 → 1.83.1, protobuf 7.35.1 → 7.36.1, sse-starlette 3.4.6 → 3.4.10, coverage 7.15.2 → 7.16.0, certifi 2026.6.17 → 2026.7.22, plus transitive patch refreshes (annotated-doc, annotated-types, anyio, cffi, charset-normalizer, click, idna, packaging, pydantic, pygments, python-dotenv, typer, typing-inspection)
+- Dependency bumps (scanner / poetry): fastapi 0.139.2 → 0.141.1, starlette 1.3.1 → 1.6.0, uvicorn 0.51.0 → 0.52.4, anyio 4.14.2 → 4.15.0, click 8.4.2 → 8.5.0, idna 3.18 → 3.19, pydantic 2.13.4 → 2.13.5 (colorama is no longer pulled in)
+- Documentation sync: ESLint version in `frontend/README.md` plus a new note on pnpm's `allowBuilds` opt-in for dependency install scripts, an explicit Python 3.14 prerequisite on the local-setup instructions in `backend/README.md` and `scanner/README.md`, the Axios version in the `docs/architecture.md` tech-stack table, and the missing `[1.5.4]` section backfilled into the documentation-site changelog mirror
+
+### Fixed
+
 ## [1.5.4] - 2026-07-24
 
 ### Added

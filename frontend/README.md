@@ -263,6 +263,11 @@ This project uses [pnpm](https://pnpm.io/), managed via [Corepack](https://nodej
 > [!IMPORTANT]
 > Supply-chain protection: `minimumReleaseAge: 20160` in `pnpm-workspace.yaml` blocks packages younger than 14 days.
 
+Install scripts are opt-in. A dependency's `preinstall` / `install` / `postinstall` only runs when the
+package is listed in the `allowBuilds` map in `pnpm-workspace.yaml` (currently just `esbuild`). Since
+pnpm 11 an unapproved build script **fails the install** instead of being skipped silently, so a new
+package that needs one has to be added there as well.
+
 #### Add a new dependency
 
 ```sh
@@ -299,7 +304,7 @@ pnpm run typecheck   # tsc --noEmit over tsconfig.json + tsconfig.node.json
 pnpm run test        # Vitest unit tests (pure utils, e.g. savedSearchQuery)
 ```
 
-ESLint uses the flat `eslint.config.js` (ESLint 9). Real correctness issues (rules-of-hooks, parse
+ESLint uses the flat `eslint.config.js` (ESLint 10). Real correctness issues (rules-of-hooks, parse
 errors) are errors; the pre-existing style backlog (`no-explicit-any`, effect-dep hints) is `warn`
 for now. `vite build` transpiles without type-checking, so run `typecheck` separately. All three run
 in CI and gate the image build.

@@ -1,6 +1,6 @@
 FROM aquasec/trivy:0.72.0 AS trivy
-FROM anchore/grype:v0.116.0 AS grype
-FROM anchore/syft:v1.49.0 AS syft
+FROM anchore/grype:v0.118.0 AS grype
+FROM anchore/syft:v1.51.1 AS syft
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS dotnet
 FROM python:3.14-slim
 
@@ -19,7 +19,7 @@ RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/
     | tar xz -C /usr/local/bin dockle
 
 # Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64 \
+RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
 
 # Install Dive (Docker image layer analysis)
@@ -31,7 +31,7 @@ RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_
 RUN pip install --no-cache-dir semgrep==1.164.0
 
 # Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_linux_amd64.tar.gz \
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.97.4/trufflehog_3.97.4_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
 
 # Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)

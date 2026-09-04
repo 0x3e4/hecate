@@ -1,5 +1,5 @@
-// Flat ESLint config (ESLint 9). Replaces the legacy .eslintrc.cjs, which
-// ESLint 9 could not load and which had no TypeScript parser — so `.ts`/`.tsx`
+// Flat ESLint config (ESLint 10). Replaces the legacy .eslintrc.cjs, which
+// ESLint 9+ could not load and which had no TypeScript parser — so `.ts`/`.tsx`
 // were never actually linted.
 //
 // Gate policy: this is the first working lint gate over a large existing

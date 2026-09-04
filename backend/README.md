@@ -353,6 +353,10 @@ git commit -m "Update dependencies"
 poetry install
 ```
 
+> Requires Python 3.14 — `pyproject.toml` declares `python = "^3.14"`, matching the
+> `python:3.14-slim` image and CI. On an older interpreter Poetry refuses to install; point it at a
+> 3.14 runtime first with `poetry env use <path-to-python3.14>`.
+
 ### Tests and linting
 
 ```sh

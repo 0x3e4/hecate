@@ -1,5 +1,9 @@
-onlyBuiltDependencies:
-  - esbuild
+# pnpm 11 removed `onlyBuiltDependencies` in favour of the `allowBuilds` map.
+# esbuild is the only package in the whole tree with an install script, so this
+# single entry is the complete allow-list; `strictDepBuilds` (on by default
+# since pnpm 11) therefore has nothing left to complain about.
+allowBuilds:
+  esbuild: true
 
 minimumReleaseAge: 20160
 

@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "hecate-backend"
-version = "1.5.4"
+version = "1.6.0"
 description = "FastAPI backend for the Hecate cyber defense platform."
 authors = ["Hecate Team <info@hecate.pw>"]
 readme = "README.md"
 packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.14"
 fastapi = "0.139.2"
 uvicorn = "0.40.0"
 pydantic = "^2.12"
@@ -47,7 +47,7 @@ pythonpath = ["."]
 # import-sort (I) / style (E) / pyupgrade (UP) yet, so this gate stays green on
 # day one and the mechanical reformat churn doesn't bury real changes. Widen the
 # `select` in dedicated follow-ups.
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]

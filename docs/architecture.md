@@ -685,7 +685,7 @@ OpenSearch (with a MongoDB fallback).
 | Frontend | React 19, TypeScript 5.9, Vite 7, React Router 7 |
 | Database | MongoDB 8 (Motor async), OpenSearch 3 |
 | Scheduling | APScheduler 3.11 |
-| HTTP client | httpx 0.28 (async), Axios 1.13 (frontend) |
+| HTTP client | httpx 0.28 (async), Axios 1.19 (frontend) |
 | Logging | structlog 25 |
 | AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) |
 | Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 8 runtime), Skopeo, FastAPI |
