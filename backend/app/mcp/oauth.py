@@ -25,7 +25,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import structlog
 from fastapi import APIRouter, Request
@@ -114,6 +114,42 @@ def _ip_in_safelist(ip_str: str, safelist_csv: str) -> bool:
     return False
 
 
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _redirect_uri_allowed(redirect_uri: str) -> bool:
+    """Check a client redirect_uri against MCP_ALLOWED_REDIRECT_HOSTS.
+
+    Dynamic client registration is open, so without this an attacker could
+    register a client whose redirect_uri points at their own server and phish
+    a victim into a login that hands them a token bound to the victim's
+    identity. Loopback redirects are safe to allow because nobody else can
+    listen on the victim's machine. Plain ``http`` is only accepted for those.
+    """
+    allowed_raw = (settings.mcp_allowed_redirect_hosts or "").strip()
+    try:
+        parts = urlsplit(redirect_uri)
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    if not parts.scheme or not host or parts.username or parts.password or parts.fragment:
+        return False
+    if parts.scheme.lower() == "http" and host not in _LOOPBACK_HOSTS:
+        return False
+    if allowed_raw == "*":
+        return True
+    for entry in allowed_raw.split(","):
+        entry = entry.strip().lower()
+        if not entry:
+            continue
+        if entry.startswith("*."):
+            if host.endswith(entry[1:]):
+                return True
+        elif host == entry:
+            return True
+    return False
+
+
 def _user_allowed(identity: str, email: str) -> bool:
     """Check identity/email against MCP_ALLOWED_USERS. Empty list = allow all."""
     raw = (settings.mcp_allowed_users or "").strip()
@@ -193,6 +229,16 @@ async def register_client(request: Request) -> JSONResponse:
             {"error": "invalid_request", "error_description": "redirect_uris required"},
             status_code=400,
         )
+    rejected = [u for u in redirect_uris if not isinstance(u, str) or not _redirect_uri_allowed(u)]
+    if rejected:
+        log.warning("mcp.oauth.redirect_uri_rejected", redirect_uris=rejected)
+        return JSONResponse(
+            {
+                "error": "invalid_redirect_uri",
+                "error_description": "redirect_uri host is not in MCP_ALLOWED_REDIRECT_HOSTS",
+            },
+            status_code=400,
+        )
 
     client_id = secrets.token_urlsafe(24)
     client_secret = secrets.token_urlsafe(32)
@@ -238,7 +284,13 @@ async def authorize(request: Request) -> Any:
     client = _registered_clients.get(client_id) if client_id else None
     if client is None:
         return HTMLResponse("<h1>Error: Unknown or missing client_id</h1>", status_code=400)
-    if not redirect_uri or redirect_uri not in client["redirect_uris"]:
+    # Re-checked here too, so tightening the allowlist also covers clients
+    # that registered before the change.
+    if (
+        not redirect_uri
+        or redirect_uri not in client["redirect_uris"]
+        or not _redirect_uri_allowed(redirect_uri)
+    ):
         return HTMLResponse("<h1>Error: Invalid redirect_uri</h1>", status_code=400)
 
     # PKCE is mandatory (S256). Without it, an intercepted auth code could be

@@ -255,6 +255,11 @@ class Settings(BaseSettings):
     mcp_oauth_scopes: str = ""  # space-separated; empty = provider default
     mcp_write_ip_safelist: str = ""  # CSV of IPs/CIDRs
     mcp_allowed_users: str = ""  # CSV of identities/emails; empty = any IdP-authenticated
+    # CSV of hosts an MCP OAuth client may use as redirect_uri. Exact match, or
+    # "*.example.com" for subdomains; "*" disables the check. Plain http is only
+    # accepted for loopback hosts. Add e.g. "vscode.dev" or a custom-scheme host
+    # like "anysphere.cursor-mcp" (Cursor) for other clients.
+    mcp_allowed_redirect_hosts: str = "claude.ai,claude.com,localhost,127.0.0.1,::1"
     mcp_rate_limit_per_minute: int = 60
     mcp_max_results: int = 50
     mcp_max_concurrent_connections: int = 20

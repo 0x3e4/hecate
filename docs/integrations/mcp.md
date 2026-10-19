@@ -42,6 +42,7 @@ you will reach for most often are below.
 | `MCP_OAUTH_SCOPES` | provider default | Override the IdP scopes (space-separated). |
 | `MCP_WRITE_IP_SAFELIST` | — | CSV of IPs/CIDRs whose sessions are granted write access. Empty = nobody can write. |
 | `MCP_ALLOWED_USERS` | — | Optional CSV of allowed identities/emails. Empty = any IdP-authenticated user may read. |
+| `MCP_ALLOWED_REDIRECT_HOSTS` | `claude.ai,claude.com,localhost,127.0.0.1,::1` | Hosts an MCP client may redirect to after login. Registrations with any other `redirect_uri` host are rejected, so a self-registered client can't phish tokens. Add `vscode.dev` (VS Code) or `anysphere.cursor-mcp` (Cursor) if you use those clients. |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `60` | Per-client request cap. |
 | `MCP_MAX_RESULTS` | `50` | Maximum rows returned per query. |
 | `MCP_MAX_CONCURRENT_CONNECTIONS` | `20` | Cap on simultaneous connections. |
