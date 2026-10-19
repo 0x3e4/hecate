@@ -15,6 +15,7 @@ minimumReleaseAgeExclude:
   - brace-expansion
 
 # Force the transitive brace-expansion 1.x (pulled via minimatch@3.1.5) to the
-# patched 1.1.16 that fixes CVE-2026-13149 (the 5.x line already ships 5.0.7).
+# patched 1.1.21, which fixes CVE-2026-13149 and CVE-2026-102276/-102277/-102278
+# on the v1 maintenance line (the 5.x line is updated to 5.0.12 normally).
 overrides:
-  brace-expansion@1: 1.1.16
+  brace-expansion@1: 1.1.21
