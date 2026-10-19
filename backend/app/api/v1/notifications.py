@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.schemas.notification import (
@@ -16,6 +18,23 @@ from app.schemas.notification import (
 from app.services.notification_service import NotificationService, get_notification_service
 
 router = APIRouter()
+
+
+def _redact_channel_url(url: str) -> str:
+    """Mask the secret-bearing part of an Apprise channel URL.
+
+    Apprise URLs embed live third-party credentials (Slack/Discord webhook
+    tokens, SMTP passwords, bot tokens) in the userinfo, host, and/or path, so
+    the full value must never be returned on the read API — which is
+    unauthenticated by design (the ``require_admin_write`` router gate only
+    covers mutating methods, so ``GET /notifications/channels`` is public).
+    Only the scheme (service type) is preserved so an operator can still
+    identify the channel; everything that could carry a secret is masked.
+    """
+    if not url:
+        return ""
+    scheme = urlsplit(url).scheme
+    return f"{scheme}://***" if scheme else "***"
 
 
 # --- Health / Test ---
@@ -61,7 +80,7 @@ async def list_channels(
     items = [
         NotificationChannelResponse(
             id=str(d["_id"]),
-            url=d["url"],
+            url=_redact_channel_url(d["url"]),
             tag=d.get("tag", "all"),
             created_at=d.get("created_at"),
         )
@@ -78,7 +97,7 @@ async def add_channel(
     doc = await service.add_channel(payload.url, tag=payload.tag)
     return NotificationChannelResponse(
         id=str(doc["_id"]),
-        url=doc["url"],
+        url=_redact_channel_url(doc["url"]),
         tag=doc.get("tag", "all"),
         created_at=doc["created_at"],
     )
