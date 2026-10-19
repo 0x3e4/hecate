@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.7.0] - 2026-10-19
+
+### Added
+
 - `MCP_ALLOWED_REDIRECT_HOSTS` (default `claude.ai,claude.com,localhost,127.0.0.1,::1`): CSV of hosts an MCP OAuth client may use as `redirect_uri`, checked at dynamic client registration and again at authorize. Entries match exact hosts, `*.example.com` matches subdomains, and `*` disables the check. Plain `http` is accepted only for loopback hosts, and redirect URIs with userinfo or a fragment are rejected. This stops a self-registered client from phishing tokens bound to another user's identity.
 - Regression test suites for the security fixes below (`backend/tests/test_security_fixes.py`, `scanner/tests/test_argv_hardening.py`)
 
