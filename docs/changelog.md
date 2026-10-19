@@ -15,6 +15,34 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- `MCP_ALLOWED_REDIRECT_HOSTS` (default `claude.ai,claude.com,localhost,127.0.0.1,::1`): CSV of hosts an MCP OAuth client may use as `redirect_uri`, checked at dynamic client registration and again at authorize. Entries match exact hosts, `*.example.com` matches subdomains, and `*` disables the check. Plain `http` is accepted only for loopback hosts, and redirect URIs with userinfo or a fragment are rejected. This stops a self-registered client from phishing tokens bound to another user's identity.
+- Regression test suites for the security fixes below (`backend/tests/test_security_fixes.py`, `scanner/tests/test_argv_hardening.py`)
+
+### Changed
+
+- Bundled scanner toolchain updated: Grype 0.118.0 → 0.120.1, Syft 1.51.1 → 1.54.1, OSV Scanner 2.5.1 → 2.7.0, TruffleHog 3.97.4 → 3.99.2, DevSkim 1.0.59 → 1.0.100. Syft now emits CycloneDX 1.7; the backend parser does not depend on the spec version.
+- DevSkim is now installed from the `Microsoft.CST.DevSkim.CLI` NuGet package, because GitHub releases after v1.0.59 publish no binaries. The scanner image extracts the framework-dependent `net10.0` build, keeps only the `linux-x64` native libraries, and verifies the package against a pinned SHA-256 (`DEVSKIM_VERSION` / `DEVSKIM_SHA256` build args). A `devskim` wrapper keeps the command line unchanged.
+- The .NET runtime in the scanner image moved from .NET 8 to .NET 10 (LTS); .NET 8 reaches end of support on 2026-11-10. The runtime is copied from `mcr.microsoft.com/dotnet/runtime:10.0-noble`, since .NET 10 has no GA Debian image. Only the distro-agnostic `/usr/share/dotnet` is copied.
+- **Behavior change:** the MCP write-scope IP safelist and the auth brute-force throttle now take the client IP from a trusted proxy only. `X-Forwarded-For` is honoured only when the direct peer is listed in `TRUSTED_PROXY_IPS`, and then the right-most (proxy-appended) hop is used. Deployments that use `MCP_WRITE_IP_SAFELIST` behind a reverse proxy must set `TRUSTED_PROXY_IPS` to the proxy address, otherwise `mcp:write` is no longer granted.
+- **Behavior change:** MCP OAuth authorize now requires a registered `client_id`, an exact `redirect_uri` match and a PKCE S256 `code_challenge`. Clients that register through DCR and use PKCE (Claude Desktop, `mcp-remote`) are unaffected.
+- **Behavior change:** `MCP_AUTH_DISABLED` is ignored outside development-like `ENVIRONMENT` values, both when `/mcp` is mounted and in the request middleware. In production `/mcp` therefore always requires OAuth.
+- Notification channel URLs are masked to `scheme://***` in the API and on the System page.
+- OIDC emails that the identity provider marks `email_verified: false` are no longer matched against `MCP_ALLOWED_USERS`. Allow-listing by identity is unaffected.
+
+### Fixed
+
+- **Security:** `GET /notifications/channels` returned the full Apprise URLs, including embedded Slack/Discord webhook tokens, SMTP passwords and bot tokens, to any unauthenticated caller. The admin write gate only covers mutating methods, so this read was public. URLs are now redacted. Credentials configured before this fix should be rotated.
+- **Security:** a spoofed left-most `X-Forwarded-For` hop granted the MCP `mcp:write` scope, even behind the shipped nginx template, and let a client rotate its brute-force lockout key.
+- **Security:** MCP OAuth authorize skipped `redirect_uri` validation when `client_id` was empty or unknown, which sent auth codes to arbitrary URLs. PKCE was also optional.
+- **Security:** unauthenticated search parameters (CPE, asset catalogue, scan findings, security alerts, SBOM) reached MongoDB `$regex` unescaped, which allowed catastrophic-backtracking ReDoS. All eight sinks now use an escaping, length-capped helper. The changelog unknown-source fallback regex is escaped as well, the malware-feed wildcard term is capped, and `searchTerm` / `dqlQuery` have a maximum length.
+- **Security:** trivy, syft, grype and dockle now receive `--` before the scan target, so a target that starts with `-` can never be parsed as an option. Requirements pinning no longer writes through `requirements*.txt` symlinks or to files outside the cloned checkout.
+- The example OpenSearch password from `.env.example` now triggers the insecure-default startup warning.
+- The documentation-site changelog mirror was missing the `[1.6.0]` heading.
+
+## [1.6.0] - 2026-09-04
+
+### Added
+
 ### Changed
 
 - Bundled scanner toolchain updated: Grype 0.116.0 → 0.118.0, Syft 1.49.0 → 1.51.1, OSV Scanner 2.4.0 → 2.5.1, TruffleHog 3.96.0 → 3.97.4
