@@ -440,7 +440,7 @@ Backend-side configuration of the sidecar:
 | `SCA_SCANNER_URL` | `http://scanner:8080` | URL of the scanner sidecar |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP read timeout. The actual per-call timeout is `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s)`, so bumping a single scanner's subprocess budget auto-grants enough HTTP wait — no need to bump this in lock-step |
 | `GRYPE_TIMEOUT_SECONDS` | `1800` | Grype subprocess timeout (raised above the generic 600 s default; for container images grype now matches a pre-built SBOM — see *Grype on container images* — so it rarely needs the headroom) |
-| `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir (tmpfs by default; mount a persistent volume to avoid re-downloading the DB on restart) |
+| `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir. `docker-compose.yml.example` sets it to `/grype-db` on the persistent `grype-db` volume (~3 GB DB, kept across restarts). Without the volume it lives on tmpfs and is re-downloaded after each restart. |
 | `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim subprocess timeout |
 | `<SCANNER>_TIMEOUT_SECONDS` | `600` | Generic per-scanner subprocess timeout override, wired through `_scanner_timeout()` in `scanner/app/scanners.py` for every scanner (`TRIVY_`, `SYFT_`, `OSV_SCANNER_`, `DOCKLE_`, `DIVE_`, `SEMGREP_`, `TRUFFLEHOG_` (default 300); hyphenated names use underscores). The backend reads the same env vars to auto-size the sidecar HTTP timeout |
 
