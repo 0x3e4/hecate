@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.core.config import settings
 from app.mcp import oauth_providers
 from app.mcp.audit import log_oauth_event
+from app.utils.request import get_security_client_ip
 
 log = structlog.get_logger()
 
@@ -68,11 +69,14 @@ def _base_url(request: Request) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    """Resolve client IP, honouring X-Forwarded-For if present."""
-    xff = request.headers.get("x-forwarded-for", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else ""
+    """Resolve the client IP used for the ``mcp:write`` IP safelist decision.
+
+    Delegates to :func:`get_security_client_ip`, which only honours a forwarded
+    header when the direct peer is a configured trusted proxy and then takes the
+    right-most (proxy-observed) hop — so a client cannot forge a safelisted
+    source address by prepending ``X-Forwarded-For``.
+    """
+    return get_security_client_ip(request)
 
 
 def _cleanup_expired() -> None:
@@ -227,11 +231,20 @@ async def authorize(request: Request) -> Any:
     code_challenge = params.get("code_challenge", "")
     code_challenge_method = params.get("code_challenge_method", "")
 
-    if client_id and client_id in _registered_clients:
-        client = _registered_clients[client_id]
-        if redirect_uri and redirect_uri not in client["redirect_uris"]:
-            return HTMLResponse("<h1>Error: Invalid redirect_uri</h1>", status_code=400)
+    # The client MUST be registered (via DCR) and the redirect_uri MUST exactly
+    # match one it registered. Previously an empty/unknown client_id skipped
+    # redirect_uri validation entirely, so an attacker-crafted authorize link
+    # with redirect_uri=https://evil/ would receive the victim's auth code.
+    client = _registered_clients.get(client_id) if client_id else None
+    if client is None:
+        return HTMLResponse("<h1>Error: Unknown or missing client_id</h1>", status_code=400)
+    if not redirect_uri or redirect_uri not in client["redirect_uris"]:
+        return HTMLResponse("<h1>Error: Invalid redirect_uri</h1>", status_code=400)
 
+    # PKCE is mandatory (S256). Without it, an intercepted auth code could be
+    # redeemed at the token endpoint by anyone holding the code.
+    if not code_challenge:
+        return HTMLResponse("<h1>Error: code_challenge required (PKCE S256)</h1>", status_code=400)
     if code_challenge_method and code_challenge_method != "S256":
         return HTMLResponse("<h1>Error: Only S256 code challenge method is supported</h1>", status_code=400)
 

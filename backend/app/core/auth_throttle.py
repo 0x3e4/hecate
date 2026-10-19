@@ -19,6 +19,8 @@ from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 
+from app.utils.request import get_security_client_ip
+
 # Defaults chosen to be invisible to a legitimate operator (who fat-fingers a
 # password a couple of times) but to cap an attacker at ~10 tries/minute.
 _MAX_ATTEMPTS = 10
@@ -76,15 +78,14 @@ _throttle = AuthThrottle()
 
 
 def _client_ip(request: Request) -> str:
-    """Best-effort client IP. Honours the left-most X-Forwarded-For hop when a
-    reverse proxy sets it, else the direct peer. Best-effort by design — the
-    throttle is defence in depth, not an authorization boundary."""
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        first = xff.split(",")[0].strip()
-        if first:
-            return first
-    return request.client.host if request.client else "unknown"
+    """Client IP used as the per-client throttle key.
+
+    Uses :func:`get_security_client_ip` so a client cannot rotate the lockout
+    key (and thereby bypass the brute-force limit) by spoofing
+    ``X-Forwarded-For``: the forwarded header is only trusted when the direct
+    peer is a configured trusted proxy, and then the proxy-observed (right-most)
+    hop is used. Falls back to ``"unknown"`` when no peer is available."""
+    return get_security_client_ip(request) or "unknown"
 
 
 def enforce_auth_throttle(request: Request, scope: str) -> str:

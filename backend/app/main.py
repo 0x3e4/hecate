@@ -67,9 +67,23 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.api_prefix)
 
     # Mount MCP server (fail-closed: enabled AND either OAuth fully configured OR dev-mode auth bypass)
+    #
+    # The MCP_AUTH_DISABLED bypass grants every request full read+write and is a
+    # DEV-ONLY escape hatch; refuse it in any production-like environment so a
+    # single env var can never expose /mcp unauthenticated on a real deployment.
+    _mcp_auth_bypass = settings.mcp_auth_bypass_active
+    if settings.mcp_enabled and settings.mcp_auth_disabled and settings.is_production_like():
+        import structlog
+
+        structlog.get_logger().error(
+            "mcp.auth_disabled_refused_in_production",
+            environment=settings.environment,
+            hint="MCP_AUTH_DISABLED is a dev-only bypass and is ignored outside "
+            "development; configure MCP OAuth to enable /mcp here.",
+        )
     _mcp_server = None
     if settings.mcp_enabled and (
-        settings.mcp_auth_disabled
+        _mcp_auth_bypass
         or (
             settings.mcp_oauth_provider
             and settings.mcp_oauth_client_id

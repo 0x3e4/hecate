@@ -255,6 +255,13 @@ class OIDCProvider(OAuthProvider):
             data = resp.json()
         identity = data.get("preferred_username") or data.get("sub") or ""
         email = data.get("email") or ""
+        # Never use a self-asserted, provider-flagged-unverified email for the
+        # MCP_ALLOWED_USERS gate — a permissive OIDC IdP would otherwise let a
+        # user claim an allow-listed address. Identity (sub / preferred_username)
+        # is still trusted, so allow-listing by identity is unaffected; operators
+        # should allow-list by identity unless their IdP verifies email.
+        if email and data.get("email_verified") is False:
+            email = ""
         name = data.get("name") or identity
         if not identity:
             raise ProviderError("OIDC userinfo missing sub/preferred_username")

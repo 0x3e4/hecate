@@ -46,3 +46,46 @@ def get_client_ip(request: Request) -> Optional[str]:
                 return real_ip.strip()
 
     return direct_host
+
+
+def get_security_client_ip(request: Request) -> str:
+    """Client IP for SECURITY decisions (IP safelists, brute-force lockout).
+
+    Unlike :func:`get_client_ip` (which is for logging and intentionally echoes
+    the client-claimed left-most ``X-Forwarded-For`` hop), this never trusts a
+    client-supplied forwarded header unless the *direct* peer is a configured
+    trusted proxy. When it is, it uses the **right-most** hop — the address the
+    trusted proxy actually observed and appended (nginx ``$proxy_add_x_forwarded_for``
+    appends the real peer to the right) — not the left-most value an attacker
+    can freely prepend. With no ``TRUSTED_PROXY_IPS`` configured it returns the
+    direct peer and ignores the header entirely (fail-closed).
+
+    Assumes a single trusted proxy hop, which is what the shipped reverse-proxy
+    templates deploy; in a multi-proxy chain configure ``TRUSTED_PROXY_IPS`` with
+    every proxy and front it with one that overwrites the header.
+    """
+    client = request.client
+    direct_host = client.host if client else ""
+    if not direct_host:
+        return ""
+
+    trusted_ips = settings.trusted_proxy_ips
+    is_trusted_proxy = bool(trusted_ips) and (direct_host in trusted_ips or "*" in trusted_ips)
+    if not is_trusted_proxy:
+        # Direct peer is authoritative; a client-supplied XFF is not trusted.
+        return direct_host
+
+    header_name = settings.trusted_proxy_forward_header or "x-forwarded-for"
+    forwarded_value = request.headers.get(header_name)
+    if forwarded_value:
+        hops = [item.strip() for item in forwarded_value.split(",") if item.strip()]
+        if hops:
+            return hops[-1]
+
+    real_ip_header = settings.trusted_proxy_real_ip_header
+    if real_ip_header:
+        real_ip = request.headers.get(real_ip_header)
+        if real_ip and real_ip.strip():
+            return real_ip.strip()
+
+    return direct_host
