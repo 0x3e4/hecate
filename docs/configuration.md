@@ -130,6 +130,7 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `MCP_OAUTH_SCOPES` | (empty) | Override IdP scopes (space-separated). |
 | `MCP_WRITE_IP_SAFELIST` | (empty) | CSV of IPs/CIDRs granted the `mcp:write` scope. |
 | `MCP_ALLOWED_USERS` | (empty) | Optional CSV allow-list of identities/emails. |
+| `MCP_ALLOWED_REDIRECT_HOSTS` | `claude.ai,claude.com,localhost,127.0.0.1,::1` | CSV of hosts an MCP OAuth client may use as `redirect_uri` (`*.example.com` for subdomains, `*` disables). Plain `http` only for loopback. |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `60` | Per-client request budget. |
 | `MCP_MAX_RESULTS` | `50` | Max rows any tool returns. |
 | `MCP_MAX_CONCURRENT_CONNECTIONS` | `20` | Concurrent connection cap. |

@@ -131,7 +131,7 @@ def test_authorize_rejects_unknown_client_id():
 
 def test_authorize_rejects_unregistered_redirect_uri():
     c = _oauth_client()
-    reg = c.post("/mcp/oauth/register", json={"redirect_uris": ["https://good/cb"], "client_name": "t"})
+    reg = c.post("/mcp/oauth/register", json={"redirect_uris": ["https://claude.ai/api/mcp/auth_callback"], "client_name": "t"})
     cid = reg.json()["client_id"]
     r = c.get(
         "/mcp/oauth/authorize",
@@ -143,11 +143,53 @@ def test_authorize_rejects_unregistered_redirect_uri():
 
 def test_authorize_requires_pkce_challenge():
     c = _oauth_client()
-    reg = c.post("/mcp/oauth/register", json={"redirect_uris": ["https://good/cb"]})
+    reg = c.post("/mcp/oauth/register", json={"redirect_uris": ["https://claude.ai/api/mcp/auth_callback"]})
     cid = reg.json()["client_id"]
     r = c.get(
         "/mcp/oauth/authorize",
-        params={"client_id": cid, "redirect_uri": "https://good/cb"},  # no code_challenge
+        params={"client_id": cid, "redirect_uri": "https://claude.ai/api/mcp/auth_callback"},  # no code_challenge
         follow_redirects=False,
     )
     assert r.status_code == 400
+
+
+# --------------------------------------------------------------------------
+# MCP_ALLOWED_REDIRECT_HOSTS — DCR can't register an attacker redirect_uri
+# --------------------------------------------------------------------------
+
+def _redirect_allowed(monkeypatch, uri: str, hosts: str | None = None) -> bool:
+    from app.mcp import oauth
+
+    if hosts is not None:
+        monkeypatch.setattr(oauth.settings, "mcp_allowed_redirect_hosts", hosts)
+    return oauth._redirect_uri_allowed(uri)
+
+
+def test_default_redirect_hosts_accept_known_clients(monkeypatch):
+    assert _redirect_allowed(monkeypatch, "https://claude.ai/api/mcp/auth_callback")
+    assert _redirect_allowed(monkeypatch, "http://localhost:33418/callback")
+    assert _redirect_allowed(monkeypatch, "http://127.0.0.1:5173/oauth")
+    assert _redirect_allowed(monkeypatch, "http://[::1]:8080/cb")
+
+
+def test_redirect_hosts_reject_attacker_and_tricks(monkeypatch):
+    assert not _redirect_allowed(monkeypatch, "https://evil.example/cb")
+    assert not _redirect_allowed(monkeypatch, "https://claude.ai.evil.example/cb")
+    assert not _redirect_allowed(monkeypatch, "https://claude.ai@evil.example/cb")
+    assert not _redirect_allowed(monkeypatch, "http://claude.ai/cb")  # plain http off-loopback
+    assert not _redirect_allowed(monkeypatch, "https://claude.ai/cb#frag")
+    assert not _redirect_allowed(monkeypatch, "javascript:alert(1)")
+
+
+def test_redirect_hosts_wildcard_and_custom_scheme(monkeypatch):
+    hosts = "*.example.org,anysphere.cursor-mcp"
+    assert _redirect_allowed(monkeypatch, "https://mcp.example.org/cb", hosts)
+    assert not _redirect_allowed(monkeypatch, "https://example.org.evil/cb", hosts)
+    assert _redirect_allowed(monkeypatch, "cursor://anysphere.cursor-mcp/oauth/callback", hosts)
+
+
+def test_register_rejects_disallowed_redirect_uri():
+    c = _oauth_client()
+    r = c.post("/mcp/oauth/register", json={"redirect_uris": ["https://evil.example/cb"]})
+    assert r.status_code == 400
+    assert r.json()["error"] == "invalid_redirect_uri"
