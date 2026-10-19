@@ -17,6 +17,14 @@ generated from it on every semver tag. The format follows
 
 ### Changed
 
+### Fixed
+
+## [1.7.1] - 2026-10-19
+
+### Added
+
+### Changed
+
 - Dependency bumps (backend / poetry) for advisories published since 1.6.0: pyjwt 2.13.0 → 2.15.1 (one critical and six high advisories, fixed in 2.14.0), pymongo 4.18.0 → 4.19.0 (fixed in 4.18.2), urllib3 2.7.0 → 2.8.0, mcp 1.29.1 → 1.30.0 (fixed in 1.30.0, no major-version change needed). No other locked package changed.
 - Dependency bumps (frontend / pnpm): axios 1.19.0 → 1.20.0 (seven high advisories, fixed in 1.20.0), dompurify 3.4.14 → 3.4.16, source-map-js 1.2.1 → 1.2.2, brace-expansion 5.0.9 → 5.0.12, and the `brace-expansion@1` override in `frontend/pnpm-workspace.yaml` 1.1.16 → 1.1.21. All new versions are older than the 14-day `minimumReleaseAge`.
 - Documentation build: `pymdown-extensions` floor raised to `>=11.0.1` in `docs/requirements.txt` (advisory fixed in 11.0.1). The docs build with 12.3 produces the same output and warnings as before.
