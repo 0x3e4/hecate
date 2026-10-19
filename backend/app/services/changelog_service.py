@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import structlog
@@ -79,9 +80,11 @@ class ChangelogService:
                 job_names = _SOURCE_TO_JOB_NAMES.get(source_lower)
                 if job_names is None:
                     # Unknown source — fall back to a case-sensitive prefix
-                    # regex. Slow but never returns wrong data.
+                    # regex. Slow but never returns wrong data. ``re.escape`` the
+                    # user value so it can only ever match literally (no ReDoS /
+                    # regex injection); length-capped for good measure.
                     query_filter["last_change_job"] = {
-                        "$regex": f"^{source_lower}_"
+                        "$regex": f"^{re.escape(source_lower[:128])}_"
                     }
                 else:
                     query_filter["last_change_job"] = {"$in": job_names}

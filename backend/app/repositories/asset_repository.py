@@ -9,7 +9,7 @@ from pymongo.errors import PyMongoError
 
 from app.core.config import settings
 from app.db.mongo import get_database
-from app.utils.strings import build_search_tokens, normalize_key, slugify
+from app.utils.strings import build_search_tokens, contains_regex, normalize_key, slugify
 
 
 class AssetRepository:
@@ -152,7 +152,7 @@ class AssetRepository:
     async def search_vendors(self, keyword: str | None, *, limit: int, offset: int) -> tuple[int, list[dict[str, Any]]]:
         query: dict[str, Any] = {}
         if keyword:
-            regex = {"$regex": keyword, "$options": "i"}
+            regex = contains_regex(keyword)
             query["$or"] = [{"displayName": regex}, {"aliases": regex}]
 
         total = await self.vendors.count_documents(query)
@@ -178,7 +178,7 @@ class AssetRepository:
         if vendor_list:
             query["vendorSlugs"] = {"$in": vendor_list}
         if keyword:
-            regex = {"$regex": keyword, "$options": "i"}
+            regex = contains_regex(keyword)
             slug_keyword = slugify(keyword)
             slug_regex = {"$regex": slug_keyword, "$options": "i"} if slug_keyword else None
             or_clauses: list[dict[str, Any]] = [{"displayName": regex}, {"aliases": regex}]
@@ -206,7 +206,7 @@ class AssetRepository:
     ) -> tuple[int, list[dict[str, Any]]]:
         query: dict[str, Any] = {"productSlug": product_slug}
         if keyword:
-            query["displayName"] = {"$regex": keyword, "$options": "i"}
+            query["displayName"] = contains_regex(keyword)
 
         total = await self.versions.count_documents(query)
         cursor = (
