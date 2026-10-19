@@ -476,7 +476,7 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
     clone_dir: str | None = None
     try:
         if target_type == "container_image":
-            cmd = ["trivy", "image", "--format", "json", "--quiet", "--list-all-pkgs", target]
+            cmd = ["trivy", "image", "--format", "json", "--quiet", "--list-all-pkgs", "--", target]
         else:
             scan_dir = source_dir
             if not scan_dir:
@@ -517,7 +517,7 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
                 sbom_dir = tempfile.mkdtemp(prefix="hecate-grype-sbom-")
                 sbom_path = os.path.join(sbom_dir, "sbom.cdx.json")
                 # syft writes the SBOM straight to the file (format=path syntax).
-                syft_cmd = ["syft", target, "-o", f"cyclonedx-json={sbom_path}", "--quiet"]
+                syft_cmd = ["syft", "-o", f"cyclonedx-json={sbom_path}", "--quiet", "--", target]
                 _, syft_err, syft_rc = await _run_command(syft_cmd, timeout=_scanner_timeout("syft"))
                 if syft_rc != 0 or not (os.path.exists(sbom_path) and os.path.getsize(sbom_path) > 0):
                     logger.warning(
@@ -532,7 +532,7 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
             cmd = (
                 ["grype", f"sbom:{sbom_path}", "-o", "json", "--quiet"]
                 if sbom_path
-                else ["grype", target, "-o", "json", "--quiet"]
+                else ["grype", "-o", "json", "--quiet", "--", target]
             )
         else:
             scan_dir = source_dir
@@ -561,7 +561,7 @@ async def _run_syft(target: str, target_type: str, source_dir: str | None = None
     clone_dir: str | None = None
     try:
         if target_type == "container_image":
-            cmd = ["syft", target, "-o", "cyclonedx-json", "--quiet"]
+            cmd = ["syft", "-o", "cyclonedx-json", "--quiet", "--", target]
         else:
             scan_dir = source_dir
             if not scan_dir:
@@ -623,10 +623,23 @@ async def _pin_requirements_files(scan_dir: str) -> list[str]:
     Returns list of modified file paths.
     """
     root = Path(scan_dir)
+    root_resolved = root.resolve()
     modified: list[str] = []
 
     for req_path in root.rglob("requirements*.txt"):
         if any(part in _SKIP_DIRS_REQ for part in req_path.parts):
+            continue
+        # The tree is an untrusted clone: a requirements*.txt symlink (or one
+        # under a symlinked dir) could point outside the checkout, and the
+        # write below would follow it. Only touch regular files inside root.
+        if req_path.is_symlink():
+            logger.warning("Skipping symlinked requirements file %s", req_path)
+            continue
+        try:
+            if root_resolved not in req_path.resolve().parents:
+                logger.warning("Skipping requirements file outside checkout %s", req_path)
+                continue
+        except OSError:
             continue
 
         try:
@@ -764,7 +777,7 @@ async def _run_dockle(target: str, target_type: str) -> ScannerResult:
         )
 
     try:
-        cmd = ["dockle", "--format", "json", "--exit-code", "0", target]
+        cmd = ["dockle", "--format", "json", "--exit-code", "0", "--", target]
         stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("dockle"))
         if rc != 0 and not stdout.strip():
             return ScannerResult(
