@@ -159,7 +159,7 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` timeout for source-repo scans. The repo is cloned once per scan (sidecar `/prepare-source`) and shared across all scanners. The backend widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)`. |
 | `SOURCE_CHECKOUT_TTL_SECONDS` | `7200` | Idle TTL after which the sidecar reaps a leaked shared checkout (crash-leak backstop; a checkout with live scanners is never reaped). |
 | `TRIVY_CACHE_DIR` | `/tmp/.trivy-cache` | Trivy DB cache dir (tmpfs by default; mount a volume to persist). |
-| `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir (tmpfs by default; mount a volume to persist). |
+| `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir. The bundled `docker-compose.yml.example` sets it to `/grype-db` on the persistent `grype-db` volume, so the ~3 GB DB survives restarts. Without that volume it sits on tmpfs and is re-downloaded after each restart. |
 | `SEMGREP_RULES` | `p/security-audit` | Semgrep ruleset(s). |
 | `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). |
 | `HECATE_MALWARE_ALLOWLIST` | (empty) | Comma-separated package names to skip during malware detection. |

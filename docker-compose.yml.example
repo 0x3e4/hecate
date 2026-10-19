@@ -52,6 +52,12 @@ services:
     image: ghcr.io/0x3e4/hecate-scanner:latest
     restart: unless-stopped
     env_file: ".env"
+    # The grype vulnerability DB (~3 GB) lives on the persistent `grype-db`
+    # volume below, so it is not re-downloaded on every restart and does not
+    # compete with scan workspaces for tmpfs space. Set here (not in .env) so it
+    # always points at the mounted volume.
+    environment:
+      GRYPE_DB_CACHE_DIR: /grype-db
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -67,13 +73,10 @@ services:
           cpus: "4"
         reservations:
           cpus: "1"
-    # Optional volumes. Uncomment as needed (a named volume is writable even with
-    # read_only: true above). Persisting the grype DB avoids re-downloading it on
-    # every restart (the default cache is on tmpfs and wiped each restart); pair
-    # this with GRYPE_DB_CACHE_DIR=/grype-db in your .env.
-    # volumes:
-    #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro   # custom CA
-    #   - grype-db:/grype-db                                    # persistent grype DB cache
+    # A named volume is writable even with read_only: true above.
+    volumes:
+      - grype-db:/grype-db                                      # persistent grype DB cache
+    #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro    # custom CA (optional)
 
   apprise:
     image: caronc/apprise:latest
@@ -121,6 +124,5 @@ volumes:
   mongo-data:
   opensearch-data:
   apprise-config:
-  # Uncomment to persist the grype vulnerability DB across scanner restarts
-  # (see the scanner service's volumes block + GRYPE_DB_CACHE_DIR in .env).
-  # grype-db:
+  # Persists the grype vulnerability DB across scanner restarts.
+  grype-db:
