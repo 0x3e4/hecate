@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependency bumps (backend / poetry) for advisories published since 1.6.0: pyjwt 2.13.0 → 2.15.1 (one critical and six high advisories, fixed in 2.14.0), pymongo 4.18.0 → 4.19.0 (fixed in 4.18.2), urllib3 2.7.0 → 2.8.0, mcp 1.29.1 → 1.30.0 (fixed in 1.30.0, no major-version change needed). No other locked package changed.
+- Dependency bumps (frontend / pnpm): axios 1.19.0 → 1.20.0 (seven high advisories, fixed in 1.20.0), dompurify 3.4.14 → 3.4.16, source-map-js 1.2.1 → 1.2.2, brace-expansion 5.0.9 → 5.0.12, and the `brace-expansion@1` override in `frontend/pnpm-workspace.yaml` 1.1.16 → 1.1.21. All new versions are older than the 14-day `minimumReleaseAge`.
+- Documentation build: `pymdown-extensions` floor raised to `>=11.0.1` in `docs/requirements.txt` (advisory fixed in 11.0.1). The docs build with 12.3 produces the same output and warnings as before.
+- Not updated: katex 0.16.47 (one low-severity advisory, fixed in 0.18.2) because mermaid 11 requires `katex ^0.16`; the fix arrives with mermaid 12, a major version.
+
 ### Fixed
 
 - Semgrep failed on every scan with `ImportError: cannot import name '_ExtendedAttributes' from 'opentelemetry.util.types'`. The scanner Dockerfile copied only `pyproject.toml`, not `poetry.lock`, so Poetry re-resolved the scanner dependencies on each build, pulled a newer FastAPI (which requires `opentelemetry-api>=1.44`), and upgraded Semgrep's pinned `opentelemetry-api 1.37` in the shared site-packages. Semgrep now runs from its own virtualenv (`/opt/semgrep`), and the image installs the locked scanner dependencies. `httpx`, which the provenance checker imports but which previously arrived only as a Semgrep dependency, is now declared explicitly.
