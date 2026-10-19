@@ -289,6 +289,17 @@ class Settings(BaseSettings):
             "testing",
         }
 
+    @property
+    def mcp_auth_bypass_active(self) -> bool:
+        """Whether the MCP_AUTH_DISABLED no-auth bypass is actually in effect.
+
+        The bypass grants every MCP request full read+write with a synthetic
+        identity, so it is honoured ONLY in a development-like environment. In a
+        production-like ENVIRONMENT the flag is ignored (and logged), so a single
+        env var can never expose ``/mcp`` unauthenticated on a real deployment.
+        """
+        return self.mcp_auth_disabled and not self.is_production_like()
+
     def insecure_default_warnings(self) -> list[str]:
         """Names of secrets left at a known example/placeholder value.
 
@@ -305,6 +316,8 @@ class Settings(BaseSettings):
             "admin",
             "hecate",
             "example",
+            # Shipped example values in .env.example — flag if copied verbatim.
+            "hecate-local-1337!",
         }
         checked = {
             "MONGO_PASSWORD": self.mongo_password,

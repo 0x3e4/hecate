@@ -62,7 +62,7 @@ class MCPAuthMiddleware:
             base = f"{proto}://{host}"
         resource_metadata_url = f"{base}/.well-known/oauth-protected-resource/mcp"
 
-        if settings.mcp_auth_disabled:
+        if settings.mcp_auth_bypass_active:
             log.warning(
                 "mcp.auth_disabled_request_allowed",
                 path=path,
