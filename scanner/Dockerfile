@@ -1,7 +1,9 @@
 FROM aquasec/trivy:0.72.0 AS trivy
-FROM anchore/grype:v0.118.0 AS grype
-FROM anchore/syft:v1.51.1 AS syft
-FROM mcr.microsoft.com/dotnet/runtime:8.0 AS dotnet
+FROM anchore/grype:v0.120.1 AS grype
+FROM anchore/syft:v1.54.1 AS syft
+# .NET 10 (LTS) has no GA Debian image; only /usr/share/dotnet (a portable,
+# distro-agnostic linux-x64 build) is copied, so the Ubuntu-based tag is fine.
+FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS dotnet
 FROM python:3.14-slim
 
 # Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
@@ -19,7 +21,7 @@ RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/
     | tar xz -C /usr/local/bin dockle
 
 # Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_amd64 \
+RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
 
 # Install Dive (Docker image layer analysis)
@@ -31,10 +33,10 @@ RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_
 RUN pip install --no-cache-dir semgrep==1.164.0
 
 # Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.97.4/trufflehog_3.97.4_linux_amd64.tar.gz \
+RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.2/trufflehog_3.99.2_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin trufflehog
 
-# Install .NET 8 runtime (required for DevSkim CLI — framework-dependent build)
+# Install .NET 10 runtime (required for DevSkim CLI — framework-dependent build)
 # Globalization-invariant mode avoids needing libicu (DevSkim is pattern-matching, locale-agnostic)
 COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
 ENV DOTNET_ROOT=/usr/share/dotnet \
@@ -44,18 +46,24 @@ ENV DOTNET_ROOT=/usr/share/dotnet \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
 # Install DevSkim (Microsoft SAST scanner — no-build, native SARIF output)
-# v1.0.59 is the latest tag with published Linux binaries (newer tags ship source-only).
-# Asset layout may include a top-level subdirectory, so we locate the binary via `find`.
-RUN curl -fsSL https://github.com/microsoft/DevSkim/releases/download/v1.0.59/DevSkim_CLI_linux_1.0.59.zip \
-    -o /tmp/devskim.zip \
+# GitHub releases after v1.0.59 ship no binaries; the CLI is published only as
+# the `Microsoft.CST.DevSkim.CLI` dotnet tool on NuGet. A dotnet-tool .nupkg is
+# a zip holding a framework-dependent build (`dotnet devskim.dll`), so the .NET 10
+# runtime above is enough — no SDK. We take the net10.0 build, keep only the
+# linux-x64 native libs (libgit2), and expose it via a `devskim` wrapper so the
+# scanner's argv is unchanged. The package hash is pinned.
+ARG DEVSKIM_VERSION=1.0.100
+ARG DEVSKIM_SHA256=11a08ca73ef1020c4dd8efaf4e34ce0d59df75eed4fcef478724bc6be28f04fd
+RUN curl -fsSL "https://api.nuget.org/v3-flatcontainer/microsoft.cst.devskim.cli/${DEVSKIM_VERSION}/microsoft.cst.devskim.cli.${DEVSKIM_VERSION}.nupkg" \
+    -o /tmp/devskim.nupkg \
+    && echo "${DEVSKIM_SHA256}  /tmp/devskim.nupkg" | sha256sum -c - \
     && mkdir -p /tmp/devskim-extract \
-    && unzip -q /tmp/devskim.zip -d /tmp/devskim-extract \
-    && BIN_DIR="$(dirname "$(find /tmp/devskim-extract -type f -name devskim -print -quit)")" \
-    && [ -n "$BIN_DIR" ] && [ "$BIN_DIR" != "." ] \
-    && mv "$BIN_DIR" /usr/local/lib/devskim \
-    && chmod +x /usr/local/lib/devskim/devskim \
-    && ln -s /usr/local/lib/devskim/devskim /usr/local/bin/devskim \
-    && rm -rf /tmp/devskim.zip /tmp/devskim-extract
+    && unzip -q /tmp/devskim.nupkg 'tools/net10.0/any/*' -d /tmp/devskim-extract \
+    && mv /tmp/devskim-extract/tools/net10.0/any /usr/local/lib/devskim \
+    && find /usr/local/lib/devskim/runtimes -mindepth 1 -maxdepth 1 ! -name linux-x64 -exec rm -rf {} + \
+    && printf '#!/bin/sh\nexec /usr/share/dotnet/dotnet /usr/local/lib/devskim/devskim.dll "$@"\n' > /usr/local/bin/devskim \
+    && chmod +x /usr/local/bin/devskim \
+    && rm -rf /tmp/devskim.nupkg /tmp/devskim-extract
 
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all
