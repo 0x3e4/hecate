@@ -10,6 +10,7 @@ from pymongo.errors import PyMongoError
 
 from app.core.config import settings
 from app.db.mongo import get_database
+from app.utils.strings import contains_regex
 
 log = structlog.get_logger()
 
@@ -57,7 +58,7 @@ class CPERepository:
     async def distinct_vendors(self, keyword: str | None, limit: int, offset: int) -> tuple[int, list[str]]:
         match: dict[str, Any] = {"vendor": {"$nin": [None, "", "*"]}}
         if keyword:
-            match["vendor"].update({"$regex": keyword, "$options": "i"})
+            match["vendor"].update(contains_regex(keyword))
 
         pipeline = [
             {"$match": match},
@@ -93,7 +94,7 @@ class CPERepository:
             if or_conditions:
                 match["$or"] = or_conditions
         if keyword:
-            match["product"] = {"$regex": keyword, "$options": "i"}
+            match["product"] = contains_regex(keyword)
 
         pipeline = [
             {"$match": match},

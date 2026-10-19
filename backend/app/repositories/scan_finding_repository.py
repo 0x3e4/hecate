@@ -11,6 +11,7 @@ from pymongo.errors import PyMongoError
 from app.core.config import settings
 from app.db.mongo import get_database
 from app.models.scan import ScanFindingDocument
+from app.utils.strings import contains_regex
 
 log = structlog.get_logger()
 
@@ -330,7 +331,7 @@ class ScanFindingRepository:
             "package_type": {"$nin": ["malicious-indicator", "compliance-check", "sast-finding", "secret-finding"]},
         }
         if search:
-            regex = {"$regex": search, "$options": "i"}
+            regex = contains_regex(search)
             match_stage["$or"] = [
                 {"vulnerability_id": regex},
                 {"package_name": regex},
@@ -434,7 +435,7 @@ class ScanFindingRepository:
             "package_type": "malicious-indicator",
         }
         if search:
-            regex = {"$regex": search, "$options": "i"}
+            regex = contains_regex(search)
             match_stage["$or"] = [
                 {"package_name": regex},
                 {"title": regex},

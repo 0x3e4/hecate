@@ -9,6 +9,7 @@ from pymongo.errors import PyMongoError
 from app.core.config import settings
 from app.db.mongo import get_database
 from app.models.scan import ScanSbomComponentDocument
+from app.utils.strings import contains_regex
 
 log = structlog.get_logger()
 
@@ -59,7 +60,7 @@ class ScanSbomRepository:
         """
         match_stage: dict[str, Any] = {"scan_id": scan_id}
         if search:
-            regex = {"$regex": search, "$options": "i"}
+            regex = contains_regex(search)
             match_stage["$or"] = [
                 {"name": regex},
                 {"type": regex},
@@ -164,7 +165,7 @@ class ScanSbomRepository:
             return 0, []
         match_stage: dict[str, Any] = {"scan_id": {"$in": scan_ids}}
         if search:
-            regex = {"$regex": search, "$options": "i"}
+            regex = contains_regex(search)
             match_stage["$or"] = [
                 {"name": regex},
                 {"type": regex},
