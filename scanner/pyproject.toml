@@ -12,14 +12,17 @@ fastapi = "*"
 uvicorn = "*"
 pydantic = "*"
 pyyaml = "*"
+# Used by app/provenance.py. Previously only present by accident as a semgrep
+# dependency; semgrep now lives in its own venv (see Dockerfile).
+httpx = "*"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 # Tests are not part of the runtime image (Dockerfile runs `poetry install
-# --only main`). Run locally with: `pip install pytest pytest-asyncio httpx`
-# then `poetry run pytest` (httpx is present in the prod image via semgrep).
+# --only main`). Run locally with: `pip install pytest pytest-asyncio`
+# then `poetry run pytest` (httpx is a declared runtime dependency).
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

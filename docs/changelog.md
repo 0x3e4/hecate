@@ -15,6 +15,16 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+### Changed
+
+### Fixed
+
+- Semgrep failed on every scan with `ImportError: cannot import name '_ExtendedAttributes' from 'opentelemetry.util.types'`. The scanner Dockerfile copied only `pyproject.toml`, not `poetry.lock`, so Poetry re-resolved the scanner dependencies on each build, pulled a newer FastAPI (which requires `opentelemetry-api>=1.44`), and upgraded Semgrep's pinned `opentelemetry-api 1.37` in the shared site-packages. Semgrep now runs from its own virtualenv (`/opt/semgrep`), and the image installs the locked scanner dependencies. `httpx`, which the provenance checker imports but which previously arrived only as a Semgrep dependency, is now declared explicitly.
+
+## [1.7.0] - 2026-10-19
+
+### Added
+
 - `MCP_ALLOWED_REDIRECT_HOSTS` (default `claude.ai,claude.com,localhost,127.0.0.1,::1`): CSV of hosts an MCP OAuth client may use as `redirect_uri`, checked at dynamic client registration and again at authorize. Entries match exact hosts, `*.example.com` matches subdomains, and `*` disables the check. Plain `http` is accepted only for loopback hosts, and redirect URIs with userinfo or a fragment are rejected. This stops a self-registered client from phishing tokens bound to another user's identity.
 - Regression test suites for the security fixes below (`backend/tests/test_security_fixes.py`, `scanner/tests/test_argv_hardening.py`)
 
