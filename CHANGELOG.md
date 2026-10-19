@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Semgrep failed on every scan with `ImportError: cannot import name '_ExtendedAttributes' from 'opentelemetry.util.types'`. The scanner Dockerfile copied only `pyproject.toml`, not `poetry.lock`, so Poetry re-resolved the scanner dependencies on each build, pulled a newer FastAPI (which requires `opentelemetry-api>=1.44`), and upgraded Semgrep's pinned `opentelemetry-api 1.37` in the shared site-packages. Semgrep now runs from its own virtualenv (`/opt/semgrep`), and the image installs the locked scanner dependencies. `httpx`, which the provenance checker imports but which previously arrived only as a Semgrep dependency, is now declared explicitly.
+
 ## [1.7.0] - 2026-10-19
 
 ### Added

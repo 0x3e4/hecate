@@ -28,9 +28,15 @@ RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.7.0/os
 RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_0.13.1_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin dive
 
-# Install Semgrep (SAST scanner). semgrep>=1.16x no longer imports pkg_resources,
-# so the old setuptools<74 pin is unnecessary (and python:3.14-slim ships no setuptools).
-RUN pip install --no-cache-dir semgrep==1.164.0
+# Install Semgrep (SAST scanner) into its own venv. Semgrep pins its deps tightly
+# (opentelemetry-api ~=1.37, click ~=8.1); installed into the system
+# site-packages, the app's `poetry install` below upgraded them underneath it
+# (FastAPI >= 0.14x requires opentelemetry-api >= 1.44) and semgrep failed to
+# import (`cannot import name '_ExtendedAttributes'`). semgrep>=1.16x no longer
+# imports pkg_resources, so no setuptools pin is needed.
+RUN python -m venv /opt/semgrep \
+    && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.164.0 \
+    && ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
 
 # Install TruffleHog (secret scanner)
 RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.2/trufflehog_3.99.2_linux_amd64.tar.gz \
@@ -73,8 +79,9 @@ ENV SEMGREP_SEND_METRICS=off
 
 WORKDIR /scanner
 
-# Install Python dependencies via Poetry
-COPY pyproject.toml ./
+# Install Python dependencies via Poetry. The lock file is copied too, so the
+# image gets the locked versions instead of whatever is newest at build time.
+COPY pyproject.toml poetry.lock ./
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root --only main
 
