@@ -139,6 +139,16 @@ class Settings(BaseSettings):
     # primary bound for runtime. Set a positive value only if you need to
     # throttle a noisy upstream window without raising the global timeout.
     osv_max_records_per_run: OptionalInt = None
+    # Incremental OSV syncs re-read `modified_id.csv` from `cursor - N hours`.
+    # A record's `modified` stamp comes from the upstream source (e.g. the OSSF
+    # malicious-packages repo), but OSV regenerates the per-ecosystem export
+    # only periodically — observed: MAL-2026-2144 modified 22:01, first export
+    # containing it written hours later. With a wall-clock cursor such rows
+    # land behind the cursor and are skipped until the weekly full sync. Rows
+    # already processed at the same `modified` stamp are skipped via a small
+    # memory in ingestion_state, so the overlap costs no extra API calls.
+    # ~350 rows per 48 h across all ecosystems (measured 2026-10). 0 disables.
+    osv_incremental_lookback_hours: int = 48
     # Concurrency knobs for the OSV initial-sync per-record loop. The producer
     # buffers `osv_initial_sync_batch_size` records, then dispatches them via
     # `asyncio.gather` with a `Semaphore(osv_initial_sync_concurrency)` cap.

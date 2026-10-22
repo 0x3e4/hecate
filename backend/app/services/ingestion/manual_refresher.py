@@ -1175,6 +1175,7 @@ class ManualRefresher:
         # Determine vuln_id from aliases (prefer CVE > GHSA > OSV ID)
         cve_alias: str | None = None
         ghsa_alias: str | None = None
+        mal_alias: str | None = None
         aliases_raw = record.get("aliases") or []
         if isinstance(aliases_raw, list):
             for alias in aliases_raw:
@@ -1185,15 +1186,20 @@ class ManualRefresher:
                     cve_alias = upper
                 elif upper.startswith("GHSA-") and ghsa_alias is None:
                     ghsa_alias = upper
+                elif upper.startswith("MAL-") and mal_alias is None:
+                    mal_alias = upper
 
         has_cve = cve_alias is not None
-        # Match the OSV pipeline's priority: MAL-* is always primary, so the
-        # detail page always lands on the MAL- record with its rich
+        # Match the OSV pipeline's priority: MAL-* is always primary — the
+        # record's own ID or a MAL-* alias (PYSEC-2026-2 ↔ MAL-2026-2144) — so
+        # the detail page always lands on the MAL- record with its rich
         # description + deps.dev enrichment. Absorption below collapses
-        # pre-existing EUVD/GHSA docs that alias this MAL-*.
+        # pre-existing EUVD/GHSA/PYSEC docs that alias this MAL-*.
         is_mal = osv_id_normalized.upper().startswith("MAL-")
         if is_mal:
             vuln_id = osv_id_normalized.upper()
+        elif mal_alias:
+            vuln_id = mal_alias
         elif euvd_target_id:
             # Enriching an existing EUVD document — keep its _id as vuln_id
             vuln_id = euvd_target_id

@@ -196,6 +196,7 @@ Each source shares the same knobs (`*_BASE_URL`, `*_TIMEOUT_SECONDS`, `*_RATE_LI
 | `CIRCL_BASE_URL` | `https://vulnerability.circl.lu/api` | CIRCL CVE + EPSS API. |
 | `GHSA_TOKEN` 🔑 | (unset) | GitHub PAT (60 → 5000 req/h). |
 | `OSV_BASE_URL` | `https://api.osv.dev/v1` | OSV.dev API. |
+| `OSV_INCREMENTAL_LOOKBACK_HOURS` | `48` | Incremental OSV syncs re-read `modified_id.csv` from this many hours before the cursor, because OSV exports a record hours after its upstream `modified` timestamp. Rows already processed with the same timestamp are skipped. `0` disables. |
 | `OSV_INITIAL_SYNC_CONCURRENCY` | `16` | Workers for the OSV initial sync. |
 | `OSV_INITIAL_SYNC_BATCH_SIZE` | `32` | Batch size for the OSV initial sync. |
 | `DEPS_DEV_BASE_URL` | `https://api.deps.dev/v3` | deps.dev API for MAL-* version enrichment. |
