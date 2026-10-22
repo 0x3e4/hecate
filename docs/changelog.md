@@ -15,6 +15,14 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.7.2] - 2026-10-22
+
+### Added
+
 - `OSV_INCREMENTAL_LOOKBACK_HOURS` (default `48`): incremental OSV syncs re-read `modified_id.csv` from this many hours before the cursor. Rows already processed with the same `modified` timestamp are skipped without an API call, so the overlap costs about one CSV download per ecosystem.
 
 ### Changed
