@@ -688,7 +688,7 @@ OpenSearch (with a MongoDB fallback).
 | HTTP client | httpx 0.28 (async), Axios 1.19 (frontend) |
 | Logging | structlog 25 |
 | AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) |
-| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 8 runtime), Skopeo, FastAPI |
+| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 10 runtime), Skopeo, FastAPI |
 | Notifications | Apprise (caronc/apprise) |
 | MCP server | mcp SDK, OAuth 2.0 (DCR + PKCE/S256), delegated auth via GitHub / Microsoft Entra / OIDC, Streamable HTTP |
 | CI/CD | GitHub Actions, GitHub Container Registry (GHCR) |

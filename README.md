@@ -621,7 +621,7 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 | HTTP client | httpx 0.28 (async) |
 | Logging | structlog 25 |
 | AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) — each optional |
-| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 8 runtime), Skopeo, FastAPI |
+| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 10 runtime), Skopeo, FastAPI |
 | Notifications | Apprise (caronc/apprise) |
 | MCP server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
 | CI/CD | GitHub Actions, GitHub Container Registry (GHCR) |
@@ -639,3 +639,19 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+## Support
+
+Hecate is built and maintained as a labour of love. If it helps you keep on top of vulnerabilities and your software supply chain, a small tip keeps the lights on:
+
+<a href="https://ko-fi.com/0x3e4" target="_blank"><img height="36" src="https://storage.ko-fi.com/cdn/kofi1.png" alt="Buy me a coffee on Ko-fi" /></a>
+
+A star on the [GitHub repo](https://github.com/0x3e4/hecate) is just as welcome — bug reports and pull requests too. Security issues please report privately, see [SECURITY.md](SECURITY.md).
+
+Hecate is developed with the help of an AI coding assistant ([Claude Code](https://claude.com/claude-code)).
+
+<br>
+
+<div align="center">
+Made with ❤ in Austria
+</div>

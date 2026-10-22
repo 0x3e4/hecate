@@ -56,7 +56,7 @@ channel for production.
 In scope:
 
 - Backend API (FastAPI)
-- Frontend (React SPA served by nginx)
+- Frontend (React SPA, static build served by Node.js `serve`)
 - Scanner sidecar, including its subprocess invocations of Trivy, Grype, Syft,
   OSV Scanner, Semgrep, TruffleHog, Dockle, Dive, and DevSkim
 - MCP server (`/mcp/*` routes, OAuth flow, write-scope gating)

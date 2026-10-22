@@ -19,6 +19,9 @@ generated from it on every semver tag. The format follows
 
 ### Changed
 
+- The frontend image is rebuilt on Node.js 24.22.1, which contains the October 2026 Node.js security release. The image uses the `node:24-alpine` tag, so no code change was needed. Its runtime only serves static files, which limits exposure to the client-side TLS, DNS and HTTP issues in that release.
+- Documentation: README gains a Support section; DevSkim is now described as running on .NET 10 from the NuGet package, and the frontend as served by Node.js `serve` rather than nginx (README, `docs/architecture.md`, `scanner/README.md`, `SECURITY.md`, image description in `build-images.yml`).
+
 ### Fixed
 
 - Malware feed / OSV sync: updates to existing advisories could be missed. OSV writes a record into its per-ecosystem export hours after the record's upstream `modified` timestamp, but the incremental sync advanced its cursor to the wall-clock time, so such rows ended up behind the cursor and were only picked up by the weekly full sync. Example: MAL-2026-2144 (litellm) gained version 1.107.0 at 22:01 UTC, but the export containing it was written hours later. The incremental sync now reads a lookback window (see Added).
