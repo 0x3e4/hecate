@@ -2586,6 +2586,7 @@ def build_document_from_osv(
 
     cve_alias: str | None = None
     ghsa_alias: str | None = None
+    mal_alias: str | None = None
     for alias in aliases_raw:
         if not isinstance(alias, str) or not alias.strip():
             continue
@@ -2594,11 +2595,17 @@ def build_document_from_osv(
             cve_alias = upper
         elif upper.startswith("GHSA-") and ghsa_alias is None:
             ghsa_alias = upper
+        elif upper.startswith("MAL-") and mal_alias is None:
+            mal_alias = upper
 
-    # Priority: preserve MAL-* (authoritative for malicious-package docs),
-    # otherwise CVE > GHSA > OSV ID. Mirrors osv_pipeline._process_record().
+    # Priority: preserve MAL-* (authoritative for malicious-package docs) —
+    # the record's own ID or a MAL-* alias (PYSEC-2026-2 ↔ MAL-2026-2144) —
+    # otherwise CVE > GHSA > OSV ID. Mirrors osv_pipeline._process_record()
+    # and OsvPipeline._resolve_vuln_id(); keep the three in sync.
     if osv_id.upper().startswith("MAL-"):
         vuln_id = osv_id.upper()
+    elif mal_alias:
+        vuln_id = mal_alias
     elif cve_alias:
         vuln_id = cve_alias
     elif ghsa_alias:

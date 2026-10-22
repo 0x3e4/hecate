@@ -4,7 +4,7 @@ import csv
 import io
 import json
 import zipfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -155,10 +155,11 @@ class OsvClient:
         ecosystem: str,
         *,
         since: datetime | None = None,
-    ) -> list[str]:
+    ) -> list[tuple[str, str]]:
         """
-        Download ``{ecosystem}/modified_id.csv`` and return IDs modified
-        after *since*.  The CSV is sorted newest-first so we can stop early.
+        Download ``{ecosystem}/modified_id.csv`` and return ``(id, modified)``
+        rows modified after *since* (``modified`` is the raw CSV timestamp
+        string). The CSV is sorted newest-first so we can stop early.
         """
         url = f"{_GCS_BASE}/{ecosystem}/modified_id.csv"
         response = await request_with_retry(
@@ -179,12 +180,12 @@ class OsvClient:
             log.warning("osv_client.modified_csv_failed", ecosystem=ecosystem, error=str(exc))
             return []
 
-        ids: list[str] = []
+        rows: list[tuple[str, str]] = []
         reader = csv.reader(io.StringIO(response.text))
         for row in reader:
             if len(row) < 2:
                 continue
-            ts_str, vuln_id = row[0], row[1]
+            ts_str, vuln_id = row[0].strip(), row[1]
             if since:
                 try:
                     ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
@@ -192,14 +193,14 @@ class OsvClient:
                         break  # CSV is sorted newest-first; everything below is older
                 except (ValueError, TypeError):
                     pass
-            ids.append(vuln_id.strip())
+            rows.append((vuln_id.strip(), ts_str))
 
         log.info(
             "osv_client.modified_csv_parsed",
             ecosystem=ecosystem,
-            ids_after_filter=len(ids),
+            ids_after_filter=len(rows),
         )
-        return ids
+        return rows
 
     # ------------------------------------------------------------------
     # REST API helpers
@@ -295,6 +296,7 @@ class OsvClient:
         modified_since: datetime | None = None,
         max_records: int | None = None,
         ecosystems: tuple[str, ...] | None = None,
+        already_processed: Mapping[str, str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Iterate through OSV records across ecosystems.
@@ -305,7 +307,9 @@ class OsvClient:
           ecosystem's ``all.zip`` and yield every record.
         - **incremental** (``modified_since`` set): read each ecosystem's
           ``modified_id.csv``, collect IDs newer than the cutoff, then
-          fetch full records individually via the REST API.
+          fetch full records individually via the REST API. Rows whose
+          ``(id, modified)`` pair is in *already_processed* are skipped
+          without an API call (the pipeline's lookback overlap).
         """
         target_ecosystems = ecosystems or OSV_ECOSYSTEMS
         yielded = 0
@@ -323,7 +327,7 @@ class OsvClient:
             else:
                 # --- incremental sync via modified_id.csv + API ---
                 async for record in self._iter_incremental(
-                    ecosystem, modified_since, seen_ids
+                    ecosystem, modified_since, seen_ids, already_processed
                 ):
                     yield record
                     yielded += 1
@@ -369,6 +373,7 @@ class OsvClient:
         ecosystem: str,
         modified_since: datetime,
         seen_ids: set[str],
+        already_processed: Mapping[str, str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield records changed since cutoff via CSV + API (incremental sync).
 
@@ -380,16 +385,21 @@ class OsvClient:
         first. Newest-first plus a cap silently drops the oldest unprocessed
         rows — the bug that produced a ~9 % MAL-record gap before this fix.
         """
-        changed_ids = await self.fetch_modified_ids(ecosystem, since=modified_since)
+        changed_rows = await self.fetch_modified_ids(ecosystem, since=modified_since)
         # `fetch_modified_ids` returns CSV order (newest-first); reverse to
         # oldest-first so the pipeline's cursor advances row-by-row from
         # near `modified_since` toward `now`.
-        changed_ids = list(reversed(changed_ids))
+        changed_rows = list(reversed(changed_rows))
+        processed = already_processed or {}
         fetched = 0
-        for vuln_id in changed_ids:
+        already_done = 0
+        for vuln_id, modified in changed_rows:
             if vuln_id in seen_ids:
                 continue
             seen_ids.add(vuln_id)
+            if processed.get(vuln_id) == modified:
+                already_done += 1
+                continue
 
             record = await self.fetch_vulnerability(vuln_id)
             if record is None:
@@ -402,7 +412,8 @@ class OsvClient:
             "osv_client.ecosystem_complete",
             ecosystem=ecosystem,
             mode="incremental",
-            changed_ids=len(changed_ids),
+            changed_ids=len(changed_rows),
+            already_processed=already_done,
             fetched=fetched,
         )
 

@@ -15,9 +15,15 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- `OSV_INCREMENTAL_LOOKBACK_HOURS` (default `48`): incremental OSV syncs re-read `modified_id.csv` from this many hours before the cursor. Rows already processed with the same `modified` timestamp are skipped without an API call, so the overlap costs about one CSV download per ecosystem.
+
 ### Changed
 
 ### Fixed
+
+- Malware feed / OSV sync: updates to existing advisories could be missed. OSV writes a record into its per-ecosystem export hours after the record's upstream `modified` timestamp, but the incremental sync advanced its cursor to the wall-clock time, so such rows ended up behind the cursor and were only picked up by the weekly full sync. Example: MAL-2026-2144 (litellm) gained version 1.107.0 at 22:01 UTC, but the export containing it was written hours later. The incremental sync now reads a lookback window (see Added).
+- Malware feed / OSV sync: a new affected version on an existing package entry was never stored. `impactedProducts` from OSV was merged only by `(ecosystem, package)` key, so once `litellm` existed, a record update adding `1.107.0` changed nothing, not even after a full sync. New concrete versions are now merged into the existing entry; versions are never removed, and a broad `>=0` no longer overrides versions already resolved via deps.dev.
+- Malware feed: a malicious package could appear twice. An OSV record that only *aliases* a MAL-* advisory (e.g. `PYSEC-2026-2` → `MAL-2026-2144`) was stored as its own document, so the feed counted 2 entries but showed 1 card. Such records now resolve to the MAL-* document, consistently in the OSV pipeline, the normalizer and the manual refresh. Existing duplicates are absorbed the next time their MAL-* record is synced.
 
 ## [1.7.1] - 2026-10-19
 

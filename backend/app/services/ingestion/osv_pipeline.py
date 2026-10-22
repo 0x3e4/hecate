@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -26,6 +26,24 @@ from app.utils.strings import slugify
 log = structlog.get_logger()
 
 STATE_KEY = "osv"
+# `(osv_id, modified)` pairs processed by incremental syncs inside the lookback
+# window, so the overlap doesn't re-fetch them (see osv_incremental_lookback_hours).
+PROCESSED_KEY = "osv_incremental_processed"
+
+
+def _prune_processed_rows(
+    processed: dict[str, str], *, now: datetime, lookback_hours: int
+) -> list[list[str]]:
+    """Keep only rows still reachable by the next lookback window (+1 day
+    slack), as ``[[osv_id, modified], ...]`` — a list rather than a dict so
+    OSV IDs never become MongoDB field names."""
+    cutoff = now - timedelta(hours=lookback_hours + 24)
+    kept: list[list[str]] = []
+    for osv_id, modified in processed.items():
+        ts = _parse_iso_timestamp(modified)
+        if ts is None or ts >= cutoff:
+            kept.append([osv_id, modified])
+    return kept
 
 
 def _parse_iso_timestamp(value: Any) -> datetime | None:
@@ -141,16 +159,32 @@ class OsvPipeline:
         # block at the end of this method for the full logic.
         max_processed_modified: datetime | None = None
 
+        lookback_hours = max(0, settings.osv_incremental_lookback_hours or 0)
+        processed_rows: dict[str, str] = {}
+
         try:
             repository = await VulnerabilityRepository.create()
             asset_catalog = await AssetCatalogService.create()
 
-            # Determine modified_since for incremental sync
+            # Determine modified_since for incremental sync. The window starts
+            # `osv_incremental_lookback_hours` before the cursor because OSV
+            # exports rows with an upstream `modified` stamp hours after the
+            # fact; already-processed (id, modified) pairs are skipped.
             modified_since: datetime | None = None
             if not initial_sync:
                 last_ts = await state_repo.get_timestamp(STATE_KEY)
                 if last_ts:
                     modified_since = last_ts
+                    if lookback_hours > 0:
+                        modified_since = last_ts - timedelta(hours=lookback_hours)
+                        state_doc = await state_repo.get_state(PROCESSED_KEY) or {}
+                        for row in state_doc.get("rows") or []:
+                            if (
+                                isinstance(row, (list, tuple))
+                                and len(row) == 2
+                                and all(isinstance(x, str) for x in row)
+                            ):
+                                processed_rows[row[0]] = row[1]
                 else:
                     log.warning(
                         "osv_pipeline.no_last_timestamp",
@@ -206,6 +240,7 @@ class OsvPipeline:
                 iter_obj = self.client.iter_all_vulnerabilities(
                     modified_since=modified_since,
                     max_records=effective_limit,
+                    already_processed=processed_rows if not initial_sync else None,
                 ).__aiter__()
 
                 while not iterator_done or buffer:
@@ -267,6 +302,14 @@ class OsvPipeline:
                         # definition not "processed" and their timestamps
                         # shouldn't advance the cursor.
                         if status in ("created", "enriched", "unchanged"):
+                            raw_id = record.get("id")
+                            raw_modified = record.get("modified")
+                            if (
+                                not initial_sync
+                                and isinstance(raw_id, str)
+                                and isinstance(raw_modified, str)
+                            ):
+                                processed_rows[raw_id.strip()] = raw_modified.strip()
                             rec_modified = _parse_iso_timestamp(record.get("modified"))
                             if rec_modified is not None and (
                                 max_processed_modified is None
@@ -371,6 +414,20 @@ class OsvPipeline:
         if new_cursor is not None:
             await state_repo.set_timestamp(STATE_KEY, new_cursor)
 
+        # Persist the lookback memory (also after a cap/timeout, so the next
+        # run doesn't re-fetch what this one already handled).
+        if not initial_sync and lookback_hours > 0:
+            now = datetime.now(tz=UTC)
+            await state_repo.update_state(
+                PROCESSED_KEY,
+                {
+                    "rows": _prune_processed_rows(
+                        processed_rows, now=now, lookback_hours=lookback_hours
+                    ),
+                    "updated_at": now,
+                },
+            )
+
         result = {
             "created": created,
             "enriched": enriched,
@@ -379,6 +436,7 @@ class OsvPipeline:
             "failures": failures,
             "limit": effective_limit,
             "modified_since": modified_since.isoformat() if modified_since else None,
+            "lookback_hours": lookback_hours if not initial_sync else 0,
             "timed_out": timed_out,
             "hit_cap": hit_cap,
             "cursor_advanced_to": new_cursor.isoformat() if new_cursor else None,
@@ -418,6 +476,7 @@ class OsvPipeline:
         aliases_raw = record.get("aliases") or []
         cve_id: str | None = None
         ghsa_alias: str | None = None
+        mal_alias: str | None = None
         if isinstance(aliases_raw, list):
             for alias in aliases_raw:
                 if not isinstance(alias, str) or not alias.strip():
@@ -427,6 +486,8 @@ class OsvPipeline:
                     cve_id = upper
                 elif upper.startswith("GHSA-") and ghsa_alias is None:
                     ghsa_alias = upper
+                elif upper.startswith("MAL-") and mal_alias is None:
+                    mal_alias = upper
 
         # Priority:
         #  - MAL-* records always keep MAL-* as the primary _id, so the rich
@@ -434,6 +495,9 @@ class OsvPipeline:
         #    authoritative doc. Any existing GHSA / EUVD doc that aliases
         #    this MAL-* will be absorbed into the MAL-* doc by the repository
         #    layer (see `_absorb_aliased_docs`).
+        #  - A non-MAL record that aliases a MAL-* (e.g. PYSEC-2026-2 ↔
+        #    MAL-2026-2144) also resolves to that MAL-*; otherwise it became a
+        #    second standalone doc for the same malicious package.
         #  - For everything else, prefer CVE > GHSA > OSV ID so a CVE doc
         #    collects the richer CVE-centric feeds.
         raw_id = osv_id.strip() if isinstance(osv_id, str) else ""
@@ -441,6 +505,8 @@ class OsvPipeline:
         has_cve = cve_id is not None
         if is_mal:
             vuln_id = raw_id.upper()
+        elif mal_alias:
+            vuln_id = mal_alias
         elif has_cve:
             vuln_id = cve_id
         elif ghsa_alias:
@@ -606,6 +672,7 @@ class OsvPipeline:
 
         cve_id: str | None = None
         ghsa_alias: str | None = None
+        mal_alias: str | None = None
         aliases_raw = record.get("aliases") or []
         if isinstance(aliases_raw, list):
             for alias in aliases_raw:
@@ -616,9 +683,13 @@ class OsvPipeline:
                     cve_id = upper
                 elif upper.startswith("GHSA-") and ghsa_alias is None:
                     ghsa_alias = upper
+                elif upper.startswith("MAL-") and mal_alias is None:
+                    mal_alias = upper
 
         if osv_id.upper().startswith("MAL-"):
             return osv_id.upper()
+        if mal_alias is not None:
+            return mal_alias
         if cve_id is not None:
             return cve_id
         if ghsa_alias is not None:
