@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.core.config import settings
 from app.mcp import oauth_providers
 from app.mcp.audit import log_oauth_event
+from app.mcp.security import RateLimiter
 from app.utils.request import get_security_client_ip
 
 log = structlog.get_logger()
@@ -48,6 +49,13 @@ _access_tokens: dict[str, dict[str, Any]] = {}  # access_token -> {client_id, sc
 
 _PENDING_TTL = 600  # 10 minutes for the entire IdP round-trip
 _AUTH_CODE_TTL = 300
+# Registration is open by design, so the store it fills has to stay bounded.
+_CLIENT_TTL = 30 * 24 * 3600
+_MAX_REGISTERED_CLIENTS = 5000
+_MAX_REDIRECT_URIS = 10
+_MAX_REDIRECT_URI_LENGTH = 2048
+_MAX_CLIENT_NAME_LENGTH = 200
+_registration_limiter = RateLimiter(60)
 _ACCESS_TOKEN_TTL = 86400
 
 
@@ -81,7 +89,7 @@ def _client_ip(request: Request) -> str:
 
 def _cleanup_expired() -> None:
     now = time.time()
-    for store in (_pending_auths, _auth_codes, _access_tokens):
+    for store in (_pending_auths, _auth_codes, _access_tokens, _registered_clients):
         expired = [k for k, v in store.items() if v.get("expires", 0) < now]
         for k in expired:
             del store[k]
@@ -218,13 +226,22 @@ async def protected_resource_metadata_suffixed(request: Request) -> JSONResponse
 @router.post("/mcp/oauth/register")
 async def register_client(request: Request) -> JSONResponse:
     _cleanup_expired()
+    if not _registration_limiter.check(_client_ip(request)):
+        return JSONResponse({"error": "temporarily_unavailable"}, status_code=429)
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid_request"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
 
     redirect_uris = body.get("redirect_uris", [])
-    if not redirect_uris or not isinstance(redirect_uris, list):
+    if (
+        not redirect_uris
+        or not isinstance(redirect_uris, list)
+        or len(redirect_uris) > _MAX_REDIRECT_URIS
+        or any(isinstance(u, str) and len(u) > _MAX_REDIRECT_URI_LENGTH for u in redirect_uris)
+    ):
         return JSONResponse(
             {"error": "invalid_request", "error_description": "redirect_uris required"},
             status_code=400,
@@ -240,21 +257,27 @@ async def register_client(request: Request) -> JSONResponse:
             status_code=400,
         )
 
+    client_name = str(body.get("client_name", "MCP Client"))[:_MAX_CLIENT_NAME_LENGTH]
+    if len(_registered_clients) >= _MAX_REGISTERED_CLIENTS:
+        oldest = min(_registered_clients, key=lambda k: _registered_clients[k]["created_at"])
+        del _registered_clients[oldest]
+
     client_id = secrets.token_urlsafe(24)
     client_secret = secrets.token_urlsafe(32)
     _registered_clients[client_id] = {
         "client_id": client_id,
         "client_secret": client_secret,
         "redirect_uris": redirect_uris,
-        "client_name": body.get("client_name", "MCP Client"),
+        "client_name": client_name,
         "created_at": time.time(),
+        "expires": time.time() + _CLIENT_TTL,
     }
-    log.info("mcp.oauth.client_registered", client_id=client_id, name=body.get("client_name"))
+    log.info("mcp.oauth.client_registered", client_id=client_id, name=client_name)
     return JSONResponse(
         {
             "client_id": client_id,
             "client_secret": client_secret,
-            "client_name": body.get("client_name", "MCP Client"),
+            "client_name": client_name,
             "redirect_uris": redirect_uris,
             "grant_types": ["authorization_code"],
             "response_types": ["code"],
@@ -282,6 +305,8 @@ async def authorize(request: Request) -> Any:
     # redirect_uri validation entirely, so an attacker-crafted authorize link
     # with redirect_uri=https://evil/ would receive the victim's auth code.
     client = _registered_clients.get(client_id) if client_id else None
+    if client:
+        client["expires"] = time.time() + _CLIENT_TTL
     if client is None:
         return HTMLResponse("<h1>Error: Unknown or missing client_id</h1>", status_code=400)
     # Re-checked here too, so tightening the allowlist also covers clients

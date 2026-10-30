@@ -8,8 +8,10 @@ from contextvars import ContextVar
 from typing import Any
 
 import structlog
+from starlette.requests import HTTPConnection
 
 from app.core.config import settings
+from app.utils.request import get_security_client_ip
 
 log = structlog.get_logger()
 
@@ -171,11 +173,7 @@ class MCPAuthMiddleware:
 
     @staticmethod
     def _get_client_ip(scope: dict, headers_list: list) -> str | None:
-        for k, v in headers_list:
-            if k == b"x-forwarded-for":
-                return v.decode().split(",")[0].strip()
-        client = scope.get("client")
-        return client[0] if client else None
+        return get_security_client_ip(HTTPConnection(scope)) or None
 
 
 def require_write_scope() -> tuple[bool, str | None]:
