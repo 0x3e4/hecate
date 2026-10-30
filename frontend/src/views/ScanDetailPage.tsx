@@ -3,7 +3,7 @@ import "../screens/scan-detail.css";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import Markdown from "react-markdown";
+import { AiMarkdown } from "../components/AiMarkdown";
 import {
   LuArrowLeft,
   LuArrowLeftRight,
@@ -2854,7 +2854,7 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
               </div>
               {cleanedSummary ? (
                 <div className="scan-detail-ai-text">
-                  <Markdown>{cleanedSummary}</Markdown>
+                  <AiMarkdown>{cleanedSummary}</AiMarkdown>
                 </div>
               ) : (
                 <p className="scan-detail-note">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</p>

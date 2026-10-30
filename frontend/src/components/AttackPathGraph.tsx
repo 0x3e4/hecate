@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import Markdown from "react-markdown";
+import { AiMarkdown } from "./AiMarkdown";
+import { escapeForMermaid } from "../utils/mermaidText";
 import { Link, useNavigate } from "react-router-dom";
 import { LuArrowDown, LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 
@@ -95,10 +96,6 @@ const SEVERITY_TINT = 0.2;
 /** Matches the canvas `max-height` in vulnerability-detail.css. */
 const GRAPH_MAX_VIEWPORT_SHARE = 0.85;
 
-function escapeForMermaid(text: string): string {
-  return text.replace(/"/g, "&quot;").replace(/\n/g, "<br/>");
-}
-
 function pickNodeColor(node: AttackPathNode): NodeColors {
   const ink = tokenHex("--color-ink");
   const level = severityLevel(node.severity);
@@ -185,6 +182,11 @@ async function loadMermaid(): Promise<MermaidModule | null> {
             },
             themeCSS: `.edgeLabel rect { opacity: 1; } .edgeLabel text { fill: ${tokenHex("--color-muted")}; font-size: 13px; }`,
             securityLevel: "strict",
+            // Added to Mermaid's own list, so no directive can reach these either.
+            secure: [
+              "secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges",
+              "htmlLabels", "flowchart", "themeCSS", "themeVariables", "fontFamily",
+            ],
             flowchart: { htmlLabels: false, useMaxWidth: true, curve: "basis", rankSpacing: 36, nodeSpacing: 36 },
           });
           _mermaidInitialized = true;
@@ -802,7 +804,7 @@ export function AttackPathGraphView({
               <span>{new Date(narrative.generatedAt).toLocaleString(language === "de" ? "de-DE" : "en-US")}</span>
             </div>
             <div className="vulnerability-detail-prose">
-              <Markdown>{narrativeText}</Markdown>
+              <AiMarkdown>{narrativeText}</AiMarkdown>
             </div>
           </div>
         ) : null}
