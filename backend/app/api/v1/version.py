@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.schemas._utc import UtcDatetime
 from app.services.http.retry import request_with_retry
+from app.services.http.scanner import scanner_client
 from app.services.http.ssl import get_http_verify
 
 router = APIRouter()
@@ -229,10 +230,7 @@ async def _probe_scanner() -> RunningComponent:
         return RunningComponent(reachable=False)
     url = f"{base}/version"
     try:
-        async with httpx.AsyncClient(
-            verify=get_http_verify(),
-            timeout=httpx.Timeout(SCANNER_PROBE_TIMEOUT, connect=2.0),
-        ) as client:
+        async with scanner_client(timeout=httpx.Timeout(SCANNER_PROBE_TIMEOUT, connect=2.0)) as client:
             resp = await client.get(url)
     except httpx.HTTPError as exc:
         log.info("version_check.scanner_unreachable", error=str(exc))

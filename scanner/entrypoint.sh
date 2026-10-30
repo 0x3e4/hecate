@@ -9,10 +9,11 @@ set -e
 # The compose example hands the backend's whole .env to this container too, but
 # nothing here needs the admin password, AI keys or database credentials, and
 # this is the one service that handles untrusted archives and repositories.
-# Scanner tools keep their own prefixed settings and SCANNER_AUTH.
+# Scanner tools keep their own prefixed settings and SCANNER_AUTH, and the sidecar
+# keeps SCA_SCANNER_SECRET, which it takes out of its own environment at startup.
 for name in $(env | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
     case "$name" in
-        TRIVY_*|GRYPE_*|SYFT_*|SEMGREP_*|SCANNER_AUTH) ;;
+        TRIVY_*|GRYPE_*|SYFT_*|SEMGREP_*|SCANNER_AUTH|SCA_SCANNER_SECRET) ;;
         MONGO_*|OPENSEARCH_*|*PASSWORD*|*SECRET*|*API_KEY*|*_TOKEN) unset "$name" ;;
     esac
 done

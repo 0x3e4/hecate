@@ -228,6 +228,9 @@ class Settings(BaseSettings):
     sca_enabled: bool = True
     sca_api_key: str | None = None
     sca_scanner_url: str = "http://scanner:8080"
+    # Sent as X-Scanner-Secret on every sidecar call. Set the same value on both
+    # sides; the sidecar has no other authentication.
+    sca_scanner_secret: str | None = None
     # Floor for the backend → sidecar HTTP read timeout. The per-call timeout
     # is auto-derived as max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s) by
     # ScanService._resolve_sidecar_http_timeout, so bumping a single scanner's
@@ -342,6 +345,7 @@ class Settings(BaseSettings):
             "SYSTEM_PASSWORD": self.system_password,
             "AI_ANALYSIS_PASSWORD": self.ai_analysis_password,
             "SCA_API_KEY": self.sca_api_key,
+            "SCA_SCANNER_SECRET": self.sca_scanner_secret,
         }
         return [
             name

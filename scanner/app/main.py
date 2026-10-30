@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import shutil
@@ -25,7 +26,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s %(name)s %(message)s",
 )
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from app.models import (
     CheckRequest,
@@ -103,7 +104,25 @@ def _read_version() -> str:
 
 _VERSION = _read_version()
 
-app = FastAPI(title="Hecate Scanner Sidecar", version=_VERSION)
+# Popped rather than read: every scanner this process starts inherits os.environ,
+# and the tree they work on is hostile.
+_SCANNER_SECRET = os.environ.pop("SCA_SCANNER_SECRET", "")
+
+
+async def _require_scanner_secret(request: Request) -> None:
+    """Only the backend may use this API. /health stays open for container probes."""
+    if not _SCANNER_SECRET or request.url.path == "/health":
+        return
+    provided = request.headers.get("X-Scanner-Secret", "")
+    if not hmac.compare_digest(provided.encode(), _SCANNER_SECRET.encode()):
+        raise HTTPException(status_code=401, detail="Invalid or missing scanner secret.")
+
+
+app = FastAPI(
+    title="Hecate Scanner Sidecar",
+    version=_VERSION,
+    dependencies=[Depends(_require_scanner_secret)],
+)
 
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
 
@@ -149,6 +168,8 @@ async def _reap_stale_source_checkouts() -> None:
 
 @app.on_event("startup")
 async def _startup() -> None:
+    if not _SCANNER_SECRET:
+        logger.warning("scanner.secret_unset: anyone who can reach this port can start scans")
     auth = os.environ.get("SCANNER_AUTH")
     if auth:
         setup_auth(auth)

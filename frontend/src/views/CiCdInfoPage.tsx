@@ -90,6 +90,10 @@ export const CiCdInfoPage = () => {
                 <td>{t("Scanner sidecar URL (default: http://scanner:8080)", "Scanner-Sidecar-URL (Standard: http://scanner:8080)")}</td>
               </tr>
               <tr>
+                <td><code>SCA_SCANNER_SECRET</code></td>
+                <td>{t("Shared secret between backend and sidecar. Needed once anything else can reach the sidecar", "Gemeinsames Geheimnis zwischen Backend und Sidecar. Nötig, sobald noch etwas anderes den Sidecar erreichen kann")}</td>
+              </tr>
+              <tr>
                 <td><code>SCA_SCANNER_TIMEOUT_SECONDS</code></td>
                 <td>{t("Scan timeout in seconds (default: 2060)", "Scan-Timeout in Sekunden (Standard: 2060)")}</td>
               </tr>

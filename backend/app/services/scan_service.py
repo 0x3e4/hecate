@@ -28,6 +28,7 @@ from app.repositories.scan_repository import ScanRepository
 from app.repositories.scan_sbom_repository import ScanSbomRepository
 from app.repositories.scan_target_repository import ScanTargetRepository
 from app.services.audit_service import AuditService
+from app.services.http.scanner import scanner_client
 from app.services.notification_service import get_notification_service
 from app.services.scan_parser import (
     parse_cyclonedx_sbom,
@@ -2353,7 +2354,7 @@ class ScanService:
 
         try:
             url = f"{settings.sca_scanner_url}/stats"
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with scanner_client(timeout=10) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
                 data = resp.json()
@@ -2389,7 +2390,7 @@ class ScanService:
         check_timeout_seconds = 90
         try:
             url = f"{settings.sca_scanner_url}/check"
-            async with httpx.AsyncClient(timeout=check_timeout_seconds) as client:
+            async with scanner_client(timeout=check_timeout_seconds) as client:
                 resp = await client.post(url, json={"target": target, "type": target_type})
                 resp.raise_for_status()
                 data = resp.json()
@@ -2874,7 +2875,7 @@ class ScanService:
         while waited < max_wait:
             try:
                 url = f"{settings.sca_scanner_url}/stats"
-                async with httpx.AsyncClient(timeout=5) as client:
+                async with scanner_client(timeout=5) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     data = resp.json()
@@ -2956,7 +2957,7 @@ class ScanService:
         if source_token:
             payload["sourceToken"] = source_token
         timeout = self._resolve_sidecar_http_timeout(scanners)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with scanner_client(timeout=timeout) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -2975,7 +2976,7 @@ class ScanService:
         url = f"{settings.sca_scanner_url}/prepare-source"
         timeout = self._resolve_sidecar_http_timeout(["git-clone"])
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with scanner_client(timeout=timeout) as client:
                 response = await client.post(url, json={"target": target, "type": target_type})
                 response.raise_for_status()
                 data = response.json()
@@ -2988,7 +2989,7 @@ class ScanService:
         sidecar's idle reaper reclaims it if this call fails."""
         url = f"{settings.sca_scanner_url}/cleanup-source"
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with scanner_client(timeout=30) as client:
                 await client.post(url, json={"sourceToken": source_token})
         except Exception as exc:  # noqa: BLE001 — cleanup is best-effort
             log.warning("scan_service.cleanup_source_failed", error=str(exc))

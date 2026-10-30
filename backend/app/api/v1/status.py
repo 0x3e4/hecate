@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-import httpx
-
 from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
 from app.core.config import settings
 from app.core.passwords import secret_equals
+from app.services.http.scanner import scanner_client
 
 router = APIRouter()
 
@@ -28,13 +27,17 @@ class ScannerHealthResponse(BaseModel):
 
 @router.get("/scanner-health")
 async def scanner_health() -> ScannerHealthResponse:
-    """Check whether the scanner sidecar is reachable."""
+    """Check whether the scanner sidecar is reachable and takes our secret.
+
+    Asks /stats, not /health: /health stays open for container probes, so it
+    would report a healthy scanner that rejects every scan.
+    """
     enabled = settings.sca_enabled
     if not enabled:
         return ScannerHealthResponse(enabled=False, reachable=False)
-    url = f"{settings.sca_scanner_url}/health"
+    url = f"{settings.sca_scanner_url}/stats"
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with scanner_client(timeout=5) as client:
             response = await client.get(url)
             reachable = response.status_code < 400
     except Exception:
