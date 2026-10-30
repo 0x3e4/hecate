@@ -598,8 +598,23 @@ class ManualRefresher:
                     changed_fields=upsert_result.changed_fields,
                 )
 
+        placeholder_id = canonical_id or normalized_identifier
+        # "Reserved" means a known ID format with nothing published yet. A failed
+        # upstream call looks the same as no data, so a stored record is never
+        # replaced, and anything that isn't a CVE or EUVD ID has no record to reserve.
+        if (
+            not (CVE_PATTERN.fullmatch(placeholder_id) or EUVD_PATTERN.fullmatch(placeholder_id))
+            or await repository.collection.find_one({"_id": placeholder_id}, {"_id": 1})
+        ):
+            return VulnerabilityRefreshStatus(
+                identifier=original_identifier,
+                provider="placeholder",
+                status="skipped",
+                message="No upstream data available.",
+            )
+
         placeholder = self._build_reserved_document(
-            canonical_id or normalized_identifier,
+            placeholder_id,
             source_id=source_id,
             original_identifier=original_identifier,
             ingested_at=ingested_at,

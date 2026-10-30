@@ -164,6 +164,8 @@ async def _run_refresh_background(
 @router.post("/lookup", response_model=VulnerabilityLookupResponse)
 async def lookup_vulnerability(
     payload: VulnerabilityLookupRequest,
+    request: Request,
+    x_system_password: str | None = Header(default=None, alias="X-System-Password"),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> VulnerabilityLookupResponse:
     """
@@ -172,7 +174,8 @@ async def lookup_vulnerability(
     This endpoint first checks if the vulnerability exists locally. If not found
     and `autoSync` is true, it will attempt to fetch the vulnerability from
     NVD/EUVD sources. Useful for automation of vulnerability checking and
-    data collection.
+    data collection. The read is public; fetching writes to the database, so it
+    takes the same system password as `/refresh`.
 
     Returns:
     - status "found": Vulnerability already exists in database
@@ -198,6 +201,8 @@ async def lookup_vulnerability(
             status="not_found",
             message="Vulnerability not found locally. Set autoSync=true to fetch from NVD/EUVD.",
         )
+
+    await require_admin_write(request, x_system_password=x_system_password)
 
     # Attempt to sync from NVD/EUVD
     is_cve = identifier.upper().startswith("CVE-")
