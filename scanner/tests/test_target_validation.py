@@ -20,6 +20,9 @@ from app.target_validation import (
 # --------------------------------------------------------------------------
 
 _MALICIOUS_REPO_TARGETS = [
+    "https://user:token@github.com/owner/repo.git",     # target ids are public
+    "https://token@github.com/owner/repo.git",
+    "ssh://git:secret@github.com/owner/repo.git",
     "ext::sh -c 'touch /tmp/pwned'",            # git transport-helper RCE
     "ext::sh -c whoami",
     "fd::17/foo",                                # another transport helper
@@ -54,7 +57,6 @@ _SAFE_REPO_TARGETS = [
     "https://dev.azure.com/org/proj/_git/ANK%C3%96",   # percent-encoded path
     "git://git.example.com/repo.git",
     "ssh://git@github.com/owner/repo.git",
-    "https://user:token@github.com/owner/repo.git",     # creds in URL are fine
 ]
 
 
@@ -69,6 +71,13 @@ def test_legitimate_repo_targets_are_accepted(target):
 # --------------------------------------------------------------------------
 
 _MALICIOUS_IMAGE_TARGETS = [
+    "dir:/tmp",                                  # local sources, not images
+    "dir:tmp",
+    "DIR:/etc",
+    "file:/etc/passwd",
+    "sbom:/tmp/x.json",
+    "oci-dir:/tmp/x",
+    "docker-archive:/tmp/x.tar",
     "-v",                                        # leading-dash arg injection
     "--config=/etc/x",
     "docker://evil",                             # scheme (scanner adds its own)
@@ -91,6 +100,8 @@ def test_image_targets_are_rejected(target):
 
 
 _SAFE_IMAGE_TARGETS = [
+    "registry.example.com:5000/app:1.0",
+    "docker.io/library/nginx:latest",
     "alpine",
     "alpine:3.19",
     "library/nginx:1.27",

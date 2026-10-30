@@ -6,6 +6,17 @@
 # because they read /etc/ssl/certs/ca-certificates.crt only.
 set -e
 
+# The compose example hands the backend's whole .env to this container too, but
+# nothing here needs the admin password, AI keys or database credentials, and
+# this is the one service that handles untrusted archives and repositories.
+# Scanner tools keep their own prefixed settings and SCANNER_AUTH.
+for name in $(env | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
+    case "$name" in
+        TRIVY_*|GRYPE_*|SYFT_*|SEMGREP_*|SCANNER_AUTH) ;;
+        MONGO_*|OPENSEARCH_*|*PASSWORD*|*SECRET*|*API_KEY*|*_TOKEN) unset "$name" ;;
+    esac
+done
+
 if [ -n "$HTTP_CA_BUNDLE" ] && [ -f "$HTTP_CA_BUNDLE" ]; then
     COMBINED=/tmp/hecate-trust-bundle.pem
     cat /etc/ssl/certs/ca-certificates.crt "$HTTP_CA_BUNDLE" > "$COMBINED"

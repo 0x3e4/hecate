@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import tomllib
 import xml.etree.ElementTree as ET
@@ -10,6 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from app.safe_files import read_text_limited
+
+logger = logging.getLogger(__name__)
 
 _SKIP_DIRS = frozenset({
     "node_modules", ".git", "vendor", "dist", "build",
@@ -125,7 +129,7 @@ def parse_dockerfiles(source_dir: str) -> list[dict[str, Any]]:
 
     for df_path in dockerfile_paths:
         try:
-            content = df_path.read_text(errors="replace")
+            content = read_text_limited(df_path)
         except OSError:
             continue
 
@@ -194,7 +198,7 @@ def parse_compose_files(source_dir: str) -> list[dict[str, Any]]:
 
     for cp in compose_paths:
         try:
-            content = cp.read_text(errors="replace")
+            content = read_text_limited(cp)
             data = yaml.safe_load(content)
         except (OSError, yaml.YAMLError):
             continue
@@ -272,7 +276,7 @@ def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
             continue
 
         try:
-            data = json.loads(pj_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(pj_path))
         except (OSError, json.JSONDecodeError):
             continue
 
@@ -332,7 +336,7 @@ def parse_package_lock_json(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pl_path):
             continue
         try:
-            data = json.loads(pl_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(pl_path))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(data, dict):
@@ -394,6 +398,7 @@ def parse_package_lock_json(source_dir: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+_YARN_MAX_LINE = 4096
 _YARN_HEADER_RE = re.compile(r'^(?P<spec>\S.*?)\s*:\s*$')
 _YARN_VERSION_RE = re.compile(r'^\s+version\s+"?([^"\s]+)"?\s*$')
 _YARN_RESOLVED_RE = re.compile(r'^\s+resolved\s+"?[^"]*"?\s*$')
@@ -427,7 +432,7 @@ def parse_yarn_lock(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(yl_path):
             continue
         try:
-            content = yl_path.read_text(errors="replace")
+            content = read_text_limited(yl_path)
         except OSError:
             continue
 
@@ -461,6 +466,8 @@ def parse_yarn_lock(source_dir: str) -> list[dict[str, Any]]:
         current_spec: str | None = None
         for raw in content.splitlines():
             if not raw.strip() or raw.lstrip().startswith("#"):
+                continue
+            if len(raw) > _YARN_MAX_LINE:
                 continue
             if not raw.startswith((" ", "\t")):
                 m = _YARN_HEADER_RE.match(raw)
@@ -538,7 +545,7 @@ def parse_pnpm_lock_yaml(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pl_path):
             continue
         try:
-            data = yaml.safe_load(pl_path.read_text(errors="replace"))
+            data = yaml.safe_load(read_text_limited(pl_path))
         except (OSError, yaml.YAMLError):
             continue
         if not isinstance(data, dict):
@@ -595,7 +602,7 @@ def parse_requirements_txt(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(req_path):
             continue
         try:
-            content = req_path.read_text(errors="replace")
+            content = read_text_limited(req_path)
         except OSError:
             continue
 
@@ -631,7 +638,7 @@ def parse_pyproject_toml(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pp_path):
             continue
         try:
-            data = tomllib.loads(pp_path.read_text(errors="replace"))
+            data = tomllib.loads(read_text_limited(pp_path))
         except (OSError, tomllib.TOMLDecodeError):
             continue
 
@@ -707,7 +714,7 @@ def parse_pipfile(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pf_path):
             continue
         try:
-            data = tomllib.loads(pf_path.read_text(errors="replace"))
+            data = tomllib.loads(read_text_limited(pf_path))
         except (OSError, tomllib.TOMLDecodeError):
             continue
 
@@ -744,7 +751,7 @@ def parse_pipfile_lock(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pl_path):
             continue
         try:
-            data = json.loads(pl_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(pl_path))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(data, dict):
@@ -782,7 +789,7 @@ def parse_poetry_lock(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pl_path):
             continue
         try:
-            data = tomllib.loads(pl_path.read_text(errors="replace"))
+            data = tomllib.loads(read_text_limited(pl_path))
         except (OSError, tomllib.TOMLDecodeError):
             continue
         rel_path = str(pl_path.relative_to(root))
@@ -816,7 +823,7 @@ def parse_uv_lock(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(ul_path):
             continue
         try:
-            data = tomllib.loads(ul_path.read_text(errors="replace"))
+            data = tomllib.loads(read_text_limited(ul_path))
         except (OSError, tomllib.TOMLDecodeError):
             continue
         rel_path = str(ul_path.relative_to(root))
@@ -854,7 +861,7 @@ def parse_setup_cfg(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(sc_path):
             continue
         try:
-            content = sc_path.read_text(errors="replace")
+            content = read_text_limited(sc_path)
         except OSError:
             continue
 
@@ -892,7 +899,7 @@ def parse_go_mod(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(gm_path):
             continue
         try:
-            content = gm_path.read_text(errors="replace")
+            content = read_text_limited(gm_path)
         except OSError:
             continue
 
@@ -929,7 +936,7 @@ def parse_cargo_toml(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(ct_path):
             continue
         try:
-            data = tomllib.loads(ct_path.read_text(errors="replace"))
+            data = tomllib.loads(read_text_limited(ct_path))
         except (OSError, tomllib.TOMLDecodeError):
             continue
 
@@ -961,7 +968,7 @@ def parse_cargo_lock(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(cl_path):
             continue
         try:
-            data = tomllib.loads(cl_path.read_text(errors="replace"))
+            data = tomllib.loads(read_text_limited(cl_path))
         except (OSError, tomllib.TOMLDecodeError):
             continue
         rel_path = str(cl_path.relative_to(root))
@@ -1001,7 +1008,7 @@ def parse_gemfiles(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(gl_path):
             continue
         try:
-            content = gl_path.read_text(errors="replace")
+            content = read_text_limited(gl_path)
         except OSError:
             continue
         rel_path = str(gl_path.relative_to(root))
@@ -1016,7 +1023,7 @@ def parse_gemfiles(source_dir: str) -> list[dict[str, Any]]:
         if (gf_path.parent / "Gemfile.lock").exists():
             continue
         try:
-            content = gf_path.read_text(errors="replace")
+            content = read_text_limited(gf_path)
         except OSError:
             continue
         rel_path = str(gf_path.relative_to(root))
@@ -1042,7 +1049,7 @@ def parse_composer(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(cl_path):
             continue
         try:
-            data = json.loads(cl_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(cl_path))
         except (OSError, json.JSONDecodeError):
             continue
         rel_path = str(cl_path.relative_to(root))
@@ -1060,7 +1067,7 @@ def parse_composer(source_dir: str) -> list[dict[str, Any]]:
         if (cj_path.parent / "composer.lock").exists():
             continue
         try:
-            data = json.loads(cj_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(cj_path))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(data, dict):
@@ -1163,7 +1170,7 @@ def parse_gradle(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(gf_path):
             continue
         try:
-            content = gf_path.read_text(errors="replace")
+            content = read_text_limited(gf_path)
         except OSError:
             continue
         rel_path = str(gf_path.relative_to(root))
@@ -1189,7 +1196,7 @@ def parse_gradle_lockfile(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(gl_path):
             continue
         try:
-            content = gl_path.read_text(errors="replace")
+            content = read_text_limited(gl_path)
         except OSError:
             continue
         rel_path = str(gl_path.relative_to(root))
@@ -1226,7 +1233,7 @@ def parse_go_sum(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(gs_path):
             continue
         try:
-            content = gs_path.read_text(errors="replace")
+            content = read_text_limited(gs_path)
         except OSError:
             continue
         rel_path = str(gs_path.relative_to(root))
@@ -1261,7 +1268,7 @@ def parse_bun_lock(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(bl_path):
             continue
         try:
-            raw = bl_path.read_text(errors="replace")
+            raw = read_text_limited(bl_path)
         except OSError:
             continue
         # Strip JSONC line comments (only at line start, not inside URL strings)
@@ -1399,7 +1406,7 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(lock_path):
             continue
         try:
-            data = json.loads(lock_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(lock_path))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(data, dict):
@@ -1430,7 +1437,7 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(assets_path):
             continue
         try:
-            data = json.loads(assets_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(assets_path))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(data, dict):
@@ -1469,7 +1476,7 @@ def parse_swift(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pr_path):
             continue
         try:
-            data = json.loads(pr_path.read_text(errors="replace"))
+            data = json.loads(read_text_limited(pr_path))
         except (OSError, json.JSONDecodeError):
             continue
         rel_path = str(pr_path.relative_to(root))
@@ -1510,7 +1517,7 @@ def parse_mix(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(ml_path):
             continue
         try:
-            content = ml_path.read_text(errors="replace")
+            content = read_text_limited(ml_path)
         except OSError:
             continue
         rel_path = str(ml_path.relative_to(root))
@@ -1534,7 +1541,7 @@ def parse_pubspec(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pl_path):
             continue
         try:
-            data = yaml.safe_load(pl_path.read_text(errors="replace"))
+            data = yaml.safe_load(read_text_limited(pl_path))
         except (OSError, yaml.YAMLError):
             continue
         if not isinstance(data, dict):
@@ -1554,7 +1561,7 @@ def parse_pubspec(source_dir: str) -> list[dict[str, Any]]:
         if (py_path.parent / "pubspec.lock").exists():
             continue
         try:
-            data = yaml.safe_load(py_path.read_text(errors="replace"))
+            data = yaml.safe_load(read_text_limited(py_path))
         except (OSError, yaml.YAMLError):
             continue
         if not isinstance(data, dict):
@@ -1593,7 +1600,7 @@ def parse_cocoapods(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pl_path):
             continue
         try:
-            content = pl_path.read_text(errors="replace")
+            content = read_text_limited(pl_path)
         except OSError:
             continue
         rel_path = str(pl_path.relative_to(root))
@@ -1608,65 +1615,73 @@ def parse_cocoapods(source_dir: str) -> list[dict[str, Any]]:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _collect(components: list[dict[str, Any]], parser: Any, source_dir: str) -> None:
+    """Add what *parser* finds. One malformed file costs that parser, not the scan."""
+    try:
+        components.extend(parser(source_dir))
+    except Exception:  # noqa: BLE001
+        logger.warning("analyzer.parser_failed parser=%s", parser.__name__, exc_info=True)
+
+
 def run_analysis(source_dir: str) -> dict[str, Any]:
     """Run all parsers and return a CycloneDX JSON envelope."""
     all_components: list[dict[str, Any]] = []
 
     # Container infrastructure
-    all_components.extend(parse_dockerfiles(source_dir))
-    all_components.extend(parse_compose_files(source_dir))
+    _collect(all_components, parse_dockerfiles, source_dir)
+    _collect(all_components, parse_compose_files, source_dir)
 
     # JavaScript / Node.js — prefer lockfiles (resolved versions), fall back
     # to manifest-only directories. `_filter_and_merge_sbom` on the backend
     # collapses duplicates by name+version, so parsing both is safe.
-    all_components.extend(parse_package_jsons(source_dir))
-    all_components.extend(parse_package_lock_json(source_dir))
-    all_components.extend(parse_yarn_lock(source_dir))
-    all_components.extend(parse_pnpm_lock_yaml(source_dir))
-    all_components.extend(parse_bun_lock(source_dir))
+    _collect(all_components, parse_package_jsons, source_dir)
+    _collect(all_components, parse_package_lock_json, source_dir)
+    _collect(all_components, parse_yarn_lock, source_dir)
+    _collect(all_components, parse_pnpm_lock_yaml, source_dir)
+    _collect(all_components, parse_bun_lock, source_dir)
 
     # Python
-    all_components.extend(parse_requirements_txt(source_dir))
-    all_components.extend(parse_pyproject_toml(source_dir))
-    all_components.extend(parse_pipfile(source_dir))
-    all_components.extend(parse_pipfile_lock(source_dir))
-    all_components.extend(parse_poetry_lock(source_dir))
-    all_components.extend(parse_uv_lock(source_dir))
-    all_components.extend(parse_setup_cfg(source_dir))
+    _collect(all_components, parse_requirements_txt, source_dir)
+    _collect(all_components, parse_pyproject_toml, source_dir)
+    _collect(all_components, parse_pipfile, source_dir)
+    _collect(all_components, parse_pipfile_lock, source_dir)
+    _collect(all_components, parse_poetry_lock, source_dir)
+    _collect(all_components, parse_uv_lock, source_dir)
+    _collect(all_components, parse_setup_cfg, source_dir)
 
     # Go
-    all_components.extend(parse_go_mod(source_dir))
-    all_components.extend(parse_go_sum(source_dir))
+    _collect(all_components, parse_go_mod, source_dir)
+    _collect(all_components, parse_go_sum, source_dir)
 
     # Rust
-    all_components.extend(parse_cargo_toml(source_dir))
-    all_components.extend(parse_cargo_lock(source_dir))
+    _collect(all_components, parse_cargo_toml, source_dir)
+    _collect(all_components, parse_cargo_lock, source_dir)
 
     # Ruby
-    all_components.extend(parse_gemfiles(source_dir))
+    _collect(all_components, parse_gemfiles, source_dir)
 
     # PHP
-    all_components.extend(parse_composer(source_dir))
+    _collect(all_components, parse_composer, source_dir)
 
     # Java / Kotlin
-    all_components.extend(parse_pom_xml(source_dir))
-    all_components.extend(parse_gradle(source_dir))
-    all_components.extend(parse_gradle_lockfile(source_dir))
+    _collect(all_components, parse_pom_xml, source_dir)
+    _collect(all_components, parse_gradle, source_dir)
+    _collect(all_components, parse_gradle_lockfile, source_dir)
 
     # C# / .NET
-    all_components.extend(parse_dotnet(source_dir))
+    _collect(all_components, parse_dotnet, source_dir)
 
     # Swift
-    all_components.extend(parse_swift(source_dir))
+    _collect(all_components, parse_swift, source_dir)
 
     # Elixir
-    all_components.extend(parse_mix(source_dir))
+    _collect(all_components, parse_mix, source_dir)
 
     # Dart / Flutter
-    all_components.extend(parse_pubspec(source_dir))
+    _collect(all_components, parse_pubspec, source_dir)
 
     # CocoaPods
-    all_components.extend(parse_cocoapods(source_dir))
+    _collect(all_components, parse_cocoapods, source_dir)
 
     # Deduplicate by purl (more precise than name:version)
     seen: dict[str, dict[str, Any]] = {}

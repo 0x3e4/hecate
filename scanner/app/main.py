@@ -340,7 +340,7 @@ async def scan(request: ScanRequest) -> ScanResponse:
         if request.type != "source_repo":
             raise HTTPException(status_code=400, detail="sourceArchiveBase64 is only valid for source_repo scans")
         try:
-            source_dir = extract_source_archive(request.source_archive_base64)
+            source_dir = await asyncio.to_thread(extract_source_archive, request.source_archive_base64)
             owns_source_dir = True
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import time
 import urllib.request
@@ -32,9 +33,21 @@ os.environ.setdefault("GCM_INTERACTIVE", "never")
 # user-supplied scan-target URL reaches ``git clone``/``ls-remote``. Every git
 # subprocess inherits it via os.environ (create_subprocess_exec passes no env).
 os.environ.setdefault("GIT_ALLOW_PROTOCOL", "http:https:git:ssh")
+# Repository config is attacker-controlled: an uploaded archive can carry a
+# ``.git/config``, or lay out a bare repository in its root, whose
+# ``core.fsmonitor`` runs a shell command the moment anything calls
+# ``git ls-files``, and Semgrep does. GIT_CONFIG_* is command scope and outranks
+# repository config, so these hold no matter what a scanned tree contains.
+_GIT_HARDENING = {
+    "core.fsmonitor": "false",
+    "core.hooksPath": "/dev/null",
+    "safe.bareRepository": "explicit",
+}
+os.environ["GIT_CONFIG_COUNT"] = str(len(_GIT_HARDENING))
+for _index, (_key, _value) in enumerate(_GIT_HARDENING.items()):
+    os.environ[f"GIT_CONFIG_KEY_{_index}"] = _key
+    os.environ[f"GIT_CONFIG_VALUE_{_index}"] = _value
 
-from app.hecate_analyzer import run_analysis
-from app.malware_detector import run_detection
 from app.provenance import check_provenance_batch
 from app.models import ScannerResult
 
@@ -111,8 +124,17 @@ def setup_auth(auth_entries: str) -> None:
             gitconfig_path.write_text(gitconfig_content)
 
 
+_MAX_ARCHIVE_MEMBERS = 200_000
+_MAX_EXTRACTED_BYTES = int(os.environ.get("SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES", str(4 * 1024 * 1024 * 1024)))
+
+
 def extract_source_archive(source_archive_base64: str) -> str:
-    """Extract a base64-encoded zip archive into a temporary directory."""
+    """Extract a base64-encoded zip archive into a temporary directory.
+
+    ``.git`` is never extracted: it would hand the uploader a git config that
+    later tools run under, and no scanner needs it. The size limits go by the
+    sizes the archive declares, which ``zipfile`` also enforces while reading.
+    """
     try:
         archive_bytes = base64.b64decode(source_archive_base64, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -124,10 +146,19 @@ def extract_source_archive(source_archive_base64: str) -> str:
 
     try:
         with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
-            for member in zf.infolist():
+            members = zf.infolist()
+            if len(members) > _MAX_ARCHIVE_MEMBERS:
+                raise RuntimeError("Archive contains too many files")
+            if sum(member.file_size for member in members) > _MAX_EXTRACTED_BYTES:
+                raise RuntimeError("Archive is too large once extracted")
+
+            for member in members:
                 member_path = Path(member.filename)
                 if member_path.is_absolute() or ".." in member_path.parts:
                     raise RuntimeError("Archive contains unsafe paths")
+
+                if any(part.casefold() == ".git" for part in member_path.parts):
+                    continue
 
                 destination = (root / member_path).resolve()
                 if destination != root and root not in destination.parents:
@@ -740,8 +771,19 @@ async def _run_hecate_analyzer(
             clone_dir = await _clone_repo(target)
             scan_dir = clone_dir
 
-        # SBOM component extraction (existing)
-        sbom = run_analysis(scan_dir)
+        # SBOM extraction and malware detection parse the scanned tree, so they
+        # run as a child process the timeout can kill. See app/analyze_cli.py.
+        stdout, stderr, rc = await _run_command(
+            [sys.executable, "-m", "app.analyze_cli", scan_dir],
+            timeout=_scanner_timeout("hecate"),
+        )
+        if rc != 0 or not stdout.strip():
+            return ScannerResult(
+                scanner="hecate", format="hecate-json", report={},
+                error=f"Hecate Analyzer failed (exit {rc}): {_sanitize_error(stderr)}",
+            )
+        result = json.loads(stdout)
+        sbom = result.get("sbom") or {}
 
         # Provenance verification for SBOM components
         components = sbom.get("components", [])
@@ -751,16 +793,16 @@ async def _run_hecate_analyzer(
             except Exception:
                 pass  # provenance is best-effort, don't fail the scan
 
-        # Malware detection (new)
-        findings = run_detection(scan_dir)
-
         report = {
             "components": components,
-            "findings": findings,
+            "findings": result.get("findings") or [],
             "bomFormat": sbom.get("bomFormat", "CycloneDX"),
             "specVersion": sbom.get("specVersion", "1.5"),
         }
-        return ScannerResult(scanner="hecate", format="hecate-json", report=report)
+        errors = result.get("errors") or []
+        return ScannerResult(
+            scanner="hecate", format="hecate-json", report=report, error="; ".join(errors) or None,
+        )
     except Exception as exc:
         return ScannerResult(scanner="hecate", format="hecate-json", report={}, error=str(exc))
     finally:

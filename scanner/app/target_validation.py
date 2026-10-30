@@ -31,6 +31,12 @@ _ALLOWED_GIT_SCHEMES = {"http", "https", "git", "ssh"}
 # [@sha256:…]. No shell metacharacters, no leading ``-`` (enforced separately).
 _IMAGE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 
+# Syft and Grype read these as local sources rather than images, and a value like
+# ``dir:tmp`` has the same shape as ``nginx:latest``, so only the prefix tells them apart.
+_LOCAL_SOURCE_PREFIXES = (
+    "cpe:", "dir:", "docker-archive:", "file:", "oci-archive:", "oci-dir:", "purl:", "sbom:", "singularity:",
+)
+
 
 class UnsafeScanTarget(ValueError):
     """Raised when a scan target could inject into a subprocess invocation."""
@@ -64,6 +70,12 @@ def validate_source_repo_target(target: str) -> None:
         )
     if not parsed.hostname:
         raise UnsafeScanTarget("repository URL must include a host")
+    # The target id is this URL, and target ids are public. ``ssh://git@host`` is
+    # a login name, not a credential.
+    if parsed.password or (parsed.username and scheme != "ssh"):
+        raise UnsafeScanTarget(
+            "repository URL must not contain credentials; configure SCANNER_AUTH instead"
+        )
 
 
 def validate_container_image_target(target: str) -> None:
@@ -83,6 +95,8 @@ def validate_container_image_target(target: str) -> None:
         )
     if not _IMAGE_REF_RE.match(t):
         raise UnsafeScanTarget("image reference contains disallowed characters")
+    if t.lower().startswith(_LOCAL_SOURCE_PREFIXES):
+        raise UnsafeScanTarget("image reference must not name a local source")
 
 
 def validate_scan_target(target: str, target_type: str) -> None:
