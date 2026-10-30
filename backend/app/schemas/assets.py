@@ -7,6 +7,9 @@ class CatalogVendor(BaseModel):
     slug: str
     name: str
     aliases: list[str] = Field(default_factory=list)
+    vulnerability_count: int | None = Field(
+        default=None, alias="vulnerabilityCount", serialization_alias="vulnerabilityCount"
+    )
 
 
 class CatalogVendorList(BaseModel):
@@ -19,6 +22,9 @@ class CatalogProduct(BaseModel):
     name: str
     vendor_slugs: list[str] = Field(default_factory=list, alias="vendorSlugs", serialization_alias="vendorSlugs")
     aliases: list[str] = Field(default_factory=list)
+    vulnerability_count: int | None = Field(
+        default=None, alias="vulnerabilityCount", serialization_alias="vulnerabilityCount"
+    )
 
 
 class CatalogProductList(BaseModel):

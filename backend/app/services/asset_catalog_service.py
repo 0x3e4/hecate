@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+import time
 from typing import Any, Iterable
 import re
 
 import structlog
 
+from app.core.config import settings
+from app.db.mongo import get_database
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.utils.strings import normalize_key
 
 log = structlog.get_logger()
+
+# Autocomplete asks for the same top hits on every keystroke; the counts only
+# guide the choice, so an hour of staleness is fine.
+_COUNT_TTL_SECONDS = 3600.0
+_COUNT_CACHE_MAX_ENTRIES = 5000
+_COUNT_TIMEOUT_SECONDS = 2.0
+# The pickers load up to 200 hits per keystroke. Only the top of the list is read.
+_COUNT_TOP_HITS = 25
+_vulnerability_counts: dict[tuple[str, str], tuple[float, int]] = {}
 
 
 @dataclass(slots=True)
@@ -125,7 +138,10 @@ class AssetCatalogService:
 
     async def search_vendors(self, keyword: str | None, *, limit: int, offset: int) -> tuple[int, list[dict[str, Any]]]:
         total, documents = await self.repository.search_vendors(keyword, limit=limit, offset=offset)
-        return total, [self._serialize_vendor(document) for document in documents]
+        items = [self._serialize_vendor(document) for document in documents]
+        if keyword:
+            await self._attach_vulnerability_counts(items, "vendor_slugs")
+        return total, items
 
     async def search_products(
         self,
@@ -149,7 +165,46 @@ class AssetCatalogService:
                 limit=limit,
                 offset=offset,
             )
-        return total, [self._serialize_product(document) for document in documents]
+        items = [self._serialize_product(document) for document in documents]
+        if keyword:
+            await self._attach_vulnerability_counts(items, "product_slugs")
+        return total, items
+
+    async def _attach_vulnerability_counts(self, items: list[dict[str, Any]], field: str) -> None:
+        """Add how many vulnerabilities reference each hit, to tell look-alikes apart.
+
+        "wordpress", "wordpress-org" and "wordpress-foundation" read the same in
+        a picker; the count shows which one the data actually uses. Fail-soft:
+        without counts the search still answers.
+        """
+        now = time.monotonic()
+        items = items[:_COUNT_TOP_HITS]
+        missing = [
+            item["slug"]
+            for item in items
+            if (cached := _vulnerability_counts.get((field, item["slug"]))) is None or cached[0] <= now
+        ]
+        if missing:
+            try:
+                # Straight to the collection: VulnerabilityRepository.create() would
+                # re-declare every index on what is a per-keystroke path.
+                database = await get_database()
+                collection = database[settings.mongo_vulnerabilities_collection]
+                counts = await asyncio.wait_for(
+                    asyncio.gather(*(collection.count_documents({field: slug}) for slug in missing)),
+                    timeout=_COUNT_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:  # noqa: BLE001 - counts are a hint, never a failure
+                log.warning("asset_catalog.vulnerability_count_failed", field=field, error=repr(exc))
+                return
+            if len(_vulnerability_counts) > _COUNT_CACHE_MAX_ENTRIES:
+                _vulnerability_counts.clear()
+            for slug, count in zip(missing, counts):
+                _vulnerability_counts[(field, slug)] = (now + _COUNT_TTL_SECONDS, count)
+        for item in items:
+            cached = _vulnerability_counts.get((field, item["slug"]))
+            if cached is not None:
+                item["vulnerabilityCount"] = cached[1]
 
     async def list_versions(
         self,

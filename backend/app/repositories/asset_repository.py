@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any, Iterable
 
@@ -9,7 +10,64 @@ from pymongo.errors import PyMongoError
 
 from app.core.config import settings
 from app.db.mongo import get_database
-from app.utils.strings import build_search_tokens, contains_regex, normalize_key, slugify
+from app.utils.strings import (
+    MAX_SEARCH_TERM_LENGTH,
+    build_search_tokens,
+    contains_regex,
+    normalize_key,
+    slugify,
+)
+
+
+def relevance_pipeline(
+    match: dict[str, Any], keyword: str, *, limit: int, offset: int
+) -> list[dict[str, Any]]:
+    """Order catalog matches by how well they fit *keyword*, not by the alphabet.
+
+    The catalog holds 240k products: a contains-match for "wordpress" returns
+    1,700 plugins, and sorted by name the actual product sits behind every title
+    starting with a digit or A. Tiers: the exact name, then names starting with
+    the keyword, then a word starting with it, then the rest. Within a tier the
+    shorter name wins, because a plugin name is the product name plus more words.
+    """
+    term = keyword.strip()
+    literal = re.escape(term[:MAX_SEARCH_TERM_LENGTH])
+    name = {"$ifNull": ["$displayName", "$_id"]}
+    return [
+        {"$match": match},
+        {
+            "$addFields": {
+                "_tier": {
+                    "$switch": {
+                        "branches": [
+                            {
+                                "case": {
+                                    "$or": [
+                                        {"$eq": ["$_id", slugify(term)]},
+                                        {"$eq": ["$normalizedKey", normalize_key(term)]},
+                                    ]
+                                },
+                                "then": 0,
+                            },
+                            {
+                                "case": {"$regexMatch": {"input": name, "regex": f"^{literal}", "options": "i"}},
+                                "then": 1,
+                            },
+                            {
+                                "case": {"$regexMatch": {"input": name, "regex": f"\\b{literal}", "options": "i"}},
+                                "then": 2,
+                            },
+                        ],
+                        "default": 3,
+                    }
+                },
+                "_nameLength": {"$strLenCP": name},
+            }
+        },
+        {"$sort": {"_tier": 1, "_nameLength": 1, "displayName": 1, "_id": 1}},
+        {"$skip": offset},
+        {"$limit": limit},
+    ]
 
 
 class AssetRepository:
@@ -156,6 +214,9 @@ class AssetRepository:
             query["$or"] = [{"displayName": regex}, {"aliases": regex}]
 
         total = await self.vendors.count_documents(query)
+        if keyword:
+            pipeline = relevance_pipeline(query, keyword, limit=limit, offset=offset)
+            return total, await self.vendors.aggregate(pipeline, allowDiskUse=True).to_list(length=limit)
         cursor = (
             self.vendors.find(query)
             .sort("displayName", ASCENDING)
@@ -187,6 +248,9 @@ class AssetRepository:
             query["$or"] = or_clauses
 
         total = await self.products.count_documents(query)
+        if keyword:
+            pipeline = relevance_pipeline(query, keyword, limit=limit, offset=offset)
+            return total, await self.products.aggregate(pipeline, allowDiskUse=True).to_list(length=limit)
         cursor = (
             self.products.find(query)
             .sort("displayName", ASCENDING)
