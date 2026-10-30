@@ -15,9 +15,28 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- Frontend design system: `frontend/src/tokens.css` (colour, type, spacing, motion tokens), `frontend/src/base.css`, shared primitives in `frontend/src/ui/primitives.tsx` + `primitives.css`, one stylesheet per screen in `frontend/src/screens/`, and the locked system description in `design.md`. Typeface is IBM Plex Sans, with IBM Plex Mono only for identifiers and code (self-hosted via `@fontsource`).
+- `cleanAdvisoryText()` and `formatEcosystemName()` in `frontend/src/utils/advisoryText.ts`: display-only cleanup of OSV boilerplate and registry-qualified ecosystem names.
+
 ### Changed
 
+- **Full redesign of the web UI (all 18 routes).** Routes, API calls and handlers are unchanged; every screen was recomposed. Colour now carries meaning only: gold for the primary action, the current navigation item and focus; a dedicated severity scale for severity; everything else neutral. Card grids became full-width tables where items compare, each page has a single `h1`, and severity is always shown as a word as well as a colour.
+- Dashboard: the page leads with a triage table of today's CVEs that hit your inventory or SCA scans. Only Critical opens by default, up to 12 rows; vendors and products follow as supporting lists; severity DQL links sit on the stat figures.
+- Vulnerability list: rows are a dense table with a Product column (product, vendor and version each filter in one click) and start collapsed; the title column shows the cleaned advisory text, because `title` usually repeats the ID.
+- Attack path graphs: Mermaid colours come from the design tokens at runtime; only CVE and impact nodes carry severity colour.
+- `styles.css` shrank from about 3,800 to about 160 lines; screen rules moved to `frontend/src/screens/`.
+- Copy: em dashes, glued arrows, middle-dot strings, uppercase labels and flag emoji are gone from the interface in both languages; a few labels were reworded as a result.
+- Info pages: the MCP page now lists all 40 tools (it listed 30), and the batch limit is described as configurable.
+
 ### Fixed
+
+- API info page: the statement that all other endpoints are unauthenticated was out of date. It now describes the write gate (`X-System-Password`, `X-Target-Password`, `X-AI-Analysis-Password`).
+- MCP info page: tool calls check the `mcp:write` scope on the token; the page claimed the source IP is re-validated at request time.
+- CI/CD info page: `SCA_SCANNER_TIMEOUT_SECONDS` defaults to 2060, not 600.
+- Malware feed and vulnerability pages: raw OSV markers (`_-= Per source details...`, `## Source: ...`) no longer appear in descriptions, or in the text that copy and email actions produce.
+- Dashboard: registry-qualified vendor names such as `Packagist:https://packages.drupal.org/8` are shown as `Packagist (packages.drupal.org)`.
+- Inventory: a CVE or end-of-life cell could stay on its loading placeholder when the item list changed while a lookup was running.
+- Dialogs: focused fields keep the visible focus ring, and the password prompt's field has an accessible name.
 
 ## [1.7.2] - 2026-10-22
 

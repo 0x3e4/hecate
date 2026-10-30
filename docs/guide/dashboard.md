@@ -10,7 +10,7 @@ normalised vulnerability index the rest of Hecate uses, refreshes itself live as
 ingested, and links onward into the parts of the app where you do deeper work — the full
 [Vulnerabilities](vulnerabilities.md) list and [Search & Query Builder](search.md).
 
-![The Hecate Dashboard with the ID lookup box, today's summary, and the latest findings feed](../img/hecate-dash.png)
+![The Hecate Dashboard with the ID lookup box, the day's summary, and the CVEs that hit your inventory or scans](../img/hecate-dash.png)
 
 ## Quick ID lookup
 

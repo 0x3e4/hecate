@@ -104,6 +104,7 @@ every component's licenses against your policy after each scan. These workflows 
 
 ## CI/CD submission
 
-Pipelines submit scans to `POST /api/v1/scans` with the `X-API-Key` header (`SCA_API_KEY`). This
+Pipelines submit scans to `POST /api/v1/scans` with the `X-API-Key` header (an API token with the
+`scan:submit` scope, or `SCA_API_KEY`). This
 endpoint is deliberately independent of the System password gate so CI does not need the admin
 password. See [CI/CD](integrations/cicd.md) for pipeline examples and badge embedding.

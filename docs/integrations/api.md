@@ -26,11 +26,11 @@ Hecate treats reading and writing very differently. **Every read endpoint is ope
 | `X-System-Password` | The global admin write gate — most mutating endpoints when a system password is configured | `SYSTEM_PASSWORD` |
 | `X-Target-Password` | Writes scoped to a single SCA scan target that has its own write password | per-target, on the System → Access Control tab |
 | `X-AI-Analysis-Password` | AI analysis trigger endpoints (single, batch, scan triage, attack-path narrative) | the AI analysis password setting |
-| `X-API-Key` | The scan submission endpoint (`POST /scans`) for CI/CD pipelines | `SCA_API_KEY` |
+| `X-API-Key` | The scan submission endpoint (`POST /scans`) and the version report (`POST /inventory/report`), depending on the token's scopes | an API token on the System → Access Control tab; `SCA_API_KEY` for scan submission only |
 
-Each gate is **fail-open**: if the corresponding secret is unset on the backend, that gate is a no-op and the write succeeds without a header. When a write is rejected, the response carries a marker header so the web UI knows to prompt you for the right password and retry the request once — you rarely have to think about this in the browser, but a script calling the API directly must send the header itself.
+The password gates are **fail-open**: if the corresponding secret is unset on the backend, that gate is a no-op and the write succeeds without a header. When a write is rejected, the response carries a marker header so the web UI knows to prompt you for the right password and retry the request once — you rarely have to think about this in the browser, but a script calling the API directly must send the header itself.
 
-The CI-friendly scan submission flow uses its own `X-API-Key` rather than the admin password, so you can hand a pipeline a narrow key without granting it broader write access. That flow is covered end to end in [CI/CD Scanning](./cicd.md).
+The CI-friendly scan submission flow uses its own `X-API-Key` rather than the admin password, so you can hand a pipeline a narrow [API token](../security-access-control.md#api-tokens) without granting it broader write access. That flow is covered end to end in [CI/CD Scanning](./cicd.md).
 
 !!! warning
     Apart from these gates, endpoints are not individually authenticated and there is no per-user login. Restrict access to your Hecate instance at the network layer, and always serve it over TLS so the shared-secret headers are not exposed in transit.

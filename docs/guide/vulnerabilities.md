@@ -16,7 +16,7 @@ products, weaknesses and attack patterns, an optional AI write-up, a structural 
 and a complete change history of how the record evolved as feeds enriched it. From here you can pull
 a fresh copy from any upstream source and share the entry by link, email or Mastodon.
 
-![The vulnerability list with DQL mode and the advanced filter panel open](../img/hecate-vuln-dql-filter.png)
+![The vulnerability list in DQL mode](../img/hecate-vuln-dql-filter.png)
 
 ## The list page
 
@@ -176,7 +176,7 @@ is built deterministically from existing enrichment data (CWE/CAPEC catalogues, 
 inventory match, the CVSS vector), so it always renders without inventing anything, even when no AI
 is configured. A disclaimer above the graph makes the "plausible, not proven" framing explicit.
 
-![The Attack Path tab with the Mermaid graph and label chips](../img/hecate-vuln-attackpath.png)
+![The Attack Path tab with the assessment labels and the Mermaid graph](../img/hecate-vuln-attackpath.png)
 
 When at least one AI provider is configured, you can layer an optional prose **narrative** on top by
 picking a provider and (optionally) adding context, then generating the scenario description. The

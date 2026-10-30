@@ -22,19 +22,21 @@ of **scanners** to run. The response returns a `scanId` immediately; the scan it
 asynchronously on the scanner sidecar, so the pipeline polls `GET /api/v1/scans/{scanId}` until the
 status leaves `running`.
 
-Authentication uses a dedicated header, `X-API-Key`, whose value is the `SCA_API_KEY` configured on
-the backend. This key is specific to scan submission — it is **independent of the System password
-gate** that protects the web UI, so a pipeline can run scans without ever touching an admin
-password. Store the key as a pipeline secret (for example a repository secret in GitHub Actions or a
-masked CI/CD variable in GitLab) and never commit it.
+Authentication uses a dedicated header, `X-API-Key`. Its value is an
+[API token](../security-access-control.md#api-tokens) with the `scan:submit` scope, created on
+System → Access Control, or the `SCA_API_KEY` configured on the backend. Either is **independent of
+the System password gate** that protects the web UI, so a pipeline can run scans without ever
+touching an admin password. Prefer tokens: each pipeline gets its own, and revoking one leaves the
+others working. Store it as a pipeline secret (for example a repository secret in GitHub Actions or
+a masked CI/CD variable in GitLab) and never commit it.
 
 !!! warning "Keep the key secret and scoped"
-    `SCA_API_KEY` grants the ability to submit scans against your Hecate instance. Treat it like any
-    other deployment credential: store it in your CI secret store, rotate it if it leaks, and serve
-    Hecate over TLS so the header is never sent in clear text.
+    A key grants the ability to submit scans against your Hecate instance. Treat it like any other
+    deployment credential: store it in your CI secret store, rotate it if it leaks, and serve Hecate
+    over TLS so the header is never sent in clear text.
 
 Two prerequisites must be set on the backend before any of this works: `SCA_ENABLED=true` turns the
-SCA feature on, and `SCA_API_KEY` defines the key your pipeline presents. The backend reaches its
+SCA feature on, and either a token or `SCA_API_KEY` has to exist for your pipeline to present. The backend reaches its
 scanner sidecar via `SCA_SCANNER_URL` (default `http://scanner:8080`) with a per-scan budget of
 `SCA_SCANNER_TIMEOUT_SECONDS`.
 
@@ -50,7 +52,7 @@ For a **source repository** set `type` to `source_repo` and pass the repository 
 Hecate clones the repository and runs the source-capable scanners, which additionally include static
 analysis (`semgrep`, `devskim`) and secret detection (`trufflehog`). When the repository is private
 or you want to scan local working-tree code that is not yet pushed, attach a base64-encoded ZIP of
-the source as `sourceArchiveBase64` instead of relying on a clone; the archive must be a valid ZIP
+the source as `sourceArchiveBase64` instead of relying on a clone (`.git` is skipped on extraction, so pass `commitSha` yourself); the archive must be a valid ZIP
 and at most 50 MB.
 
 A handful of optional metadata fields make the resulting scan traceable back to the build that
@@ -152,6 +154,33 @@ echo "Security gate passed."
 The severity counts in `summary` are deduplicated by CVE, so the same CVE appearing in several
 packages counts once toward your gate — the threshold you set reflects distinct vulnerabilities, not
 repeated rows.
+
+## Reporting deployed versions
+
+After a rollout, a pipeline can tell Hecate which version now runs, so the [environment inventory](../guide/inventory.md) and its CVE matches stay current. The endpoint takes an [API token](../security-access-control.md#api-tokens) with the `inventory:report` scope as `X-API-Key`; the system password works too. `SCA_API_KEY` does not open it, because a version report can make CVE matches disappear. The token opens this route only, not the rest of the inventory API.
+
+```bash
+curl -sS -X POST "${HECATE_URL}/api/v1/inventory/report" \
+  -H "X-API-Key: ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reportedBy": "deploy-prod",
+    "items": [
+      { "productSlug": "nginx", "environment": "prod", "version": "1.30.1" }
+    ]
+  }'
+```
+
+Each entry has to identify exactly one existing item, by `itemId` or by any combination of `productSlug`, `vendorSlug`, `environment` and `name`. Up to 200 entries fit in one request, and the response answers per entry:
+
+| Status | Meaning |
+| --- | --- |
+| `updated` | The version changed. The response carries `previousVersion`, and the change appears in the item's history. |
+| `unchanged` | The item already had this version. Nothing is written. |
+| `ambiguous` | Several items fit, `matches` says how many. None was changed. Add `environment` or `name`. |
+| `not_found` | No item fits. Reports never create items, so a typo in a pipeline cannot grow the inventory. |
+
+One failing entry does not stop the others. A wrong token answers `401`, a token without the scope `403`. The item's history names the token; `reportedBy` is free text and appears after it in brackets.
 
 ## Status badges
 

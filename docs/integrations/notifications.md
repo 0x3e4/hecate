@@ -32,7 +32,7 @@ and resilience: `NOTIFICATIONS_APPRISE_TAGS` (default `all`) and `NOTIFICATIONS_
 that triggered it (an ingestion run, a scan, or a sync).
 
 Once the backend is up, open **System → Notifications**. The **General** tab shows a *Services* row for
-Apprise with a coloured status pill — *Connected*, *Unreachable*, or *Disabled* — so you can tell at a
+Apprise with a status word — *Connected*, *Unreachable*, or *Disabled* — so you can tell at a
 glance whether Hecate can talk to the service.
 
 !!! note
@@ -64,7 +64,7 @@ Rules decide what triggers a notification and which tag it routes to. Click **+ 
 choose a **Type**, set the **Apprise Tag** (which must match a channel tag you configured above), and toggle
 **Enabled**. The form then shows only the fields relevant to the type you picked. Every rule you create is
 listed in a table showing its type, a one-line summary of its parameters, the tag, an *Active* / *Disabled*
-status pill you can click to toggle, when it last fired, and **Edit** / **Delete** actions.
+status you can click to toggle, when it last fired, and **Edit** / **Delete** actions.
 
 There are eight rule types. The first — *System Event* — reacts to things Hecate does; the rest watch the
 vulnerability index or your scans for new matches.

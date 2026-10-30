@@ -115,6 +115,8 @@ src/
 │   │                              handler to a modal (mounted in AppLayout); on a write-gate 401
 │   │                              (marked by the `X-Write-Auth-Required` response header) asks for
 │   │                              the admin/target password and retries once
+│   ├── ApiTokenPanel.tsx        Admin API-token manager (System → Access Control): create with scopes
+│   │                              and expiry, show a new token once, revoke
 │   ├── TargetAccessPanel.tsx    Admin per-target write-password manager (System → Access Control):
 │   │                              list targets, set/clear each target's write password (🔒 badge)
 │   ├── Toast.tsx                Shared bottom-right toast (`useToast` hook + `<Toast>`) for transient
@@ -129,10 +131,10 @@ src/
 │   ├── AppLayout.tsx            Root layout (sidebar + header + content)
 │   ├── Header.tsx               Top navigation
 │   ├── Sidebar.tsx              Side navigation with saved searches
-│   ├── TabPill.tsx              Shared pill-tab button style (`tabPillStyle()`) + `TabBadge`
+│   ├── TabPill.tsx              Shared underlined tab style (`tabPillStyle()`) + `TabBadge`
 │   │                              (white number badge next to the tab label); used by both the scan-detail
 │   │                              and vulnerability-detail pages
-│   └── TriggeredByBadge.tsx     Small pill that shows the `triggeredBy` value of an AI analysis
+│   └── TriggeredByBadge.tsx     Small tag that shows the `triggeredBy` value of an AI analysis
 │                                  (e.g. `Claude - MCP`); renders nothing when empty
 ├── utils/
 │   ├── aiSummary.ts             `stripAiSummaryFooter()` — removes legacy `---\n_Added via …_` attribution
@@ -156,7 +158,10 @@ src/
 │                                  scaAutoScanEnabled)
 ├── router.tsx                   React Router v7 routes
 ├── types.ts                     TypeScript interfaces
-├── styles.css                   Global dark-theme CSS
+├── tokens.css                   Design tokens (colour, type, spacing, motion)
+├── base.css                     Reset and floor rules
+├── styles.css                   Shell and shared primitives
+├── screens/                     One stylesheet per screen
 └── main.tsx                     React entrypoint
 ```
 </details>
@@ -176,7 +181,7 @@ src/
 | `/audit` | `AuditLogPage` | Ingestion-job logs with status and metadata |
 | `/changelog` | `ChangelogPage` | Recent changes with pagination, date and job filters (incl. OSV in the job dropdown) |
 | `/inventory` | `InventoryPage` | Environment inventory: intro summary, an **Add** launcher, the **"Configuration management"** items list, and a **"Flagged CVEs"** roll-up table (every distinct CVE across all items, severity-sorted, linked to vuln detail; the "Affected items" column shows `product · version`). Add / edit happens in a `.dialog--wide` **modal**; vendor / product via `AsyncSelect<Option, false>` (menu z-index raised above the modal backdrop). Items render as **compact status rows** (`.inventory-row`) with a worst-severity status dot/border, env / deployment / instance chips, a CVE-count pill, and (when `eolEnabled`) a compact endoflife.date badge (status + support-until date + LTS + "update available"). **Clicking a row** expands the affecting-CVE list (severity-sorted, KEV chips) plus the full endoflife.date detail (release cycle, dates, latest release, newer-release-line marker, product-page link); edits refresh the row, its CVEs and the Flagged-CVEs table without a reload. The modal's "End-of-life tracking" picker auto-detects the endoflife.date product and allows manual override. |
-| `/system` | `SystemPage` | Single-card layout with header. 5 tabs: General (language, services, backup), Access Control (per-target write passwords via TargetAccessPanel), Notifications (channels, rules incl. `inventory` type with optional item filter via native multi-select, templates incl. `inventory_match`), Data (sync status, re-sync with multi-ID / wildcards / delete-only, searches), Policies (license policies) |
+| `/system` | `SystemPage` | Single-card layout with header. 5 tabs: General (language, services, backup), Access Control (API tokens via ApiTokenPanel, per-target write passwords via TargetAccessPanel), Notifications (channels, rules incl. `inventory` type with optional item filter via native multi-select, templates incl. `inventory_match`), Data (sync status, re-sync with multi-ID / wildcards / delete-only, searches), Policies (license policies) |
 | `/scans` | `ScansPage` | SCA scan management (Targets, Scans, Findings with links column + expandable detail row, SBOM with dynamic type filter from facets + summary cards + sorting + provenance filter, Security Alerts with category filter, Licenses, Scanner). Findings and SBOM rows show a links column with deps.dev, Snyk, Registry, socket.dev, bundlephobia (npm-only), npmgraph (npm-only). The Targets tab groups cards into **collapsible application sections** with severity roll-up (collapse state persisted via `usePersistentState('hecate.scan.groupCollapsed')`). Target cards: action row pinned bottom (flex column), inline-editable **App / Group** row with `<datalist>` suggestions from existing groups; SBOM-import targets without auto-scan, rescan, scanner-edit, and group-edit affordances. **Scanner tab**: live memory and disk charts plus an `AutoScanDiagnosticsTable` showing the latest `/check` probe per auto-scan target (timestamp, current vs. stored fingerprint, verdict pill with tooltip, error). Verdict pills are clickable buttons that trigger `POST /v1/scans/targets/{id}/check` and update the row in place — primary debug tool when a target is not auto-scanning. |
 | `/scans/targets/*` | `ScanTargetDetailPage` | Per-target overview (deep-linkable; splat route registered before `/scans/:scanId` — pasted un-encoded or scheme-less target URLs resolve server-side and the address bar is replaced with the canonical encoded form). Card-based layout matching the scan detail page: in-header back link + `↗`, severity rollup, scanner chips, auto-scan `/check` diagnostics, quick actions (rescan / run check / copy badge / delete — deleting a target removes it immediately and cleans up its scan data in the background), **top findings** and an **SBOM changes** card shown side by side on desktop (added / updated `old → new` / removed components between the most recent scan and the last one before it that actually changed the SBOM — walking back through history so a run of no-op auto-rescans doesn't hide an earlier real change, with a hint line when the shown pair isn't the two latest scans; headed by the changed scan's time + commit short-hash; baseline line when only one scan exists), and **server-paginated** scan history (Load more / Show all, horizontal-scroll on mobile). A 🔒 badge shows when the target is write-protected (passwords are managed in System → Access Control). Transient messages use the shared bottom-right `Toast`. |
 | `/scans/:scanId` | `ScanDetailPage` | Scan details with Findings (VEX multi-select toolbar with bulk apply / dismiss / restore, Show Dismissed toggle, inline VEX editor as an expandable row with status / justification / detail, VEX import button, links column with 6 pills, **Show attack path** per-finding expansion, Fix column with the scanner fix plus a teal **`adv:`** chip carrying the advisory's unaffected/patched versions), **Attack Chain** (cross-CVE chain as a top-level tab between Findings and SBOM — stage-pill bar + Mermaid graph + optional AI narrative; purple accent), SBOM (sortable columns, clickable summary cards for filtering, provenance filter, links column), History (time-range filter 7d / 30d / 90d / All, commit-SHA links), Compare (up to 200 scans), Security Alerts, SAST (combined Semgrep + DevSkim — dynamic banner label and per-card scanner badge), Secrets, Best Practices, Layer Analysis, License Compliance, VEX export |
@@ -217,9 +222,10 @@ Skeleton placeholders during loading.
 
 ## Styling
 
-- **Custom CSS** in `styles.css` (~800+ lines), no CSS framework
-- **Dark theme** with CSS variables (`#080a12` background, `#f5f7fa` text)
-- **Severity colours** — Critical `#ff6b6b` · High `#ffa3a3` · Medium `#ffcc66` · Low `#8fffb0`
+- **Custom CSS** with no framework; the system is described in `design.md` at the repository root
+- **Tokens only**: every colour, size and duration comes from `src/tokens.css`
+- **Screen stylesheets** in `src/screens/`, shell and primitives in `src/styles.css` and `src/ui/primitives.css`
+- **Severity colours** `--sev-critical`, `--sev-high`, `--sev-medium`, `--sev-low`, used only for severity and always with the word
 - **Responsive design** with CSS Grid / Flexbox; mobile sidebar as overlay
 - A few components use inline `style` props for dynamic values
 

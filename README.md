@@ -18,7 +18,7 @@ Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, 
 ---
 
 <p align="center">
-  <img src="img/hecate-dash.png" alt="Hecate dashboard — vulnerability search with CVSS, EPSS, KEV badges and live SSE updates" width="100%" />
+  <img src="img/hecate-dash.png" alt="Hecate dashboard: the day's CVEs that hit your inventory or SCA scans, by severity" width="100%" />
 </p>
 
 <details>
@@ -60,7 +60,7 @@ Hecate ingests data from **9 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, 
   </tr>
   <tr>
     <td width="50%"><img src="img/hecate-scan-sbom.png" alt="SBOM components with provenance verification" /></td>
-    <td width="50%"><img src="img/hecate-scan-attackpath.png" alt="Per-CVE Mermaid attack-path graph with AI narrative" /></td>
+    <td width="50%"><img src="img/hecate-scan-attackpath.png" alt="Per-CVE Mermaid attack-path graph" /></td>
   </tr>
   <tr>
     <td align="center"><sub>SBOM · provenance</sub></td>
@@ -368,7 +368,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 
 - `POST /api/v1/vulnerabilities/search` — full-text search with DQL, regex (`regexQuery`), filters, pagination. `regexQuery` runs OpenSearch `regexp` over a curated field set (summary / title / vendors / products / aliases / ID / versions / references / CWEs). Saved searches additionally persist `regexQuery` + `queryMode` (`keyword` | `dql` | `regex`) so the UI can restore the originating mode.
 - `GET /api/v1/vulnerabilities/{id}` — fetch a single vulnerability
-- `POST /api/v1/vulnerabilities/lookup` — lookup with auto-sync
+- `POST /api/v1/vulnerabilities/lookup` — lookup; fetching a miss from upstream takes the system password
 - `POST /api/v1/vulnerabilities/refresh` — manual refresh of individual IDs
 </details>
 
@@ -592,7 +592,7 @@ Everything is driven through environment variables — see [`.env.example`](.env
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*`. CWE / CAPEC use wall-clock cron instead of intervals: `SCHEDULER_CWE_CRON_DAY_OF_WEEK` (default `mon`), `SCHEDULER_CWE_CRON_HOUR` (`3`), `SCHEDULER_CAPEC_CRON_DAY_OF_WEEK` (default `tue`), `SCHEDULER_CAPEC_CRON_HOUR` (`3`). Stale-on-startup catch-up via `SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (default `1.5`). |
 | **Inventory EOL** | `ENDOFLIFE_ENABLED` (default `true`), `ENDOFLIFE_BASE_URL` (endoflife.date v1 API), `ENDOFLIFE_TIMEOUT_SECONDS`, `ENDOFLIFE_RATE_LIMIT_SECONDS`, `ENDOFLIFE_MAX_RETRIES`, `ENDOFLIFE_RETRY_BACKOFF_SECONDS`, `ENDOFLIFE_CACHE_TTL_HOURS` — support / end-of-life enrichment for Environment Inventory items |
 | **Frontend** | `VITE_API_BASE_URL` (feature flags are derived from backend settings and exposed via `GET /api/v1/config`) |
-| **SCA scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_SCANNER_TIMEOUT_SECONDS` (default `1560` — floor; the per-call sidecar HTTP timeout auto-derives from the per-scanner overrides), `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCA_AUTO_SCAN_ENABLED`, `SCA_MAX_CONCURRENT_SCANS`, `SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`, `SCANNER_AUTH`, `SEMGREP_RULES`, per-scanner subprocess timeouts `<SCANNER>_TIMEOUT_SECONDS` (`GRYPE_` default `1200`, `DEVSKIM_` `1500`, `TRUFFLEHOG_` `300`, others `600`) |
+| **SCA scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_SCANNER_SECRET`, `SCA_SCANNER_TIMEOUT_SECONDS` (default `1560` — floor; the per-call sidecar HTTP timeout auto-derives from the per-scanner overrides), `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCA_AUTO_SCAN_ENABLED`, `SCA_MAX_CONCURRENT_SCANS`, `SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`, `SCANNER_AUTH`, `SEMGREP_RULES`, per-scanner subprocess timeouts `<SCANNER>_TIMEOUT_SECONDS` (`GRYPE_` default `1200`, `DEVSKIM_` `1500`, `TRUFFLEHOG_` `300`, others `600`) |
 | **Notifications** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |
 | **MCP server** | `MCP_ENABLED`, `MCP_OAUTH_PROVIDER`, `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_SCOPES`, `MCP_WRITE_IP_SAFELIST`, `MCP_ALLOWED_USERS`, `MCP_ALLOWED_REDIRECT_HOSTS` (allowed OAuth redirect hosts), `MCP_RATE_LIMIT_PER_MINUTE`, `MCP_MAX_RESULTS`, `MCP_MAX_CONCURRENT_CONNECTIONS`, `MCP_PUBLIC_URL` (pin OAuth resource / issuer URL behind multi-hostname proxies), `MCP_AUTH_DISABLED` (DEV ONLY: full OAuth bypass) |
 

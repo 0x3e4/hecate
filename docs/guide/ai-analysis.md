@@ -127,7 +127,7 @@ walks from an entry point all the way to a fix:
 Entry → Asset → Package → CVE → CWE → CAPEC → Exploit → Impact → Fix
 ```
 
-![An attack-path graph rendered as a node chain with severity colouring and label chips](../img/hecate-scan-attackpath.png)
+![An attack-path graph rendered as a node chain below its assessment labels](../img/hecate-scan-attackpath.png)
 
 This graph is built **deterministically** from data Hecate already has — the CWE and CAPEC catalogues,
 EPSS scores, KEV status, your inventory match, and the CVSS vector. It contains no invented IDs and no

@@ -36,7 +36,8 @@ The full model, including per-target write delegation, is described in
 | --- | --- | --- |
 | `SYSTEM_PASSWORD` 🔑 | (unset) | Admin password. When set, **all REST writes** require header `X-System-Password`, and it unlocks the System page. |
 | `AI_ANALYSIS_PASSWORD` 🔑 | (unset) | Required (header `X-AI-Analysis-Password`) to trigger any AI analysis — the final layer on top of the write gate. |
-| `SCA_API_KEY` 🔑 | (unset) | API key (header `X-API-Key`) for the CI/CD scan-submission endpoint `POST /api/v1/scans`. |
+| `SCA_API_KEY` 🔑 | (unset) | API key (header `X-API-Key`) for the CI/CD scan-submission endpoint `POST /api/v1/scans`. API tokens from System → Access Control work as well, see [Security & Access Control](security-access-control.md#api-tokens). |
+| `SCA_SCANNER_SECRET` 🔑 | (unset) | Shared secret between the backend and the scanner sidecar (header `X-Scanner-Secret`). Set the same value on both; needed once anything else can reach the sidecar. |
 
 All secret comparisons are constant-time, and the password endpoints carry a per-client throttle:
 after repeated failures from the same client the endpoint locks out (HTTP 429) for a cooldown, so a
@@ -145,6 +146,7 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_SCANNER_URL` | `http://scanner:8080` | Scanner sidecar URL. |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP timeout; the actual per-call value auto-derives as `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60)`. |
 | `SCA_SOURCE_ARCHIVE_MAX_BYTES` | `52428800` | Max uploaded source archive size (50 MiB). |
+| `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES` | `4294967296` | Max total size of an archive once extracted, checked by the scanner (4 GiB). |
 | `SCA_AUTO_SCAN_ENABLED` | `false` | Enable the auto-scan scheduler. |
 | `SCA_AUTO_SCAN_INTERVAL_MINUTES` | `1440` | How often auto-scan checks each target for changes. |
 | `SCA_MAX_CONCURRENT_SCANS` | `2` | Concurrent scan slots. |
@@ -164,6 +166,8 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). |
 | `HECATE_MALWARE_ALLOWLIST` | (empty) | Comma-separated package names to skip during malware detection. |
 | `HECATE_REGISTRY_CACHE_TTL` | `604800` | Typosquatting registry-lookup cache TTL (seconds; 7 days). |
+| `HECATE_TIMEOUT_SECONDS` | `600` | Time limit of the `hecate` analyzer. It runs as its own process and is killed when the limit is reached. |
+| `HECATE_MAX_PARSED_FILE_BYTES` | `33554432` | Largest manifest or lockfile the analyzer reads (32 MiB). Bigger files and symlinks are skipped. |
 
 ## Ingestion
 
@@ -240,7 +244,7 @@ Annotates [Environment Inventory](guide/inventory.md) items with support / end-o
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `TRUSTED_PROXY_IPS` | (unset) | CSV of proxy IPs whose forwarded headers we trust. |
+| `TRUSTED_PROXY_IPS` | (unset) | CSV of proxy IPs whose forwarded headers we trust. **Required behind a reverse proxy**: without it every client shares the proxy's address, so ten wrong passwords lock the write gates for everyone. The backend logs `request.forwarded_header_from_untrusted_peer` once when it sees this. |
 | `TRUSTED_PROXY_FORWARD_HEADER` | `x-forwarded-for` | Header carrying the client-IP chain. |
 | `TRUSTED_PROXY_REAL_IP_HEADER` | `x-real-ip` | Header carrying the originating client IP. |
 

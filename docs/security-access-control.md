@@ -17,13 +17,18 @@ by a real identity service later.
 | **AI password** | `AI_ANALYSIS_PASSWORD` | `X-AI-Analysis-Password` | Triggering any AI analysis — the always-required final layer. |
 | **Per-target password** | set in the UI (hashed in MongoDB) | `X-Target-Password` | Writes scoped to one SCA target (Layer B). |
 | **SCA API key** | `SCA_API_KEY` | `X-API-Key` | The CI/CD scan-submission endpoint `POST /api/v1/scans`. |
+| **API token** | created in the UI (hashed in MongoDB) | `X-API-Key` | The routes of its scopes, see [API tokens](#api-tokens). |
+| **Scanner secret** | `SCA_SCANNER_SECRET` | `X-Scanner-Secret` | The scanner sidecar's own API, between the backend and the sidecar. |
 
-All gates are **fail-open**: if the corresponding secret is unset, that gate is a no-op.
+The password gates are **fail-open**: if the corresponding secret is unset, that gate is a no-op. The
+exceptions are `POST /api/v1/scans`, which answers `503` with neither a key nor a token, and token
+management, which needs `SYSTEM_PASSWORD`.
 
 ### Comparison & brute-force protection
 
-Every secret is compared in **constant time**, and the write gates plus the password-check endpoints
-(`POST /api/v1/status/system-auth`, `/status/ai-auth`) carry a **per-client throttle with lockout**:
+Every secret is compared in **constant time**, and every route that checks one, including the
+password-check endpoints (`POST /api/v1/status/system-auth`, `/status/ai-auth`), the target-scoped
+writes and `POST /api/v1/scans`, carries a **per-client throttle with lockout**:
 after repeated failures from the same client, further attempts are rejected with `HTTP 429` for a
 cooldown window before the secret is even checked. This caps online guessing so a weak password can't
 be brute-forced at full request rate. The client is identified from the reverse proxy's forwarded
@@ -52,7 +57,7 @@ A target owner can:
 
 - edit the target's settings, run/cancel/delete its scans, trigger a `/check`
 - set VEX status and dismiss its findings
-- run scan-scoped AI analysis (still requires the AI password too)
+- run scan-scoped AI analysis, unless an AI password is set: then that password decides
 
 A target owner **cannot** touch other targets or admin-only resources (inventory, notifications,
 policies, sync, backups). Per-target passwords are stored **hashed** (PBKDF2) in MongoDB and are
@@ -75,15 +80,14 @@ API: `PUT /api/v1/scans/targets/{id}/write-password` (body `{ "password": "…" 
 
 ## AI is always gated by the AI password
 
-When `AI_ANALYSIS_PASSWORD` is set, the AI password is **always required** to trigger AI —
-independent of the write gate, as the final layer:
+When `AI_ANALYSIS_PASSWORD` is set, that password **alone** authorizes triggering AI, and the write
+gates are not asked as well, so the web UI shows one prompt instead of two:
 
-- **Non-target AI** (CVE investigation, batch, attack-path narrative) → admin write gate **+** AI password.
-- **Scan-scoped AI** (scan analysis, attack-chain narrative) → the target's write authorization **+** AI password.
+- **Non-target AI** (CVE investigation, batch, attack-path narrative) → AI password.
+- **Scan-scoped AI** (scan analysis, attack-chain narrative) → AI password.
 
-So with both a write password and the AI password configured, you cannot trigger AI without the AI
-password — and you also need the relevant write access. The web UI sends both headers
-automatically once you've unlocked.
+Without an AI password, the same actions fall back to the write gates: the system password for
+non-target AI, and the target's write authorization for scan-scoped AI.
 
 ## Typical setups
 
@@ -97,9 +101,45 @@ target — settings, scans, findings, VEX, and scan-scoped AI — without ever h
 and they cannot touch other targets or admin-only resources (inventory, notifications, policies, sync,
 backups).
 
-A **CI/CD pipeline** uses neither the admin nor a target password: it submits scans with the
-`SCA_API_KEY` via the `X-API-Key` header, which is independent of the write gate. See
+A **CI/CD pipeline** uses neither the admin nor a target password: it holds an API token, or the
+`SCA_API_KEY`, in the `X-API-Key` header, independent of the write gate. See
 [CI/CD](integrations/cicd.md).
+
+## API tokens
+
+A token goes to one pipeline or tool, opens only what its scopes allow, and can be revoked without
+touching the others. Create them on **System → Access Control**.
+
+| Scope | Opens |
+| --- | --- |
+| `scan:submit` | `POST /api/v1/scans` |
+| `inventory:report` | `POST /api/v1/inventory/report` |
+
+- **The token is shown once.** Hecate stores a SHA-256 hash and the first characters for telling
+  tokens apart. A lost token is revoked and replaced.
+- **`SCA_API_KEY` keeps working for scans and opens nothing else.** Set it, use tokens, or do both;
+  with neither, scan submission answers `503`.
+- **The version report takes a token, not the SCA key**, because a report can make CVE matches
+  disappear. The system password still works for people.
+- **Managing tokens needs `SYSTEM_PASSWORD`**, also for listing them, and answers `403` without it:
+  unlike the other gates this one does not open, or anyone could create a token.
+- A token without the required scope gets `403`, an unknown, expired or revoked one `401`. Wrong
+  tokens count toward the same lockout as wrong passwords.
+- The inventory history names the token. `reportedBy` is free text and appears after it in brackets.
+
+## Scanner sidecar
+
+The sidecar has an API of its own: it starts scanners on whatever it is told to fetch, and it holds
+`SCANNER_AUTH`. In the compose example only the backend can reach it. As soon as anything else can,
+for example when it runs on another host, set the same `SCA_SCANNER_SECRET` on both sides (for
+example from `openssl rand -hex 32`) and put TLS in front of it.
+
+With a secret set, every route except `/health` needs the `X-Scanner-Secret` header. A wrong value
+shows as an unreachable scanner on the System page, and the backend logs `scanner.secret_rejected`.
+
+The sidecar takes the secret out of its environment at startup, so scanners do not inherit it. A
+compromised scanner can still read it from `/proc/1/environ`, but it only opens the sidecar that
+scanner is already running in, so use a different value per deployment.
 
 ## What this is not
 

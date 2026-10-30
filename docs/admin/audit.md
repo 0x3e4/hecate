@@ -12,7 +12,7 @@ asynchronously, and notifications fire on their own. The audit log makes all of 
 chronological, filterable list, so you can confirm the pipelines are healthy, spot a feed that has
 started failing, and read the error message behind it without digging through container logs.
 
-![The Hecate Audit Log showing job rows with coloured status badges, durations and expandable detail](../img/hecate-audit.png)
+![The Hecate Audit Log showing job rows with status, duration and expandable detail](../img/hecate-audit.png)
 
 The header tells you how many entries exist in total, and the table is paginated 50 rows at a time
 with **Previous** / **Next** controls and a "Showing X–Y of N" counter. If your instance sets

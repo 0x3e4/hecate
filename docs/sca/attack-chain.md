@@ -55,9 +55,7 @@ every time, so the chain is reproducible.
 
 At the top of the tab is a short summary line — how many stages the chain spans and how many CVEs were
 chained from the scan — followed by a row of **stage pills**. Each pill names a stage and carries a
-count badge showing how many findings fell into that stage. The pills are colour-toned by stage so the
-riskier ends of the chain stand out: Impact is rendered in red, Foothold and Privilege Escalation in
-amber, Credential Access and Lateral Movement in blue. Clicking a pill toggles it active (a second
+count showing how many findings fell into that stage. Clicking a pill toggles it active (a second
 click clears it); only stages that actually contain findings appear.
 
 Below the pills is the graph itself, rendered with the same Mermaid visualisation the per-CVE Attack

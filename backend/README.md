@@ -204,6 +204,7 @@ services/ingestion/
 | `notification_channels` | — | Apprise channels (URL + tag) |
 | `notification_templates` | — | Title / body templates per event type |
 | `license_policies` | `LicensePolicyDocument` | License policies (allowed, denied, review-required) |
+| `environment_inventory_history` | (dict) | Append-only change log of inventory items, kept after an item is deleted |
 | `environment_inventory` | `InventoryItemDocument` | User-declared product / version inventory (deployment, environment, instance count, optional `eol_product` endoflife.date link) |
 | `malware_intel` | `MalwareIntelDocument` | Dynamic malware-intel entries; upsert key `(source, ecosystem, package_name, version)`; merged into the `/v1/malware/malware-feed` UI (currently unused, reserved for future threat-intel pipelines) |
 

@@ -8,6 +8,12 @@ Once an entry matches, the result surfaces in several places at once: an expanda
 
 ![The Environment Inventory page with declared items and their affecting CVEs](../img/hecate-inventory.png)
 
+## Finding the right product
+
+The catalog holds about 240,000 products, and popular names come with many look-alikes: searching for `wordpress` matches around 1,700 plugins and themes. Results are ranked by how well they fit, so the exact name comes first, then names starting with the term, then names containing it as a word. Each result shows the number of known vulnerabilities, which tells apart entries that read the same, such as `WordPress` and `WordPress Foundation`.
+
+You can search the product first. Hecate then fills in the most likely vendor, and you can still change it.
+
 ## Adding, editing and deleting entries
 
 The page is reached from the sidebar under the **Environment** group. It is laid out as stacked cards: a short summary at the top (with chips showing how many items and total instances you have declared), **Configuration management** — a compact list, one row per entry — and **Flagged CVEs**, a single table rolling up every distinct CVE that affects any of your entries.
@@ -50,11 +56,25 @@ Feeds don't all write their ranges the same way. Alongside the plain `>= 8.0.0, 
 
 A small number of vendors number releases as an independent build counter per branch rather than one continuous scale — Citrix NetScaler ADC/Gateway is the confirmed example, where a version like `14.1, 66.59` means "branch 14.1, build 66.59". For those vendors, Hecate matches the branch first and only then compares build numbers within it, so a fix threshold on one branch (e.g. "branch 14.1, build < 56.73") can never accidentally cover an installed build on a different branch.
 
+## Keeping versions current
+
+A match is only as good as the version it was checked against, so there are three ways to update one, and all of them are recorded in the history below.
+
+**In the row.** Expand an item and change **Running version**. When endoflife.date knows a newer release of the same cycle, **Set to** offers it in one click. Hecate never applies that on its own: the inventory states what actually runs, and a version nobody deployed would quietly clear real CVE matches.
+
+**From a pipeline.** After a rollout, `POST /api/v1/inventory/report` records the deployed version. See [CI/CD integration](../integrations/cicd.md#reporting-deployed-versions).
+
+**Through an assistant.** The MCP tool `update_inventory_item` changes an item by id.
+
+## History
+
+Every change is logged with the time, the old and new value, and how it was made: the web interface, an API report (with the name the pipeline gave), MCP (with the identity), or a backup restore. The expanded row shows the history of that item, and **Recent changes** at the bottom of the page shows all items, including deleted ones. Saving a form without changing anything leaves no entry.
+
 ## Where matches show up
 
 ### On the inventory row
 
-Each row carries a coloured status dot (and left border) for the severity of its worst current match, so a glance down the list tells you which entries are exposed. The row shows the item name, vendor/product and version, chips for deployment / environment / instance count, the endoflife.date support badge, and a CVE-count pill. **Click the row** to expand an in-line list of the affecting vulnerabilities, sorted by severity and CVSS, each linking straight to its detail page and flagged with a **KEV** chip when CISA lists it as known-exploited. The **DQL** button opens the same set of matches as a pre-built query in the [Vulnerabilities](vulnerabilities.md) list, which is handy when you want to sort, export or filter them with the full search UI. Edits made in the dialog (including a version bump) refresh the row, its CVEs and the **Flagged CVEs** table immediately — no reload.
+Each row names the severity of its worst current match, so a glance down the list tells you which entries are exposed. The row shows the item name, vendor/product and version, chips for deployment / environment / instance count, the endoflife.date support badge, and a CVE-count pill. **Click the row** to expand an in-line list of the affecting vulnerabilities, sorted by severity and CVSS, each linking straight to its detail page and flagged with a **KEV** chip when CISA lists it as known-exploited. The **DQL** button opens the same set of matches as a pre-built query in the [Vulnerabilities](vulnerabilities.md) list, which is handy when you want to sort, export or filter them with the full search UI. Edits made in the dialog (including a version bump) refresh the row, its CVEs and the **Flagged CVEs** table immediately — no reload.
 
 ### In the Flagged CVEs table
 

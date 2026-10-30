@@ -312,6 +312,7 @@ overdue without aborting them.
 | `notification_channels` | Apprise channels (URL + tag) |
 | `notification_templates` | Title / body templates per event type |
 | `license_policies` | License policies (allowed, denied, review-required) |
+| `environment_inventory_history` | Append-only change log of inventory items, kept after an item is deleted. |
 | `environment_inventory` | User-declared product / version inventory with deployment / environment / instance count |
 | `malware_intel` | Dynamic malware-intel entries (reserved for future threat-intel pipelines) |
 
@@ -567,10 +568,12 @@ hook) persists sidebar state and asset-filter selections. Data loading follows a
 
 ### Styling
 
-The look is a custom dark theme in `styles.css` (800+ lines) with no CSS framework. CSS variables
-define the palette (`#080a12` background, `#f5f7fa` text) and the severity colours (critical `#ff6b6b`,
-high `#ffa3a3`, medium `#ffcc66`, low `#8fffb0`). Layout uses CSS Grid and Flexbox throughout, with the
-sidebar collapsing to an overlay on mobile.
+The look is a custom dark theme with no CSS framework, described in `design.md` at the repository
+root. `frontend/src/tokens.css` defines every colour, type size, space and motion value; colour carries
+meaning only (gold for the primary action, current navigation item and focus, a dedicated scale for
+severity, everything else neutral). `styles.css` holds the shell and primitives, `ui/primitives.tsx`
+the shared components, and each screen has its own stylesheet in `src/screens/`. Layout uses CSS Grid
+and Flexbox throughout, with the sidebar collapsing to an overlay on mobile.
 
 ### Localisation
 

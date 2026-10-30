@@ -13,7 +13,7 @@ violate the policy are flagged, the rest pass quietly, and the result is availab
 aggregated across all of your targets. Nothing is enforced or blocked; the goal is visibility, so you
 can decide what to do about a `GPL-3.0-only` dependency before it reaches production.
 
-![Hecate per-scan License Compliance tab showing a policy summary banner and a table of violating components](../img/hecate-scan-licenses.png)
+![Hecate per-scan License Compliance tab showing the policy result counts and a table of components with their licenses](../img/hecate-scan-licenses.png)
 
 ## How a license is evaluated
 

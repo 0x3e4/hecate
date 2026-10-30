@@ -428,6 +428,7 @@ deploy:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SCANNER_AUTH` | — | Authentication for registries and Git repos (`host:token`, comma-separated) |
+| `SCA_SCANNER_SECRET` | — | Shared secret with the backend. When set, every route except `/health` needs it in the `X-Scanner-Secret` header. Needed once anything but the backend can reach the sidecar |
 | `SYFT_DEFAULT_CATALOGERS` | `all` | Syft catalogers (set in the Dockerfile, enables binary detection) |
 | `HECATE_MALWARE_ALLOWLIST` | — | Comma-separated package names ignored by the malware detector |
 | `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` subprocess timeout for source-repo scans (the repo is cloned once per scan via `/prepare-source`). The backend auto-widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)` |
@@ -438,6 +439,7 @@ Backend-side configuration of the sidecar:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SCA_SCANNER_URL` | `http://scanner:8080` | URL of the scanner sidecar |
+| `SCA_SCANNER_SECRET` | — | Sent as `X-Scanner-Secret` on every sidecar call. Same value as on the sidecar |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP read timeout. The actual per-call timeout is `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60s)`, so bumping a single scanner's subprocess budget auto-grants enough HTTP wait — no need to bump this in lock-step |
 | `GRYPE_TIMEOUT_SECONDS` | `1800` | Grype subprocess timeout (raised above the generic 600 s default; for container images grype now matches a pre-built SBOM — see *Grype on container images* — so it rarely needs the headroom) |
 | `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir. `docker-compose.yml.example` sets it to `/grype-db` on the persistent `grype-db` volume (~3 GB DB, kept across restarts). Without the volume it lives on tmpfs and is re-downloaded after each restart. |

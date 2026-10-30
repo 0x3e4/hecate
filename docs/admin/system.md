@@ -22,7 +22,7 @@ linked in the last column.
 | Tab | What you do here | More detail |
 | --- | --- | --- |
 | **General** | Set the UI language and display timezone, cap the AI batch size, check service health, send a test notification, and back up / restore data. | this page |
-| **Access Control** | Set or clear a per-target write password for each scan target. | [Security & Access Control](../security-access-control.md) |
+| **Access Control** | Create and revoke API tokens, and set or clear a per-target write password for each scan target. | [Security & Access Control](../security-access-control.md) |
 | **Notifications** | Manage Apprise channels, notification rules, and message templates. | [Notifications](../integrations/notifications.md) |
 | **Data** | Watch the sync status of all nine sources, trigger syncs by hand, re-sync or delete specific vulnerabilities, and manage saved searches. | this page |
 | **Policies** | Define SPDX license policies that are evaluated after every scan. | [License Compliance](../sca/licenses.md) |
@@ -64,7 +64,9 @@ file's metadata before touching anything and reports how many rows were inserted
 
 ## Access Control
 
-The Access Control tab is a single panel for managing **per-target write passwords**. Hecate's write
+**API tokens** come first on this tab: each goes to one pipeline or tool and opens only what its scopes allow. A new token is shown once. This part needs `SYSTEM_PASSWORD`, see [API tokens](../security-access-control.md#api-tokens).
+
+Below that, the tab manages **per-target write passwords**. Hecate's write
 protection has two layers: a global admin password that can authorise any mutation, and an optional
 per-target password that authorises writes scoped to one scan target (rescans, deletes, VEX edits).
 Here you set or clear that per-target secret for each registered target. The admin password always
@@ -85,7 +87,7 @@ retroactive malware alerts), and **message templates** (that customise the title
 type using `{placeholder}` variables and `{#each}…{/each}` loops).
 
 Channels, rules, and templates each have an add button, an inline editor, and a list with edit/delete
-actions; rules additionally show a clickable status pill to enable or disable them and a "last
+actions; rules additionally show a clickable status to enable or disable them and a "last
 triggered" timestamp. Because this is a substantial subsystem in its own right, the complete reference —
 channel URL formats, every rule type and its parameters, and the full template variable catalogue — is
 on the [Notifications](../integrations/notifications.md) page.
