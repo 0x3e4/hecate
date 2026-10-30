@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     mongo_environment_inventory_history_collection: str = "environment_inventory_history"
     mongo_malware_intel_collection: str = "malware_intel"
     mongo_app_settings_collection: str = "app_settings"
+    mongo_api_tokens_collection: str = "api_tokens"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None

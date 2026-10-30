@@ -1258,3 +1258,20 @@ export interface MalwareFeedResponse {
   limit: number;
   entries: MalwareFeedEntry[];
 }
+
+export type ApiTokenScope = "scan:submit" | "inventory:report";
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scopes: ApiTokenScope[];
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  expired: boolean;
+}
+
+export interface ApiTokenCreated extends ApiToken {
+  token: string;
+}

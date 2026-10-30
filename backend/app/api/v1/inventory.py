@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.core.write_auth import require_inventory_report
 from app.schemas.inventory import (
     AffectedVulnerabilitiesResponse,
     EolProductListResponse,
@@ -18,20 +19,25 @@ from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_service import InventoryService, get_inventory_service
 
 router = APIRouter()
-# Mounted with its own auth: CI holds the SCA API key, not the system password.
+# Mounted without the admin gate: pipelines hold an inventory:report token.
 report_router = APIRouter()
 
 
 @report_router.post("/report", response_model=InventoryReportResponse)
 async def report_inventory_versions(
     request: InventoryReportRequest,
+    token_name: str | None = Depends(require_inventory_report),
     service: InventoryService = Depends(get_inventory_service),
 ) -> InventoryReportResponse:
     """Record deployed versions, e.g. from a pipeline after a rollout.
 
-    Answers per entry, so one unknown product does not fail a whole batch.
+    Answers per entry, so one unknown product does not fail a whole batch. The
+    history names the token: ``reportedBy`` is free text the caller chooses.
     """
-    results = await service.report_versions(request.items, reported_by=request.reported_by)
+    reported_by = request.reported_by
+    if token_name:
+        reported_by = f"{token_name} ({reported_by})" if reported_by else token_name
+    results = await service.report_versions(request.items, reported_by=reported_by)
     return InventoryReportResponse(results=results)
 
 

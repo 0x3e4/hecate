@@ -1,0 +1,22 @@
+/* API tokens panel on System, Access Control */
+.api-tokens { margin-bottom: var(--space-xl); }
+
+.api-tokens-form { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) minmax(0, 10rem) auto; align-items: end; gap: var(--space-md); margin-top: var(--space-md); }
+.api-tokens-field { display: flex; flex-direction: column; gap: var(--space-2xs); min-width: 0; font-size: var(--text-sm); font-weight: 600; }
+.api-tokens-field .system-input { flex: none; width: 100%; font-weight: 400; }
+.api-tokens-scopes { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-md); min-width: 0; min-height: var(--control-height); margin: 0; padding: 0; border: 0; }
+.api-tokens-scopes legend { margin-bottom: var(--space-2xs); padding: 0; font-size: var(--text-sm); font-weight: 600; }
+.api-tokens-scope { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: var(--control-height); font-size: var(--text-sm); }
+.api-tokens-scope input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.api-tokens-created { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-sm); margin-top: var(--space-md); padding: var(--space-md); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-card); }
+.api-tokens-created p { font-size: var(--text-sm); font-weight: 600; }
+.api-tokens-value { display: flex; align-items: center; gap: var(--space-xs); max-width: 100%; }
+.api-tokens-value code { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-outlier); font-size: var(--text-sm); }
+
+.api-tokens-scope-list span { display: block; }
+
+@media (max-width: 40rem) {
+  .api-tokens-form { grid-template-columns: minmax(0, 1fr); }
+  .api-tokens-table td[data-label]::before { content: attr(data-label) ": "; color: var(--color-muted); }
+}

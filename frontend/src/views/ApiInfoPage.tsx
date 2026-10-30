@@ -78,13 +78,13 @@ export const ApiInfoPage = () => {
       <Section title={t("Authentication", "Authentifizierung")} className="info-section">
         <p>
           {t(
-            "The scan submission endpoint requires an API key sent via the ",
-            "Der Scan-Einreichungsendpunkt erfordert einen API-Schlüssel im "
+            "Pipelines authenticate with an API token from System, Access Control, sent via the ",
+            "Pipelines authentifizieren sich mit einem API-Token aus System, Zugriffskontrolle, im "
           )}
           <code>X-API-Key</code>
           {t(
-            " header. Configure the key on the backend with the ",
-            "-Header. Konfigurieren Sie den Schlüssel im Backend über die Umgebungsvariable "
+            " header. The scope scan:submit opens scan submission, inventory:report the version report. Scan submission also accepts the ",
+            "-Header. Der Scope scan:submit öffnet die Scan-Einreichung, inventory:report die Versionsmeldung. Die Scan-Einreichung akzeptiert auch die Umgebungsvariable "
           )}
           <code>SCA_API_KEY</code>
           {t(" environment variable.", ".")}

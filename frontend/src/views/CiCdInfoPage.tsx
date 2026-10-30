@@ -83,7 +83,7 @@ export const CiCdInfoPage = () => {
               </tr>
               <tr>
                 <td><code>SCA_API_KEY</code></td>
-                <td>{t("Secret API key for authenticating CI/CD requests", "Geheimer API-Schlüssel zur Authentifizierung von CI/CD-Anfragen")}</td>
+                <td>{t("Shared key for scan submissions. API tokens from System, Access Control also work and can be revoked one by one", "Gemeinsamer Schlüssel für Scan-Einreichungen. API-Tokens aus System, Zugriffskontrolle funktionieren ebenso und lassen sich einzeln widerrufen")}</td>
               </tr>
               <tr>
                 <td><code>SCA_SCANNER_URL</code></td>
@@ -259,14 +259,17 @@ curl -sS -X POST "\${HECATE_URL}/api/v1/scans" \\
       <Section title={t("Report deployed versions", "Ausgerollte Versionen melden")} className="info-section">
         <p>
           {t(
-            "After a rollout, tell Hecate which version now runs, so the inventory and its CVE matches stay current without manual edits. The endpoint accepts the same ",
-            "Melden Sie Hecate nach einem Rollout, welche Version jetzt läuft, damit das Inventar und seine CVE-Treffer ohne manuelle Pflege aktuell bleiben. Der Endpunkt akzeptiert denselben ",
+            "After a rollout, tell Hecate which version now runs, so the inventory and its CVE matches stay current without manual edits. Create an API token with the inventory:report scope under System, Access Control, and send it as ",
+            "Melden Sie Hecate nach einem Rollout, welche Version jetzt läuft, damit das Inventar und seine CVE-Treffer ohne manuelle Pflege aktuell bleiben. Erstellen Sie dafür unter System, Zugriffskontrolle ein API-Token mit dem Scope inventory:report und senden Sie es als ",
           )}
           <code>X-API-Key</code>
-          {t(" as scan submission.", " wie die Scan-Einreichung.")}
+          {t(
+            ". SCA_API_KEY does not open this endpoint: a version report can make CVE matches disappear.",
+            ". SCA_API_KEY öffnet diesen Endpunkt nicht: Eine Versionsmeldung kann CVE-Treffer verschwinden lassen.",
+          )}
         </p>
         <InfoCodeBlock code={`curl -sS -X POST "\${HECATE_URL}/api/v1/inventory/report" \
-  -H "X-API-Key: \${API_KEY}" \
+  -H "X-API-Key: \${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "reportedBy": "deploy-prod",

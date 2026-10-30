@@ -53,6 +53,7 @@ import {
 import { fetchScanTargets } from "../api/scans";
 import { setAdminPassword } from "../api/writeAuth";
 import { SkeletonBlock } from "../components/Skeleton";
+import { ApiTokenPanel } from "../components/ApiTokenPanel";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
 import { useToastContext } from "../components/ToastProvider";
 import { fetchInventoryItems } from "../api/inventory";
@@ -1467,7 +1468,10 @@ export const SystemPage = () => {
       </Section>
       </>)}
 
-      {tab === "access" && <TargetAccessPanel />}
+      {tab === "access" && (<>
+      <ApiTokenPanel />
+      <TargetAccessPanel />
+      </>)}
 
       {tab === "notifications" && (<>
       <Section

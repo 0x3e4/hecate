@@ -1,7 +1,8 @@
 """Authorization boundary of the version report endpoint.
 
-CI holds the SCA API key. That key must open exactly this one route and nothing
-else under /inventory, and a wrong key must not slip through to a fail-open gate.
+CI holds an inventory:report token. It must open exactly this one route and
+nothing else under /inventory, and a wrong key must not slip through to a
+fail-open gate. The token routes themselves are covered in test_api_tokens.py.
 """
 from __future__ import annotations
 
@@ -12,11 +13,12 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1 import inventory
+from app.core import write_auth
 from app.core.config import settings
-from app.core.write_auth import require_admin_write, require_inventory_report
+from app.core.write_auth import require_admin_write
 from app.services.inventory_service import get_inventory_service
 
-API_KEY = "ci-key"
+API_KEY = "hct_report-token"
 PASSWORD = "admin-password"
 REPORT = {"items": [{"productSlug": "nginx", "version": "1.30.1"}]}
 
@@ -36,6 +38,11 @@ class FakeService:
         raise AssertionError("must not reach the service")
 
 
+class FakeTokens:
+    async def authenticate(self, token: str) -> dict[str, Any] | None:
+        return {"name": "deploy", "scopes": ["inventory:report"]} if token == API_KEY else None
+
+
 @pytest.fixture
 def service() -> FakeService:
     return FakeService()
@@ -43,18 +50,19 @@ def service() -> FakeService:
 
 @pytest.fixture
 def client(service: FakeService, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setattr(settings, "sca_api_key", API_KEY)
+    async def tokens() -> FakeTokens:
+        return FakeTokens()
+
+    monkeypatch.setattr(write_auth, "get_api_token_service", tokens)
     monkeypatch.setattr(settings, "system_password", PASSWORD)
     app = FastAPI()
-    app.include_router(
-        inventory.report_router, prefix="/inventory", dependencies=[Depends(require_inventory_report)]
-    )
+    app.include_router(inventory.report_router, prefix="/inventory")
     app.include_router(inventory.router, prefix="/inventory", dependencies=[Depends(require_admin_write)])
     app.dependency_overrides[get_inventory_service] = lambda: service
     return TestClient(app)
 
 
-def test_ci_key_opens_the_report_route(client: TestClient, service: FakeService) -> None:
+def test_a_report_token_opens_the_report_route(client: TestClient, service: FakeService) -> None:
     response = client.post("/inventory/report", json=REPORT, headers={"X-API-Key": API_KEY})
     assert response.status_code == 200
     assert service.report_calls == 1
@@ -85,7 +93,7 @@ def test_no_credentials_are_rejected(client: TestClient, service: FakeService) -
     assert service.report_calls == 0
 
 
-def test_ci_key_opens_nothing_else(client: TestClient) -> None:
+def test_a_report_token_opens_nothing_else(client: TestClient) -> None:
     payload = {"name": "x", "vendorSlug": "v", "productSlug": "p", "version": "1"}
     response = client.post("/inventory", json=payload, headers={"X-API-Key": API_KEY})
     assert response.status_code == 401

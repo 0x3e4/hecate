@@ -6,6 +6,10 @@ are unaffected. **Reads are never gated** — only ``POST``/``PUT``/``PATCH``/
 (``/vulnerabilities/search``), so the gate is applied per genuine-write route /
 per write-only router rather than as a blanket method middleware.
 
+API tokens (``X-API-Key``) sit beside the two layers: a token carries scopes and
+opens exactly the routes that ask for one of them. Managing tokens is the one
+fail-closed gate here, because with no system password anyone could mint one.
+
 Layer A — global admin gate (``require_admin_write``): a mutating request must
 carry ``X-System-Password`` matching ``settings.system_password``. Applied
 router-level to write-only routers (inventory, notifications, license policies,
@@ -27,6 +31,8 @@ from fastapi import Depends, Header, HTTPException, Request
 from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
 from app.core.config import settings
 from app.core.passwords import secret_equals, verify_password
+from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SCAN_SUBMIT
+from app.services.api_token_service import get_api_token_service, looks_like_token
 from app.services.scan_service import ScanService, get_scan_service
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -70,25 +76,88 @@ async def require_admin_write(
     )
 
 
+async def require_token_admin(
+    request: Request,
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> None:
+    """Gate API token management, reads included.
+
+    Every other list here is public, but this one describes credentials. Unlike
+    the admin gate it does not open when no system password is set.
+    """
+    if not settings.system_password:
+        raise HTTPException(status_code=403, detail="Set SYSTEM_PASSWORD to manage API tokens.")
+    key = enforce_auth_throttle(request, "write:system")
+    if _admin_matches(x_system_password):
+        record_auth_result(key, True)
+        return
+    if x_system_password:
+        record_auth_result(key, False)
+    raise HTTPException(
+        status_code=401,
+        detail="System password required to manage API tokens.",
+        headers=_WRITE_AUTH_HEADERS,
+    )
+
+
+async def _authorize_api_token(x_api_key: str, scope: str, key: str) -> str | None:
+    """Return the name of a valid token holding ``scope``, ``None`` for an unknown one.
+
+    A token without the scope is a real credential, so it gets a 403 and neither
+    counts as a guess nor clears the counter for this route.
+    """
+    if not looks_like_token(x_api_key):
+        return None
+    token = await (await get_api_token_service()).authenticate(x_api_key)
+    if token is None:
+        return None
+    if scope not in token["scopes"]:
+        raise HTTPException(status_code=403, detail=f"API token lacks the {scope} scope.")
+    record_auth_result(key, True)
+    return token["name"]
+
+
+async def verify_sca_api_key(
+    request: Request,
+    x_api_key: str = Header(..., alias="X-API-Key"),
+) -> None:
+    """Authorize a scan submission: ``SCA_API_KEY`` or a ``scan:submit`` token."""
+    key = enforce_auth_throttle(request, "write:sca")
+    if secret_equals(x_api_key, settings.sca_api_key):
+        record_auth_result(key, True)
+        return
+    if await _authorize_api_token(x_api_key, SCOPE_SCAN_SUBMIT, key) is not None:
+        return
+    if not settings.sca_api_key:
+        service = await get_api_token_service()
+        if not await service.has_tokens(SCOPE_SCAN_SUBMIT):
+            raise HTTPException(status_code=503, detail="SCA API key not configured on server")
+    record_auth_result(key, False)
+    raise HTTPException(status_code=401, detail="Invalid API key")
+
+
 async def require_inventory_report(
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
-) -> None:
-    """Authorize a deployment version report.
+) -> str | None:
+    """Authorize a deployment version report and return the token's name, if any.
 
-    Pipelines hold the SCA API key they already use for ``POST /scans``, people
-    hold the system password. A wrong key fails outright rather than falling
-    through to the password gate, which is fail-open when no password is set.
+    Pipelines hold an ``inventory:report`` token, people the system password. The
+    SCA API key does not open this route: a version report can make CVE matches
+    disappear, which is more than submitting a scan. A wrong token fails outright
+    rather than falling through to the password gate, which is fail-open when no
+    password is set.
     """
-    if x_api_key is not None and settings.sca_api_key:
-        key = enforce_auth_throttle(request, "write:report")
-        if secret_equals(x_api_key, settings.sca_api_key):
-            record_auth_result(key, True)
-            return
+    if x_api_key is None:
+        await require_admin_write(request, x_system_password=x_system_password)
+        return None
+    key = enforce_auth_throttle(request, "write:report")
+    name = await _authorize_api_token(x_api_key, SCOPE_INVENTORY_REPORT, key)
+    if name is None:
         record_auth_result(key, False)
         raise HTTPException(status_code=401, detail="Invalid API key")
-    await require_admin_write(request, x_system_password=x_system_password)
+    return name
 
 
 def _ai_password_matches(provided: str | None) -> bool:

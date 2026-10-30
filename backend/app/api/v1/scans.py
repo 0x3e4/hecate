@@ -6,12 +6,11 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from app.core.config import settings
-from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
-from app.core.passwords import hash_password, secret_equals
+from app.core.passwords import hash_password
 from app.repositories.license_policy_repository import LicensePolicyRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
 from app.repositories.scan_repository import ScanRepository
@@ -74,6 +73,7 @@ from app.core.write_auth import (
     require_target_write_path,
     require_target_write_scan,
     resolve_target_id_path,
+    verify_sca_api_key,
 )
 from app.schemas.ai import AIScanAnalysisRequest, AIScanAnalysisSubmitResponse
 from app.schemas.scan_attack_chain import (
@@ -97,20 +97,6 @@ import structlog
 _ai_scan_logger = structlog.get_logger()
 
 router = APIRouter()
-
-
-async def verify_sca_api_key(
-    request: Request,
-    x_api_key: str = Header(..., alias="X-API-Key"),
-) -> None:
-    """Verify the SCA API key for write endpoints."""
-    if not settings.sca_api_key:
-        raise HTTPException(status_code=503, detail="SCA API key not configured on server")
-    key = enforce_auth_throttle(request, "write:sca")
-    if not secret_equals(x_api_key, settings.sca_api_key):
-        record_auth_result(key, False)
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    record_auth_result(key, True)
 
 
 def _validate_source_archive_payload(source_archive_base64: str | None) -> None:

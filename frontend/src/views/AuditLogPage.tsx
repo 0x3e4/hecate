@@ -31,6 +31,8 @@ const JOB_LABELS: Record<string, string> = {
   saved_search_created: "Saved search created",
   saved_search_updated: "Saved search updated",
   saved_search_deleted: "Saved search deleted",
+  api_token_created: "API token created",
+  api_token_revoked: "API token revoked",
   attack_path_analysis: "Attack Path narrative",
   ai_investigation: "AI analysis",
   ai_batch_investigation: "AI batch analysis",
@@ -114,6 +116,10 @@ export const AuditLogPage = () => {
         return t("Saved search updated", "Gespeicherte Suche aktualisiert");
       case "saved_search_deleted":
         return t("Saved search deleted", "Gespeicherte Suche gelöscht");
+      case "api_token_created":
+        return t("API token created", "API-Token erstellt");
+      case "api_token_revoked":
+        return t("API token revoked", "API-Token widerrufen");
       case "attack_path_analysis":
         return t("Attack Path narrative", "Attack-Path-Szenario");
       case "ai_investigation":
@@ -415,6 +421,8 @@ export const AuditLogPage = () => {
             <option value="manual_refresh">{t("Manual Refresh", "Manueller Refresh")}</option>
             <option value="saved_search_created">{t("Saved search created", "Gespeicherte Suche erstellt")}</option>
             <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
+            <option value="api_token_created">{t("API token created", "API-Token erstellt")}</option>
+            <option value="api_token_revoked">{t("API token revoked", "API-Token widerrufen")}</option>
             <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
             <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
             <option value="sca-scan">SCA Scan</option>

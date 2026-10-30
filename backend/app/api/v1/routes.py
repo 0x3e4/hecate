@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 
-from app.core.write_auth import require_admin_write, require_inventory_report
+from app.core.write_auth import require_admin_write, require_token_admin
 from app.api.v1 import (
+    api_tokens,
     app_settings,
     assets,
     audit,
@@ -39,6 +40,9 @@ _admin_write = [Depends(require_admin_write)]
 api_router.include_router(status.router, prefix="/status", tags=["status"])
 api_router.include_router(config.router, tags=["config"])
 api_router.include_router(app_settings.router, tags=["app-settings"], dependencies=_admin_write)
+api_router.include_router(
+    api_tokens.router, prefix="/api-tokens", tags=["api-tokens"], dependencies=[Depends(require_token_admin)]
+)
 api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["vulnerabilities"])
 api_router.include_router(
     saved_searches.router, prefix="/saved-searches", tags=["saved-searches"], dependencies=_admin_write
@@ -59,12 +63,7 @@ api_router.include_router(
 api_router.include_router(
     license_policies.router, prefix="/license-policies", tags=["license-policies"], dependencies=_admin_write
 )
-api_router.include_router(
-    inventory.report_router,
-    prefix="/inventory",
-    tags=["inventory"],
-    dependencies=[Depends(require_inventory_report)],
-)
+api_router.include_router(inventory.report_router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"], dependencies=_admin_write)
 api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(malware.router, prefix="/malware", tags=["malware"])
