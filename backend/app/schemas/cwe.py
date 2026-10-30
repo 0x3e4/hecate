@@ -17,6 +17,7 @@ class CWEBulkRequest(BaseModel):
     cwe_ids: list[str] = Field(
         alias="cweIds",
         serialization_alias="cweIds",
+        max_length=500,
         description="List of CWE identifiers to fetch",
     )
 

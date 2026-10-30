@@ -641,7 +641,10 @@ async def import_sbom_upload(
 ) -> SubmitScanResponse:
     """Import an external SBOM file via multipart file upload."""
 
-    content = await file.read()
+    limit = settings.sca_source_archive_max_bytes
+    content = await file.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(status_code=413, detail=f"SBOM too large (max {limit // (1024 * 1024)} MB)")
     try:
         sbom_data = json.loads(content)
     except (json.JSONDecodeError, UnicodeDecodeError):

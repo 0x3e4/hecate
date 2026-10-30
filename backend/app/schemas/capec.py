@@ -20,6 +20,7 @@ class CAPECFromCWEsRequest(BaseModel):
     cwe_ids: list[str] = Field(
         alias="cweIds",
         serialization_alias="cweIds",
+        max_length=500,
         description="List of CWE identifiers to resolve to CAPEC patterns",
     )
 
@@ -42,6 +43,7 @@ class CAPECBulkRequest(BaseModel):
     capec_ids: list[str] = Field(
         alias="capecIds",
         serialization_alias="capecIds",
+        max_length=500,
         description="List of CAPEC identifiers to fetch",
     )
 

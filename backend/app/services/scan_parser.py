@@ -1036,9 +1036,10 @@ def parse_trufflehog_json(
             # Filesystem source
             file_path = source_data.get("Filesystem", {}).get("file") if isinstance(source_data.get("Filesystem"), dict) else None
 
-        # Redact the raw secret — only show type + first/last chars
+        # Findings are publicly readable, so the prefix of a live secret stays out
+        # and a short one shows nothing at all.
         raw = result.get("Raw", "")
-        redacted = f"{raw[:4]}...{raw[-4:]}" if len(raw) > 12 else "***"
+        redacted = f"...{raw[-4:]}" if len(raw) >= 20 else "***"
 
         # Dedup by detector + file + redacted value
         dedup_key = f"{detector_name}:{file_path}:{redacted}"

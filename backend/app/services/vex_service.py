@@ -111,6 +111,8 @@ class VexService:
                 continue
 
             vuln_id = vuln.get("id", "")
+            if not isinstance(vuln_id, str):
+                continue
             analysis = vuln.get("analysis", {})
             if not isinstance(analysis, dict):
                 continue
