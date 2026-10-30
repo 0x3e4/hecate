@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas._utc import UtcDatetime
 
@@ -274,3 +274,68 @@ class EolStatusResponse(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+
+class InventoryHistoryChange(BaseModel):
+    field: str
+    old: str | int | None = None
+    new: str | int | None = None
+
+
+class InventoryHistoryEntry(BaseModel):
+    id: str
+    item_id: str = Field(alias="itemId", serialization_alias="itemId")
+    item_name: str = Field(alias="itemName", serialization_alias="itemName")
+    action: Literal["created", "updated", "deleted"]
+    source: Literal["web", "report", "mcp", "restore"]
+    actor: str | None = None
+    changes: list[InventoryHistoryChange] = Field(default_factory=list)
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+
+
+class InventoryHistoryResponse(BaseModel):
+    total: int
+    items: list[InventoryHistoryEntry]
+
+
+class InventoryReportEntry(BaseModel):
+    """One deployed version to record. Identifies an existing item, never creates one."""
+
+    item_id: str | None = Field(default=None, alias="itemId", serialization_alias="itemId")
+    name: str | None = Field(default=None, max_length=200)
+    vendor_slug: str | None = Field(default=None, alias="vendorSlug", serialization_alias="vendorSlug")
+    product_slug: str | None = Field(default=None, alias="productSlug", serialization_alias="productSlug")
+    environment: str | None = Field(default=None, max_length=50)
+    version: str = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _names_an_item(self) -> InventoryReportEntry:
+        if not (self.item_id or self.product_slug or self.name):
+            raise ValueError("Set itemId, productSlug or name to identify the inventory item")
+        return self
+
+
+class InventoryReportRequest(BaseModel):
+    items: list[InventoryReportEntry] = Field(min_length=1, max_length=200)
+    reported_by: str | None = Field(
+        default=None,
+        max_length=200,
+        alias="reportedBy",
+        serialization_alias="reportedBy",
+        description="Who reports, e.g. a pipeline name. Shown in the item history.",
+    )
+
+
+class InventoryReportResult(BaseModel):
+    status: Literal["updated", "unchanged", "not_found", "ambiguous"]
+    item_id: str | None = Field(default=None, alias="itemId", serialization_alias="itemId")
+    name: str | None = None
+    previous_version: str | None = Field(
+        default=None, alias="previousVersion", serialization_alias="previousVersion"
+    )
+    version: str
+    matches: int = 0
+
+
+class InventoryReportResponse(BaseModel):
+    results: list[InventoryReportResult]

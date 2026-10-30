@@ -8,15 +8,22 @@ from uuid import uuid4
 
 import structlog
 
+from app.repositories.inventory_history_repository import (
+    InventoryHistoryRepository,
+    diff_tracked_fields,
+)
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.inventory import (
     AffectedInventoryItem,
     AffectedVulnerabilityItem,
     EolStatusResponse,
+    InventoryHistoryEntry,
     InventoryItemCreateRequest,
     InventoryItemResponse,
     InventoryItemUpdateRequest,
+    InventoryReportEntry,
+    InventoryReportResult,
 )
 from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_matcher import (
@@ -86,6 +93,44 @@ def _map_item(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _map_history_entry(doc: dict[str, Any]) -> InventoryHistoryEntry:
+    return InventoryHistoryEntry.model_validate(
+        {
+            "id": str(doc["_id"]),
+            "itemId": doc.get("item_id", ""),
+            "itemName": doc.get("item_name", ""),
+            "action": doc.get("action", "updated"),
+            "source": doc.get("source", "web"),
+            "actor": doc.get("actor"),
+            "changes": doc.get("changes") or [],
+            "createdAt": doc.get("created_at"),
+        }
+    )
+
+
+def match_report_entry(
+    entry: InventoryReportEntry, docs: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Find the inventory items a deployment report means.
+
+    Every given field has to fit. The caller only acts on exactly one hit: two
+    nginx items in different environments must not both jump to one version.
+    """
+    if entry.item_id:
+        return [doc for doc in docs if str(doc.get("_id")) == entry.item_id]
+    wanted = {
+        "product_slug": (entry.product_slug or "").strip().lower(),
+        "vendor_slug": (entry.vendor_slug or "").strip().lower(),
+        "environment": (entry.environment or "").strip().lower(),
+        "name": (entry.name or "").strip().lower(),
+    }
+    return [
+        doc
+        for doc in docs
+        if all(not value or str(doc.get(field) or "").strip().lower() == value for field, value in wanted.items())
+    ]
+
+
 def to_affected_inventory_item(doc: dict[str, Any]) -> AffectedInventoryItem:
     return AffectedInventoryItem.model_validate(
         {
@@ -109,13 +154,32 @@ class InventoryService:
     evaluators can share a single hot copy of the inventory list.
     """
 
-    def __init__(self, repo: InventoryRepository | None = None) -> None:
+    def __init__(
+        self,
+        repo: InventoryRepository | None = None,
+        history_repo: InventoryHistoryRepository | None = None,
+    ) -> None:
         self._repo = repo
+        self._history_repo = history_repo
 
     async def _get_repo(self) -> InventoryRepository:
         if self._repo is None:
             self._repo = await InventoryRepository.create()
         return self._repo
+
+    async def _get_history_repo(self) -> InventoryHistoryRepository:
+        if self._history_repo is None:
+            self._history_repo = await InventoryHistoryRepository.create()
+        return self._history_repo
+
+    async def _record_history(self, **entry: Any) -> None:
+        """Append to the change log. The inventory write already happened, so a
+        failure here is logged and must never turn it into an error."""
+        try:
+            history = await self._get_history_repo()
+            await history.record(**entry)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("inventory.history_write_failed", item_id=entry.get("item_id"), error=str(exc))
 
     # --- CRUD ---
 
@@ -132,7 +196,11 @@ class InventoryService:
         return InventoryItemResponse.model_validate(_map_item(doc))
 
     async def create_item(
-        self, payload: InventoryItemCreateRequest
+        self,
+        payload: InventoryItemCreateRequest,
+        *,
+        source: str = "web",
+        actor: str | None = None,
     ) -> InventoryItemResponse:
         repo = await self._get_repo()
         item_id = str(uuid4())
@@ -160,10 +228,23 @@ class InventoryService:
             )
         doc = await repo.insert(item_id, data)
         _inventory_cache.invalidate()
+        await self._record_history(
+            item_id=item_id,
+            item_name=data["name"],
+            action="created",
+            source=source,
+            actor=actor,
+            changes=[{"field": "version", "old": None, "new": data["version"]}],
+        )
         return InventoryItemResponse.model_validate(_map_item(doc))
 
     async def update_item(
-        self, item_id: str, payload: InventoryItemUpdateRequest
+        self,
+        item_id: str,
+        payload: InventoryItemUpdateRequest,
+        *,
+        source: str = "web",
+        actor: str | None = None,
     ) -> InventoryItemResponse | None:
         repo = await self._get_repo()
         existing = await repo.get(item_id)
@@ -215,20 +296,95 @@ class InventoryService:
             )
 
         if updates:
+            changes = diff_tracked_fields(existing, updates)
             await repo.update(item_id, updates)
             _inventory_cache.invalidate()
+            if changes:
+                await self._record_history(
+                    item_id=item_id,
+                    item_name=updates.get("name") or existing.get("name", ""),
+                    action="updated",
+                    source=source,
+                    actor=actor,
+                    changes=changes,
+                )
 
         doc = await repo.get(item_id)
         if doc is None:
             return None
         return InventoryItemResponse.model_validate(_map_item(doc))
 
-    async def delete_item(self, item_id: str) -> bool:
+    async def delete_item(
+        self, item_id: str, *, source: str = "web", actor: str | None = None
+    ) -> bool:
         repo = await self._get_repo()
+        existing = await repo.get(item_id)
         deleted = await repo.delete(item_id)
         if deleted:
             _inventory_cache.invalidate()
+            await self._record_history(
+                item_id=item_id,
+                item_name=(existing or {}).get("name", ""),
+                action="deleted",
+                source=source,
+                actor=actor,
+                changes=[{"field": "version", "old": (existing or {}).get("version"), "new": None}],
+            )
         return deleted
+
+    async def list_history(
+        self, *, item_id: str | None = None, limit: int = 50, offset: int = 0
+    ) -> tuple[int, list[InventoryHistoryEntry]]:
+        history = await self._get_history_repo()
+        total, docs = await history.list_entries(item_id=item_id, limit=limit, offset=offset)
+        return total, [_map_history_entry(doc) for doc in docs]
+
+    async def report_versions(
+        self, entries: list[InventoryReportEntry], *, reported_by: str | None = None
+    ) -> list[InventoryReportResult]:
+        """Record versions reported by a pipeline or agent.
+
+        Only ever updates an item that one entry names unambiguously. It does
+        not create items: a typo in a pipeline must not grow the inventory, and
+        every other entry of the batch still gets processed.
+        """
+        repo = await self._get_repo()
+        docs = await repo.list_all()
+        results: list[InventoryReportResult] = []
+        for entry in entries:
+            version = entry.version.strip()
+            matches = match_report_entry(entry, docs)
+            if len(matches) != 1:
+                results.append(
+                    InventoryReportResult(
+                        status="ambiguous" if matches else "not_found",
+                        version=version,
+                        matches=len(matches),
+                    )
+                )
+                continue
+            doc = matches[0]
+            previous = doc.get("version")
+            changed = previous != version
+            if changed:
+                await self.update_item(
+                    str(doc["_id"]),
+                    InventoryItemUpdateRequest(version=version),
+                    source="report",
+                    actor=reported_by,
+                )
+                doc["version"] = version
+            results.append(
+                InventoryReportResult(
+                    status="updated" if changed else "unchanged",
+                    itemId=str(doc["_id"]),
+                    name=doc.get("name"),
+                    previousVersion=previous,
+                    version=version,
+                    matches=1,
+                )
+            )
+        return results
 
     # --- endoflife.date enrichment ---
 

@@ -1,20 +1,38 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.schemas.inventory import (
     AffectedVulnerabilitiesResponse,
     EolProductListResponse,
     EolStatusResponse,
+    InventoryHistoryResponse,
     InventoryItemCreateRequest,
     InventoryItemListResponse,
     InventoryItemResponse,
     InventoryItemUpdateRequest,
+    InventoryReportRequest,
+    InventoryReportResponse,
 )
 from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_service import InventoryService, get_inventory_service
 
 router = APIRouter()
+# Mounted with its own auth: CI holds the SCA API key, not the system password.
+report_router = APIRouter()
+
+
+@report_router.post("/report", response_model=InventoryReportResponse)
+async def report_inventory_versions(
+    request: InventoryReportRequest,
+    service: InventoryService = Depends(get_inventory_service),
+) -> InventoryReportResponse:
+    """Record deployed versions, e.g. from a pipeline after a rollout.
+
+    Answers per entry, so one unknown product does not fail a whole batch.
+    """
+    results = await service.report_versions(request.items, reported_by=request.reported_by)
+    return InventoryReportResponse(results=results)
 
 
 @router.get("/eol/products", response_model=EolProductListResponse)
@@ -30,6 +48,17 @@ async def list_inventory_items(
 ) -> InventoryItemListResponse:
     items = await service.list_items()
     return InventoryItemListResponse(items=items, total=len(items))
+
+
+@router.get("/history", response_model=InventoryHistoryResponse)
+async def list_inventory_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: InventoryService = Depends(get_inventory_service),
+) -> InventoryHistoryResponse:
+    """Recent changes across all items, including deleted ones."""
+    total, items = await service.list_history(limit=limit, offset=offset)
+    return InventoryHistoryResponse(total=total, items=items)
 
 
 @router.post("", response_model=InventoryItemResponse, status_code=201)
@@ -91,6 +120,17 @@ async def get_affected_vulnerabilities(
         total=len(vulns),
         vulnerabilities=vulns,
     )
+
+
+@router.get("/{item_id}/history", response_model=InventoryHistoryResponse)
+async def get_inventory_item_history(
+    item_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: InventoryService = Depends(get_inventory_service),
+) -> InventoryHistoryResponse:
+    total, items = await service.list_history(item_id=item_id, limit=limit, offset=offset)
+    return InventoryHistoryResponse(total=total, items=items)
 
 
 @router.get("/{item_id}/eol", response_model=EolStatusResponse)

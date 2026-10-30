@@ -200,7 +200,11 @@ def register(mcp: FastMCP) -> None:
                 payload["eolProduct"] = eol_product
 
             service = await get_inventory_service()
-            item = await service.create_item(InventoryItemCreateRequest.model_validate(payload))
+            item = await service.create_item(
+                InventoryItemCreateRequest.model_validate(payload),
+                source="mcp",
+                actor=mcp_client_id.get(),
+            )
             d = item.model_dump(by_alias=True, mode="json")
             await log_tool_invocation(
                 tool_name="create_inventory_item", inputs=tool_inputs,
@@ -282,7 +286,10 @@ def register(mcp: FastMCP) -> None:
 
             service = await get_inventory_service()
             updated = await service.update_item(
-                item_id, InventoryItemUpdateRequest.model_validate(payload)
+                item_id,
+                InventoryItemUpdateRequest.model_validate(payload),
+                source="mcp",
+                actor=mcp_client_id.get(),
             )
             if updated is None:
                 await log_tool_invocation(
@@ -329,7 +336,7 @@ def register(mcp: FastMCP) -> None:
             from app.services.inventory_service import get_inventory_service
 
             service = await get_inventory_service()
-            deleted = await service.delete_item(item_id)
+            deleted = await service.delete_item(item_id, source="mcp", actor=mcp_client_id.get())
             await log_tool_invocation(
                 tool_name="delete_inventory_item", inputs=tool_inputs,
                 result_count=1 if deleted else 0, started_at=started_at,

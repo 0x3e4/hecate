@@ -9,6 +9,10 @@ import structlog
 from pydantic import ValidationError
 
 from app.models.vulnerability import VulnerabilityDocument
+from app.repositories.inventory_history_repository import (
+    InventoryHistoryRepository,
+    diff_tracked_fields,
+)
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.saved_search_repository import SavedSearchRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
@@ -34,10 +38,12 @@ class BackupService:
         vulnerability_repo: VulnerabilityRepository,
         saved_search_repo: SavedSearchRepository,
         inventory_repo: InventoryRepository,
+        inventory_history_repo: InventoryHistoryRepository | None = None,
     ) -> None:
         self.vulnerability_repo = vulnerability_repo
         self.saved_search_repo = saved_search_repo
         self.inventory_repo = inventory_repo
+        self.inventory_history_repo = inventory_history_repo
 
     async def stream_vulnerability_export(self, source: str) -> AsyncIterator[str]:
         """Stream vulnerability backup as JSON chunks to avoid timeouts on large datasets."""
@@ -268,6 +274,23 @@ class BackupService:
         )
         return InventoryBackupPayload(metadata=metadata, items=items)
 
+    async def _record_restore(
+        self, item_id: str, data: dict[str, Any], action: str, changes: list[dict[str, Any]]
+    ) -> None:
+        """Keep restores in the change log; a log failure must not abort the restore."""
+        if self.inventory_history_repo is None:
+            return
+        try:
+            await self.inventory_history_repo.record(
+                item_id=item_id,
+                item_name=data.get("name") or "",
+                action=action,
+                source="restore",
+                changes=changes,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("backup.restore_inventory_history_failed", item_id=item_id, error=str(exc))
+
     async def restore_inventory(self, payload: InventoryBackupPayload) -> BackupRestoreSummary:
         """Restore environment-inventory items from a backup payload.
 
@@ -327,13 +350,20 @@ class BackupService:
                 if item_id:
                     existing = await self.inventory_repo.get(item_id)
                     if existing:
+                        changes = diff_tracked_fields(existing, data)
                         await self.inventory_repo.update(item_id, data)
+                        if changes:
+                            await self._record_restore(item_id, data, "updated", changes)
                         updated += 1
                         continue
                     # Preserve the exported ID when no conflict.
                     await self.inventory_repo.insert(item_id, data)
                 else:
-                    await self.inventory_repo.insert(str(uuid4()), data)
+                    item_id = str(uuid4())
+                    await self.inventory_repo.insert(item_id, data)
+                await self._record_restore(
+                    item_id, data, "created", [{"field": "version", "old": None, "new": data.get("version")}]
+                )
                 inserted += 1
             except Exception as exc:  # noqa: BLE001
                 log.error(
@@ -359,4 +389,5 @@ async def get_backup_service() -> BackupService:
     vulnerability_repo = await VulnerabilityRepository.create()
     saved_search_repo = await SavedSearchRepository.create()
     inventory_repo = await InventoryRepository.create()
-    return BackupService(vulnerability_repo, saved_search_repo, inventory_repo)
+    inventory_history_repo = await InventoryHistoryRepository.create()
+    return BackupService(vulnerability_repo, saved_search_repo, inventory_repo, inventory_history_repo)

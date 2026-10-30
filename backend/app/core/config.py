@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     mongo_notification_templates_collection: str = "notification_templates"
     mongo_license_policies_collection: str = "license_policies"
     mongo_environment_inventory_collection: str = "environment_inventory"
+    mongo_environment_inventory_history_collection: str = "environment_inventory_history"
     mongo_malware_intel_collection: str = "malware_intel"
     mongo_app_settings_collection: str = "app_settings"
     opensearch_url: str = "https://opensearch:9200"

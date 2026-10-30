@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.core.write_auth import require_admin_write
+from app.core.write_auth import require_admin_write, require_inventory_report
 from app.api.v1 import (
     app_settings,
     assets,
@@ -58,6 +58,12 @@ api_router.include_router(
 )
 api_router.include_router(
     license_policies.router, prefix="/license-policies", tags=["license-policies"], dependencies=_admin_write
+)
+api_router.include_router(
+    inventory.report_router,
+    prefix="/inventory",
+    tags=["inventory"],
+    dependencies=[Depends(require_inventory_report)],
 )
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"], dependencies=_admin_write)
 api_router.include_router(events.router, prefix="/events", tags=["events"])

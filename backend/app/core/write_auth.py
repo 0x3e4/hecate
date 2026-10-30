@@ -70,6 +70,27 @@ async def require_admin_write(
     )
 
 
+async def require_inventory_report(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> None:
+    """Authorize a deployment version report.
+
+    Pipelines hold the SCA API key they already use for ``POST /scans``, people
+    hold the system password. A wrong key fails outright rather than falling
+    through to the password gate, which is fail-open when no password is set.
+    """
+    if x_api_key is not None and settings.sca_api_key:
+        key = enforce_auth_throttle(request, "write:report")
+        if secret_equals(x_api_key, settings.sca_api_key):
+            record_auth_result(key, True)
+            return
+        record_auth_result(key, False)
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    await require_admin_write(request, x_system_password=x_system_password)
+
+
 def _ai_password_matches(provided: str | None) -> bool:
     return secret_equals(provided, settings.ai_analysis_password)
 
