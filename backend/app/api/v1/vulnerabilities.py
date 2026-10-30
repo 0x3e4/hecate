@@ -41,6 +41,8 @@ from app.services.inventory_service import InventoryService, get_inventory_servi
 from app.services.scan_service import ScanService, get_scan_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
+from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
+from app.core.passwords import secret_equals
 from app.core.write_auth import require_admin_write, require_ai_write
 from app.utils.request import get_client_ip
 
@@ -49,14 +51,19 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
-def _require_ai_analysis_password(
+async def _require_ai_analysis_password(
+    request: Request,
     ai_analysis_password: str | None = Header(default=None, alias="X-AI-Analysis-Password"),
 ) -> None:
     configured_password = settings.ai_analysis_password
     if not configured_password:
         return
-    if ai_analysis_password != configured_password:
+    key = enforce_auth_throttle(request, "read:ai")
+    if not secret_equals(ai_analysis_password, configured_password):
+        if ai_analysis_password:
+            record_auth_result(key, False)
         raise HTTPException(status_code=401, detail="Invalid or missing AI analysis password.")
+    record_auth_result(key, True)
 
 
 @router.post("/search", response_model=list[VulnerabilityPreview])

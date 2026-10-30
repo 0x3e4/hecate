@@ -20,6 +20,8 @@ a write scoped to one SCA target passes if the global admin password matches
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import Depends, Header, HTTPException, Request
 
 from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
@@ -100,6 +102,7 @@ async def require_ai_write(
 
 
 async def require_ai_target_write_scan(
+    request: Request,
     scan_id: str,
     x_ai_analysis_password: str | None = Header(default=None, alias=_AI_HEADER),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
@@ -113,13 +116,18 @@ async def require_ai_target_write_scan(
     override or the target's own write password).
     """
     if settings.ai_analysis_password:
+        key = enforce_auth_throttle(request, "write:ai")
         if not _ai_password_matches(x_ai_analysis_password):
+            if x_ai_analysis_password:
+                record_auth_result(key, False)
             raise HTTPException(
                 status_code=401,
                 detail="Invalid or missing AI analysis password.",
             )
+        record_auth_result(key, True)
         return
     await require_target_write_scan(
+        request,
         scan_id,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
@@ -128,6 +136,7 @@ async def require_ai_target_write_scan(
 
 
 async def _authorize_target(
+    request: Request,
     target_id: str | None,
     *,
     x_system_password: str | None,
@@ -135,14 +144,21 @@ async def _authorize_target(
     service: ScanService,
 ) -> None:
     """Authorize a write scoped to a single target (admin override OR target pw)."""
+    # Checked first: every route below answers 401 or not for a guessed admin
+    # password, and the hash comparison below is deliberately slow.
+    key = enforce_auth_throttle(request, "write:target")
+
     # Admin override always wins.
     if _admin_matches(x_system_password):
+        record_auth_result(key, True)
         return
 
     target = await service.target_repo.get(target_id) if target_id else None
     target_hash = target.get("write_password_hash") if target else None
 
-    if target_hash and verify_password(x_target_password or "", target_hash):
+    # A correct target password does not clear the counter: its holder could
+    # otherwise reset it between guesses at the admin password.
+    if target_hash and await asyncio.to_thread(verify_password, x_target_password or "", target_hash):
         return
 
     # Fail-open only when neither the global admin password nor this target's
@@ -150,6 +166,10 @@ async def _authorize_target(
     if not settings.system_password and not target_hash:
         return
 
+    # No password sent is the UI about to prompt, not a guess: it fans out parallel
+    # writes for one merged finding row, which would otherwise lock before the dialog.
+    if x_system_password or x_target_password:
+        record_auth_result(key, False)
     raise HTTPException(
         status_code=401,
         detail="Write password required for this target.",
@@ -158,6 +178,7 @@ async def _authorize_target(
 
 
 async def _authorize_targets(
+    request: Request,
     target_ids: set[str],
     *,
     x_system_password: str | None,
@@ -165,19 +186,24 @@ async def _authorize_targets(
     service: ScanService,
 ) -> None:
     """Authorize a write that may span several targets (finding-id batches)."""
-    if _admin_matches(x_system_password):
-        return
     # A non-admin caller can only act when the batch resolves to a single target
     # whose password they hold. Empty set → defer to the no-target path.
     if len(target_ids) <= 1:
         single = next(iter(target_ids), None)
         await _authorize_target(
+            request,
             single,
             x_system_password=x_system_password,
             x_target_password=x_target_password,
             service=service,
         )
         return
+    key = enforce_auth_throttle(request, "write:target")
+    if _admin_matches(x_system_password):
+        record_auth_result(key, True)
+        return
+    if x_system_password:
+        record_auth_result(key, False)
     raise HTTPException(
         status_code=401,
         detail="Admin password required: selection spans multiple targets.",
@@ -215,6 +241,7 @@ async def resolve_target_id_path(
 
 
 async def require_target_write_path(
+    request: Request,
     target_id: str = Depends(resolve_target_id_path),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
@@ -222,6 +249,7 @@ async def require_target_write_path(
 ) -> None:
     """Target id is a path parameter (``/targets/{target_id}``[/check])."""
     await _authorize_target(
+        request,
         target_id,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
@@ -230,6 +258,7 @@ async def require_target_write_path(
 
 
 async def require_target_write_scan(
+    request: Request,
     scan_id: str,
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
@@ -239,6 +268,7 @@ async def require_target_write_scan(
     scan = await service.scan_repo.get(scan_id)
     target_id = scan.get("target_id") if scan else None
     await _authorize_target(
+        request,
         target_id,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
@@ -256,6 +286,7 @@ async def require_target_write_body_target(
     body = await _safe_json(request)
     target_id = body.get("targetId") or body.get("target_id")
     await _authorize_target(
+        request,
         target_id,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
@@ -264,6 +295,7 @@ async def require_target_write_body_target(
 
 
 async def require_target_write_finding(
+    request: Request,
     finding_id: str,
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
@@ -272,6 +304,7 @@ async def require_target_write_finding(
     """Resolve the owning target from a single ``finding_id`` path parameter."""
     target_ids = await service.finding_repo.get_target_ids_for_findings([finding_id])
     await _authorize_targets(
+        request,
         target_ids,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
@@ -294,6 +327,7 @@ async def require_target_write_body_finding_ids(
         [str(f) for f in finding_ids]
     )
     await _authorize_targets(
+        request,
         target_ids,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
@@ -323,6 +357,7 @@ async def require_target_write_manual_scan(
         except Exception:
             target_id = None
     await _authorize_target(
+        request,
         target_id,
         x_system_password=x_system_password,
         x_target_password=x_target_password,

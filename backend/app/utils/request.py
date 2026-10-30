@@ -2,9 +2,31 @@ from __future__ import annotations
 
 from typing import Optional
 
+import structlog
 from fastapi import Request
 
 from app.core.config import settings
+
+log = structlog.get_logger()
+_forwarded_header_warned = False
+
+
+def _warn_forwarded_header_ignored(request: Request, direct_host: str) -> None:
+    """Say once when a proxy sits in front of us without being configured.
+
+    Every client then shares the proxy's address, so ten bad passwords from one
+    of them lock the auth throttle for all of them.
+    """
+    global _forwarded_header_warned
+    header_name = settings.trusted_proxy_forward_header or "x-forwarded-for"
+    if _forwarded_header_warned or not request.headers.get(header_name):
+        return
+    _forwarded_header_warned = True
+    log.warning(
+        "request.forwarded_header_from_untrusted_peer",
+        peer=direct_host,
+        hint="Set TRUSTED_PROXY_IPS to this address if it is your reverse proxy.",
+    )
 
 
 def get_client_ip(request: Request) -> Optional[str]:
@@ -73,6 +95,7 @@ def get_security_client_ip(request: Request) -> str:
     is_trusted_proxy = bool(trusted_ips) and (direct_host in trusted_ips or "*" in trusted_ips)
     if not is_trusted_proxy:
         # Direct peer is authoritative; a client-supplied XFF is not trusted.
+        _warn_forwarded_header_ignored(request, direct_host)
         return direct_host
 
     header_name = settings.trusted_proxy_forward_header or "x-forwarded-for"
