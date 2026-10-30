@@ -1,0 +1,77 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
+ * Statistics: exploited count and severity lead, then the trend, then rankings. Tokens only; see design.md.
+ * Severity bars take their colour at runtime from severityVar(); every other mark is neutral ink. */
+.stats-page h2,
+.stats-page .ui-section-head h2 { max-width: none; font-size: var(--text-title); line-height: 1.3; text-wrap: balance; }
+
+.stats-lead { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-xl); align-items: start; padding-bottom: var(--space-lg); }
+
+.stats-summary { display: flex; flex-direction: column; gap: var(--space-lg); min-width: 0; }
+.stats-hero { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-md) var(--space-xl); margin: 0; }
+.stats-hero .stat:first-child dd { font-size: var(--text-3xl); }
+.stats-hero .stat:last-child dd { font-size: var(--text-2xl); }
+.stats-catalog-figures { padding-top: var(--space-md); border-top: var(--rule-hair) solid var(--color-rule); }
+.stats-catalog-figures .stat dd { font-size: var(--text-lg); }
+
+.stats-block { display: flex; flex-direction: column; gap: var(--space-sm); min-width: 0; }
+
+.stats-columns { display: grid; gap: var(--space-lg) var(--space-xl); }
+.stats-columns--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stats-columns--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Bars: zero-based, data end rounded at 2px, the value set directly beside the mark */
+.stats-bars { --stats-label-col: 6rem; --stats-bar-thick: 12px; display: flex; flex-direction: column; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+.stats-bars--severity { --stats-label-col: 5rem; --stats-bar-thick: 20px; }
+.stats-bars--ranking { --stats-label-col: 13rem; --stats-bar-thick: 8px; }
+.stats-bar-row { display: grid; grid-template-columns: var(--stats-label-col) minmax(0, 1fr) 9ch; align-items: center; gap: var(--space-sm); min-height: 24px; }
+.stats-bar-label { min-width: 0; overflow: hidden; color: var(--color-ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.stats-bar-track { display: block; min-width: 0; }
+.stats-bar-fill { display: block; min-width: 2px; height: var(--stats-bar-thick); border-radius: 0 2px 2px 0; background: var(--color-ink-2); }
+.stats-bars--ranking .stats-bar-fill { background: var(--color-muted); }
+.stats-bar-value { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Line charts: hand-drawn SVG, neutral ink on hairline grid */
+.stats-chart { position: relative; cursor: crosshair; }
+.stats-chart svg { overflow: visible; max-width: 100%; }
+.stats-grid-line { stroke: var(--color-rule); stroke-width: 1; shape-rendering: crispEdges; }
+.stats-line { fill: none; stroke: var(--color-ink-2); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.stats-hover-line { stroke: var(--color-rule-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.stats-hover-point { fill: var(--color-ink); stroke: var(--color-paper); stroke-width: 2; }
+.stats-hit { fill: transparent; }
+.stats-axis-text { fill: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+
+.stats-tooltip { position: absolute; z-index: var(--z-tooltip); padding: var(--space-xs) var(--space-sm); transform: translate(-50%, calc(-100% - var(--space-md))); background: var(--color-paper-3); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); box-shadow: var(--shadow-pop); font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+.stats-tooltip-value { font-size: var(--text-sm); font-weight: 600; }
+.stats-tooltip-meta { color: var(--color-muted); font-size: var(--text-xs); }
+
+.stats-sample-list { margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+.stats-sample-list li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--space-2xs) var(--space-md); padding-block: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule); }
+.stats-sample-list li:last-child { border-bottom: 0; }
+.stats-sample-list strong { min-width: 0; overflow-wrap: anywhere; }
+.stats-sample-aliases { min-width: 0; color: var(--color-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+
+.stats-skeleton-figure { display: flex; flex-direction: column; gap: var(--space-xs); }
+.stats-skeleton-bars { display: flex; flex-direction: column; gap: var(--space-xs); }
+
+@media (max-width: 75rem) {
+  .stats-columns--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-bars--ranking { --stats-label-col: 9rem; }
+}
+
+@media (max-width: 60rem) {
+  .stats-lead,
+  .stats-columns--2,
+  .stats-columns--3 { grid-template-columns: minmax(0, 1fr); }
+  .stats-bars--ranking { --stats-label-col: 13rem; }
+}
+
+@media (max-width: 40rem) {
+  .stats-bars--ranking { --stats-label-col: minmax(0, 1fr); gap: var(--space-xs); }
+  .stats-bars--ranking .stats-bar-row { grid-template-columns: minmax(0, 1fr) 9ch; gap: var(--space-3xs) var(--space-sm); }
+  .stats-bars--ranking .stats-bar-track { grid-column: 1 / -1; grid-row: 2; }
+  .stats-sample-list li { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stats-tooltip { transition: none; }
+}

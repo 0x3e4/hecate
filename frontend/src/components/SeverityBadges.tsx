@@ -12,36 +12,23 @@ export const SeverityBadges = ({
   style?: React.CSSProperties;
 }) => {
   if (!summary || summary.total === 0) {
-    return <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)", ...style }}>—</span>;
+    return <span className="severity-rollup severity-rollup--none" style={style}>0</span>;
   }
-  const badges: { label: string; count: number; color: string }[] = [
-    { label: "C", count: summary.critical, color: "#ff6b6b" },
-    { label: "H", count: summary.high, color: "#ff922b" },
-    { label: "M", count: summary.medium, color: "#fcc419" },
-    { label: "L", count: summary.low, color: "#69db7c" },
+  const badges: { label: string; count: number; level: string }[] = [
+    { label: "C", count: summary.critical, level: "critical" },
+    { label: "H", count: summary.high, level: "high" },
+    { label: "M", count: summary.medium, level: "medium" },
+    { label: "L", count: summary.low, level: "low" },
   ];
   return (
-    <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", ...style }}>
+    <span className="severity-rollup" style={style}>
       {badges
         .filter((b) => b.count > 0)
         .map((b) => (
-          <span
-            key={b.label}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.25rem",
-              padding: "0.125rem 0.5rem",
-              borderRadius: "4px",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              background: `${b.color}20`,
-              color: b.color,
-            }}
-          >
-            {b.label}: {b.count}
+          <span key={b.label} className={`sev-${b.level}`}>
+            {b.label} {b.count}
           </span>
         ))}
-    </div>
+    </span>
   );
 };

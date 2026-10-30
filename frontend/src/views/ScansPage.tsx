@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { LuArrowDown, LuArrowUp, LuChevronDown, LuExternalLink, LuInfo, LuLock, LuPencil, LuPlus, LuRefreshCw, LuSquare, LuTrash2, LuX } from "react-icons/lu";
 import { Link } from "react-router-dom";
+
+import "../screens/scans.css";
 
 import { useServerConfig } from "../server-config/context";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -29,6 +32,8 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
+import { EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Stat } from "../ui/primitives";
+import { TabPill } from "../ui/TabPill";
 import { formatDateTime } from "../utils/dateFormat";
 import {
   TYPE_ALIASES,
@@ -106,42 +111,20 @@ interface ScannerCheckboxGroupProps {
 const ScannerCheckboxGroup = ({ scanType, selected, onToggle, compact = false }: ScannerCheckboxGroupProps) => {
   const { t } = useI18n();
   const allowed = scanType === "container_image" ? CONTAINER_SCANNER_IDS : SOURCE_REPO_SCANNER_IDS;
-  const fontSize = compact ? "0.75rem" : "0.8125rem";
-  const noteSize = compact ? "0.65rem" : "0.7rem";
-  const headerSize = compact ? "0.65rem" : "0.7rem";
-  const itemGap = compact ? "0.25rem" : "0.375rem";
-  const groupGap = compact ? "0.5rem" : "0.75rem";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: groupGap }}>
+    <div className={`scans-scanners${compact ? " scans-scanners--compact" : ""}`}>
       {CATEGORY_ORDER.map(cat => {
         const items = SCANNER_META.filter(m => m.category === cat.key && allowed.has(m.id));
         if (items.length === 0) return null;
         return (
           <div key={cat.key}>
-            <div style={{
-              fontSize: headerSize,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              color: "rgba(255,255,255,0.4)",
-              marginBottom: "0.25rem",
-              fontWeight: 600,
-            }}>
+            <div className="scans-scanners-category">
               {t(cat.en, cat.de)}
             </div>
-            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <div className="scans-scanners-items">
               {items.map(m => (
-                <label
-                  key={m.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: itemGap,
-                    cursor: "pointer",
-                    fontSize,
-                    color: "rgba(255,255,255,0.8)",
-                  }}
-                >
+                <label key={m.id} className="scans-check">
                   <input
                     type="checkbox"
                     checked={selected.includes(m.id)}
@@ -149,7 +132,7 @@ const ScannerCheckboxGroup = ({ scanType, selected, onToggle, compact = false }:
                   />
                   {m.id}
                   {m.noteEn && (
-                    <span style={{ fontSize: noteSize, color: "rgba(255,255,255,0.4)" }}>
+                    <span className="scans-sub">
                       ({t(m.noteEn, m.noteDe || m.noteEn)})
                     </span>
                   )}
@@ -166,6 +149,7 @@ const ScannerCheckboxGroup = ({ scanType, selected, onToggle, compact = false }:
 export const ScansPage = () => {
   const { t } = useI18n();
   const { showToast } = useToastContext();
+  const { scaAutoScanEnabled } = useServerConfig();
   const [tab, setTab] = useState<Tab>("targets");
   const [targets, setTargets] = useState<ScanTarget[]>([]);
   // Client-side name/URL filter for the Targets tab.
@@ -338,7 +322,7 @@ export const ScansPage = () => {
         }
       } else if (tab === "scanner") {
         try {
-          // Targets in parallel — the auto-scan diagnostics table below
+          // Targets in parallel: the auto-scan diagnostics table below
           // wants the latest last_check_* fields, and the polling loop for
           // this tab refetches both every 5 s.
           const [stats, targetsRes] = await Promise.all([
@@ -580,7 +564,7 @@ export const ScansPage = () => {
 
   const handleDeleteTarget = (targetId: string) => {
     setConfirmModal({
-      title: t("Delete Target", "Ziel löschen"),
+      title: t("Delete target", "Ziel löschen"),
       message: t(
         "Delete this target and all its scan data? This action cannot be undone.",
         "Dieses Ziel und alle zugehörigen Scan-Daten löschen? Diese Aktion kann nicht rückgängig gemacht werden."
@@ -601,7 +585,7 @@ export const ScansPage = () => {
 
   const handleDeleteScan = (scanId: string, scanName: string) => {
     setConfirmModal({
-      title: t("Delete Scan", "Scan löschen"),
+      title: t("Delete scan", "Scan löschen"),
       message: t(
         `Delete scan "${scanName}"? Findings and SBOM data will be removed.`,
         `Scan „${scanName}" löschen? Ergebnisse und SBOM-Daten werden entfernt.`
@@ -672,632 +656,448 @@ export const ScansPage = () => {
         : !scanTarget.trim()
     );
 
+  // Filter by the name/URL search box before grouping. Matches name,
+  // target id (URL/image ref), repository URL, registry, and group.
+  const targetQuery = targetSearch.trim().toLowerCase();
+  const visibleTargets = targetQuery
+    ? targets.filter(tgt =>
+        [tgt.name, tgt.id, tgt.repositoryUrl, tgt.registry, tgt.group]
+          .some(v => (v || "").toLowerCase().includes(targetQuery)),
+      )
+    : targets;
+  const visibleSummary = sumSummary(visibleTargets);
+  const targetColumns = scaAutoScanEnabled ? 7 : 6;
+
   return (
-    <div className="page">
-      <section className="card">
-        <h2>{t("Software Composition Analysis", "Software-Kompositionsanalyse")}</h2>
-        <p className="muted">
-          {t(
-            "Scan container images and source repositories for vulnerabilities and generate SBOMs.",
-            "Container-Images und Quellcode-Repositories auf Schwachstellen scannen und SBOMs generieren."
-          )}
-        </p>
+    <div className="page scans-page">
+      <PageHeader
+        title={t("Software Composition Analysis", "Software-Kompositionsanalyse")}
+        description={t(
+          "Scan container images and source repositories for vulnerabilities and generate SBOMs.",
+          "Container-Images und Quellcode-Repositories auf Schwachstellen scannen und SBOMs generieren."
+        )}
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setNewScanModalOpen(true)}>
+            <LuPlus aria-hidden="true" />
+            {t("New scan", "Neuer Scan")}
+          </button>
+        }
+      />
 
-        {/* Tab navigation */}
-        <div className="tabs-scroll" style={{ display: "flex", gap: 0, marginBottom: "1.5rem", marginTop: "1rem", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          {([
-            { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
-            { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
-            { key: "findings" as Tab, label: t("Findings", "Funde"), count: findingsBadgeTotal || undefined },
-            { key: "sbom" as Tab, label: "SBOM", count: sbomBadgeTotal || undefined },
-            { key: "alerts" as Tab, label: t("Security Alerts", "Sicherheitswarnungen"), count: alertsBadgeTotal || undefined },
-            { key: "licenses" as Tab, label: t("Licenses", "Lizenzen"), count: licenseOverviewTotal || undefined },
-            { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
-          ]).map(({ key, label, count }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => { setTab(key); if (key === "scans") { setScanOffset(0); } }}
-              style={{
-                padding: "0.625rem 1.25rem",
-                border: "none",
-                borderBottom: tab === key ? "2px solid #ffd43b" : "2px solid transparent",
-                background: "transparent",
-                color: tab === key ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                cursor: "pointer",
-                fontSize: "0.8125rem",
-                fontWeight: tab === key ? 600 : 400,
-                transition: "color 0.15s, border-color 0.15s",
-                flexShrink: 0,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {label}
-              {count !== undefined && count > 0 && (
-                <span style={{
-                  marginLeft: "0.375rem",
-                  padding: "0.0625rem 0.375rem",
-                  borderRadius: "8px",
-                  fontSize: "0.6875rem",
-                  fontWeight: 600,
-                  background: tab === key ? "rgba(255,193,7,0.15)" : "rgba(255,255,255,0.06)",
-                  color: tab === key ? "#ffd43b" : "rgba(255,255,255,0.4)",
-                }}>
-                  {count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Tab navigation */}
+      <div className="scans-tabs">
+        {([
+          { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
+          { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
+          { key: "findings" as Tab, label: t("Findings", "Funde"), count: findingsBadgeTotal || undefined },
+          { key: "sbom" as Tab, label: "SBOM", count: sbomBadgeTotal || undefined },
+          { key: "alerts" as Tab, label: t("Security alerts", "Sicherheitswarnungen"), count: alertsBadgeTotal || undefined },
+          { key: "licenses" as Tab, label: t("Licenses", "Lizenzen"), count: licenseOverviewTotal || undefined },
+          { key: "scanner" as Tab, label: t("Scanner", "Scanner") },
+        ]).map(({ key, label, count }) => (
+          <TabPill
+            key={key}
+            active={tab === key}
+            count={count}
+            onClick={() => { setTab(key); if (key === "scans") { setScanOffset(0); } }}
+          >
+            {label}
+          </TabPill>
+        ))}
+      </div>
 
-        {error && <p className="muted">{error}</p>}
+      {error && <ErrorState title={error} />}
 
-        {/* Targets tab */}
-        {tab === "targets" && (
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", justifyContent: "flex-end", marginBottom: "1rem", flexWrap: "wrap" }}>
-              <input
-                type="text"
-                value={targetSearch}
-                onChange={e => setTargetSearch(e.target.value)}
-                placeholder={t("Search by name or URL…", "Nach Name oder URL suchen…")}
-                aria-label={t("Search targets", "Ziele suchen")}
-                style={{
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  flex: "1 1 220px",
-                  maxWidth: "360px",
-                  minWidth: 0,
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setNewScanModalOpen(true)}
-                title={t("New Scan", "Neuer Scan")}
-                aria-label={t("New Scan", "Neuer Scan")}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: "0.5rem",
-                  padding: "0.5rem 0.875rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,193,7,0.5)",
-                  background: "rgba(255,193,7,0.15)",
-                  color: "#ffd43b",
-                  cursor: "pointer",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  flexShrink: 0,
-                }}
-              >
-                <span style={{ fontSize: "1rem", lineHeight: 1 }}>+</span>
-                {t("New Scan", "Neuer Scan")}
-              </button>
+      {/* Targets tab */}
+      {tab === "targets" && (
+        <div>
+          <div className="scans-lead">
+            {!loading && targets.length > 0 && (
+              <dl className="stat-row">
+                <Stat label={t("Critical", "Kritisch")} value={visibleSummary.critical.toLocaleString()} tone={visibleSummary.critical ? "critical" : undefined} />
+                <Stat label={t("High", "Hoch")} value={visibleSummary.high.toLocaleString()} tone={visibleSummary.high ? "high" : undefined} />
+                <Stat label={t("Medium", "Mittel")} value={visibleSummary.medium.toLocaleString()} tone={visibleSummary.medium ? "medium" : undefined} />
+                <Stat label={t("Low", "Niedrig")} value={visibleSummary.low.toLocaleString()} tone={visibleSummary.low ? "low" : undefined} />
+              </dl>
+            )}
+            <input
+              type="text"
+              className="scans-lead-search"
+              value={targetSearch}
+              onChange={e => setTargetSearch(e.target.value)}
+              placeholder={t("Search by name or URL…", "Nach Name oder URL suchen…")}
+              aria-label={t("Search targets", "Ziele suchen")}
+            />
+          </div>
+          {loading && (
+            <div className="scans-skeleton-rows">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonBlock key={i} height={56} radius={4} />
+              ))}
             </div>
-            {loading && (
-              <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <SkeletonBlock key={i} height={140} radius={8} />
-                ))}
-              </div>
-            )}
-            {!loading && targets.length === 0 && (
-              <p className="muted">{t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")}</p>
-            )}
-            {!loading && targets.length > 0 && (() => {
-              // Filter by the name/URL search box before grouping. Matches name,
-              // target id (URL/image ref), repository URL, registry, and group.
-              const q = targetSearch.trim().toLowerCase();
-              const visibleTargets = q
-                ? targets.filter(tgt =>
-                    [tgt.name, tgt.id, tgt.repositoryUrl, tgt.registry, tgt.group]
-                      .some(v => (v || "").toLowerCase().includes(q)),
-                  )
-                : targets;
-              if (visibleTargets.length === 0) {
-                return (
-                  <p className="muted">
-                    {t("No targets match", "Keine Ziele passen zu")} “{targetSearch.trim()}”.
-                  </p>
-                );
-              }
-              // Group targets by their `group` field; ungrouped targets bucket last.
-              const UNGROUPED = "__ungrouped__";
-              const buckets = new Map<string, ScanTarget[]>();
-              for (const tgt of visibleTargets) {
-                const key = (tgt.group && tgt.group.trim()) || UNGROUPED;
-                if (!buckets.has(key)) buckets.set(key, []);
-                buckets.get(key)!.push(tgt);
-              }
-              const orderedKeys = Array.from(buckets.keys()).sort((a, b) => {
-                if (a === UNGROUPED) return 1;
-                if (b === UNGROUPED) return -1;
-                return a.localeCompare(b);
-              });
-              // Group autocomplete should list every existing group, not just
-              // those surviving the current search filter.
-              const allGroupNames = Array.from(
-                new Set(targets.map(tg => (tg.group || "").trim()).filter(Boolean)),
-              ).sort((a, b) => a.localeCompare(b));
-              const sumSummary = (items: ScanTarget[]): ScanSummary => {
-                const sum: ScanSummary = { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0, total: 0 };
-                for (const it of items) {
-                  const s = it.latestSummary;
-                  if (!s) continue;
-                  sum.critical += s.critical || 0;
-                  sum.high += s.high || 0;
-                  sum.medium += s.medium || 0;
-                  sum.low += s.low || 0;
-                  sum.negligible += s.negligible || 0;
-                  sum.unknown += s.unknown || 0;
-                  sum.total += s.total || 0;
-                }
-                return sum;
-              };
-              const onFilterScansFn = (id: string, name: string) => {
-                setScanFilterTargetId(id);
-                setScanFilterTargetName(name);
-                setScanOffset(0);
-                setTab("scans");
-              };
+          )}
+          {!loading && targets.length === 0 && (
+            <EmptyState title={t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")} />
+          )}
+          {!loading && targets.length > 0 && (() => {
+            if (visibleTargets.length === 0) {
               return (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <EmptyState title={<>{t("No targets match", "Keine Ziele passen zu")} “{targetSearch.trim()}”.</>} />
+              );
+            }
+            // Group targets by their `group` field; ungrouped targets bucket last.
+            const UNGROUPED = "__ungrouped__";
+            const buckets = new Map<string, ScanTarget[]>();
+            for (const tgt of visibleTargets) {
+              const key = (tgt.group && tgt.group.trim()) || UNGROUPED;
+              if (!buckets.has(key)) buckets.set(key, []);
+              buckets.get(key)!.push(tgt);
+            }
+            const orderedKeys = Array.from(buckets.keys()).sort((a, b) => {
+              if (a === UNGROUPED) return 1;
+              if (b === UNGROUPED) return -1;
+              return a.localeCompare(b);
+            });
+            // Group autocomplete should list every existing group, not just
+            // those surviving the current search filter.
+            const allGroupNames = Array.from(
+              new Set(targets.map(tg => (tg.group || "").trim()).filter(Boolean)),
+            ).sort((a, b) => a.localeCompare(b));
+            const onFilterScansFn = (id: string, name: string) => {
+              setScanFilterTargetId(id);
+              setScanFilterTargetName(name);
+              setScanOffset(0);
+              setTab("scans");
+            };
+            return (
+              <div className="scans-targets-wrap">
+                <table className="scans-table scans-targets">
+                  <thead>
+                    <tr>
+                      <th scope="col">{t("Target", "Ziel")}</th>
+                      <th scope="col" className="scans-col-findings">{t("Findings", "Ergebnisse")}</th>
+                      <th scope="col" className="scans-col-last">{t("Last scan", "Letzter Scan")}</th>
+                      <th scope="col" className="scans-col-app">{t("App", "App")}</th>
+                      <th scope="col" className="scans-col-scanners">{t("Scanners", "Scanner")}</th>
+                      {scaAutoScanEnabled && <th scope="col" className="scans-col-auto">Auto-Scan</th>}
+                      <th scope="col" className="scans-col-actions"><span className="visually-hidden">{t("Actions", "Aktionen")}</span></th>
+                    </tr>
+                  </thead>
                   {orderedKeys.map(key => {
                     const items = buckets.get(key)!;
                     const isUngrouped = key === UNGROUPED;
                     const collapsed = !!collapsedGroups[key];
                     const rollup = sumSummary(items);
                     const label = isUngrouped ? t("Ungrouped", "Ohne Gruppe") : key;
+                    const toggleGroup = () => setCollapsedGroups({ ...collapsedGroups, [key]: !collapsed });
                     return (
-                      <div key={key}>
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          className="scan-group-header"
-                          onClick={() => setCollapsedGroups({ ...collapsedGroups, [key]: !collapsed })}
-                          onKeyDown={e => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setCollapsedGroups({ ...collapsedGroups, [key]: !collapsed });
-                            }
-                          }}
-                          style={{
-                            padding: "0.5rem 0.75rem",
-                            marginBottom: "0.625rem",
-                            borderRadius: "6px",
-                            background: "rgba(255,255,255,0.03)",
-                            border: "1px solid rgba(255,255,255,0.06)",
-                            cursor: "pointer",
-                            userSelect: "none",
-                          }}
-                        >
-                          <span style={{
-                            display: "inline-block",
-                            width: "0.75rem",
-                            transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                            transition: "transform 0.15s",
-                            color: "rgba(255,255,255,0.5)",
-                            fontSize: "0.7rem",
-                          }}>▼</span>
-                          <span style={{
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                            color: isUngrouped ? "rgba(255,255,255,0.55)" : "#ffd43b",
-                            wordBreak: "break-word",
-                          }}>{label}</span>
-                          <div className="scan-group-meta">
-                            <span style={{
-                              fontSize: "0.7rem",
-                              color: "rgba(255,255,255,0.4)",
-                              padding: "0.0625rem 0.4rem",
-                              borderRadius: "8px",
-                              background: "rgba(255,255,255,0.05)",
-                            }}>{items.length}</span>
+                      <tbody key={key}>
+                        <tr className="scans-group" onClick={toggleGroup}>
+                          <th scope="rowgroup" className="scans-group-name">
+                            <button
+                              type="button"
+                              className={`scans-group-toggle${isUngrouped ? " is-ungrouped" : ""}`}
+                              aria-expanded={!collapsed}
+                              onClick={e => { e.stopPropagation(); toggleGroup(); }}
+                            >
+                              <LuChevronDown className={`scans-group-chevron${collapsed ? " is-collapsed" : ""}`} aria-hidden="true" />
+                              <span>{label}</span>
+                              <span className="scans-group-count">{items.length}</span>
+                            </button>
+                          </th>
+                          <td colSpan={targetColumns - 1} className="scans-group-rollup">
                             <SeverityBadges summary={rollup} />
-                          </div>
-                        </div>
-                        {!collapsed && (
-                          <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}>
-                            {items.map(target => (
-                              <TargetCard
-                                key={target.id}
-                                target={target}
-                                groupSuggestions={allGroupNames}
-                                onDelete={handleDeleteTarget}
-                                onRescan={handleRescan}
-                                onToggleAutoScan={handleToggleAutoScan}
-                                onUpdateScanners={handleUpdateScanners}
-                                onUpdateGroup={handleUpdateGroup}
-                                onCancelScan={handleCancelScan}
-                                onFilterScans={onFilterScansFn}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                          </td>
+                        </tr>
+                        {!collapsed && items.map(target => (
+                          <TargetRow
+                            key={target.id}
+                            target={target}
+                            colSpan={targetColumns}
+                            groupSuggestions={allGroupNames}
+                            onDelete={handleDeleteTarget}
+                            onRescan={handleRescan}
+                            onToggleAutoScan={handleToggleAutoScan}
+                            onUpdateScanners={handleUpdateScanners}
+                            onUpdateGroup={handleUpdateGroup}
+                            onCancelScan={handleCancelScan}
+                            onFilterScans={onFilterScansFn}
+                          />
+                        ))}
+                      </tbody>
                     );
                   })}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Scans tab */}
-        {tab === "scans" && (
-          <div>
-            {/* Filter bar */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              marginBottom: "1rem",
-              flexWrap: "wrap",
-            }}>
-              <select
-                value={scanFilterTargetId || ""}
-                onChange={e => {
-                  const val = e.target.value;
-                  if (val) {
-                    const tgt = targets.find(t => t.id === val);
-                    setScanFilterTargetId(val);
-                    setScanFilterTargetName(tgt?.name || val);
-                  } else {
-                    setScanFilterTargetId(null);
-                    setScanFilterTargetName(null);
-                  }
-                  setScanOffset(0);
-                }}
-                style={{
-                  padding: "0 0.625rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: scanFilterTargetId ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                  fontSize: "0.8125rem",
-                  outline: "none",
-                  cursor: "pointer",
-                  minWidth: "180px",
-                  maxWidth: "320px",
-                  height: "32px",
-                  boxSizing: "border-box" as const,
-                }}
-              >
-                <option value="">{t("All targets", "Alle Ziele")}</option>
-                {targets.map(tgt => (
-                  <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
-                ))}
-              </select>
-              {scanFilterTargetId && (
-                <button
-                  type="button"
-                  onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); setScanOffset(0); }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "rgba(255,255,255,0.4)",
-                    cursor: "pointer",
-                    fontSize: "0.8125rem",
-                    padding: "0.25rem",
-                  }}
-                  title={t("Clear filter", "Filter entfernen")}
-                >
-                  ×
-                </button>
-              )}
-              <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "rgba(255,255,255,0.35)" }}>
-                {scanTotal} {t("total", "gesamt")}
-              </span>
-            </div>
-
-            {loading && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <SkeletonBlock key={i} height={40} radius={4} />
-                ))}
+                </table>
               </div>
-            )}
-            {!loading && scans.length === 0 && (
-              <p className="muted">{t("No scans yet.", "Noch keine Scans.")}</p>
-            )}
-            {!loading && scans.length > 0 && (
-              <>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                        <th style={thStyle}>{t("Target", "Ziel")}</th>
-                        <th style={thStyle}>{t("Ref", "Ref")}</th>
-                        <th style={thStyle}>Status</th>
-                        <th style={thStyle}>{t("Findings", "Ergebnisse")}</th>
-                        <th style={thStyle}>{t("Source", "Quelle")}</th>
-                        <th style={thStyle}>{t("Date", "Datum")}</th>
-                        <th style={{ ...thStyle, width: "2.5rem" }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {scans.map(scan => {
-                        const ref = scan.imageRef
-                          ? (() => {
-                              const digest = scan.imageRef!.includes("@") ? scan.imageRef!.split("@")[1] : null;
-                              return digest ? `${digest.substring(0, 16)}…` : null;
-                            })()
-                          : scan.commitSha
-                            ? scan.commitSha.substring(0, 8)
-                            : null;
-                        const refFull = scan.imageRef || scan.commitSha || null;
-                        const refLabel = scan.imageRef ? "Digest" : "Commit";
-                        const refUrl = (() => {
-                          if (scan.commitSha) {
-                            const repoUrl = scan.repositoryUrl || (scan.targetId.startsWith("http") ? scan.targetId : null);
-                            if (repoUrl) return `${repoUrl.replace(/\/$/, "")}/commit/${scan.commitSha}`;
-                          }
-                          if (scan.imageRef) {
-                            const imgRef = scan.imageRef;
-                            if (imgRef.startsWith("http://") || imgRef.startsWith("https://")) return imgRef;
-                            const withoutDigest = imgRef.split("@")[0];
-                            const cleaned = withoutDigest.split(":")[0];
-                            if (cleaned.startsWith("ghcr.io/")) {
-                              const parts = cleaned.replace("ghcr.io/", "").split("/");
-                              const owner = parts[0];
-                              const pkg = parts.slice(1).join("/");
-                              if (owner && pkg) return `https://github.com/${owner}/pkgs/container/${pkg}`;
-                            }
-                            if (cleaned.startsWith("docker.io/")) {
-                              const path = cleaned.replace("docker.io/", "");
-                              const tag = withoutDigest.includes(":") ? withoutDigest.split(":").pop() : "latest";
-                              return `https://hub.docker.com/layers/${path}/${tag}/images`;
-                            }
-                            if (cleaned.includes(".") && cleaned.includes("/")) return `https://${cleaned}`;
-                          }
-                          return null;
-                        })();
-                        return (
-                          <tr key={scan.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                            <td style={tdStyle}>
-                              <Link to={`/scans/${scan.id}`} style={{ color: "#ffd43b", textDecoration: "none" }}>
-                                {scan.targetName || scan.targetId}
-                              </Link>
-                            </td>
-                            <td style={{ ...tdStyle, fontFamily: ref ? "monospace" : undefined, fontSize: ref ? "0.75rem" : "0.875rem", color: ref ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.25)" }} title={refFull || undefined}>
-                              {ref ? (
-                                <span>
-                                  {refLabel}: {ref}
-                                  {refUrl && (
-                                    <a href={refUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "0.35rem", color: "rgba(255,255,255,0.4)", textDecoration: "none", fontSize: "0.7rem" }} title={refUrl}>↗</a>
-                                  )}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td style={tdStyle}><StatusBadge status={scan.status} /></td>
-                            <td style={tdStyle}><SeverityBadges summary={scan.summary} /></td>
-                            <td style={tdStyle}><SourceBadge source={scan.source} /></td>
-                            <td style={tdStyle}>{(() => {
-                              const done = scan.status === "completed" || scan.status === "failed" || scan.status === "cancelled";
-                              const ts = done ? (scan.finishedAt || scan.startedAt) : scan.startedAt;
-                              return ts ? formatDateTime(ts) : "—";
-                            })()}</td>
-                            <td style={tdStyle}>
-                              {(scan.status === "running" || scan.status === "pending") ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelScan(scan.id)}
-                                  title={t("Stop scan", "Scan stoppen")}
-                                  style={{ background: "none", border: "none", color: "#ff6b6b", cursor: "pointer", fontSize: "0.75rem", padding: "0.125rem 0.25rem", fontWeight: 500 }}
-                                >
-                                  ■
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}
-                                  title={t("Delete scan", "Scan löschen")}
-                                  style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: "0.875rem", padding: "0.125rem 0.25rem" }}
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+            );
+          })()}
+        </div>
+      )}
 
-                {/* Pagination */}
-                {scanTotal > scanLimit && (
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.75rem",
-                    marginTop: "1rem",
-                    fontSize: "0.8125rem",
-                  }}>
-                    <button
-                      type="button"
-                      disabled={scanOffset === 0}
-                      onClick={() => setScanOffset(Math.max(0, scanOffset - scanLimit))}
-                      style={{
-                        padding: "0.3rem 0.75rem",
-                        borderRadius: "4px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: scanOffset === 0 ? "transparent" : "rgba(255,255,255,0.05)",
-                        color: scanOffset === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
-                        cursor: scanOffset === 0 ? "default" : "pointer",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      ← {t("Previous", "Zurück")}
-                    </button>
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {Math.floor(scanOffset / scanLimit) + 1} / {Math.ceil(scanTotal / scanLimit)}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={scanOffset + scanLimit >= scanTotal}
-                      onClick={() => setScanOffset(scanOffset + scanLimit)}
-                      style={{
-                        padding: "0.3rem 0.75rem",
-                        borderRadius: "4px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: scanOffset + scanLimit >= scanTotal ? "transparent" : "rgba(255,255,255,0.05)",
-                        color: scanOffset + scanLimit >= scanTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
-                        cursor: scanOffset + scanLimit >= scanTotal ? "default" : "pointer",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      {t("Next", "Weiter")} →
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Findings tab */}
-        {tab === "findings" && (
-          <div>
-            {/* Filter bar */}
-            <div className="findings-filter-bar" style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-              <input
-                type="text"
-                value={findingsSearch}
-                onChange={e => { setFindingsSearch(e.target.value); setFindingsOffset(0); }}
-                placeholder={t("Search by CVE, package, title...", "Suche nach CVE, Paket, Titel...")}
-                style={{
-                  padding: "0.375rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  flex: "1 1 200px",
-                  maxWidth: "400px",
-                  minWidth: 0,
-                  outline: "none",
-                  height: "32px",
-                  boxSizing: "border-box",
-                }}
-              />
-              {/* Severity filter buttons */}
-              <div className="findings-severity-buttons" style={{ display: "flex", gap: "0.25rem" }}>
-                {([
-                  { value: null, label: t("All", "Alle") },
-                  { value: "critical", label: "Critical" },
-                  { value: "high", label: "High" },
-                  { value: "medium", label: "Medium" },
-                  { value: "low", label: "Low" },
-                ] as const).map(({ value, label }) => {
-                  const active = findingsSeverity === value;
-                  const sevColors: Record<string, string> = { critical: "#ff6b6b", high: "#ff922b", medium: "#fcc419", low: "#69db7c" };
-                  const color = value ? sevColors[value] : "#ffd43b";
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => { setFindingsSeverity(value); setFindingsOffset(0); }}
-                      style={{
-                        padding: "0 0.5rem",
-                        borderRadius: "4px",
-                        border: `1px solid ${active ? color : "rgba(255,255,255,0.1)"}`,
-                        background: active ? `${color}22` : "transparent",
-                        color: active ? color : "rgba(255,255,255,0.4)",
-                        cursor: "pointer",
-                        fontSize: "0.75rem",
-                        fontWeight: active ? 600 : 400,
-                        height: "32px",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <select
-                value={findingsTargetId || ""}
-                onChange={e => { setFindingsTargetId(e.target.value || null); setFindingsOffset(0); }}
-                className="findings-target-select"
-                style={{
-                  padding: "0 0.625rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: findingsTargetId ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                  fontSize: "0.8125rem",
-                  outline: "none",
-                  cursor: "pointer",
-                  minWidth: "140px",
-                  maxWidth: "280px",
-                  height: "32px",
-                  boxSizing: "border-box",
-                }}
+      {/* Scans tab */}
+      {tab === "scans" && (
+        <div>
+          {/* Filter bar */}
+          <div className="filter-row">
+            <select
+              className="scans-select"
+              aria-label={t("Filter by target", "Nach Ziel filtern")}
+              value={scanFilterTargetId || ""}
+              onChange={e => {
+                const val = e.target.value;
+                if (val) {
+                  const tgt = targets.find(t => t.id === val);
+                  setScanFilterTargetId(val);
+                  setScanFilterTargetName(tgt?.name || val);
+                } else {
+                  setScanFilterTargetId(null);
+                  setScanFilterTargetName(null);
+                }
+                setScanOffset(0);
+              }}
+            >
+              <option value="">{t("All targets", "Alle Ziele")}</option>
+              {targets.map(tgt => (
+                <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
+              ))}
+            </select>
+            {scanFilterTargetId && (
+              <IconButton
+                label={t("Clear filter", "Filter entfernen")}
+                onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); setScanOffset(0); }}
               >
-                <option value="">{t("All targets", "Alle Ziele")}</option>
-                {targets.map(tgt => (
-                  <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
-                ))}
-              </select>
-              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
-                {globalFindingsTotal.toLocaleString()} {t("findings", "Funde")}
-              </span>
-            </div>
+                <LuX aria-hidden="true" />
+              </IconButton>
+            )}
+            <span className="scans-count">
+              {scanTotal} {t("total", "gesamt")}
+            </span>
+          </div>
 
-            {findingsLoading ? (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          {loading && (
+            <div className="scans-skeleton-rows">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonBlock key={i} height={40} radius={4} />
+              ))}
+            </div>
+          )}
+          {!loading && scans.length === 0 && (
+            <EmptyState title={t("No scans yet.", "Noch keine Scans.")} />
+          )}
+          {!loading && scans.length > 0 && (
+            <>
+              <div className="table-scroll">
+                <table className="scans-table scans-table--pin scans-table--pin-end">
                   <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                      {[t("Vulnerability", "Schwachstelle"), t("Package", "Paket"), t("Version", "Version"), t("Severity", "Schweregrad"), "CVSS", t("Fix", "Fix"), t("Scanners", "Scanner"), t("Targets", "Ziele")].map(label => (
-                        <th key={label} style={thStyle}>{label}</th>
-                      ))}
+                    <tr>
+                      <th scope="col">{t("Target", "Ziel")}</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">{t("Findings", "Ergebnisse")}</th>
+                      <th scope="col">{t("Ref", "Ref")}</th>
+                      <th scope="col">{t("Source", "Quelle")}</th>
+                      <th scope="col">{t("Date", "Datum")}</th>
+                      <th scope="col"><span className="visually-hidden">{t("Actions", "Aktionen")}</span></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                        {Array.from({ length: 8 }).map((_, j) => (
-                          <td key={j} style={tdStyle}>
-                            <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 4 ? "40px" : j === 7 ? "30px" : "60%"} radius={4} />
+                    {scans.map(scan => {
+                      const ref = scan.imageRef
+                        ? (() => {
+                            const digest = scan.imageRef!.includes("@") ? scan.imageRef!.split("@")[1] : null;
+                            return digest ? `${digest.substring(0, 16)}…` : null;
+                          })()
+                        : scan.commitSha
+                          ? scan.commitSha.substring(0, 8)
+                          : null;
+                      const refFull = scan.imageRef || scan.commitSha || null;
+                      const refLabel = scan.imageRef ? "Digest" : "Commit";
+                      const refUrl = (() => {
+                        if (scan.commitSha) {
+                          const repoUrl = scan.repositoryUrl || (scan.targetId.startsWith("http") ? scan.targetId : null);
+                          if (repoUrl) return `${repoUrl.replace(/\/$/, "")}/commit/${scan.commitSha}`;
+                        }
+                        if (scan.imageRef) {
+                          const imgRef = scan.imageRef;
+                          if (imgRef.startsWith("http://") || imgRef.startsWith("https://")) return imgRef;
+                          const withoutDigest = imgRef.split("@")[0];
+                          const cleaned = withoutDigest.split(":")[0];
+                          if (cleaned.startsWith("ghcr.io/")) {
+                            const parts = cleaned.replace("ghcr.io/", "").split("/");
+                            const owner = parts[0];
+                            const pkg = parts.slice(1).join("/");
+                            if (owner && pkg) return `https://github.com/${owner}/pkgs/container/${pkg}`;
+                          }
+                          if (cleaned.startsWith("docker.io/")) {
+                            const path = cleaned.replace("docker.io/", "");
+                            const tag = withoutDigest.includes(":") ? withoutDigest.split(":").pop() : "latest";
+                            return `https://hub.docker.com/layers/${path}/${tag}/images`;
+                          }
+                          if (cleaned.includes(".") && cleaned.includes("/")) return `https://${cleaned}`;
+                        }
+                        return null;
+                      })();
+                      const done = scan.status === "completed" || scan.status === "failed" || scan.status === "cancelled";
+                      const ts = done ? (scan.finishedAt || scan.startedAt) : scan.startedAt;
+                      return (
+                        <tr key={scan.id}>
+                          <td className="scans-cell-strong">
+                            <Link to={`/scans/${scan.id}`} className="row-link">
+                              {scan.targetName || scan.targetId}
+                            </Link>
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          <td><StatusBadge status={scan.status} /></td>
+                          <td><SeverityBadges summary={scan.summary} /></td>
+                          <td title={refFull || undefined}>
+                            {ref ? (
+                              <span className="scans-ref">
+                                <span className="muted">{refLabel}:</span>
+                                <span className="mono">{ref}</span>
+                                {refUrl && (
+                                  <a href={refUrl} target="_blank" rel="noopener noreferrer" className="scans-ref-link" title={refUrl} aria-label={refUrl}>
+                                    <LuExternalLink aria-hidden="true" />
+                                  </a>
+                                )}
+                              </span>
+                            ) : <NotAvailable />}
+                          </td>
+                          <td><SourceBadge source={scan.source} /></td>
+                          <td className="scans-nowrap scans-small">{ts ? formatDateTime(ts) : <NotAvailable />}</td>
+                          <td className="scans-cell-action">
+                            {(scan.status === "running" || scan.status === "pending") ? (
+                              <IconButton className="scans-outline" label={t("Stop scan", "Scan stoppen")} onClick={() => handleCancelScan(scan.id)}>
+                                <LuSquare aria-hidden="true" />
+                              </IconButton>
+                            ) : (
+                              <IconButton className="scans-outline" label={t("Delete scan", "Scan löschen")} onClick={() => handleDeleteScan(scan.id, scan.targetName || scan.targetId)}>
+                                <LuTrash2 aria-hidden="true" />
+                              </IconButton>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            ) : globalFindings.length === 0 ? (
-              <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
-                {findingsSearch || findingsSeverity || findingsTargetId
-                  ? t("No findings match your filters.", "Keine Funde entsprechen Ihren Filtern.")
-                  : t("No findings from latest scans.", "Keine Funde aus den letzten Scans.")}
-              </p>
-            ) : (
-              <>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                        {([
-                          { key: "vulnerability_id", label: t("Vulnerability", "Schwachstelle") },
-                          { key: "package_name", label: t("Package", "Paket") },
-                          { key: "package_version", label: t("Version", "Version") },
-                          { key: "severity", label: t("Severity", "Schweregrad") },
-                          { key: "cvss_score", label: "CVSS" },
-                          { key: "fix_version", label: t("Fix", "Fix") },
-                          { key: null as string | null, label: t("Scanners", "Scanner") },
-                          { key: "targets", label: t("Targets", "Ziele") },
-                        ] as const).map(({ key, label }) => (
-                          <th
+
+              {/* Pagination */}
+              {scanTotal > scanLimit && (
+                <Pager
+                  prevDisabled={scanOffset === 0}
+                  nextDisabled={scanOffset + scanLimit >= scanTotal}
+                  onPrev={() => setScanOffset(Math.max(0, scanOffset - scanLimit))}
+                  onNext={() => setScanOffset(scanOffset + scanLimit)}
+                >
+                  {Math.floor(scanOffset / scanLimit) + 1} / {Math.ceil(scanTotal / scanLimit)}
+                </Pager>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Findings tab */}
+      {tab === "findings" && (
+        <div>
+          {/* Filter bar */}
+          <div className="filter-row">
+            <input
+              type="text"
+              className="scans-filter-search"
+              value={findingsSearch}
+              onChange={e => { setFindingsSearch(e.target.value); setFindingsOffset(0); }}
+              placeholder={t("Search by CVE, package, title...", "Suche nach CVE, Paket, Titel...")}
+              aria-label={t("Search findings", "Funde suchen")}
+            />
+            {/* Severity filter buttons */}
+            <div className="scans-segments" role="group" aria-label={t("Severity", "Schweregrad")}>
+              {([
+                { value: null, label: t("All", "Alle") },
+                { value: "critical", label: "Critical" },
+                { value: "high", label: "High" },
+                { value: "medium", label: "Medium" },
+                { value: "low", label: "Low" },
+              ] as const).map(({ value, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={`scans-segment${value ? ` sev-${value}` : ""}`}
+                  aria-pressed={findingsSeverity === value}
+                  onClick={() => { setFindingsSeverity(value); setFindingsOffset(0); }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              className="scans-select"
+              aria-label={t("Filter by target", "Nach Ziel filtern")}
+              value={findingsTargetId || ""}
+              onChange={e => { setFindingsTargetId(e.target.value || null); setFindingsOffset(0); }}
+            >
+              <option value="">{t("All targets", "Alle Ziele")}</option>
+              {targets.map(tgt => (
+                <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
+              ))}
+            </select>
+            <span className="scans-count">
+              {globalFindingsTotal.toLocaleString()} {t("findings", "Funde")}
+            </span>
+          </div>
+
+          {findingsLoading ? (
+            <div className="table-scroll">
+              <table className="scans-table">
+                <thead>
+                  <tr>
+                    {[t("Vulnerability", "Schwachstelle"), t("Severity", "Schweregrad"), "CVSS", t("Package", "Paket"), t("Version", "Version"), t("Fix", "Fix"), t("Scanners", "Scanner"), t("Targets", "Ziele")].map(label => (
+                      <th key={label} scope="col">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <tr key={i}>
+                      {Array.from({ length: 8 }).map((_, j) => (
+                        <td key={j}>
+                          <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 2 ? "40px" : j === 7 ? "30px" : "60%"} radius={4} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : globalFindings.length === 0 ? (
+            <EmptyState
+              title={findingsSearch || findingsSeverity || findingsTargetId
+                ? t("No findings match your filters.", "Keine Funde entsprechen Ihren Filtern.")
+                : t("No findings from latest scans.", "Keine Funde aus den letzten Scans.")}
+            />
+          ) : (
+            <>
+              <div className="table-scroll">
+                <table className="scans-table scans-table--pin">
+                  <thead>
+                    <tr>
+                      {([
+                        { key: "vulnerability_id", label: t("Vulnerability", "Schwachstelle") },
+                        { key: "severity", label: t("Severity", "Schweregrad") },
+                        { key: "cvss_score", label: "CVSS", numeric: true },
+                        { key: "package_name", label: t("Package", "Paket") },
+                        { key: "package_version", label: t("Version", "Version") },
+                        { key: "fix_version", label: t("Fix", "Fix") },
+                        { key: null, label: t("Scanners", "Scanner") },
+                        { key: "targets", label: t("Targets", "Ziele"), numeric: true },
+                      ] as { key: string | null; label: string; numeric?: boolean }[]).map(({ key, label, numeric }) => (
+                        key ? (
+                          <SortableTh
                             key={label}
-                            style={{ ...thStyle, cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}
-                            onClick={() => {
-                              if (!key) return;
+                            label={label}
+                            numeric={numeric}
+                            active={findingsSortBy === key}
+                            dir={findingsSortOrder}
+                            onSort={() => {
                               if (findingsSortBy === key) {
                                 setFindingsSortOrder(prev => prev === "asc" ? "desc" : "asc");
                               } else {
@@ -1306,1027 +1106,661 @@ export const ScansPage = () => {
                               }
                               setFindingsOffset(0);
                             }}
+                          />
+                        ) : (
+                          <th key={label} scope="col">{label}</th>
+                        )
+                      ))}
+                      <th scope="col">{t("Links", "Links")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {globalFindings.map(f => {
+                      const sev = (f.severity || "").toLowerCase();
+                      const rowKey = `${f.vulnerabilityId || ""}|${f.packageName}|${f.packageVersion}`;
+                      const isExpanded = expandedFindings.has(rowKey);
+                      const pkgType = f.packageType || "";
+                      const packagePathClean = f.packagePath
+                        ? f.packagePath.replace(/^\/tmp\/hecate-(?:scan|upload)-[^/]+\//, "")
+                        : "";
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr
+                            className={`scans-row-toggle${isExpanded ? " is-expanded" : ""}`}
+                            onClick={() => setExpandedFindings(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
                           >
-                            {label}
-                            {key && findingsSortBy === key && (
-                              <span style={{ marginLeft: "0.25rem", fontSize: "0.625rem" }}>
-                                {findingsSortOrder === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </th>
-                        ))}
-                        <th style={{ ...thStyle, whiteSpace: "nowrap" }}>{t("Links", "Links")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {globalFindings.map((f, idx) => {
-                        const sevColors: Record<string, string> = { critical: "#ff6b6b", high: "#ff922b", medium: "#fcc419", low: "#69db7c" };
-                        const sev = (f.severity || "").toLowerCase();
-                        const sevColor = sevColors[sev] || "#868e96";
-                        const rowKey = `${f.vulnerabilityId || ""}|${f.packageName}|${f.packageVersion}`;
-                        const isExpanded = expandedFindings.has(rowKey);
-                        const pkgType = f.packageType || "";
-                        const fDepsUrl = buildDepsDevUrl(f.packageName, f.packageVersion, pkgType);
-                        const fSnykUrl = buildSnykUrl(f.packageName, f.packageVersion, pkgType);
-                        const fRegistry = buildRegistryUrl(f.packageName, f.packageVersion, pkgType);
-                        const fSocketUrl = buildSocketUrl(f.packageName, f.packageVersion, pkgType);
-                        const fAikidoUrl = buildAikidoUrl(f.packageName, f.packageVersion, pkgType);
-                        const fBundlephobiaUrl = buildBundlephobiaUrl(f.packageName, f.packageVersion, pkgType);
-                        const fNpmGraphUrl = buildNpmGraphUrl(f.packageName, f.packageVersion, pkgType);
-                        const hasAnyLinks = fDepsUrl || fSnykUrl || fRegistry || fSocketUrl || fAikidoUrl || fBundlephobiaUrl || fNpmGraphUrl;
-                        const packagePathClean = f.packagePath
-                          ? f.packagePath.replace(/^\/tmp\/hecate-(?:scan|upload)-[^/]+\//, "")
-                          : "";
-                        return (
-                          <React.Fragment key={rowKey}>
-                            <tr
-                              onClick={() => setExpandedFindings(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
-                              style={{ borderBottom: isExpanded ? "none" : "1px solid rgba(255,255,255,0.04)", cursor: "pointer", transition: "background 0.1s" }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = "rgba(255,255,255,0.03)"; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
-                            >
-                              <td style={tdStyle}>
-                                {f.vulnerabilityId ? (
-                                  <Link to={`/vulnerability/${encodeURIComponent(f.vulnerabilityId)}`} onClick={e => e.stopPropagation()} style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.8125rem" }}>
-                                    {f.vulnerabilityId}
-                                  </Link>
-                                ) : (
-                                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8125rem" }}>{f.title || "—"}</span>
-                                )}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.8125rem", fontFamily: "monospace" }}>
-                                <span
-                                  style={{ color: "#74c0fc", borderBottom: "1px dashed rgba(116,192,252,0.3)" }}
-                                  title={t("Click to show details", "Klicken für Details")}
-                                >
-                                  {f.packageName}
-                                </span>
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>{f.packageVersion}</td>
-                              <td style={tdStyle}>
-                                <span style={{
-                                  display: "inline-block",
-                                  padding: "0.125rem 0.5rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.6875rem",
-                                  fontWeight: 600,
-                                  background: `${sevColor}22`,
-                                  color: sevColor,
-                                  textTransform: "capitalize",
-                                }}>
-                                  {sev || "unknown"}
-                                </span>
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", fontFamily: "monospace", color: f.cvssScore != null ? "#ffd43b" : "rgba(255,255,255,0.2)" }}>
-                                {f.cvssScore != null ? f.cvssScore.toFixed(1) : "—"}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: f.fixVersion ? "#69db7c" : "rgba(255,255,255,0.25)" }}>
-                                {f.fixVersion || "—"}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
-                                {f.scanners.join(", ")}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
-                                {f.targets.length}
-                              </td>
-                              <td style={tdStyle} onClick={e => e.stopPropagation()}>
-                                <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
-                                  {fDepsUrl && (
-                                    <a href={fDepsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
-                                      style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
-                                      deps.dev
-                                    </a>
-                                  )}
-                                  {fSnykUrl && (
-                                    <a href={fSnykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
-                                      style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
-                                      Snyk
-                                    </a>
-                                  )}
-                                  {fRegistry && (
-                                    <a href={fRegistry.url} target="_blank" rel="noopener noreferrer" title={fRegistry.label}
-                                      style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
-                                      {fRegistry.label}
-                                    </a>
-                                  )}
-                                  {fSocketUrl && (
-                                    <a href={fSocketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
-                                      style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
-                                      socket.dev
-                                    </a>
-                                  )}
-                                  {fAikidoUrl && (
-                                    <a href={fAikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
-                                      style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
-                                      aikido
-                                    </a>
-                                  )}
-                                  {fBundlephobiaUrl && (
-                                    <a href={fBundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
-                                      style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
-                                      bundlephobia
-                                    </a>
-                                  )}
-                                  {fNpmGraphUrl && (
-                                    <a href={fNpmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
-                                      style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
-                                      npmgraph
-                                    </a>
-                                  )}
-                                  {!hasAnyLinks && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
-                                </div>
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <tr>
-                                <td colSpan={9} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
-                                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.75rem", maxWidth: "900px", marginTop: "0.5rem" }}>
+                            <td className="scans-cell-strong scans-nowrap">
+                              {f.vulnerabilityId ? (
+                                <Link to={`/vulnerability/${encodeURIComponent(f.vulnerabilityId)}`} onClick={e => e.stopPropagation()} className="row-link mono">
+                                  {f.vulnerabilityId}
+                                </Link>
+                              ) : (
+                                <span className="muted">{f.title || <NotAvailable />}</span>
+                              )}
+                            </td>
+                            <td><SeverityTag severity={sev || undefined} /></td>
+                            <td className="scans-num">
+                              {f.cvssScore != null ? f.cvssScore.toFixed(1) : <NotAvailable />}
+                            </td>
+                            <td className="scans-cell-package">
+                              {/* Keyboard route to the row's expansion: the click bubbles to the row. */}
+                              <button
+                                type="button"
+                                className="scans-row-expand mono"
+                                aria-expanded={isExpanded}
+                                title={t("Click to show details", "Klicken für Details")}
+                              >
+                                {f.packageName || "n/a"}
+                              </button>
+                            </td>
+                            <td className="mono scans-muted scans-nowrap">{f.packageVersion}</td>
+                            <td className="mono">
+                              {f.fixVersion ? <span className="scans-truncate" title={f.fixVersion}>{f.fixVersion}</span> : <NotAvailable />}
+                            </td>
+                            <td className="scans-small scans-muted scans-cell-tools">{f.scanners.join(", ")}</td>
+                            <td className="scans-num">{f.targets.length}</td>
+                            <td className="scans-cell-links" onClick={e => e.stopPropagation()}>
+                              <PackageLinks name={f.packageName} version={f.packageVersion} type={pkgType} />
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="scans-detail-row">
+                              <td colSpan={9}>
+                                <div className="scans-detail">
+                                  <dl className="scans-detail-list">
                                     {packagePathClean && (
                                       <>
-                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Source", "Quelle")}</span>
-                                        <span style={{ color: "#74c0fc", fontFamily: "monospace", fontSize: "0.7rem" }}>{packagePathClean}</span>
+                                        <dt>{t("Source", "Quelle")}</dt>
+                                        <dd className="mono">{packagePathClean}</dd>
                                       </>
                                     )}
                                     {pkgType && (
                                       <>
-                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Type", "Typ")}</span>
-                                        <span style={{ color: "rgba(255,255,255,0.7)" }}>{TYPE_ALIASES[pkgType] || pkgType}</span>
+                                        <dt>{t("Type", "Typ")}</dt>
+                                        <dd>{TYPE_ALIASES[pkgType] || pkgType}</dd>
                                       </>
                                     )}
                                     {f.cvssScore != null && (
                                       <>
-                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>CVSS</span>
-                                        <span style={{ color: f.cvssScore >= 9 ? "#ff6b6b" : f.cvssScore >= 7 ? "#ffa94d" : f.cvssScore >= 4 ? "#fcc419" : "#69db7c" }}>{f.cvssScore.toFixed(1)}</span>
+                                        <dt>CVSS</dt>
+                                        <dd>{f.cvssScore.toFixed(1)}</dd>
                                       </>
                                     )}
                                     {f.title && (
                                       <>
-                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Title", "Titel")}</span>
-                                        <span style={{ color: "rgba(255,255,255,0.7)" }}>{f.title}</span>
+                                        <dt>{t("Title", "Titel")}</dt>
+                                        <dd>{f.title}</dd>
                                       </>
                                     )}
                                     {(f.urls ?? []).length > 0 && (
                                       <>
-                                        <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("References", "Referenzen")}</span>
-                                        <span style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+                                        <dt>{t("References", "Referenzen")}</dt>
+                                        <dd className="link-list">
                                           {(f.urls ?? []).slice(0, 5).map((url, i) => {
                                             let host = url;
                                             try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
                                             return (
-                                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                                                style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem" }}>
+                                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
                                                 {host}
                                               </a>
                                             );
                                           })}
                                           {(f.urls ?? []).length > 5 && (
-                                            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6875rem" }}>+{(f.urls ?? []).length - 5}</span>
+                                            <span className="muted">+{(f.urls ?? []).length - 5}</span>
                                           )}
-                                        </span>
+                                        </dd>
                                       </>
                                     )}
-                                  </div>
-                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.75rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
-                                    {t("Found in targets:", "Gefunden in Zielen:")}
-                                  </div>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
-                                    {f.targets.map(tgt => {
-                                      const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
-                                      return (
-                                        <Link
-                                          key={`${tgt.targetId}-${tgt.scanId}`}
-                                          to={`/scans/${encodeURIComponent(tgt.scanId)}`}
-                                          onClick={e => e.stopPropagation()}
-                                          style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.8125rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}
-                                        >
-                                          <span style={{ color: "rgba(255,255,255,0.6)" }}>{tgtName}</span>
-                                        </Link>
-                                      );
-                                    })}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination */}
-                {globalFindingsTotal > findingsLimit && (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginTop: "1rem", fontSize: "0.8125rem" }}>
-                    <button
-                      type="button"
-                      disabled={findingsOffset === 0}
-                      onClick={() => setFindingsOffset(Math.max(0, findingsOffset - findingsLimit))}
-                      style={{
-                        padding: "0.3rem 0.75rem", borderRadius: "4px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: findingsOffset === 0 ? "transparent" : "rgba(255,255,255,0.05)",
-                        color: findingsOffset === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
-                        cursor: findingsOffset === 0 ? "default" : "pointer",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      ← {t("Previous", "Zurück")}
-                    </button>
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {Math.floor(findingsOffset / findingsLimit) + 1} / {Math.ceil(globalFindingsTotal / findingsLimit)}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={findingsOffset + findingsLimit >= globalFindingsTotal}
-                      onClick={() => setFindingsOffset(findingsOffset + findingsLimit)}
-                      style={{
-                        padding: "0.3rem 0.75rem", borderRadius: "4px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: findingsOffset + findingsLimit >= globalFindingsTotal ? "transparent" : "rgba(255,255,255,0.05)",
-                        color: findingsOffset + findingsLimit >= globalFindingsTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
-                        cursor: findingsOffset + findingsLimit >= globalFindingsTotal ? "default" : "pointer",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      {t("Next", "Weiter")} →
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Global Security Alerts tab */}
-        {tab === "alerts" && (
-          <div>
-            {/* Filters */}
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
-              <input
-                type="text"
-                placeholder={t("Search package, rule, or text…", "Paket, Regel oder Text suchen…")}
-                value={alertsSearch}
-                onChange={e => { setAlertsSearch(e.target.value); setAlertsOffset(0); }}
-                style={{ flex: "1 1 220px", padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
-              />
-              <select
-                value={alertsSeverity ?? ""}
-                onChange={e => { setAlertsSeverity(e.target.value || null); setAlertsOffset(0); }}
-                style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
-              >
-                <option value="">{t("All severities", "Alle Schweregrade")}</option>
-                <option value="critical">critical</option>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
-              </select>
-              <select
-                value={alertsCategory ?? ""}
-                onChange={e => { setAlertsCategory(e.target.value || null); setAlertsOffset(0); }}
-                style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee" }}
-              >
-                <option value="">{t("All categories", "Alle Kategorien")}</option>
-                {/* Categories from scanner/app/malware_detector/rules.py. Keep in sync
-                    when new categories are added — unknown values still filter correctly
-                    via exact data_source match. */}
-                {[
-                  "install_hook",
-                  "suspicious_api",
-                  "exfiltration",
-                  "obfuscation",
-                  "unicode_obfuscation",
-                  "typosquatting",
-                  "pth_backdoor",
-                  "cicd",
-                  "persistence",
-                  "kubernetes",
-                  "worm",
-                  "ai_abuse",
-                  "sandbox_evasion",
-                  "known_compromised",
-                ].map(cat => (
-                  <option key={cat} value={cat}>{cat.replace(/_/g, " ")}</option>
-                ))}
-              </select>
-              <select
-                value={alertsTargetId ?? ""}
-                onChange={e => { setAlertsTargetId(e.target.value || null); setAlertsOffset(0); }}
-                style={{ padding: "0.45rem 0.75rem", borderRadius: "6px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#eee", maxWidth: "260px" }}
-              >
-                <option value="">{t("All targets", "Alle Ziele")}</option>
-                {targets.map(tgt => (
-                  <option key={tgt.id} value={tgt.id}>{tgt.name || tgt.id}</option>
-                ))}
-              </select>
-            </div>
-
-            {alertsLoading ? (
-              <SkeletonBlock height="10rem" />
-            ) : globalAlerts.length === 0 ? (
-              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(105,219,124,0.05)", border: "1px solid rgba(105,219,124,0.15)", borderRadius: "8px" }}>
-                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
-                <p style={{ color: "#69db7c", margin: 0, fontSize: "0.875rem" }}>
-                  {t("No security alerts from current scans.", "Keine Sicherheitswarnungen aus aktuellen Scans.")}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                        {([
-                          { col: "severity", label: t("Severity", "Schweregrad") },
-                          { col: "title", label: t("Rule", "Regel") },
-                          { col: "package_name", label: t("Package", "Paket") },
-                          { col: "category", label: t("Category", "Kategorie") },
-                          { col: "targets", label: t("Targets", "Ziele") },
-                        ] as const).map(h => (
-                          <th key={h.col}
-                            style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
-                            onClick={() => {
-                              if (alertsSortBy === h.col) {
-                                setAlertsSortOrder(prev => prev === "asc" ? "desc" : "asc");
-                              } else {
-                                setAlertsSortBy(h.col);
-                                setAlertsSortOrder("desc");
-                              }
-                              setAlertsOffset(0);
-                            }}>
-                            {h.label} {alertsSortBy === h.col ? (alertsSortOrder === "asc" ? "▲" : "▼") : ""}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {globalAlerts.map((a, idx) => {
-                        const sev = (a.severity || "").toLowerCase();
-                        const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : sev === "low" ? "#69db7c" : "rgba(255,255,255,0.4)";
-                        return (
-                          <tr key={`${a.title}|${a.packageName}|${a.packageVersion}|${idx}`} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <td style={tdStyle}>
-                              <span style={{
-                                padding: "0.125rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.7rem",
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                background: `${sevColor}20`,
-                                color: sevColor,
-                              }}>
-                                {sev || "—"}
-                              </span>
-                            </td>
-                            <td style={{ ...tdStyle, fontSize: "0.8125rem", color: "#fff" }}>
-                              <div style={{ fontWeight: 500 }}>{a.title || "—"}</div>
-                              {a.description && (
-                                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.45)", marginTop: "0.125rem", maxWidth: "600px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {a.description.split("\n")[0]}
+                                  </dl>
+                                  <FoundInTargets refs={f.targets} targets={targets} />
                                 </div>
-                              )}
-                            </td>
-                            <td style={{ ...tdStyle, fontSize: "0.8125rem" }}>
-                              <div style={{ color: "#fff" }}>{a.packageName}</div>
-                              {a.packageVersion && (
-                                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>@ {a.packageVersion}</div>
-                              )}
-                            </td>
-                            <td style={tdStyle}>
-                              {a.category ? (
-                                <span style={{
-                                  padding: "0.125rem 0.5rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.7rem",
-                                  background: "rgba(92,132,255,0.1)",
-                                  color: "#5c84ff",
-                                  border: "1px solid rgba(92,132,255,0.2)",
-                                }}>
-                                  {a.category.replace(/_/g, " ")}
-                                </span>
-                              ) : <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
-                            </td>
-                            <td style={{ ...tdStyle, fontSize: "0.8125rem" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
-                                {a.targets.slice(0, 3).map((t2, i2) => (
-                                  <Link
-                                    key={`${t2.scanId}-${i2}`}
-                                    to={`/scans/${t2.scanId}`}
-                                    style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem" }}
-                                  >
-                                    {targets.find(tt => tt.id === t2.targetId)?.name || t2.targetId}
-                                  </Link>
-                                ))}
-                                {a.targets.length > 3 && (
-                                  <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.4)" }}>
-                                    +{a.targets.length - 3} {t("more", "weitere")}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination */}
-                {globalAlertsTotal > alertsLimit && (
-                  <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "0.5rem", alignItems: "center" }}>
-                    <button
-                      type="button"
-                      disabled={alertsOffset === 0}
-                      onClick={() => setAlertsOffset(prev => Math.max(0, prev - alertsLimit))}
-                      style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#eee", cursor: alertsOffset === 0 ? "not-allowed" : "pointer", opacity: alertsOffset === 0 ? 0.4 : 1 }}
-                    >
-                      ‹ {t("Previous", "Zurück")}
-                    </button>
-                    <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8125rem" }}>
-                      {alertsOffset + 1}–{Math.min(alertsOffset + alertsLimit, globalAlertsTotal)} / {globalAlertsTotal}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={alertsOffset + alertsLimit >= globalAlertsTotal}
-                      onClick={() => setAlertsOffset(prev => prev + alertsLimit)}
-                      style={{ padding: "0.4rem 0.9rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#eee", cursor: alertsOffset + alertsLimit >= globalAlertsTotal ? "not-allowed" : "pointer", opacity: alertsOffset + alertsLimit >= globalAlertsTotal ? 0.4 : 1 }}
-                    >
-                      {t("Next", "Weiter")} ›
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* SBOM tab */}
-        {tab === "sbom" && (
-          <div>
-            {/* SBOM Import card */}
-            {!sbomImportResult ? (
-              <div
-                onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-                onDrop={e => {
-                  e.preventDefault(); e.stopPropagation();
-                  const file = e.dataTransfer.files?.[0];
-                  if (file && (file.name.endsWith(".json") || file.type === "application/json")) {
-                    setSbomImportFile(file);
-                    setSbomImportResult(null);
-                    setSbomImportError(null);
-                  }
-                }}
-                style={{
-                  marginBottom: "1.25rem",
-                  padding: "1rem 1.25rem",
-                  border: "1px dashed rgba(255,212,59,0.25)",
-                  borderRadius: "10px",
-                  background: "rgba(255,212,59,0.03)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.75rem",
-                }}
-              >
-                <div style={{ flex: "1 1 0", minWidth: "140px" }}>
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "rgba(255,255,255,0.8)", marginBottom: "0.25rem" }}>
-                    {t("Import SBOM", "SBOM importieren")}
-                  </div>
-                  {sbomImportFile ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <span style={{
-                        padding: "0.25rem 0.625rem", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 500,
-                        background: "rgba(255,212,59,0.12)", color: "#ffd43b", border: "1px solid rgba(255,212,59,0.25)",
-                        maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {sbomImportFile.name}
-                      </span>
-                      <button type="button" onClick={() => { setSbomImportFile(null); setSbomImportError(null); }}
-                        style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: "0.875rem", padding: "0 0.25rem" }}>
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <label style={{ cursor: "pointer" }}>
-                      <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
-                        {t("Drop a CycloneDX / SPDX JSON file here or ", "CycloneDX / SPDX JSON-Datei hierher ziehen oder ")}
-                        <span style={{ color: "#ffd43b", textDecoration: "underline" }}>{t("browse", "durchsuchen")}</span>
-                      </span>
-                      <input type="file" accept=".json,application/json" style={{ display: "none" }}
-                        onChange={e => {
-                          setSbomImportFile(e.target.files?.[0] || null);
-                          setSbomImportResult(null);
-                          setSbomImportError(null);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
-                  )}
-                  {sbomImportError && (
-                    <div style={{ fontSize: "0.75rem", color: "#ff6b6b", marginTop: "0.25rem" }}>{sbomImportError}</div>
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <select
-                    value={sbomImportFormat}
-                    onChange={e => setSbomImportFormat(e.target.value)}
-                    style={{
-                      padding: "0.3rem 0.5rem", borderRadius: "6px",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)",
-                      fontSize: "0.75rem", outline: "none",
-                    }}
-                  >
-                    <option value="">{t("Auto-detect", "Auto")}</option>
-                    <option value="cyclonedx-json">CycloneDX</option>
-                    <option value="spdx-json">SPDX</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={sbomImportTargetName}
-                    onChange={e => setSbomImportTargetName(e.target.value)}
-                    placeholder={t("Target name (optional)", "Zielname (opt.)")}
-                    style={{
-                      padding: "0.3rem 0.5rem", borderRadius: "6px",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      background: "rgba(255,255,255,0.05)", color: "#fff",
-                      fontSize: "0.75rem", outline: "none", width: "160px", minWidth: 0, flex: "1 1 100px",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    disabled={!sbomImportFile || sbomImportLoading}
-                    onClick={async () => {
-                      if (!sbomImportFile) return;
-                      setSbomImportLoading(true);
-                      setSbomImportError(null);
-                      setSbomImportResult(null);
-                      try {
-                        const res = await importSbomFile(
-                          sbomImportFile,
-                          sbomImportTargetName || undefined,
-                          sbomImportFormat || undefined,
-                        );
-                        setSbomImportResult(res);
-                      } catch (err: any) {
-                        setSbomImportError(err?.response?.data?.detail || err?.message || t("Import failed.", "Import fehlgeschlagen."));
-                      } finally {
-                        setSbomImportLoading(false);
-                      }
-                    }}
-                    style={{
-                      padding: "0.375rem 1rem",
-                      borderRadius: "6px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      cursor: sbomImportFile && !sbomImportLoading ? "pointer" : "default",
-                      background: sbomImportFile && !sbomImportLoading ? "rgba(255,212,59,0.15)" : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${sbomImportFile && !sbomImportLoading ? "rgba(255,212,59,0.35)" : "rgba(255,255,255,0.08)"}`,
-                      color: sbomImportFile && !sbomImportLoading ? "#ffd43b" : "rgba(255,255,255,0.25)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {sbomImportLoading ? t("Importing...", "Importiert...") : t("Import", "Importieren")}
-                  </button>
-                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              <div style={{
-                marginBottom: "1.25rem",
-                padding: "0.75rem 1.25rem",
-                border: "1px solid rgba(105,219,124,0.3)",
-                borderRadius: "10px",
-                background: "rgba(105,219,124,0.06)",
-                display: "flex",
-                alignItems: "center",
-                gap: "1rem",
-              }}>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 600, color: "#69db7c", fontSize: "0.8125rem" }}>
-                    {t("SBOM imported!", "SBOM importiert!")}
-                  </span>
-                  <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.75rem", marginLeft: "0.5rem" }}>
-                    {sbomImportResult.sbomComponentCount} {t("components", "Komponenten")} · {sbomImportResult.findingsCount} {t("findings", "Funde")}
-                  </span>
-                </div>
-                <Link
-                  to={`/scans/${sbomImportResult.scanId}`}
-                  style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.75rem", fontWeight: 600, whiteSpace: "nowrap" }}
+
+              {/* Pagination */}
+              {globalFindingsTotal > findingsLimit && (
+                <Pager
+                  prevDisabled={findingsOffset === 0}
+                  nextDisabled={findingsOffset + findingsLimit >= globalFindingsTotal}
+                  onPrev={() => setFindingsOffset(Math.max(0, findingsOffset - findingsLimit))}
+                  onNext={() => setFindingsOffset(findingsOffset + findingsLimit)}
                 >
-                  {t("View details", "Details")} →
-                </Link>
-                <button type="button" onClick={() => { setSbomImportResult(null); setSbomImportFile(null); setSbomImportError(null); }}
-                  style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: "1rem", padding: "0 0.25rem" }}>
-                  ×
-                </button>
-              </div>
-            )}
+                  {Math.floor(findingsOffset / findingsLimit) + 1} / {Math.ceil(globalFindingsTotal / findingsLimit)}
+                </Pager>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
-            {/* Summary cards — global facets across all components, not just the loaded page */}
-            {sbomFacets && (sbomFacets.ecosystems.length > 0 || sbomFacets.licenses.length > 0 || sbomFacets.types.length > 0) && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
-                {[
-                  { title: t("Ecosystems", "Ökosysteme"), data: sbomFacets.ecosystems, color: "#ffd43b" },
-                  { title: t("Licenses", "Lizenzen"), data: sbomFacets.licenses, color: "#69db7c" },
-                  { title: t("Types", "Typen"), data: sbomFacets.types, color: "#8b94fc" },
-                ].map(card => (
-                  <div key={card.title} style={{ padding: "0.75rem", borderRadius: "8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      {card.title}
-                    </div>
-                    {card.data.slice(0, 5).map(entry => (
-                      <div key={entry.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0", fontSize: "0.75rem" }}>
-                        <span style={{ color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{entry.name}</span>
-                        <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{entry.count}</span>
-                      </div>
-                    ))}
-                    {card.data.length > 5 && (
-                      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginTop: "0.25rem" }}>
-                        +{card.data.length - 5} {t("more", "weitere")}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+      {/* Global Security Alerts tab */}
+      {tab === "alerts" && (
+        <div>
+          {/* Filters */}
+          <div className="filter-row">
+            <input
+              type="text"
+              className="scans-filter-search"
+              placeholder={t("Search package, rule, or text…", "Paket, Regel oder Text suchen…")}
+              aria-label={t("Search alerts", "Warnungen suchen")}
+              value={alertsSearch}
+              onChange={e => { setAlertsSearch(e.target.value); setAlertsOffset(0); }}
+            />
+            <select
+              className="scans-select"
+              aria-label={t("Filter by severity", "Nach Schweregrad filtern")}
+              value={alertsSeverity ?? ""}
+              onChange={e => { setAlertsSeverity(e.target.value || null); setAlertsOffset(0); }}
+            >
+              <option value="">{t("All severities", "Alle Schweregrade")}</option>
+              <option value="critical">critical</option>
+              <option value="high">high</option>
+              <option value="medium">medium</option>
+              <option value="low">low</option>
+            </select>
+            <select
+              className="scans-select"
+              aria-label={t("Filter by category", "Nach Kategorie filtern")}
+              value={alertsCategory ?? ""}
+              onChange={e => { setAlertsCategory(e.target.value || null); setAlertsOffset(0); }}
+            >
+              <option value="">{t("All categories", "Alle Kategorien")}</option>
+              {/* Categories from scanner/app/malware_detector/rules.py. Keep in sync
+                  when new categories are added. Unknown values still filter correctly
+                  via exact data_source match. */}
+              {[
+                "install_hook",
+                "suspicious_api",
+                "exfiltration",
+                "obfuscation",
+                "unicode_obfuscation",
+                "typosquatting",
+                "pth_backdoor",
+                "cicd",
+                "persistence",
+                "kubernetes",
+                "worm",
+                "ai_abuse",
+                "sandbox_evasion",
+                "known_compromised",
+              ].map(cat => (
+                <option key={cat} value={cat}>{cat.replace(/_/g, " ")}</option>
+              ))}
+            </select>
+            <select
+              className="scans-select"
+              aria-label={t("Filter by target", "Nach Ziel filtern")}
+              value={alertsTargetId ?? ""}
+              onChange={e => { setAlertsTargetId(e.target.value || null); setAlertsOffset(0); }}
+            >
+              <option value="">{t("All targets", "Alle Ziele")}</option>
+              {targets.map(tgt => (
+                <option key={tgt.id} value={tgt.id}>{tgt.name || tgt.id}</option>
+              ))}
+            </select>
+          </div>
 
-            {/* Filter bar */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-              <input
-                type="text"
-                value={sbomSearch}
-                onChange={e => { setSbomSearch(e.target.value); setSbomOffset(0); }}
-                placeholder={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
-                style={{
-                  padding: "0 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  flex: "1 1 200px",
-                  maxWidth: "400px",
-                  minWidth: 0,
-                  outline: "none",
-                  height: "32px",
-                  boxSizing: "border-box" as const,
-                }}
-              />
-              <select
-                value={sbomType || ""}
-                onChange={e => { setSbomType(e.target.value || null); setSbomOffset(0); }}
-                style={{
-                  padding: "0 0.625rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: sbomType ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                  fontSize: "0.8125rem",
-                  outline: "none",
-                  cursor: "pointer",
-                  minWidth: "120px",
-                  height: "32px",
-                  boxSizing: "border-box" as const,
-                }}
-              >
-                <option value="">{t("All types", "Alle Typen")}</option>
-                {(() => {
-                  // Merge CycloneDX canonical types with whatever ecosystem labels
-                  // the scanners emitted (pnpm, npm, yarn, gobinary, rust-crate, …),
-                  // so the filter reflects what's actually in the data.
-                  const baseline = ["library", "application", "framework", "container", "firmware", "file", "operating-system"];
-                  const facetTypes = (sbomFacets?.types ?? []).map(f => f.name).filter(Boolean);
-                  const merged = Array.from(new Set<string>([
-                    ...baseline,
-                    ...facetTypes,
-                    ...(sbomType ? [sbomType] : []),
-                  ]));
-                  merged.sort((a, b) => a.localeCompare(b));
-                  return merged.map(tp => (
-                    <option key={tp} value={tp}>{tp}</option>
-                  ));
-                })()}
-              </select>
-              <select
-                value={sbomTargetId || ""}
-                onChange={e => { setSbomTargetId(e.target.value || null); setSbomOffset(0); }}
-                style={{
-                  padding: "0 0.625rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: sbomTargetId ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                  fontSize: "0.8125rem",
-                  outline: "none",
-                  cursor: "pointer",
-                  minWidth: "140px",
-                  maxWidth: "280px",
-                  height: "32px",
-                  boxSizing: "border-box" as const,
-                }}
-              >
-                <option value="">{t("All targets", "Alle Ziele")}</option>
-                {targets.map(tgt => (
-                  <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
-                ))}
-              </select>
-              <select
-                value={sbomFilterProvenance || ""}
-                onChange={e => setSbomFilterProvenance(e.target.value || null)}
-                style={{
-                  padding: "0 0.625rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: sbomFilterProvenance ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                  fontSize: "0.8125rem",
-                  outline: "none",
-                  cursor: "pointer",
-                  minWidth: "120px",
-                  height: "32px",
-                  boxSizing: "border-box" as const,
-                }}
-              >
-                <option value="">{t("All Provenance", "Alle Provenienz")}</option>
-                <option value="verified">{t("Verified", "Verifiziert")}</option>
-                <option value="unverified">{t("Unverified", "Nicht verifiziert")}</option>
-                <option value="unknown">{t("Unknown", "Unbekannt")}</option>
-              </select>
-              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
-                {filteredSortedSbom.length !== sbomComponents.length
-                  ? `${filteredSortedSbom.length} / ${sbomTotal.toLocaleString()}`
-                  : sbomTotal.toLocaleString()}{" "}
-                {t("components", "Komponenten")}
-              </span>
+          {alertsLoading ? (
+            <div className="scans-skeleton-rows">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonBlock key={i} height={48} radius={4} />
+              ))}
             </div>
-
-            {sbomLoading ? (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          ) : globalAlerts.length === 0 ? (
+            <EmptyState title={t("No security alerts from current scans.", "Keine Sicherheitswarnungen aus aktuellen Scans.")} />
+          ) : (
+            <>
+              <div className="table-scroll">
+                <table className="scans-table scans-table--pin">
                   <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                      {[t("Component", "Komponente"), t("Version", "Version"), t("Type", "Typ"), t("Provenance", "Herkunft"), t("Licenses", "Lizenzen"), t("Targets", "Ziele")].map(label => (
-                        <th key={label} style={thStyle}>{label}</th>
+                    <tr>
+                      {([
+                        { col: "title", label: t("Rule", "Regel") },
+                        { col: "severity", label: t("Severity", "Schweregrad") },
+                        { col: "package_name", label: t("Package", "Paket") },
+                        { col: "category", label: t("Category", "Kategorie") },
+                        { col: "targets", label: t("Targets", "Ziele") },
+                      ] as const).map(h => (
+                        <SortableTh
+                          key={h.col}
+                          label={h.label}
+                          active={alertsSortBy === h.col}
+                          dir={alertsSortOrder}
+                          onSort={() => {
+                            if (alertsSortBy === h.col) {
+                              setAlertsSortOrder(prev => prev === "asc" ? "desc" : "asc");
+                            } else {
+                              setAlertsSortBy(h.col);
+                              setAlertsSortOrder("desc");
+                            }
+                            setAlertsOffset(0);
+                          }}
+                        />
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                        {Array.from({ length: 6 }).map((_, j) => (
-                          <td key={j} style={tdStyle}>
-                            <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 3 ? "30px" : j === 5 ? "30px" : "60%"} radius={4} />
+                    {globalAlerts.map((a, idx) => {
+                      const sev = (a.severity || "").toLowerCase();
+                      return (
+                        <tr key={`${a.title}|${a.packageName}|${a.packageVersion}|${idx}`}>
+                          <td className="scans-cell-rule">
+                            <div className="scans-cell-strong">{a.title || <NotAvailable />}</div>
+                            {a.description && (
+                              <div className="scans-sub scans-truncate-line">
+                                {a.description.split("\n")[0]}
+                              </div>
+                            )}
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          <td><SeverityTag severity={sev || undefined} /></td>
+                          <td>
+                            <div className="mono">{a.packageName}</div>
+                            {a.packageVersion && (
+                              <div className="scans-sub mono">@ {a.packageVersion}</div>
+                            )}
+                          </td>
+                          <td>
+                            {a.category ? <span className="tag">{a.category.replace(/_/g, " ")}</span> : <NotAvailable />}
+                          </td>
+                          <td>
+                            <div className="scans-target-links">
+                              {a.targets.slice(0, 3).map((t2, i2) => (
+                                <Link key={`${t2.scanId}-${i2}`} to={`/scans/${t2.scanId}`} className="row-link">
+                                  {targets.find(tt => tt.id === t2.targetId)?.name || t2.targetId}
+                                </Link>
+                              ))}
+                              {a.targets.length > 3 && (
+                                <span className="scans-sub">
+                                  +{a.targets.length - 3} {t("more", "weitere")}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            ) : sbomComponents.length === 0 ? (
-              <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
-                {sbomSearch || sbomType || sbomTargetId
-                  ? t("No components match your filters.", "Keine Komponenten entsprechen Ihren Filtern.")
-                  : t("No SBOM components from latest scans.", "Keine SBOM-Komponenten aus den letzten Scans.")}
-              </p>
-            ) : (
-              <>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                        {([
-                          { col: "name", label: t("Component", "Komponente") },
-                          { col: "version", label: t("Version", "Version") },
-                          { col: "type", label: t("Type", "Typ") },
-                          { col: "provenance", label: t("Provenance", "Herkunft") },
-                          { col: "licenses", label: t("Licenses", "Lizenzen") },
-                          { col: "targets", label: t("Targets", "Ziele") },
-                        ] as const).map(h => (
-                          <th key={h.col} style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
-                            onClick={() => setSbomSort(prev => ({ col: h.col, dir: prev.col === h.col && prev.dir === "asc" ? "desc" : "asc" }))}>
-                            {h.label} {sbomSort.col === h.col ? (sbomSort.dir === "asc" ? "▲" : "▼") : ""}
-                          </th>
-                        ))}
-                        <th style={thStyle}>{t("Links", "Links")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSortedSbom.map(c => {
-                        const typeColors: Record<string, string> = { library: "#69db7c", application: "#ffd43b", framework: "#748ffc", container: "#ff922b" };
-                        const typeColor = typeColors[c.type] || "rgba(255,255,255,0.4)";
-                        const rowKey = `${c.name}|${c.version}`;
-                        const isExpanded = expandedSboms.has(rowKey);
-                        return (
-                          <React.Fragment key={rowKey}>
-                            <tr
-                              onClick={() => setExpandedSboms(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
-                              style={{ borderBottom: isExpanded ? "none" : "1px solid rgba(255,255,255,0.04)", cursor: "pointer", transition: "background 0.1s" }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = "rgba(255,255,255,0.03)"; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
-                            >
-                              <td style={tdStyle}>
-                                <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>{c.name}</div>
-                                {c.purl && (
-                                  <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.3)", fontFamily: "monospace", wordBreak: "break-all" }}>{c.purl}</div>
-                                )}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.8125rem", fontFamily: "monospace", color: "rgba(255,255,255,0.6)" }}>{c.version || "—"}</td>
-                              <td style={tdStyle}>
-                                <span style={{
-                                  display: "inline-block",
-                                  padding: "0.125rem 0.5rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.6875rem",
-                                  fontWeight: 500,
-                                  background: `${typeColor}18`,
-                                  color: typeColor,
-                                }}>
-                                  {c.type}
-                                </span>
-                              </td>
-                              <td style={tdStyle}>
-                                {c.provenanceVerified === true && <span style={{ color: "#69db7c", fontSize: "0.8125rem" }}>✓</span>}
-                                {c.provenanceVerified === false && <span style={{ color: "#fcc419", fontSize: "0.8125rem" }}>⚠</span>}
-                                {c.provenanceVerified == null && <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "0.8125rem" }}>—</span>}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
-                                {c.licenses.length > 0 ? c.licenses.join(", ") : "—"}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
-                                {c.targets.length}
-                              </td>
-                              <td style={tdStyle} onClick={e => e.stopPropagation()}>
-                                {(() => {
-                                  const depsUrl = buildDepsDevUrl(c.name, c.version, c.type, c.purl);
-                                  const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
-                                  const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
-                                  const socketUrl = buildSocketUrl(c.name, c.version, c.type, c.purl);
-                                  const aikidoUrl = buildAikidoUrl(c.name, c.version, c.type, c.purl);
-                                  const bundlephobiaUrl = buildBundlephobiaUrl(c.name, c.version, c.type, c.purl);
-                                  const npmGraphUrl = buildNpmGraphUrl(c.name, c.version, c.type, c.purl);
-                                  const hasAny = depsUrl || snykUrl || registryLink || socketUrl || aikidoUrl || bundlephobiaUrl || npmGraphUrl;
-                                  return (
-                                    <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
-                                      {depsUrl && (
-                                        <a href={depsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
-                                          style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
-                                          deps.dev
-                                        </a>
-                                      )}
-                                      {snykUrl && (
-                                        <a href={snykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
-                                          style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
-                                          Snyk
-                                        </a>
-                                      )}
-                                      {registryLink && (
-                                        <a href={registryLink.url} target="_blank" rel="noopener noreferrer" title={registryLink.label}
-                                          style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
-                                          {registryLink.label}
-                                        </a>
-                                      )}
-                                      {socketUrl && (
-                                        <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
-                                          style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
-                                          socket.dev
-                                        </a>
-                                      )}
-                                      {aikidoUrl && (
-                                        <a href={aikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
-                                          style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
-                                          aikido
-                                        </a>
-                                      )}
-                                      {bundlephobiaUrl && (
-                                        <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
-                                          style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
-                                          bundlephobia
-                                        </a>
-                                      )}
-                                      {npmGraphUrl && (
-                                        <a href={npmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
-                                          style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.6875rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
-                                          npmgraph
-                                        </a>
-                                      )}
-                                      {!hasAny && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
-                                    </div>
-                                  );
-                                })()}
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <tr>
-                                <td colSpan={7} style={{ padding: "0 0.75rem 0.75rem 1.5rem", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", textAlign: "left" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: "0.5rem", marginBottom: "0.375rem", fontWeight: 500, textAlign: "left" }}>
-                                    {t("Found in targets:", "Gefunden in Zielen:")}
-                                  </div>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
-                                    {c.targets.map(tgt => {
-                                      const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
-                                      return (
-                                        <Link
-                                          key={`${tgt.targetId}-${tgt.scanId}`}
-                                          to={`/scans/${encodeURIComponent(tgt.scanId)}`}
-                                          onClick={e => e.stopPropagation()}
-                                          style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.8125rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}
-                                        >
-                                          <span style={{ color: "rgba(255,255,255,0.6)" }}>{tgtName}</span>
-                                        </Link>
-                                      );
-                                    })}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
 
-                {/* Pagination */}
-                {sbomTotal > sbomLimit && (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginTop: "1rem", fontSize: "0.8125rem" }}>
-                    <button
-                      type="button"
-                      disabled={sbomOffset === 0}
-                      onClick={() => setSbomOffset(Math.max(0, sbomOffset - sbomLimit))}
-                      style={{
-                        padding: "0.3rem 0.75rem", borderRadius: "4px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: sbomOffset === 0 ? "transparent" : "rgba(255,255,255,0.05)",
-                        color: sbomOffset === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
-                        cursor: sbomOffset === 0 ? "default" : "pointer",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      ← {t("Previous", "Zurück")}
-                    </button>
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {Math.floor(sbomOffset / sbomLimit) + 1} / {Math.ceil(sbomTotal / sbomLimit)}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={sbomOffset + sbomLimit >= sbomTotal}
-                      onClick={() => setSbomOffset(sbomOffset + sbomLimit)}
-                      style={{
-                        padding: "0.3rem 0.75rem", borderRadius: "4px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: sbomOffset + sbomLimit >= sbomTotal ? "transparent" : "rgba(255,255,255,0.05)",
-                        color: sbomOffset + sbomLimit >= sbomTotal ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)",
-                        cursor: sbomOffset + sbomLimit >= sbomTotal ? "default" : "pointer",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      {t("Next", "Weiter")} →
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+              {/* Pagination */}
+              {globalAlertsTotal > alertsLimit && (
+                <Pager
+                  prevDisabled={alertsOffset === 0}
+                  nextDisabled={alertsOffset + alertsLimit >= globalAlertsTotal}
+                  onPrev={() => setAlertsOffset(prev => Math.max(0, prev - alertsLimit))}
+                  onNext={() => setAlertsOffset(prev => prev + alertsLimit)}
+                >
+                  {alertsOffset + 1}-{Math.min(alertsOffset + alertsLimit, globalAlertsTotal)} / {globalAlertsTotal}
+                </Pager>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
-        {/* Manual scan tab */}
-        {newScanModalOpen && (
-          <div
-            style={{
-              position: "fixed", inset: 0, zIndex: 9998,
-              display: "flex", alignItems: "flex-start", justifyContent: "center",
-              padding: "2rem 1rem", overflowY: "auto",
-              background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-            }}
-            onClick={() => setNewScanModalOpen(false)}
-          >
+      {/* SBOM tab */}
+      {tab === "sbom" && (
+        <div>
+          {/* SBOM import */}
+          {!sbomImportResult ? (
             <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: "#1a1d23", border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "10px", padding: "1.5rem",
-                width: "100%", maxWidth: "640px",
-                boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+              className="scans-import"
+              onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={e => {
+                e.preventDefault(); e.stopPropagation();
+                const file = e.dataTransfer.files?.[0];
+                if (file && (file.name.endsWith(".json") || file.type === "application/json")) {
+                  setSbomImportFile(file);
+                  setSbomImportResult(null);
+                  setSbomImportError(null);
+                }
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>{t("New Scan", "Neuer Scan")}</h3>
+              <div className="scans-import-text">
+                <h2 className="scans-import-title">{t("Import SBOM", "SBOM importieren")}</h2>
+                {sbomImportFile ? (
+                  <div className="scans-import-file">
+                    <span className="chip scans-import-filename">{sbomImportFile.name}</span>
+                    <IconButton
+                      label={t("Remove file", "Datei entfernen")}
+                      onClick={() => { setSbomImportFile(null); setSbomImportError(null); }}
+                    >
+                      <LuX aria-hidden="true" />
+                    </IconButton>
+                  </div>
+                ) : (
+                  <label className="scans-import-browse">
+                    {t("Drop a CycloneDX / SPDX JSON file here or ", "CycloneDX / SPDX JSON-Datei hierher ziehen oder ")}
+                    <span className="scans-import-link">{t("browse", "durchsuchen")}</span>
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      className="visually-hidden"
+                      onChange={e => {
+                        setSbomImportFile(e.target.files?.[0] || null);
+                        setSbomImportResult(null);
+                        setSbomImportError(null);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+                {sbomImportError && (
+                  <p className="scans-error" role="alert">{sbomImportError}</p>
+                )}
+              </div>
+              <div className="scans-import-controls">
+                <select
+                  aria-label={t("SBOM format", "SBOM-Format")}
+                  value={sbomImportFormat}
+                  onChange={e => setSbomImportFormat(e.target.value)}
+                >
+                  <option value="">{t("Auto-detect", "Auto")}</option>
+                  <option value="cyclonedx-json">CycloneDX</option>
+                  <option value="spdx-json">SPDX</option>
+                </select>
+                <input
+                  type="text"
+                  className="scans-import-name"
+                  aria-label={t("Target name (optional)", "Zielname (opt.)")}
+                  value={sbomImportTargetName}
+                  onChange={e => setSbomImportTargetName(e.target.value)}
+                  placeholder={t("Target name (optional)", "Zielname (opt.)")}
+                />
                 <button
                   type="button"
-                  onClick={() => setNewScanModalOpen(false)}
-                  aria-label={t("Close", "Schließen")}
-                  style={{
-                    background: "transparent", border: "none", color: "rgba(255,255,255,0.5)",
-                    fontSize: "1.25rem", cursor: "pointer", lineHeight: 1, padding: "0 0.25rem",
+                  className="btn"
+                  disabled={!sbomImportFile || sbomImportLoading}
+                  onClick={async () => {
+                    if (!sbomImportFile) return;
+                    setSbomImportLoading(true);
+                    setSbomImportError(null);
+                    setSbomImportResult(null);
+                    try {
+                      const res = await importSbomFile(
+                        sbomImportFile,
+                        sbomImportTargetName || undefined,
+                        sbomImportFormat || undefined,
+                      );
+                      setSbomImportResult(res);
+                    } catch (err: any) {
+                      setSbomImportError(err?.response?.data?.detail || err?.message || t("Import failed.", "Import fehlgeschlagen."));
+                    } finally {
+                      setSbomImportLoading(false);
+                    }
                   }}
                 >
-                  ×
+                  {sbomImportLoading ? t("Importing...", "Importiert...") : t("Import", "Importieren")}
                 </button>
               </div>
-            <form onSubmit={handleSubmitScan} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <div>
-                <label style={labelStyle}>{t("Type", "Typ")}</label>
-                <div style={{ display: "flex", gap: "0.75rem" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+            </div>
+          ) : (
+            <div className="scans-import scans-import--done">
+              <div className="scans-import-summary">
+                <span className="scans-outcome--ok scans-import-title">
+                  {t("SBOM imported!", "SBOM importiert!")}
+                </span>
+                <span className="scans-muted">
+                  {sbomImportResult.sbomComponentCount} {t("components", "Komponenten")}
+                </span>
+                <span className="scans-muted">
+                  {sbomImportResult.findingsCount} {t("findings", "Funde")}
+                </span>
+              </div>
+              <Link to={`/scans/${sbomImportResult.scanId}`} className="btn">
+                {t("View details", "Details")}
+              </Link>
+              <IconButton
+                label={t("Dismiss", "Schließen")}
+                onClick={() => { setSbomImportResult(null); setSbomImportFile(null); setSbomImportError(null); }}
+              >
+                <LuX aria-hidden="true" />
+              </IconButton>
+            </div>
+          )}
+
+          {/* Summary: global facets across all components, not just the loaded page */}
+          {sbomFacets && (sbomFacets.ecosystems.length > 0 || sbomFacets.licenses.length > 0 || sbomFacets.types.length > 0) && (
+            <div className="scans-facets">
+              {[
+                { title: t("Ecosystems", "Ökosysteme"), data: sbomFacets.ecosystems },
+                { title: t("Licenses", "Lizenzen"), data: sbomFacets.licenses },
+                { title: t("Types", "Typen"), data: sbomFacets.types },
+              ].map(card => (
+                <div key={card.title} className="scans-facet">
+                  <h2 className="scans-facet-title">{card.title}</h2>
+                  <ul className="scans-facet-list">
+                    {card.data.slice(0, 5).map(entry => (
+                      <li key={entry.name}>
+                        <span className="scans-facet-name">{entry.name}</span>
+                        <span className="scans-facet-count">{entry.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {card.data.length > 5 && (
+                    <p className="scans-sub">
+                      +{card.data.length - 5} {t("more", "weitere")}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Filter bar */}
+          <div className="filter-row">
+            <input
+              type="text"
+              className="scans-filter-search"
+              value={sbomSearch}
+              onChange={e => { setSbomSearch(e.target.value); setSbomOffset(0); }}
+              placeholder={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
+              aria-label={t("Search components", "Komponenten suchen")}
+            />
+            <select
+              className="scans-select"
+              aria-label={t("Filter by type", "Nach Typ filtern")}
+              value={sbomType || ""}
+              onChange={e => { setSbomType(e.target.value || null); setSbomOffset(0); }}
+            >
+              <option value="">{t("All types", "Alle Typen")}</option>
+              {(() => {
+                // Merge CycloneDX canonical types with whatever ecosystem labels
+                // the scanners emitted (pnpm, npm, yarn, gobinary, rust-crate, …),
+                // so the filter reflects what's actually in the data.
+                const baseline = ["library", "application", "framework", "container", "firmware", "file", "operating-system"];
+                const facetTypes = (sbomFacets?.types ?? []).map(f => f.name).filter(Boolean);
+                const merged = Array.from(new Set<string>([
+                  ...baseline,
+                  ...facetTypes,
+                  ...(sbomType ? [sbomType] : []),
+                ]));
+                merged.sort((a, b) => a.localeCompare(b));
+                return merged.map(tp => (
+                  <option key={tp} value={tp}>{tp}</option>
+                ));
+              })()}
+            </select>
+            <select
+              className="scans-select"
+              aria-label={t("Filter by target", "Nach Ziel filtern")}
+              value={sbomTargetId || ""}
+              onChange={e => { setSbomTargetId(e.target.value || null); setSbomOffset(0); }}
+            >
+              <option value="">{t("All targets", "Alle Ziele")}</option>
+              {targets.map(tgt => (
+                <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
+              ))}
+            </select>
+            <select
+              className="scans-select"
+              aria-label={t("Filter by provenance", "Nach Herkunft filtern")}
+              value={sbomFilterProvenance || ""}
+              onChange={e => setSbomFilterProvenance(e.target.value || null)}
+            >
+              <option value="">{t("All provenance", "Alle Provenienz")}</option>
+              <option value="verified">{t("Verified", "Verifiziert")}</option>
+              <option value="unverified">{t("Unverified", "Nicht verifiziert")}</option>
+              <option value="unknown">{t("Unknown", "Unbekannt")}</option>
+            </select>
+            <span className="scans-count">
+              {filteredSortedSbom.length !== sbomComponents.length
+                ? `${filteredSortedSbom.length} / ${sbomTotal.toLocaleString()}`
+                : sbomTotal.toLocaleString()}{" "}
+              {t("components", "Komponenten")}
+            </span>
+          </div>
+
+          {sbomLoading ? (
+            <div className="table-scroll">
+              <table className="scans-table">
+                <thead>
+                  <tr>
+                    {[t("Component", "Komponente"), t("Version", "Version"), t("Type", "Typ"), t("Provenance", "Herkunft"), t("Licenses", "Lizenzen"), t("Targets", "Ziele")].map(label => (
+                      <th key={label} scope="col">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <tr key={i}>
+                      {Array.from({ length: 6 }).map((_, j) => (
+                        <td key={j}>
+                          <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 3 ? "30px" : j === 5 ? "30px" : "60%"} radius={4} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : sbomComponents.length === 0 ? (
+            <EmptyState
+              title={sbomSearch || sbomType || sbomTargetId
+                ? t("No components match your filters.", "Keine Komponenten entsprechen Ihren Filtern.")
+                : t("No SBOM components from latest scans.", "Keine SBOM-Komponenten aus den letzten Scans.")}
+            />
+          ) : (
+            <>
+              <div className="table-scroll">
+                <table className="scans-table scans-table--pin">
+                  <thead>
+                    <tr>
+                      {([
+                        { col: "name", label: t("Component", "Komponente") },
+                        { col: "version", label: t("Version", "Version") },
+                        { col: "type", label: t("Type", "Typ") },
+                        { col: "provenance", label: t("Provenance", "Herkunft") },
+                        { col: "licenses", label: t("Licenses", "Lizenzen") },
+                        { col: "targets", label: t("Targets", "Ziele"), numeric: true },
+                      ] as { col: string; label: string; numeric?: boolean }[]).map(h => (
+                        <SortableTh
+                          key={h.col}
+                          label={h.label}
+                          numeric={h.numeric}
+                          active={sbomSort.col === h.col}
+                          dir={sbomSort.dir}
+                          onSort={() => setSbomSort(prev => ({ col: h.col, dir: prev.col === h.col && prev.dir === "asc" ? "desc" : "asc" }))}
+                        />
+                      ))}
+                      <th scope="col">{t("Links", "Links")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSortedSbom.map(c => {
+                      const rowKey = `${c.name}|${c.version}`;
+                      const isExpanded = expandedSboms.has(rowKey);
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr
+                            className={`scans-row-toggle${isExpanded ? " is-expanded" : ""}`}
+                            onClick={() => setExpandedSboms(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
+                          >
+                            <td className="scans-cell-component">
+                              {/* Keyboard route to the row's expansion: the click bubbles to the row. */}
+                              <button type="button" className="scans-row-expand mono" aria-expanded={isExpanded}>
+                                {c.name}
+                              </button>
+                              {c.purl && (
+                                <div className="scans-sub mono scans-purl">{c.purl}</div>
+                              )}
+                            </td>
+                            <td className="mono">{c.version || <NotAvailable />}</td>
+                            <td><span className="tag">{c.type}</span></td>
+                            <td>
+                              {c.provenanceVerified === true && <span className="scans-outcome--ok">{t("Verified", "Verifiziert")}</span>}
+                              {c.provenanceVerified === false && <span className="scans-outcome--neutral">{t("Unverified", "Nicht verifiziert")}</span>}
+                              {c.provenanceVerified == null && <NotAvailable />}
+                            </td>
+                            <td className="scans-small scans-muted">
+                              {c.licenses.length > 0 ? c.licenses.join(", ") : <NotAvailable />}
+                            </td>
+                            <td className="scans-num">{c.targets.length}</td>
+                            <td className="scans-cell-links" onClick={e => e.stopPropagation()}>
+                              <PackageLinks name={c.name} version={c.version} type={c.type} purl={c.purl} />
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="scans-detail-row">
+                              <td colSpan={7}>
+                                <div className="scans-detail">
+                                  <FoundInTargets refs={c.targets} targets={targets} />
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {sbomTotal > sbomLimit && (
+                <Pager
+                  prevDisabled={sbomOffset === 0}
+                  nextDisabled={sbomOffset + sbomLimit >= sbomTotal}
+                  onPrev={() => setSbomOffset(Math.max(0, sbomOffset - sbomLimit))}
+                  onNext={() => setSbomOffset(sbomOffset + sbomLimit)}
+                >
+                  {Math.floor(sbomOffset / sbomLimit) + 1} / {Math.ceil(sbomTotal / sbomLimit)}
+                </Pager>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Manual scan dialog */}
+      {newScanModalOpen && (
+        <div className="scans-modal scans-modal--top" onClick={() => setNewScanModalOpen(false)}>
+          <div
+            className="scans-dialog scans-dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scans-new-scan-title"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="scans-dialog-head">
+              <h2 id="scans-new-scan-title">{t("New scan", "Neuer Scan")}</h2>
+              <IconButton label={t("Close", "Schließen")} onClick={() => setNewScanModalOpen(false)}>
+                <LuX aria-hidden="true" />
+              </IconButton>
+            </div>
+            <form onSubmit={handleSubmitScan} className="scans-form">
+              <fieldset className="scans-fieldset">
+                <legend className="scans-label">{t("Type", "Typ")}</legend>
+                <div className="scans-radios">
+                  <label className="scans-check">
                     <input
                       type="radio"
                       name="scanType"
@@ -2340,9 +1774,9 @@ export const ScansPage = () => {
                         setSourceArchiveTargetName("");
                       }}
                     />
-                    Container Image
+                    {t("Container image", "Container-Image")}
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                  <label className="scans-check">
                     <input
                       type="radio"
                       name="scanType"
@@ -2353,16 +1787,16 @@ export const ScansPage = () => {
                         setScanners(["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog"]);
                       }}
                     />
-                    Source Repository
+                    {t("Source repository", "Quellcode-Repository")}
                   </label>
                 </div>
-              </div>
+              </fieldset>
 
               {scanType === "source_repo" && (
-                <div>
-                  <label style={labelStyle}>{t("Source Input", "Quell-Input")}</label>
-                  <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                <fieldset className="scans-fieldset">
+                  <legend className="scans-label">{t("Source input", "Quell-Input")}</legend>
+                  <div className="scans-radios">
+                    <label className="scans-check">
                       <input
                         type="radio"
                         name="sourceRepoInputMode"
@@ -2372,7 +1806,7 @@ export const ScansPage = () => {
                       />
                       {t("Repository URL", "Repository-URL")}
                     </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", color: "rgba(255,255,255,0.8)" }}>
+                    <label className="scans-check">
                       <input
                         type="radio"
                         name="sourceRepoInputMode"
@@ -2386,22 +1820,23 @@ export const ScansPage = () => {
                       {t("Upload ZIP (one-time)", "ZIP hochladen (einmalig)")}
                     </label>
                   </div>
-                </div>
+                </fieldset>
               )}
 
               {(scanType === "container_image" || (scanType === "source_repo" && sourceRepoInputMode === "url")) && (
                 <div>
-                  <label style={labelStyle}>
+                  <label className="scans-label" htmlFor="scans-new-scan-target">
                     {scanType === "container_image"
-                      ? t("Image Reference", "Image-Referenz")
+                      ? t("Image reference", "Image-Referenz")
                       : t("Repository URL", "Repository-URL")}
                   </label>
                   <input
+                    id="scans-new-scan-target"
                     type="text"
+                    className="scans-input"
                     value={scanTarget}
                     onChange={e => setScanTarget(e.target.value)}
                     placeholder={scanType === "container_image" ? "github.com/hecate/hecate-backend:latest" : "https://github.com/org/repo"}
-                    style={inputStyle}
                     required={scanType === "container_image" || sourceRepoInputMode === "url"}
                   />
                 </div>
@@ -2410,15 +1845,16 @@ export const ScansPage = () => {
               {scanType === "source_repo" && sourceRepoInputMode === "zip" && (
                 <>
                   <div>
-                    <label style={labelStyle}>{t("Repository ZIP", "Repository-ZIP")}</label>
+                    <label className="scans-label" htmlFor="scans-new-scan-archive">{t("Repository ZIP", "Repository-ZIP")}</label>
                     <input
+                      id="scans-new-scan-archive"
                       type="file"
+                      className="scans-input"
                       accept=".zip,application/zip"
                       onChange={e => setSourceArchiveFile(e.target.files?.[0] || null)}
-                      style={inputStyle}
                       required
                     />
-                    <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "rgba(255,255,255,0.45)" }}>
+                    <p className="scans-sub scans-field-hint">
                       {t(
                         "Uploads a source archive for a one-time scan.",
                         "Lädt ein Quellcode-Archiv für einen einmaligen Scan hoch."
@@ -2426,318 +1862,220 @@ export const ScansPage = () => {
                     </p>
                   </div>
                   <div>
-                    <label style={labelStyle}>{t("Scan Name (optional)", "Scan-Name (optional)")}</label>
+                    <label className="scans-label" htmlFor="scans-new-scan-name">{t("Scan name (optional)", "Scan-Name (optional)")}</label>
                     <input
+                      id="scans-new-scan-name"
                       type="text"
+                      className="scans-input"
                       value={sourceArchiveTargetName}
                       onChange={e => setSourceArchiveTargetName(e.target.value)}
                       placeholder={t("Derived from filename", "Wird aus Dateinamen abgeleitet")}
-                      style={inputStyle}
                     />
                   </div>
                 </>
               )}
 
-              <div>
-                <label style={labelStyle}>{t("Scanners", "Scanner")}</label>
+              <fieldset className="scans-fieldset">
+                <legend className="scans-label">{t("Scanners", "Scanner")}</legend>
                 <ScannerCheckboxGroup
                   scanType={scanType}
                   selected={scanners}
                   onToggle={handleScannerToggle}
                 />
-              </div>
+              </fieldset>
 
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="submit"
-                  disabled={isSubmitDisabled}
-                  style={{
-                    padding: "0.625rem 1.5rem",
-                    borderRadius: "6px",
-                    border: "1px solid rgba(255,193,7,0.5)",
-                    background: scanning ? "rgba(255,193,7,0.15)" : "rgba(255,193,7,0.3)",
-                    color: "#ffd43b",
-                    cursor: scanning ? "wait" : "pointer",
-                    fontSize: "0.875rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  {scanning ? t("Scanning...", "Scannt...") : t("Start Scan", "Scan starten")}
+              <div className="scans-dialog-actions">
+                <button type="submit" className="btn-primary" disabled={isSubmitDisabled}>
+                  {scanning ? t("Scanning...", "Scannt...") : t("Start scan", "Scan starten")}
                 </button>
               </div>
             </form>
 
             {scanError && (
-              <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", background: "rgba(255,107,107,0.1)", border: "1px solid rgba(255,107,107,0.3)", borderRadius: "6px", color: "#ff6b6b" }}>
-                {scanError}
-              </div>
-            )}
-
-            </div>
-          </div>
-        )}
-        {/* Scanner tab */}
-        {/* Licenses tab */}
-        {tab === "licenses" && (
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
-              <input
-                type="text"
-                value={licenseSearch}
-                onChange={e => setLicenseSearch(e.target.value)}
-                placeholder={t("Search licenses...", "Lizenzen suchen...")}
-                style={{
-                  padding: "0.375rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  flex: "1 1 200px",
-                  maxWidth: "400px",
-                  minWidth: 0,
-                  outline: "none",
-                }}
-              />
-              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", marginLeft: "auto" }}>
-                {licenseOverviewTotal} {t("licenses", "Lizenzen")}
-              </span>
-            </div>
-
-            {licensesLoading ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonBlock key={i} height={40} radius={6} />
-                ))}
-              </div>
-            ) : licenseOverview.length === 0 ? (
-              <p className="muted" style={{ textAlign: "center", padding: "2rem 0" }}>
-                {t("No license data available. Run a scan with SBOM generation first.", "Keine Lizenzdaten verfügbar. Führen Sie zuerst einen Scan mit SBOM-Generierung durch.")}
-              </p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                      <th style={thStyle} className="license-col-name">{t("License", "Lizenz")}</th>
-                      <th style={thStyle} className="license-col-count">{t("Components", "Komponenten")}</th>
-                      <th style={thStyle} className="license-col-usedby">{t("Used By", "Verwendet von")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {licenseOverview
-                      .filter(item => !licenseSearch || item.licenseId.toLowerCase().includes(licenseSearch.toLowerCase()))
-                      .map(item => (
-                        <tr key={item.licenseId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                          <td style={tdStyle} className="license-col-name">
-                            <span className="license-name" style={{ fontWeight: 500, color: "#fff", fontSize: "0.8125rem" }}>{item.licenseId}</span>
-                          </td>
-                          <td style={tdStyle} className="license-col-count">
-                            <span style={{
-                              padding: "0.125rem 0.5rem",
-                              borderRadius: "4px",
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              background: "rgba(92,132,255,0.15)",
-                              color: "#5c84ff",
-                            }}>
-                              {item.componentCount}
-                            </span>
-                          </td>
-                          <td style={{ ...tdStyle, maxWidth: "500px" }} className="license-col-usedby">
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
-                              {item.components.slice(0, 8).map((c, i) => (
-                                <span key={i} style={{
-                                  padding: "0.0625rem 0.375rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.6875rem",
-                                  background: "rgba(255,255,255,0.06)",
-                                  color: "rgba(255,255,255,0.6)",
-                                }}>
-                                  {c.name}@{c.version}
-                                </span>
-                              ))}
-                              {item.componentCount > 8 && (
-                                <span style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.35)" }}>
-                                  +{item.componentCount - 8} {t("more", "weitere")}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+              <p className="scans-error scans-error--block" role="alert">{scanError}</p>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {tab === "scanner" && (
-          <div>
-            {loading && <SkeletonBlock height={200} radius={8} />}
-            {!loading && !scannerStats && (
-              <p className="muted">{t("Could not reach scanner.", "Scanner nicht erreichbar.")}</p>
-            )}
-            {!loading && scannerStats && !scannerStats.error && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      {/* Licenses tab */}
+      {tab === "licenses" && (
+        <div>
+          <div className="filter-row">
+            <input
+              type="text"
+              className="scans-filter-search"
+              value={licenseSearch}
+              onChange={e => setLicenseSearch(e.target.value)}
+              placeholder={t("Search licenses...", "Lizenzen suchen...")}
+              aria-label={t("Search licenses", "Lizenzen suchen")}
+            />
+            <span className="scans-count">
+              {licenseOverviewTotal} {t("licenses", "Lizenzen")}
+            </span>
+          </div>
+
+          {licensesLoading ? (
+            <div className="scans-skeleton-rows">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonBlock key={i} height={40} radius={4} />
+              ))}
+            </div>
+          ) : licenseOverview.length === 0 ? (
+            <EmptyState title={t("No license data available. Run a scan with SBOM generation first.", "Keine Lizenzdaten verfügbar. Führen Sie zuerst einen Scan mit SBOM-Generierung durch.")} />
+          ) : (
+            <div className="table-scroll">
+              <table className="scans-table scans-table--pin">
+                <thead>
+                  <tr>
+                    <th scope="col">{t("License", "Lizenz")}</th>
+                    <th scope="col" className="scans-num">{t("Components", "Komponenten")}</th>
+                    <th scope="col">{t("Used by", "Verwendet von")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {licenseOverview
+                    .filter(item => !licenseSearch || item.licenseId.toLowerCase().includes(licenseSearch.toLowerCase()))
+                    .map(item => (
+                      <tr key={item.licenseId}>
+                        <td className="scans-cell-strong scans-cell-license">{item.licenseId}</td>
+                        <td className="scans-num">{item.componentCount}</td>
+                        <td>
+                          <div className="scans-used-by">
+                            {item.components.slice(0, 8).map((c, i) => (
+                              <span key={i} className="mono">{c.name}@{c.version}</span>
+                            ))}
+                            {item.componentCount > 8 && (
+                              <span className="scans-sub">
+                                +{item.componentCount - 8} {t("more", "weitere")}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Scanner tab */}
+      {tab === "scanner" && (
+        <div>
+          {loading && <SkeletonBlock height={200} radius={4} />}
+          {!loading && !scannerStats && (
+            <ErrorState title={t("Could not reach scanner.", "Scanner nicht erreichbar.")} />
+          )}
+          {!loading && scannerStats && !scannerStats.error && (
+            <div className="scans-scanner">
+              <div className="scans-scanner-head">
                 {/* Active scans indicator */}
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "1rem",
-                  padding: "1rem 1.25rem",
-                  border: scannerStats.activeScans > 0 ? "1px solid rgba(92,132,255,0.25)" : "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "8px",
-                  background: scannerStats.activeScans > 0 ? "rgba(92,132,255,0.04)" : "rgba(255,255,255,0.02)",
-                }}>
-                  <div style={{
-                    width: "48px", height: "48px", borderRadius: "12px",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: scannerStats.activeScans > 0 ? "rgba(92,132,255,0.15)" : "rgba(255,255,255,0.05)",
-                    fontSize: "1.5rem", fontWeight: 700,
-                    color: scannerStats.activeScans > 0 ? "#5c84ff" : "rgba(255,255,255,0.4)",
-                  }}>
+                <div className="scans-active">
+                  <span className={`scans-active-count${scannerStats.activeScans > 0 ? " is-active" : ""}`}>
                     {scannerStats.activeScans}
-                  </div>
+                  </span>
                   <div>
-                    <div style={{ fontSize: "0.9375rem", fontWeight: 600 }}>
+                    <p className="scans-active-title">
                       {scannerStats.activeScans > 0
                         ? t(`${scannerStats.activeScans} scanner process${scannerStats.activeScans > 1 ? "es" : ""} running`, `${scannerStats.activeScans} Scanner-Prozess${scannerStats.activeScans > 1 ? "e" : ""} aktiv`)
                         : t("Scanner idle", "Scanner inaktiv")}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.125rem" }}>
+                    </p>
+                    <p className="scans-sub">
                       {t("Each target scan runs multiple scanner processes (trivy, grype, syft, ...)", "Jeder Ziel-Scan startet mehrere Scanner-Prozesse (trivy, grype, syft, ...)")}
-                    </div>
+                    </p>
                   </div>
                 </div>
 
                 {/* Time range selector */}
-                <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)", marginRight: "0.25rem" }}>
-                    {t("Range", "Zeitraum")}:
-                  </span>
-                  {[5, 15, 30, 60].map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setChartMinutes(m)}
-                      style={{
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "4px",
-                        fontSize: "0.6875rem",
-                        fontWeight: chartMinutes === m ? 600 : 400,
-                        border: chartMinutes === m ? "1px solid rgba(255,193,7,0.4)" : "1px solid rgba(255,255,255,0.1)",
-                        background: chartMinutes === m ? "rgba(255,193,7,0.12)" : "transparent",
-                        color: chartMinutes === m ? "#ffd43b" : "rgba(255,255,255,0.45)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {m} min
-                    </button>
-                  ))}
-                </div>
-
-                {/* Live resource charts — full width, stacked */}
-                {scannerStats.stale && (
-                  <div style={{
-                    padding: "0.5rem 0.75rem",
-                    borderRadius: "6px",
-                    border: "1px solid rgba(252,196,25,0.3)",
-                    background: "rgba(252,196,25,0.08)",
-                    color: "#fcc419",
-                    fontSize: "0.75rem",
-                  }}>
-                    {t(
-                      `Cached values shown — sidecar didn't respond in time (last update ${scannerStats.staleSeconds ?? 0}s ago).`,
-                      `Zwischengespeicherte Werte — Sidecar hat nicht rechtzeitig geantwortet (letztes Update vor ${scannerStats.staleSeconds ?? 0}s).`,
-                    )}
+                <div className="scans-range">
+                  <span className="scans-sub" id="scans-range-label">{t("Range", "Zeitraum")}</span>
+                  <div className="scans-segments" role="group" aria-labelledby="scans-range-label">
+                    {[5, 15, 30, 60].map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        className="scans-segment"
+                        aria-pressed={chartMinutes === m}
+                        onClick={() => setChartMinutes(m)}
+                      >
+                        {m} min
+                      </button>
+                    ))}
                   </div>
-                )}
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  <LiveChart
-                    label={t("Container Memory", "Container-Speicher")}
-                    data={memHistory}
-                    max={scannerStats.memoryLimitBytes}
-                    current={scannerStats.memoryUsedBytes}
-                    color="#5c84ff"
-                    minutes={chartMinutes}
-                  />
-                  <LiveChart
-                    label={t("Temp Disk (/tmp)", "Temp-Datenträger (/tmp)")}
-                    data={diskHistory}
-                    max={scannerStats.tmpDiskTotalBytes}
-                    current={scannerStats.tmpDiskUsedBytes}
-                    color="#fcc419"
-                    minutes={chartMinutes}
-                  />
                 </div>
+              </div>
 
-                {/* Auto-scan change-detection diagnostics. Helps debug why an
-                    auto-scan-enabled target isn't being scanned: each row
-                    shows the most recent /check probe — when it ran, what
-                    fingerprint the scanner returned, the verdict the
-                    scheduler reached, and the error if /check failed.
-                    Verdict pills are clickable to force-rerun the probe. */}
-                <AutoScanDiagnosticsTable
-                  targets={targets}
-                  onTriggerCheck={async (targetId) => {
-                    const refreshed = await triggerTargetCheck(targetId);
-                    setTargets(prev => prev.map(t => t.id === targetId ? refreshed : t));
-                  }}
+              {/* Live resource charts */}
+              {scannerStats.stale && (
+                <p className="scans-info">
+                  <LuInfo aria-hidden="true" />
+                  <span>
+                    {t(
+                      `Cached values shown: sidecar didn't respond in time (last update ${scannerStats.staleSeconds ?? 0}s ago).`,
+                      `Zwischengespeicherte Werte: Sidecar hat nicht rechtzeitig geantwortet (letztes Update vor ${scannerStats.staleSeconds ?? 0}s).`,
+                    )}
+                  </span>
+                </p>
+              )}
+              <div className="scans-charts">
+                <LiveChart
+                  label={t("Container Memory", "Container-Speicher")}
+                  data={memHistory}
+                  max={scannerStats.memoryLimitBytes}
+                  current={scannerStats.memoryUsedBytes}
+                  color="var(--color-ink-2)"
+                  minutes={chartMinutes}
+                />
+                <LiveChart
+                  label={t("Temp Disk (/tmp)", "Temp-Datenträger (/tmp)")}
+                  data={diskHistory}
+                  max={scannerStats.tmpDiskTotalBytes}
+                  current={scannerStats.tmpDiskUsedBytes}
+                  color="var(--color-ink-2)"
+                  minutes={chartMinutes}
                 />
               </div>
-            )}
-            {!loading && scannerStats?.error && (
-              <div style={{ padding: "0.75rem 1rem", background: "rgba(255,107,107,0.1)", border: "1px solid rgba(255,107,107,0.3)", borderRadius: "6px", color: "#ff6b6b", fontSize: "0.875rem" }}>
-                {scannerStats.error}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+
+              {/* Auto-scan change-detection diagnostics. Helps debug why an
+                  auto-scan-enabled target isn't being scanned: each row
+                  shows the most recent /check probe: when it ran, what
+                  fingerprint the scanner returned, the verdict the
+                  scheduler reached, and the error if /check failed.
+                  Verdict buttons are clickable to force-rerun the probe. */}
+              <AutoScanDiagnosticsTable
+                targets={targets}
+                onTriggerCheck={async (targetId) => {
+                  const refreshed = await triggerTargetCheck(targetId);
+                  setTargets(prev => prev.map(t => t.id === targetId ? refreshed : t));
+                }}
+              />
+            </div>
+          )}
+          {!loading && scannerStats?.error && (
+            <ErrorState title={scannerStats.error} />
+          )}
+        </div>
+      )}
 
       {/* Confirmation modal */}
       {confirmModal && (
-        <div
-          style={{
-            position: "fixed", inset: 0, zIndex: 9999,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-          }}
-          onClick={() => setConfirmModal(null)}
-        >
+        <div className="scans-modal" onClick={() => setConfirmModal(null)}>
           <div
-            style={{
-              background: "#1a1d23", border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "10px", padding: "1.5rem", minWidth: "340px", maxWidth: "440px",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-            }}
+            className="scans-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scans-confirm-title"
             onClick={e => e.stopPropagation()}
           >
-            <h3 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 600 }}>{confirmModal.title}</h3>
-            <p style={{ margin: "0 0 1.25rem", fontSize: "0.875rem", color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>
-              {confirmModal.message}
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setConfirmModal(null)}
-                style={{
-                  padding: "0.4rem 1rem", borderRadius: "6px", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer",
-                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.7)",
-                }}
-              >
+            <h2 id="scans-confirm-title" className="scans-dialog-title">{confirmModal.title}</h2>
+            <p className="scans-dialog-text">{confirmModal.message}</p>
+            <div className="scans-dialog-actions">
+              <button type="button" className="btn" onClick={() => setConfirmModal(null)}>
                 {t("Cancel", "Abbrechen")}
               </button>
-              <button
-                type="button"
-                onClick={confirmModal.onConfirm}
-                style={{
-                  padding: "0.4rem 1rem", borderRadius: "6px", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer",
-                  background: "rgba(255,107,107,0.15)", border: "1px solid rgba(255,107,107,0.35)", color: "#ff6b6b",
-                }}
-              >
+              <button type="button" className="btn scans-btn-danger" onClick={confirmModal.onConfirm}>
                 {t("Delete", "Löschen")}
               </button>
             </div>
@@ -2750,11 +2088,104 @@ export const ScansPage = () => {
 
 // --- Sub-components ---
 
-const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onUpdateGroup, onFilterScans, onCancelScan }: { target: ScanTarget; groupSuggestions?: string[]; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onUpdateGroup?: (targetId: string, group: string | null) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
+/** The placeholder for a value the data does not have. */
+const NotAvailable = () => <span className="scans-na">n/a</span>;
+
+const sumSummary = (items: ScanTarget[]): ScanSummary => {
+  const sum: ScanSummary = { critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0, total: 0 };
+  for (const it of items) {
+    const s = it.latestSummary;
+    if (!s) continue;
+    sum.critical += s.critical || 0;
+    sum.high += s.high || 0;
+    sum.medium += s.medium || 0;
+    sum.low += s.low || 0;
+    sum.negligible += s.negligible || 0;
+    sum.unknown += s.unknown || 0;
+    sum.total += s.total || 0;
+  }
+  return sum;
+};
+
+const SortableTh = ({ label, active, dir, numeric, onSort }: { label: string; active: boolean; dir: "asc" | "desc"; numeric?: boolean; onSort: () => void }) => (
+  <th
+    scope="col"
+    className={numeric ? "scans-num" : undefined}
+    aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
+  >
+    <button type="button" className="scans-sort" onClick={onSort}>
+      {label}
+      {active && (dir === "asc" ? <LuArrowUp aria-hidden="true" /> : <LuArrowDown aria-hidden="true" />)}
+    </button>
+  </th>
+);
+
+const Pager = ({ prevDisabled, nextDisabled, onPrev, onNext, children }: { prevDisabled: boolean; nextDisabled: boolean; onPrev: () => void; onNext: () => void; children: React.ReactNode }) => {
+  const { t } = useI18n();
+  return (
+    <div className="scans-pager">
+      <button type="button" className="btn" disabled={prevDisabled} onClick={onPrev}>
+        {t("Previous", "Zurück")}
+      </button>
+      <span className="scans-pager-position">{children}</span>
+      <button type="button" className="btn" disabled={nextDisabled} onClick={onNext}>
+        {t("Next", "Weiter")}
+      </button>
+    </div>
+  );
+};
+
+const PackageLinks = ({ name, version, type, purl }: { name: string; version: string; type: string; purl?: string | null }) => {
+  const depsUrl = buildDepsDevUrl(name, version, type, purl);
+  const snykUrl = buildSnykUrl(name, version, type, purl);
+  const registryLink = buildRegistryUrl(name, version, type, purl);
+  const socketUrl = buildSocketUrl(name, version, type, purl);
+  const aikidoUrl = buildAikidoUrl(name, version, type, purl);
+  const bundlephobiaUrl = buildBundlephobiaUrl(name, version, type, purl);
+  const npmGraphUrl = buildNpmGraphUrl(name, version, type, purl);
+  const hasAny = depsUrl || snykUrl || registryLink || socketUrl || aikidoUrl || bundlephobiaUrl || npmGraphUrl;
+  if (!hasAny) return null;
+  return (
+    <div className="link-list">
+      {depsUrl && <a href={depsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev">deps.dev</a>}
+      {snykUrl && <a href={snykUrl} target="_blank" rel="noopener noreferrer" title="Snyk">Snyk</a>}
+      {registryLink && <a href={registryLink.url} target="_blank" rel="noopener noreferrer" title={registryLink.label}>{registryLink.label}</a>}
+      {socketUrl && <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev">socket.dev</a>}
+      {aikidoUrl && <a href={aikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev">aikido</a>}
+      {bundlephobiaUrl && <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia">bundlephobia</a>}
+      {npmGraphUrl && <a href={npmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph">npmgraph</a>}
+    </div>
+  );
+};
+
+const FoundInTargets = ({ refs, targets }: { refs: { targetId: string; scanId: string }[]; targets: ScanTarget[] }) => {
+  const { t } = useI18n();
+  return (
+    <div>
+      <p className="scans-detail-heading">{t("Found in targets:", "Gefunden in Zielen:")}</p>
+      <div className="scans-target-links">
+        {refs.map(tgt => {
+          const tgtName = targets.find(tt => tt.id === tgt.targetId)?.name || tgt.targetId;
+          return (
+            <Link
+              key={`${tgt.targetId}-${tgt.scanId}`}
+              to={`/scans/${encodeURIComponent(tgt.scanId)}`}
+              onClick={e => e.stopPropagation()}
+              className="row-link"
+            >
+              {tgtName}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onUpdateGroup, onFilterScans, onCancelScan }: { target: ScanTarget; colSpan: number; groupSuggestions?: string[]; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onUpdateGroup?: (targetId: string, group: string | null) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
   const { scaAutoScanEnabled } = useServerConfig();
   const isRunning = !!target.hasRunningScan;
-  const isPending = target.runningScanStatus === "pending";
   const autoScan = target.autoScan !== false; // default true
   const [editingScanners, setEditingScanners] = useState(false);
   const [selectedScanners, setSelectedScanners] = useState<string[]>([]);
@@ -2762,6 +2193,8 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
   const [groupDraft, setGroupDraft] = useState<string>(target.group || "");
   const datalistId = `group-suggestions-${target.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const isSbomImport = target.type === "sbom-import";
+  const showGroupEditor = !isSbomImport && !!onUpdateGroup && editingGroup;
+  const showScannerEditor = !isSbomImport && editingScanners;
 
   const startEditingGroup = () => {
     setGroupDraft(target.group || "");
@@ -2789,346 +2222,197 @@ const TargetCard = ({ target, groupSuggestions = [], onDelete, onRescan, onToggl
   };
 
   return (
-    <div style={{
-      padding: "1rem 1.25rem",
-      border: isRunning ? `1px solid ${isPending ? "rgba(240,160,48,0.3)" : "rgba(92,132,255,0.3)"}` : "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "8px",
-      background: isRunning ? (isPending ? "rgba(240,160,48,0.04)" : "rgba(92,132,255,0.04)") : "rgba(255,255,255,0.02)",
-      display: "flex",
-      flexDirection: "column",
-      boxSizing: "border-box",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.25rem" }}>
-        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ display: "block", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              {target.type === "container_image" ? "Container" : "Source"}
-            </span>
-            {isRunning && <ScanningBadge status={target.runningScanStatus} />}
-          </div>
-          <Link to={`/scans/targets/${encodeURIComponent(target.id)}`} style={{ textDecoration: "none" }}>
-            <h3 style={{ margin: "0.25rem 0 0", fontSize: "1rem", fontWeight: 600, color: "#ffd43b", wordBreak: "break-word" }}>
-              {target.writePasswordSet && <span title={t("Write-protected", "Schreibgeschützt")}>🔒 </span>}
-              {target.name}
-            </h3>
-          </Link>
-        </div>
-        <button
-          type="button"
-          onClick={() => onDelete(target.id)}
-          title={t("Delete", "Löschen")}
-          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: "1rem", padding: "0.25rem", flexShrink: 0 }}
-        >
-          ×
-        </button>
-      </div>
-      <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0 0 0.5rem", wordBreak: "break-all" }}>
-        {target.id}
-      </p>
-      {!isSbomImport && onUpdateGroup && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginBottom: "0.625rem", flexWrap: "wrap" }}>
-          {editingGroup ? (
-            <>
-              <input
-                list={datalistId}
-                value={groupDraft}
-                onChange={e => setGroupDraft(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") { e.preventDefault(); saveGroup(); }
-                  else if (e.key === "Escape") { e.preventDefault(); cancelEditGroup(); }
-                }}
-                placeholder={t("Application name", "Anwendungsname")}
-                autoFocus
-                style={{
-                  flex: "1 1 140px",
-                  padding: "0.2rem 0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(0,0,0,0.2)",
-                  color: "rgba(255,255,255,0.9)",
-                  fontSize: "0.75rem",
-                  outline: "none",
-                  minWidth: 0,
-                }}
-              />
-              <datalist id={datalistId}>
-                {groupSuggestions.map(g => <option key={g} value={g} />)}
-              </datalist>
-              <button
-                type="button"
-                onClick={saveGroup}
-                style={{ padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: "pointer", background: "rgba(105,219,124,0.15)", border: "1px solid rgba(105,219,124,0.3)", color: "#69db7c" }}
-              >
-                {t("Save", "Speichern")}
-              </button>
-              <button
-                type="button"
-                onClick={cancelEditGroup}
-                style={{ padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: "pointer", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}
-              >
-                {t("Cancel", "Abbrechen")}
-              </button>
-            </>
-          ) : (
-            <>
-              <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                {t("App", "App")}:
-              </span>
-              {target.group ? (
-                <span style={{
-                  display: "inline-block",
-                  padding: "0.1rem 0.45rem",
-                  borderRadius: "4px",
-                  fontSize: "0.7rem",
-                  background: "rgba(255,193,7,0.1)",
-                  border: "1px solid rgba(255,193,7,0.25)",
-                  color: "#ffd43b",
-                }}>{target.group}</span>
-              ) : (
-                <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", fontStyle: "italic" }}>
-                  {t("none", "keine")}
+    <>
+      <tr className="scans-target-row">
+        <td className="scans-cell-target">
+          <div className="scans-target-title">
+            <Link to={`/scans/targets/${encodeURIComponent(target.id)}`} className="row-link scans-target-name">
+              {target.writePasswordSet && (
+                <span className="scans-target-lock" title={t("Write-protected", "Schreibgeschützt")}>
+                  <LuLock role="img" aria-label={t("Write-protected", "Schreibgeschützt")} />
                 </span>
               )}
-              <button
-                type="button"
-                onClick={startEditingGroup}
-                title={t("Edit group", "Gruppe bearbeiten")}
-                style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: "0.65rem", padding: "0.05rem 0.3rem", lineHeight: 1 }}
-              >
-                ✎
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      {target.latestSummary && <SeverityBadges summary={target.latestSummary} />}
-
-      {/* Scanner pills / editor */}
-      <div style={{ marginTop: "0.625rem" }}>
-        {editingScanners && !isSbomImport ? (
-          <div style={{ padding: "0.5rem 0" }}>
-            <div style={{ marginBottom: "0.5rem" }}>
-              <ScannerCheckboxGroup
-                scanType={target.type === "container_image" ? "container_image" : "source_repo"}
-                selected={selectedScanners}
-                onToggle={(id) => setSelectedScanners(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])}
-                compact
-              />
-            </div>
-            <div style={{ display: "flex", gap: "0.375rem" }}>
-              <button
-                type="button"
-                onClick={saveScanners}
-                disabled={selectedScanners.length === 0}
-                style={{
-                  padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: selectedScanners.length === 0 ? "not-allowed" : "pointer",
-                  background: "rgba(105,219,124,0.15)", border: "1px solid rgba(105,219,124,0.3)", color: "#69db7c",
-                  opacity: selectedScanners.length === 0 ? 0.4 : 1,
-                }}
-              >
-                {t("Save", "Speichern")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingScanners(false)}
-                style={{
-                  padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 500, cursor: "pointer",
-                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)",
-                }}
-              >
-                {t("Cancel", "Abbrechen")}
-              </button>
-            </div>
+              {target.name}
+            </Link>
+            {isRunning && <ScanningBadge status={target.runningScanStatus} />}
           </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", flexWrap: "wrap" }}>
-            {(target.scanners || []).map(s => (
-              <span key={s} style={{
-                display: "inline-block", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.675rem",
-                background: "rgba(92,132,255,0.1)", border: "1px solid rgba(92,132,255,0.2)", color: "rgba(92,132,255,0.8)",
-              }}>
-                {s}
-              </span>
-            ))}
-            {!isSbomImport && (
-              <button
-                type="button"
-                onClick={startEditing}
-                title={t("Edit scanners", "Scanner bearbeiten")}
-                style={{
-                  background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "rgba(255,255,255,0.35)",
-                  cursor: "pointer", fontSize: "0.675rem", padding: "0.1rem 0.35rem", lineHeight: 1,
-                }}
-              >
-                ✎
-              </button>
-            )}
+          <div className="scans-sub scans-target-meta">
+            <span>{target.type === "container_image" ? "Container" : "Source"}</span>
+            <span className="mono scans-target-id" title={target.id}>{target.id}</span>
           </div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
-        <div style={{ display: "flex", gap: "1rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.4)" }}>
-          <span
-            role="button"
-            tabIndex={0}
+        </td>
+        <td className="scans-cell-findings" data-label={t("Findings", "Ergebnisse")}>
+          {target.latestSummary && <SeverityBadges summary={target.latestSummary} />}
+        </td>
+        <td className="scans-cell-last" data-label={t("Last scan", "Letzter Scan")}>
+          <button
+            type="button"
+            className="scans-last"
             onClick={() => onFilterScans(target.id, target.name)}
-            onKeyDown={e => e.key === "Enter" && onFilterScans(target.id, target.name)}
-            style={{ cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "2px" }}
             title={t("Show scans for this target", "Scans für dieses Ziel anzeigen")}
           >
-            {target.scanCount} {t("scans", "Scans")}
-          </span>
-          {target.lastScanAt && <span>{t("Last", "Letzter")}: {formatDateTime(target.lastScanAt)}</span>}
-        </div>
-        <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", marginLeft: "auto" }}>
-          {target.type === "sbom-import" ? null : isRunning && (target.runningScanId || target.latestScanId) && onCancelScan ? (
-            <button
-              type="button"
-              onClick={() => onCancelScan(target.runningScanId || target.latestScanId!)}
-              title={t("Stop scan", "Scan stoppen")}
-              style={{
-                background: "rgba(255,107,107,0.15)",
-                border: "1px solid rgba(255,107,107,0.3)",
-                color: "#ff6b6b",
-                cursor: "pointer",
-                fontSize: "0.7rem",
-                padding: "0.2rem 0.5rem",
-                borderRadius: "4px",
-                fontWeight: 500,
-              }}
-            >
-              ■ Stop
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onRescan(target)}
-              title={t("Rescan", "Erneut scannen")}
-              style={{
-                background: "rgba(255,193,7,0.15)",
-                border: "1px solid rgba(255,193,7,0.3)",
-                color: "#ffd43b",
-                cursor: "pointer",
-                fontSize: "0.7rem",
-                padding: "0.2rem 0.5rem",
-                borderRadius: "4px",
-                fontWeight: 500,
-              }}
-            >
-              ↻ Scan
-            </button>
+            {target.lastScanAt && <span className="scans-nowrap">{formatDateTime(target.lastScanAt)}</span>}
+            <span className="scans-last-count">{target.scanCount} {t("scans", "Scans")}</span>
+          </button>
+        </td>
+        <td className="scans-cell-app" data-label={t("App", "App")}>
+          {!isSbomImport && onUpdateGroup && (
+            <div className="scans-inline-value">
+              {target.group ? (
+                <span>{target.group}</span>
+              ) : (
+                <span className="scans-muted">{t("none", "keine")}</span>
+              )}
+              <IconButton
+                label={t("Edit group", "Gruppe bearbeiten")}
+                aria-expanded={editingGroup}
+                onClick={editingGroup ? cancelEditGroup : startEditingGroup}
+              >
+                <LuPencil aria-hidden="true" />
+              </IconButton>
+            </div>
           )}
-          {scaAutoScanEnabled && target.type !== "sbom-import" && (
-            <button
-              type="button"
-              onClick={() => onToggleAutoScan(target)}
-              title={autoScan ? t("Disable auto-scan", "Auto-Scan deaktivieren") : t("Enable auto-scan", "Auto-Scan aktivieren")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.375rem",
-                padding: "0.2rem 0.5rem",
-                borderRadius: "4px",
-                fontSize: "0.7rem",
-                fontWeight: 500,
-                border: autoScan ? "1px solid rgba(105,219,124,0.3)" : "1px solid rgba(255,255,255,0.1)",
-                background: autoScan ? "rgba(105,219,124,0.1)" : "rgba(255,255,255,0.03)",
-                color: autoScan ? "#69db7c" : "rgba(255,255,255,0.35)",
-                cursor: "pointer",
-              }}
-            >
-              <span style={{
-                display: "inline-block",
-                width: "24px",
-                height: "14px",
-                borderRadius: "7px",
-                background: autoScan ? "rgba(105,219,124,0.4)" : "rgba(255,255,255,0.15)",
-                position: "relative",
-                transition: "background 0.2s",
-              }}>
-                <span style={{
-                  position: "absolute",
-                  top: "2px",
-                  left: autoScan ? "12px" : "2px",
-                  width: "10px",
-                  height: "10px",
-                  borderRadius: "50%",
-                  background: autoScan ? "#69db7c" : "rgba(255,255,255,0.4)",
-                  transition: "left 0.2s, background 0.2s",
-                }} />
-              </span>
-              Auto-Scan
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+        </td>
+        <td className="scans-cell-scanners" data-label={t("Scanners", "Scanner")}>
+          <div className="scans-inline-value">
+            <span className="scans-scanner-list">{(target.scanners || []).join(", ")}</span>
+            {!isSbomImport && (
+              <IconButton
+                label={t("Edit scanners", "Scanner bearbeiten")}
+                aria-expanded={editingScanners}
+                onClick={editingScanners ? () => setEditingScanners(false) : startEditing}
+              >
+                <LuPencil aria-hidden="true" />
+              </IconButton>
+            )}
+          </div>
+        </td>
+        {scaAutoScanEnabled && (
+          <td className="scans-cell-auto" data-label="Auto-Scan">
+            {target.type !== "sbom-import" && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoScan}
+                className="scans-switch"
+                onClick={() => onToggleAutoScan(target)}
+                title={autoScan ? t("Disable auto-scan", "Auto-Scan deaktivieren") : t("Enable auto-scan", "Auto-Scan aktivieren")}
+                aria-label={autoScan ? t("Disable auto-scan", "Auto-Scan deaktivieren") : t("Enable auto-scan", "Auto-Scan aktivieren")}
+              >
+                <span className="scans-switch-track"><span className="scans-switch-knob" /></span>
+              </button>
+            )}
+          </td>
+        )}
+        <td className="scans-cell-actions">
+          <div className="scans-row-actions">
+            {target.type === "sbom-import" ? null : isRunning && (target.runningScanId || target.latestScanId) && onCancelScan ? (
+              <button
+                type="button"
+                className="btn scans-row-action"
+                onClick={() => onCancelScan(target.runningScanId || target.latestScanId!)}
+                title={t("Stop scan", "Scan stoppen")}
+              >
+                <LuSquare aria-hidden="true" />
+                Stop
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn scans-row-action"
+                onClick={() => onRescan(target)}
+                title={t("Rescan", "Erneut scannen")}
+              >
+                <LuRefreshCw aria-hidden="true" />
+                Scan
+              </button>
+            )}
+            <IconButton className="scans-outline" label={t("Delete", "Löschen")} onClick={() => onDelete(target.id)}>
+              <LuTrash2 aria-hidden="true" />
+            </IconButton>
+          </div>
+        </td>
+      </tr>
+      {(showGroupEditor || showScannerEditor) && (
+        <tr className="scans-editor-row">
+          <td colSpan={colSpan}>
+            <div className="well scans-editor">
+              {showGroupEditor && (
+                <div className="scans-editor-group">
+                  <input
+                    list={datalistId}
+                    value={groupDraft}
+                    onChange={e => setGroupDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { e.preventDefault(); saveGroup(); }
+                      else if (e.key === "Escape") { e.preventDefault(); cancelEditGroup(); }
+                    }}
+                    placeholder={t("Application name", "Anwendungsname")}
+                    aria-label={t("Application name", "Anwendungsname")}
+                    autoFocus
+                  />
+                  <datalist id={datalistId}>
+                    {groupSuggestions.map(g => <option key={g} value={g} />)}
+                  </datalist>
+                  <button type="button" className="btn" onClick={saveGroup}>
+                    {t("Save", "Speichern")}
+                  </button>
+                  <button type="button" className="btn" onClick={cancelEditGroup}>
+                    {t("Cancel", "Abbrechen")}
+                  </button>
+                </div>
+              )}
+              {showScannerEditor && (
+                <div className="scans-editor-scanners">
+                  <ScannerCheckboxGroup
+                    scanType={target.type === "container_image" ? "container_image" : "source_repo"}
+                    selected={selectedScanners}
+                    onToggle={(id) => setSelectedScanners(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])}
+                    compact
+                  />
+                  <div className="scans-editor-actions">
+                    <button type="button" className="btn" onClick={saveScanners} disabled={selectedScanners.length === 0}>
+                      {t("Save", "Speichern")}
+                    </button>
+                    <button type="button" className="btn" onClick={() => setEditingScanners(false)}>
+                      {t("Cancel", "Abbrechen")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 };
 
 const ScanningBadge = ({ status }: { status?: string | null }) => {
   const isPending = status === "pending";
-  const color = isPending ? "#f0a030" : "#5c84ff";
   const label = isPending ? "Queued..." : "Scanning...";
-  return (
-    <span style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: "0.25rem",
-      padding: "0.125rem 0.5rem",
-      borderRadius: "4px",
-      fontSize: "0.675rem",
-      fontWeight: 600,
-      background: isPending ? "rgba(240,160,48,0.15)" : "rgba(92,132,255,0.15)",
-      color,
-      animation: "pulse-badge 1.5s ease-in-out infinite",
-    }}>
-      <span style={{
-        width: "6px",
-        height: "6px",
-        borderRadius: "50%",
-        background: color,
-        animation: "pulse-dot 1.5s ease-in-out infinite",
-      }} />
-      {label}
-      <style>{`
-        @keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-        @keyframes pulse-dot { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.5; } }
-      `}</style>
-    </span>
-  );
+  return <span className={`scans-running${isPending ? " is-queued" : ""}`}>{label}</span>;
 };
 
 const SourceBadge = ({ source }: { source: string }) => {
-  const labels: Record<string, { text: string; color: string }> = {
-    manual: { text: "Manual", color: "rgba(255,255,255,0.5)" },
-    ci_cd: { text: "CI/CD", color: "#5c84ff" },
-    scheduled: { text: "Auto", color: "#69db7c" },
+  const labels: Record<string, string> = {
+    manual: "Manual",
+    ci_cd: "CI/CD",
+    scheduled: "Auto",
   };
-  const { text, color } = labels[source] || { text: source, color: "rgba(255,255,255,0.4)" };
-  return (
-    <span style={{
-      padding: "0.125rem 0.5rem",
-      borderRadius: "4px",
-      fontSize: "0.75rem",
-      fontWeight: 500,
-      background: `${color}15`,
-      color,
-    }}>
-      {text}
-    </span>
-  );
+  return <span className="tag">{labels[source] || source}</span>;
 };
 
 type DataPoint = { time: number; value: number };
+
+type VerdictTone = "success" | "error" | "info" | "muted";
 
 // Per-target auto-scan diagnostics. Renders one row per `autoScan: true`
 // target with the result of the most recent `/check` probe so users can
 // debug why a target isn't being auto-scanned even with the toggle on.
 // Backend persists every probe result via
 // ``ScanTargetRepository.update_last_check``. Verdict cells are clickable
-// to force-rerun the probe out-of-band — `onTriggerCheck` is async so the
+// to force-rerun the probe out-of-band: `onTriggerCheck` is async so the
 // row can show a loading state during the in-flight call.
 const AutoScanDiagnosticsTable = ({
   targets,
@@ -3173,17 +2457,12 @@ const AutoScanDiagnosticsTable = ({
 
   if (autoScanTargets.length === 0) {
     return (
-      <div style={{ marginTop: "0.5rem" }}>
-        <h3 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.5rem 0" }}>
+      <section>
+        <h2 className="scans-subhead">
           {t("Auto-scan diagnostics", "Auto-Scan-Diagnose")}
-        </h3>
-        <p className="muted" style={{ fontSize: "0.8125rem", margin: 0 }}>
-          {t(
-            "No targets with auto-scan enabled.",
-            "Keine Ziele mit aktivem Auto-Scan."
-          )}
-        </p>
-      </div>
+        </h2>
+        <EmptyState title={t("No targets with auto-scan enabled.", "Keine Ziele mit aktivem Auto-Scan.")} />
+      </section>
     );
   }
 
@@ -3199,86 +2478,72 @@ const AutoScanDiagnosticsTable = ({
     return sb - sa;
   });
 
-  const verdictPill = (target: ScanTarget): { label: string; bg: string; fg: string; border: string; tooltip: string } => {
+  const verdictOf = (target: ScanTarget): { label: string; tone: VerdictTone; tooltip: string } => {
     switch (target.lastCheckVerdict) {
       case "changed":
         return {
-          label: t("changed → scan", "geändert → Scan"),
-          bg: "rgba(81,207,102,0.12)",
-          fg: "#51cf66",
-          border: "rgba(81,207,102,0.3)",
+          label: t("changed, scan", "geändert, Scan"),
+          tone: "success",
           tooltip: t(
-            "Current fingerprint differs from the stored one — auto-scan submitted.",
-            "Aktueller Fingerprint weicht vom gespeicherten ab — Auto-Scan submitted."
+            "Current fingerprint differs from the stored one: auto-scan submitted.",
+            "Aktueller Fingerprint weicht vom gespeicherten ab: Auto-Scan submitted."
           ),
         };
       case "unchanged":
         return {
-          label: t("unchanged → skip", "unverändert → übersprungen"),
-          bg: "rgba(255,255,255,0.06)",
-          fg: "rgba(255,255,255,0.55)",
-          border: "rgba(255,255,255,0.15)",
+          label: t("unchanged, skip", "unverändert, übersprungen"),
+          tone: "muted",
           tooltip: t(
-            "Current fingerprint matches the stored one — no scan needed.",
-            "Aktueller Fingerprint stimmt mit dem gespeicherten überein — kein Scan nötig."
+            "Current fingerprint matches the stored one: no scan needed.",
+            "Aktueller Fingerprint stimmt mit dem gespeicherten überein: kein Scan nötig."
           ),
         };
       case "first_scan":
         return {
           label: t("first scan", "erster Scan"),
-          bg: "rgba(92,132,255,0.12)",
-          fg: "#5c84ff",
-          border: "rgba(92,132,255,0.3)",
+          tone: "info",
           tooltip: t(
-            "No stored fingerprint yet — auto-scan will run an initial scan.",
-            "Noch kein gespeicherter Fingerprint — Auto-Scan startet einen Initial-Scan."
+            "No stored fingerprint yet: auto-scan will run an initial scan.",
+            "Noch kein gespeicherter Fingerprint: Auto-Scan startet einen Initial-Scan."
           ),
         };
       case "check_failed_skipped":
         return {
-          label: t("check failed → skip", "Check fehlgeschlagen → übersprungen"),
-          bg: "rgba(255,193,7,0.12)",
-          fg: "#fcc419",
-          border: "rgba(255,193,7,0.3)",
+          label: t("check failed, skip", "Check fehlgeschlagen, übersprungen"),
+          tone: "error",
           tooltip: t(
             "Scanner /check call failed but a previous fingerprint exists, so the run was skipped to avoid wasted scans. Inspect the error column.",
-            "Scanner-/check-Aufruf fehlgeschlagen, aber ein früherer Fingerprint existiert — Run übersprungen, um unnötige Scans zu vermeiden. Fehler in der nächsten Spalte prüfen."
+            "Scanner-/check-Aufruf fehlgeschlagen, aber ein früherer Fingerprint existiert: Run übersprungen, um unnötige Scans zu vermeiden. Fehler in der nächsten Spalte prüfen."
           ),
         };
       case "check_failed_scanned":
         return {
-          label: t("check failed → scan", "Check fehlgeschlagen → Scan"),
-          bg: "rgba(255,107,107,0.12)",
-          fg: "#ff6b6b",
-          border: "rgba(255,107,107,0.3)",
+          label: t("check failed, scan", "Check fehlgeschlagen, Scan"),
+          tone: "error",
           tooltip: t(
-            "Scanner /check failed and there is no previous fingerprint — auto-scan ran a fail-open initial scan.",
-            "Scanner-/check fehlgeschlagen und es gibt keinen früheren Fingerprint — Auto-Scan startete einen fail-open Initial-Scan."
+            "Scanner /check failed and there is no previous fingerprint: auto-scan ran a fail-open initial scan.",
+            "Scanner-/check fehlgeschlagen und es gibt keinen früheren Fingerprint: Auto-Scan startete einen fail-open Initial-Scan."
           ),
         };
       default: {
         // The change-detection /check probe hasn't run yet, but if the target
         // already carries scan data (stored fingerprint or a last-scan time) it
-        // HAS been scanned — "never probed" would be misleading. Distinguish the
-        // two so a freshly-scanned target reads "scanned · probe pending".
+        // HAS been scanned, so "never probed" would be misleading. Distinguish the
+        // two so a freshly-scanned target reads "scanned, probe pending".
         const hasScanData = !!(target.lastImageDigest || target.lastCommitSha || target.lastScanAt);
         if (hasScanData) {
           return {
-            label: t("scanned · probe pending", "gescannt · Probe ausstehend"),
-            bg: "rgba(92,132,255,0.1)",
-            fg: "#5c84ff",
-            border: "rgba(92,132,255,0.25)",
+            label: t("scanned, probe pending", "gescannt, Probe ausstehend"),
+            tone: "info",
             tooltip: t(
-              "This target has been scanned, but the auto-scan change-detection probe hasn't run on it yet. The next auto-scan tick — or a click here — will populate the Last Check / Current columns.",
-              "Dieses Ziel wurde gescannt, aber die Auto-Scan-Änderungsprüfung lief noch nicht. Der nächste Auto-Scan-Lauf — oder ein Klick hier — füllt die Spalten Letzte Prüfung / Aktuell."
+              "This target has been scanned, but the auto-scan change-detection probe hasn't run on it yet. The next auto-scan tick, or a click here, will populate the Last Check / Current columns.",
+              "Dieses Ziel wurde gescannt, aber die Auto-Scan-Änderungsprüfung lief noch nicht. Der nächste Auto-Scan-Lauf oder ein Klick hier füllt die Spalten Letzte Prüfung / Aktuell."
             ),
           };
         }
         return {
           label: t("never probed", "noch nie geprüft"),
-          bg: "rgba(255,255,255,0.04)",
-          fg: "rgba(255,255,255,0.4)",
-          border: "rgba(255,255,255,0.1)",
+          tone: "muted",
           tooltip: t(
             "The auto-scan scheduler has not probed this target yet. The next run will populate this row.",
             "Der Auto-Scan-Scheduler hat dieses Ziel noch nicht geprüft. Der nächste Lauf füllt diese Zeile."
@@ -3289,119 +2554,89 @@ const AutoScanDiagnosticsTable = ({
   };
 
   const truncate = (value: string | null | undefined, head = 12): string => {
-    if (!value) return "—";
+    if (!value) return "n/a";
     if (value.length <= head + 4) return value;
     return `${value.slice(0, head)}…`;
   };
 
   return (
-    <div style={{ marginTop: "0.5rem" }}>
-      <h3 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.25rem 0" }}>
+    <section>
+      <h2 className="scans-subhead">
         {t("Auto-scan diagnostics", "Auto-Scan-Diagnose")}
-      </h3>
-      <p className="muted" style={{ fontSize: "0.75rem", margin: "0 0 0.5rem 0" }}>
+      </h2>
+      <p className="scans-sub scans-subhead-text">
         {t(
           "Most recent change-detection probe per auto-scan target. Use this to figure out why a target isn't being scanned automatically.",
           "Letzter Change-Detection-Probe pro Auto-Scan-Ziel. Damit lässt sich nachvollziehen, warum ein Ziel nicht automatisch gescannt wird."
         )}
       </p>
-      <div style={{ overflowX: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
+      <div className="table-scroll">
+        <table className="scans-table scans-table--pin">
           <thead>
-            <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-              <th style={diagHeaderStyle}>{t("Target", "Ziel")}</th>
-              <th style={diagHeaderStyle}>{t("Type", "Typ")}</th>
-              <th style={diagHeaderStyle}>{t("Last check", "Letzter Check")}</th>
-              <th style={diagHeaderStyle}>{t("Current", "Aktuell")}</th>
-              <th style={diagHeaderStyle}>{t("Stored", "Gespeichert")}</th>
-              <th style={diagHeaderStyle}>{t("Verdict", "Ergebnis")}</th>
-              <th style={diagHeaderStyle}>{t("Error", "Fehler")}</th>
+            <tr>
+              <th scope="col">{t("Target", "Ziel")}</th>
+              <th scope="col">{t("Verdict", "Ergebnis")}</th>
+              <th scope="col">{t("Error", "Fehler")}</th>
+              <th scope="col">{t("Last check", "Letzter Check")}</th>
+              <th scope="col">{t("Current", "Aktuell")}</th>
+              <th scope="col">{t("Stored", "Gespeichert")}</th>
+              <th scope="col">{t("Type", "Typ")}</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map(target => {
-              const pill = verdictPill(target);
+              const verdict = verdictOf(target);
               const stored = target.type === "container_image"
                 ? target.lastImageDigest
                 : target.lastCommitSha;
+              const isPending = pending.has(target.id);
+              const tooltip = isPending
+                ? t("Running /check probe…", "/check-Probe läuft …")
+                : `${verdict.tooltip}\n\n${t("Click to re-run the probe.", "Zum erneuten Ausführen klicken.")}`;
+              const checkError = errors[target.id] || target.lastCheckError;
               return (
-                <tr key={target.id} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                  <td style={diagCellStyle}>
-                    <div style={{ fontWeight: 500 }}>{target.name}</div>
+                <tr key={target.id}>
+                  <td className="scans-cell-diag-target">
+                    <div className="scans-cell-strong">{target.name}</div>
                     {target.id !== target.name && (
-                      <div className="muted" style={{ fontSize: "0.6875rem" }}>{target.id}</div>
+                      <div className="scans-sub mono scans-target-id" title={target.id}>{target.id}</div>
                     )}
                   </td>
-                  <td style={diagCellStyle}>
-                    <span style={{
-                      padding: "0.125rem 0.4rem", borderRadius: "4px",
-                      background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.7)",
-                      fontSize: "0.6875rem",
-                    }}>
-                      {target.type === "container_image" ? t("image", "Image") : t("repo", "Repo")}
-                    </span>
+                  <td>
+                    <button
+                      type="button"
+                      className={`scans-verdict scans-verdict--${verdict.tone}`}
+                      onClick={() => runCheck(target.id)}
+                      disabled={isPending}
+                      aria-busy={isPending}
+                      title={tooltip}
+                    >
+                      <LuRefreshCw aria-hidden="true" />
+                      {verdict.label}
+                    </button>
                   </td>
-                  <td style={diagCellStyle} title={target.lastCheckAt || undefined}>
-                    {target.lastCheckAt ? formatDateTime(target.lastCheckAt) : "—"}
+                  <td>
+                    {checkError && (
+                      <span title={checkError} className="scans-check-error">{checkError}</span>
+                    )}
                   </td>
-                  <td style={diagCellStyle}>
-                    <code title={target.lastCheckCurrentFingerprint || undefined} style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.7)" }}>
+                  <td className="scans-nowrap scans-small" title={target.lastCheckAt || undefined}>
+                    {target.lastCheckAt ? formatDateTime(target.lastCheckAt) : <NotAvailable />}
+                  </td>
+                  <td>
+                    <code className="mono" title={target.lastCheckCurrentFingerprint || undefined}>
                       {truncate(target.lastCheckCurrentFingerprint)}
                     </code>
                   </td>
-                  <td style={diagCellStyle}>
-                    <code title={stored || undefined} style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.7)" }}>
+                  <td>
+                    <code className="mono" title={stored || undefined}>
                       {truncate(stored)}
                     </code>
                   </td>
-                  <td style={diagCellStyle}>
-                    {(() => {
-                      const isPending = pending.has(target.id);
-                      const tooltip = isPending
-                        ? t("Running /check probe…", "/check-Probe läuft …")
-                        : `${pill.tooltip}\n\n${t("Click to re-run the probe.", "Zum erneuten Ausführen klicken.")}`;
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => runCheck(target.id)}
-                          disabled={isPending}
-                          title={tooltip}
-                          style={{
-                            padding: "0.125rem 0.5rem",
-                            borderRadius: "4px",
-                            background: pill.bg,
-                            color: pill.fg,
-                            border: `1px solid ${pill.border}`,
-                            fontSize: "0.6875rem",
-                            whiteSpace: "nowrap",
-                            cursor: isPending ? "wait" : "pointer",
-                            opacity: isPending ? 0.6 : 1,
-                            font: "inherit",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.25rem",
-                          }}
-                        >
-                          {isPending && (
-                            <span aria-hidden style={{ fontSize: "0.625rem" }}>⟳</span>
-                          )}
-                          {pill.label}
-                        </button>
-                      );
-                    })()}
-                  </td>
-                  <td style={diagCellStyle}>
-                    {errors[target.id] ? (
-                      <span title={errors[target.id]} style={{ color: "#ff6b6b", fontSize: "0.6875rem", display: "inline-block", maxWidth: "20ch", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>
-                        {errors[target.id]}
-                      </span>
-                    ) : target.lastCheckError ? (
-                      <span title={target.lastCheckError} style={{ color: "#ff6b6b", fontSize: "0.6875rem", display: "inline-block", maxWidth: "20ch", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>
-                        {target.lastCheckError}
-                      </span>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
+                  <td>
+                    <span className="tag">
+                      {target.type === "container_image" ? t("image", "Image") : t("repo", "Repo")}
+                    </span>
                   </td>
                 </tr>
               );
@@ -3409,30 +2644,20 @@ const AutoScanDiagnosticsTable = ({
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 };
 
-const diagHeaderStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem 0.75rem",
-  fontWeight: 600,
-  fontSize: "0.6875rem",
-  color: "rgba(255,255,255,0.5)",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
-const diagCellStyle: React.CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  verticalAlign: "top",
+// A canvas cannot read CSS variables, so `var(--token)` is resolved to its computed value.
+const cssToken = (value: string): string => {
+  const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
+  return token ? getComputedStyle(document.documentElement).getPropertyValue(token).trim() : value;
 };
 
 const LiveChart = ({ label, data, max, current, color, minutes }: { label: string; data: DataPoint[]; max: number; current: number; color: string; minutes: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; value: number; time: number } | null>(null);
-  const CHART_H = 120;
 
   const fmt = useCallback((bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -3465,6 +2690,10 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     const pad = { top: 4, bottom: 2 };
     const chartH = h - pad.top - pad.bottom;
 
+    const lineColor = cssToken(color);
+    const ruleColor = cssToken("var(--color-rule)");
+    const mutedColor = cssToken("var(--color-muted)");
+
     // Y-axis: auto-scale to data with 20% headroom, minimum = max/5 so flat lines sit mid-chart
     const dataMax = Math.max(...visible.map(d => d.value), 1);
     const yMax = Math.max(dataMax * 1.2, max > 0 ? max * 0.05 : dataMax * 1.5);
@@ -3472,18 +2701,18 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     // Grid lines + labels
     const gridLines = 4;
     ctx.textAlign = "right";
-    ctx.font = "10px monospace";
+    ctx.font = `12px ${cssToken("var(--font-body)")}`;
     for (let i = 0; i <= gridLines; i++) {
       const y = pad.top + (chartH / gridLines) * i;
       if (i > 0 && i < gridLines) {
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        ctx.strokeStyle = ruleColor;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
         ctx.stroke();
       }
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillStyle = mutedColor;
       const val = yMax * (1 - i / gridLines);
       ctx.fillText(fmt(val), w - 4, y + 12);
     }
@@ -3492,14 +2721,14 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     if (max > 0 && max <= yMax) {
       const limitY = pad.top + chartH - (max / yMax) * chartH;
       ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = "rgba(255,107,107,0.3)";
+      ctx.strokeStyle = mutedColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, limitY);
       ctx.lineTo(w, limitY);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = "rgba(255,107,107,0.4)";
+      ctx.fillStyle = mutedColor;
       ctx.textAlign = "left";
       ctx.fillText("limit", 4, limitY - 3);
       ctx.textAlign = "right";
@@ -3509,7 +2738,7 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     const toX = (t: number) => ((t - windowStart) / windowMs) * w;
     const toY = (v: number) => pad.top + chartH - (v / yMax) * chartH;
 
-    // Build drawing points — extend flat line from first point leftward to fill chart
+    // Build drawing points: extend flat line from first point leftward to fill chart
     const pts: { x: number; y: number }[] = visible.map(d => ({ x: toX(d.time), y: toY(d.value) }));
     // Always extend to right edge at current value
     if (pts.length > 0) {
@@ -3525,11 +2754,10 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     for (const p of pts) ctx.lineTo(p.x, p.y);
     ctx.lineTo(pts[pts.length - 1].x, h);
     ctx.closePath();
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, color + "30");
-    grad.addColorStop(1, color + "05");
-    ctx.fillStyle = grad;
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = lineColor;
     ctx.fill();
+    ctx.globalAlpha = 1;
 
     // Line
     ctx.beginPath();
@@ -3537,7 +2765,7 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
       if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
       else ctx.lineTo(pts[i].x, pts[i].y);
     }
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = lineColor;
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -3545,7 +2773,7 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
     const last = pts[pts.length - 1];
     ctx.beginPath();
     ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
-    ctx.fillStyle = color;
+    ctx.fillStyle = lineColor;
     ctx.fill();
   }, [visible, max, color, windowMs, windowStart]);
 
@@ -3575,47 +2803,33 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
   };
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        padding: "1rem 1.25rem",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "8px",
-        background: "rgba(255,255,255,0.02)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
-        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {label}
-        </span>
-        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.35)" }}>
-          <span style={{ fontWeight: 700, color, fontSize: "1rem" }}>{fmt(current)}</span>
-          {" "}/ {fmt(max)} ({pct.toFixed(1)}%)
+    <div ref={containerRef} className="scans-chart">
+      <div className="scans-chart-head">
+        <span className="scans-sub">{label}</span>
+        <span className="scans-chart-values">
+          <span className="scans-chart-current">{fmt(current)}</span>
+          <span className="scans-sub">{fmt(max)}</span>
+          <span className="scans-sub">{pct.toFixed(1)}%</span>
         </span>
       </div>
-      <div style={{ position: "relative" }}>
+      <div className="scans-chart-plot">
         <canvas
           ref={canvasRef}
-          style={{ width: "100%", height: `${CHART_H}px`, display: "block", borderRadius: "4px", cursor: "crosshair" }}
+          className="scans-chart-canvas"
+          aria-label={`${label}: ${fmt(current)} / ${fmt(max)}`}
+          role="img"
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setTooltip(null)}
         />
         {tooltip && (
           <>
-            <div style={{
-              position: "absolute", top: 0, left: tooltip.x, width: "1px", height: `${CHART_H}px`,
-              background: "rgba(255,255,255,0.2)", pointerEvents: "none",
-            }} />
-            <div style={{
-              position: "absolute", top: "4px",
-              left: Math.min(tooltip.x + 8, (containerRef.current?.clientWidth ?? 300) - 130),
-              background: "rgba(20,22,28,0.95)", border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: "6px", padding: "0.375rem 0.625rem", pointerEvents: "none",
-              fontSize: "0.75rem", whiteSpace: "nowrap",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-            }}>
-              <div style={{ color: "rgba(255,255,255,0.5)", marginBottom: "0.125rem" }}>{fmtTime(tooltip.time)}</div>
-              <div style={{ color, fontWeight: 600 }}>{fmt(tooltip.value)}</div>
+            <div className="scans-chart-cursor" style={{ left: tooltip.x }} />
+            <div
+              className="scans-chart-tooltip"
+              style={{ left: Math.min(tooltip.x + 8, (containerRef.current?.clientWidth ?? 300) - 130) }}
+            >
+              <div className="scans-sub">{fmtTime(tooltip.time)}</div>
+              <div className="scans-chart-current">{fmt(tooltip.value)}</div>
             </div>
           </>
         )}
@@ -3624,96 +2838,6 @@ const LiveChart = ({ label, data, max, current, color, minutes }: { label: strin
   );
 };
 
-const ResourceCard = ({ label, used, total, color }: { label: string; used: number; total: number; color: string }) => {
-  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
-  const fmt = (bytes: number) => {
-    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-    return `${(bytes / 1024).toFixed(0)} KB`;
-  };
-  return (
-    <div style={{
-      padding: "1rem 1.25rem",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "8px",
-      background: "rgba(255,255,255,0.02)",
-    }}>
-      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.375rem", fontSize: "0.8125rem" }}>
-        <span style={{ fontWeight: 600 }}>{fmt(used)}</span>
-        <span style={{ color: "rgba(255,255,255,0.4)" }}>{fmt(total)}</span>
-      </div>
-      <div style={{ height: "6px", borderRadius: "3px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-        <div style={{
-          height: "100%",
-          width: `${pct}%`,
-          borderRadius: "3px",
-          background: pct > 85 ? "#ff6b6b" : color,
-          transition: "width 0.3s",
-        }} />
-      </div>
-      <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.35)", marginTop: "0.25rem", textAlign: "right" }}>
-        {pct.toFixed(1)}%
-      </div>
-    </div>
-  );
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const colors: Record<string, string> = {
-    completed: "#69db7c",
-    running: "#5c84ff",
-    pending: "#fcc419",
-    failed: "#ff6b6b",
-    cancelled: "#ff922b",
-  };
-  const color = colors[status] || "rgba(255,255,255,0.4)";
-  return (
-    <span style={{
-      padding: "0.125rem 0.5rem",
-      borderRadius: "4px",
-      fontSize: "0.75rem",
-      fontWeight: 600,
-      background: `${color}20`,
-      color,
-    }}>
-      {status}
-    </span>
-  );
-};
-
-// Styles
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem 0.75rem",
-  color: "rgba(255,255,255,0.5)",
-  fontWeight: 500,
-  fontSize: "0.8125rem",
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "0.625rem 0.75rem",
-  verticalAlign: "middle",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.8125rem",
-  fontWeight: 500,
-  color: "rgba(255,255,255,0.6)",
-  marginBottom: "0.375rem",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.75rem",
-  borderRadius: "6px",
-  border: "1px solid rgba(255,255,255,0.15)",
-  background: "rgba(255,255,255,0.05)",
-  color: "#fff",
-  fontSize: "0.875rem",
-  outline: "none",
-  boxSizing: "border-box",
-};
+const StatusBadge = ({ status }: { status: string }) => (
+  <span className={`scans-status scans-status--${status}`}>{status}</span>
+);

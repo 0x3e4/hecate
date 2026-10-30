@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { SlArrowUp } from "react-icons/sl";
+import { LuArrowUp } from "react-icons/lu";
+
+import { useI18n } from "../i18n/context";
 
 export const ScrollToTop = () => {
+  const { t } = useI18n();
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
   useEffect(() => {
@@ -23,11 +26,12 @@ export const ScrollToTop = () => {
 
   return (
     <button
+      type="button"
       onClick={scrollToTop}
       className="scroll-to-top"
-      aria-label="Scroll to top"
+      aria-label={t("Scroll to top", "Nach oben scrollen")}
     >
-      <SlArrowUp />
+      <LuArrowUp aria-hidden="true" />
     </button>
   );
 };

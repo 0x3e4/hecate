@@ -1,0 +1,98 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
+ * Changelog: a log of vulnerability writes. Tokens only; see design.md. */
+.changelog-filter { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); }
+.changelog-filter input,
+.changelog-filter select { color: var(--color-ink); font-size: var(--text-sm); }
+.filter-row .changelog-filter input[type="date"] { flex: 0 0 auto; color-scheme: dark; }
+.changelog-count { margin-left: auto; color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+
+.changelog-results { transition: opacity var(--dur-short) var(--ease-out); }
+.changelog-results.is-loading { opacity: 0.5; pointer-events: none; }
+
+.changelog-table { font-size: var(--text-sm); }
+.changelog-table th { color: var(--color-muted); }
+.changelog-table th:first-child,
+.changelog-table td:first-child { padding-left: 0; }
+.changelog-table th:last-child,
+.changelog-table td:last-child { padding-right: 0; }
+.changelog-row { cursor: pointer; }
+.changelog-row:hover,
+.changelog-row.is-expanded { background: var(--overlay-1); }
+.changelog-row:active { background: var(--overlay-2); }
+.changelog-row.is-expanded td { border-bottom-color: transparent; }
+
+.changelog-cell-toggle { width: 1%; padding-right: 0; }
+.changelog-cell-time { color: var(--color-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.changelog-cell-vuln { min-width: 14rem; }
+.changelog-cell-vuln .row-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-sm); }
+.changelog-title { color: var(--color-ink-2); }
+.changelog-cell-severity { white-space: nowrap; }
+.changelog-cell-change { white-space: nowrap; }
+.changelog-cell-job { white-space: nowrap; }
+
+.icon-button.changelog-toggle { width: 24px; height: 24px; }
+.icon-button.changelog-toggle:focus-visible,
+.changelog-cell-vuln .row-link:focus-visible,
+.changelog-change-summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.changelog-toggle svg { transition: transform var(--dur-micro) var(--ease-out); }
+.changelog-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+/* Expanded detail row: a tinted well under the row */
+.changelog-detail-row td { padding: var(--space-sm) var(--space-md) var(--space-md); background: var(--color-paper-2); }
+.changelog-detail-row td:first-child { padding-left: var(--space-md); }
+.changelog-detail-row td:last-child { padding-right: var(--space-md); }
+.changelog-change-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-md); color: var(--color-ink-2); font-size: var(--text-xs); cursor: pointer; list-style: none; }
+.changelog-change-summary::-webkit-details-marker { display: none; }
+.changelog-change-chevron { flex-shrink: 0; transition: transform var(--dur-micro) var(--ease-out); }
+.changelog-change[open] .changelog-change-chevron { transform: rotate(90deg); }
+.changelog-change-time { color: var(--color-ink); font-variant-numeric: tabular-nums; }
+.changelog-change-fields { color: var(--color-muted); }
+.changelog-change > .muted { margin-top: var(--space-sm); font-size: var(--text-sm); }
+
+.changelog-fields { display: flex; flex-direction: column; margin-top: var(--space-sm); }
+.changelog-field { padding-block: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
+.changelog-field:last-child { padding-bottom: 0; }
+.changelog-field-name { margin-bottom: var(--space-2xs); color: var(--color-ink); }
+.changelog-field-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm) var(--space-lg); }
+.changelog-field-value { min-width: 0; color: var(--color-ink-2); overflow-wrap: anywhere; }
+.changelog-field-label { display: block; margin-bottom: var(--space-3xs); color: var(--color-muted); font-size: var(--text-xs); }
+.changelog-json { margin: 0; max-height: 20rem; overflow: auto; color: var(--color-ink-2); font-family: var(--font-outlier); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.changelog-pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-md); }
+.changelog-pager .btn:active { background: var(--overlay-3); }
+.changelog-pager .btn:disabled { background: none; }
+.changelog-page-count { color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+
+/* Phones: each entry is a stacked record, the ID and the toggle stay in view */
+@media (max-width: 40rem) {
+  .changelog-filter { flex: 1 1 100%; }
+  .changelog-filter > span { flex: 0 0 2.5rem; }
+  .filter-row .changelog-filter input[type="date"],
+  .changelog-filter select { flex: 1 1 auto; min-width: 0; }
+  .changelog-count { margin-left: 0; }
+
+  .changelog-table,
+  .changelog-table tbody { display: block; }
+  .changelog-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .changelog-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-2xs) var(--space-sm); padding-block: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule); }
+  .changelog-table td { display: block; min-width: 0; padding: 0; border: 0; white-space: normal; }
+  .changelog-cell-vuln { grid-column: 1; grid-row: 1; }
+  .changelog-cell-severity { grid-column: 2; grid-row: 1; }
+  .changelog-cell-toggle { grid-column: 3; grid-row: 1 / span 2; width: auto; }
+  .changelog-cell-time { grid-column: 1; grid-row: 2; color: var(--color-muted); font-size: var(--text-xs); }
+  .changelog-cell-change { grid-column: 2; grid-row: 2; justify-self: start; }
+  .changelog-cell-job { grid-column: 1 / -1; grid-row: 3; color: var(--color-muted); font-size: var(--text-xs); }
+  .icon-button.changelog-toggle { width: 44px; height: 44px; }
+
+  .changelog-table tr.changelog-detail-row { display: block; padding-block: 0; }
+  .changelog-table .changelog-detail-row td { padding: var(--space-sm); }
+  .changelog-field-values { grid-template-columns: minmax(0, 1fr); }
+  .changelog-pager { justify-content: space-between; }
+  .changelog-pager .btn { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .changelog-results,
+  .changelog-toggle svg,
+  .changelog-change-chevron { transition: none; }
+}

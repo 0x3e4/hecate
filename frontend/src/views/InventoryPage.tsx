@@ -1,18 +1,23 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AsyncSelect from "react-select/async";
-import { LuPlus, LuX } from "react-icons/lu";
+import { LuArrowRight, LuChevronRight, LuPencil, LuPlus, LuTrash2, LuX } from "react-icons/lu";
 
+import "../screens/inventory.css";
 import {
   createInventoryItem,
   deleteInventoryItem,
   fetchInventoryAffectedVulnerabilities,
+  fetchInventoryHistory,
+  fetchInventoryItemHistory,
   fetchInventoryItems,
   updateInventoryItem,
   type InventoryItemCreateInput,
 } from "../api/inventory";
 import { fetchEolProducts, fetchInventoryEol } from "../api/endoflife";
 import { fetchProducts, fetchVendors } from "../api/assets";
+import { renderCatalogOption } from "../components/CatalogOption";
+import { SkeletonBlock } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useServerConfig } from "../server-config/context";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -24,10 +29,13 @@ import type {
   EolStatusKind,
   InventoryDeployment,
   InventoryEnvironment,
+  InventoryHistoryChange,
+  InventoryHistoryEntry,
   InventoryItem,
 } from "../types";
+import { EmptyState, ErrorState, IconButton, PageHeader, Section, SeverityTag, Stat } from "../ui/primitives";
+import { primaryVendorSlug } from "../utils/catalog";
 import { formatDateTime } from "../utils/dateFormat";
-
 const DEPLOYMENTS: InventoryDeployment[] = ["onprem", "cloud", "hybrid"];
 const DEFAULT_ENVIRONMENT_SUGGESTIONS: string[] = ["prod", "staging", "dev", "test", "dr"];
 
@@ -76,6 +84,21 @@ const severityOf = (severity: string | null | undefined): "critical" | "high" | 
   return "unknown";
 };
 
+const severityLabel = (severity: ReturnType<typeof severityOf>, t: TranslateFn): string => {
+  switch (severity) {
+    case "critical":
+      return t("Critical", "Kritisch");
+    case "high":
+      return t("High", "Hoch");
+    case "medium":
+      return t("Medium", "Mittel");
+    case "low":
+      return t("Low", "Niedrig");
+    default:
+      return t("Unknown", "Unbekannt");
+  }
+};
+
 // Sort rank for the aggregated CVE table (mirrors the backend severity order).
 const SEVERITY_RANK: Record<string, number> = {
   critical: 0,
@@ -91,13 +114,6 @@ interface EolOption {
   value: string;
   label: string;
 }
-
-const EOL_STATUS_TONE: Record<EolStatusKind, { bg: string; fg: string }> = {
-  active: { bg: "rgba(105,219,124,0.15)", fg: "#69db7c" },
-  security: { bg: "rgba(252,196,25,0.15)", fg: "#fcc419" },
-  eol: { bg: "rgba(255,107,107,0.15)", fg: "#ff6b6b" },
-  unknown: { bg: "rgba(255,255,255,0.06)", fg: "rgba(255,255,255,0.6)" },
-};
 
 const eolStatusLabel = (status: EolStatusKind, t: TranslateFn): string => {
   switch (status) {
@@ -129,38 +145,27 @@ const eolUntilLabel = (status: EolStatus, t: TranslateFn): string | null => {
   return null;
 };
 
-// Compact badge for the row: status pill (+ date), LTS, and "update available"
-// only. The verbose detail (latest release, newer line, link, dates) lives in
-// the expandable `EolDetailBlock` below, to keep the row readable.
+// Compact status for the row, in words: support status (+ date), LTS, and
+// "update available" only. The verbose detail (latest release, newer line,
+// link, dates) lives in the expandable `EolDetailBlock` below, to keep the
+// row readable.
 const EolStatusBadge = ({ status, t }: { status: EolStatus; t: TranslateFn }) => {
-  const tone = EOL_STATUS_TONE[status.status] ?? EOL_STATUS_TONE.unknown;
   const untilLabel = eolUntilLabel(status, t);
   return (
-    <div
-      style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", fontSize: "0.75rem" }}
-    >
+    <div className="inventory-eol">
       <span
-        className="chip"
-        style={{ background: tone.bg, color: tone.fg }}
+        className={`inventory-eol-status inventory-eol-status--${status.status}`}
         title={status.productLabel ?? undefined}
       >
         {eolStatusLabel(status.status, t)}
-        {untilLabel ? ` · ${untilLabel}` : ""}
       </span>
+      {untilLabel && <span className="inventory-eol-until">{untilLabel}</span>}
       {status.isLts && (
-        <span
-          className="chip"
-          style={{ background: "rgba(105,219,124,0.12)", color: "#69db7c" }}
-          title={status.ltsFrom ? `LTS since ${status.ltsFrom}` : undefined}
-        >
+        <span className="chip" title={status.ltsFrom ? `LTS since ${status.ltsFrom}` : undefined}>
           LTS
         </span>
       )}
-      {status.isOutdated && (
-        <span className="chip" style={{ background: "rgba(92,132,255,0.15)", color: "#93bbfd" }}>
-          {t("update available", "Update verfügbar")}
-        </span>
-      )}
+      {status.isOutdated && <span className="chip">{t("update available", "Update verfügbar")}</span>}
     </div>
   );
 };
@@ -171,7 +176,10 @@ const EolDetailBlock = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
     status.productLink || (status.product ? `https://endoflife.date/${status.product}` : null);
   const rows: { label: string; value: ReactNode }[] = [];
   if (status.matchedCycle)
-    rows.push({ label: t("Release cycle", "Release-Zyklus"), value: status.matchedCycle });
+    rows.push({
+      label: t("Release cycle", "Release-Zyklus"),
+      value: <span className="mono">{status.matchedCycle}</span>,
+    });
   if (status.releaseDate)
     rows.push({ label: t("Released", "Veröffentlicht"), value: status.releaseDate });
   if (status.eoasDate)
@@ -187,52 +195,45 @@ const EolDetailBlock = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
     rows.push({
       label: t("Latest release", "Neueste Version"),
       value: (
-        <>
+        <span className="inventory-eol-latest">
           {status.latestLink ? (
-            <a href={status.latestLink} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+            <a href={status.latestLink} target="_blank" rel="noreferrer" className="mono">
               {status.latestVersion}
             </a>
           ) : (
-            status.latestVersion
+            <span className="mono">{status.latestVersion}</span>
           )}
-          {status.isOutdated ? ` — ${t("update available", "Update verfügbar")}` : ""}
-        </>
+          {status.isOutdated && <span className="chip">{t("update available", "Update verfügbar")}</span>}
+        </span>
       ),
     });
   if (!status.isLatestCycle && status.latestCycle)
-    rows.push({ label: t("Newer release line", "Neuere Release-Linie"), value: status.latestCycle });
+    rows.push({
+      label: t("Newer release line", "Neuere Release-Linie"),
+      value: <span className="mono">{status.latestCycle}</span>,
+    });
 
   return (
-    <div style={{ marginBottom: "0.75rem", fontSize: "0.78rem" }}>
-      <div
-        className="muted"
-        style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem", fontWeight: 600 }}
-      >
-        {t("End-of-life", "End of Life")}
-        {status.productLabel ? ` · ${status.productLabel}` : ""}
+    <div className="inventory-eol-detail">
+      <div className="inventory-expansion-head">
+        <h3>{t("End-of-life", "End of Life")}</h3>
+        {status.productLabel && <span className="inventory-expansion-sub">{status.productLabel}</span>}
         {productHref && (
-          <a
-            href={productHref}
-            target="_blank"
-            rel="noreferrer"
-            className="muted"
-            style={{ textDecoration: "none", whiteSpace: "nowrap", fontWeight: 400 }}
-            title="endoflife.date"
-          >
-            ↗ endoflife.date
-          </a>
+          <span className="link-list">
+            <a href={productHref} target="_blank" rel="noreferrer" title="endoflife.date">
+              endoflife.date
+            </a>
+          </span>
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+      <dl className="inventory-eol-rows">
         {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", gap: "0.5rem" }}>
-            <span className="muted" style={{ minWidth: "9.5rem", flexShrink: 0 }}>
-              {r.label}
-            </span>
-            <span style={{ wordBreak: "break-word" }}>{r.value}</span>
+          <div key={i} className="inventory-eol-row">
+            <dt>{r.label}</dt>
+            <dd>{r.value}</dd>
           </div>
         ))}
-      </div>
+      </dl>
     </div>
   );
 };
@@ -257,6 +258,7 @@ interface VendorOption {
   value: string;
   label: string;
   aliases: string[];
+  vulnerabilityCount?: number | null;
 }
 
 interface ProductOption {
@@ -264,12 +266,15 @@ interface ProductOption {
   label: string;
   vendorSlugs: string[];
   aliases: string[];
+  vulnerabilityCount?: number | null;
+  hint?: string | null;
 }
 
 const mapVendorToOption = (item: CatalogVendor): VendorOption => ({
   value: item.slug,
   label: item.name,
   aliases: item.aliases,
+  vulnerabilityCount: item.vulnerabilityCount,
 });
 
 const mapProductToOption = (item: CatalogProduct): ProductOption => ({
@@ -277,24 +282,28 @@ const mapProductToOption = (item: CatalogProduct): ProductOption => ({
   label: item.name,
   vendorSlugs: item.vendorSlugs,
   aliases: item.aliases,
+  vulnerabilityCount: item.vulnerabilityCount,
+  hint: primaryVendorSlug(item.slug, item.vendorSlugs),
 });
 
 const selectStyles = {
   control: (provided: any, state: any) => ({
     ...provided,
-    background: "rgba(15, 18, 30, 0.85)",
-    borderColor: state.isFocused ? "rgba(255, 212, 59, 0.7)" : "rgba(255, 255, 255, 0.12)",
-    borderRadius: "8px",
-    color: "#f5f7fa",
+    background: "var(--color-paper)",
+    borderColor: "var(--color-field-edge)",
+    borderRadius: "var(--radius-control)",
+    color: "var(--color-ink)",
     boxShadow: "none",
-    minHeight: "38px",
+    minHeight: "var(--control-height)",
+    outline: state.isFocused ? "2px solid var(--color-focus)" : "none",
+    outlineOffset: "-1px",
     "&:hover": {
-      borderColor: state.isFocused ? "rgba(255, 212, 59, 0.7)" : "rgba(255, 255, 255, 0.25)",
+      borderColor: "var(--color-field-edge)",
     },
   }),
   menu: (provided: any) => ({
     ...provided,
-    background: "rgba(10, 12, 20, 0.95)",
+    background: "var(--color-paper)",
     zIndex: 100,
   }),
   menuPortal: (provided: any) => ({
@@ -305,97 +314,241 @@ const selectStyles = {
   }),
   option: (provided: any, state: any) => ({
     ...provided,
-    backgroundColor: state.isFocused ? "rgba(92,132,255,0.2)" : "transparent",
-    color: "#f5f7fa",
+    backgroundColor: state.isFocused ? "var(--overlay-3)" : "transparent",
+    color: "var(--color-ink)",
   }),
   singleValue: (provided: any) => ({
     ...provided,
-    color: "#f5f7fa",
+    color: "var(--color-ink)",
   }),
   indicatorSeparator: () => ({
     display: "none",
   }),
+  valueContainer: (provided: any) => ({
+    ...provided,
+    paddingBlock: 0,
+  }),
+  dropdownIndicator: (provided: any) => ({
+    ...provided,
+    paddingBlock: 0,
+  }),
+  clearIndicator: (provided: any) => ({
+    ...provided,
+    paddingBlock: 0,
+  }),
   input: (provided: any) => ({
     ...provided,
-    color: "#f5f7fa",
+    color: "var(--color-ink)",
+    margin: 0,
+    paddingBlock: 0,
     "& input": {
       outline: "none !important",
       boxShadow: "none !important",
       border: "none !important",
+      // The dialog's text-input rules would otherwise pad the search box inside the control.
+      margin: "0 !important",
+      padding: "0 !important",
+      minHeight: "0 !important",
     },
   }),
   placeholder: (provided: any) => ({
     ...provided,
-    color: "rgba(255, 255, 255, 0.6)",
+    color: "var(--color-muted)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
   }),
 };
 
-// --- Form-grid layout for the Add/Edit card ---
-// Uses a simple CSS-grid with minmax so columns collapse to one on narrow
-// viewports. No per-field maxWidth — inputs always fill their cell.
+// Vendor / product option in the catalog pickers: name plus up to two aliases.
+// Latest release of the matched cycle, offered as a one-click version. Never
+// applied on its own: the inventory states what runs, and a version nobody
+// deployed would silently clear real CVE matches.
+const VersionUpdateForm = ({
+  item,
+  suggested,
+  onSaved,
+  t,
+}: {
+  item: InventoryItem;
+  suggested: string | null;
+  onSaved: (updated: InventoryItem) => void;
+  t: TranslateFn;
+}) => {
+  const { showToast } = useToastContext();
+  const [value, setValue] = useState(item.version);
+  const [saving, setSaving] = useState(false);
 
-const formGridStyle: CSSProperties = {
-  display: "grid",
-  gap: "1rem",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  marginTop: "1rem",
+  const save = async (version: string) => {
+    setSaving(true);
+    try {
+      const updated = await updateInventoryItem(item.id, { version });
+      setValue(updated.version);
+      onSaved(updated);
+    } catch (exc: unknown) {
+      showToast(exc instanceof Error ? exc.message : String(exc), "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const trimmed = value.trim();
+  return (
+    <form
+      className="inventory-version-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (trimmed && trimmed !== item.version) void save(trimmed);
+      }}
+    >
+      <label htmlFor={`inventory-version-${item.id}`}>{t("Running version", "Laufende Version")}</label>
+      <div className="inventory-version-controls">
+        <input
+          id={`inventory-version-${item.id}`}
+          className="mono"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <button
+          type="submit"
+          className="btn btn-secondary"
+          disabled={saving || !trimmed || trimmed === item.version}
+        >
+          {t("Update", "Aktualisieren")}
+        </button>
+      </div>
+      {suggested && suggested !== item.version ? (
+        <button
+          type="button"
+          className="inventory-version-suggestion"
+          disabled={saving}
+          onClick={() => void save(suggested)}
+          title={t(
+            "Latest release of this cycle according to endoflife.date. Use it once this version is deployed.",
+            "Neueste Version dieses Zyklus laut endoflife.date. Erst verwenden, wenn sie ausgerollt ist.",
+          )}
+        >
+          {t("Set to", "Setzen auf")} <span className="mono">{suggested}</span>
+        </button>
+      ) : null}
+    </form>
+  );
 };
 
-const fieldFullStyle: CSSProperties = {
-  gridColumn: "1 / -1",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.35rem",
-  minWidth: 0,
+const historySourceLabel = (source: InventoryHistoryEntry["source"], t: TranslateFn) => {
+  switch (source) {
+    case "report":
+      return t("API report", "API-Meldung");
+    case "mcp":
+      return "MCP";
+    case "restore":
+      return t("Restore", "Wiederherstellung");
+    default:
+      return t("Web", "Web");
+  }
 };
 
-const fieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.35rem",
-  minWidth: 0,
+const historyFieldLabel = (field: string, t: TranslateFn) => {
+  switch (field) {
+    case "name":
+      return t("Name", "Name");
+    case "vendorSlug":
+      return t("Vendor", "Hersteller");
+    case "productSlug":
+      return t("Product", "Produkt");
+    case "deployment":
+      return t("Deployment", "Bereitstellung");
+    case "environment":
+      return t("Environment", "Umgebung");
+    case "instanceCount":
+      return t("Instances", "Instanzen");
+    case "owner":
+      return t("Owner", "Verantwortlich");
+    case "notes":
+      return t("Notes", "Notizen");
+    case "eolProduct":
+      return t("End-of-life link", "End-of-Life-Verknüpfung");
+    default:
+      return field;
+  }
 };
 
-// Shared pill-button style used by all four card-action buttons
-// (Show CVEs / DQL / Edit / Delete). A single base + per-button tint
-// variants keeps them visually consistent (same rounding, size, font,
-// padding) while letting each convey intent with color.
-const actionButtonBaseStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0.3rem 0.65rem",
-  borderRadius: "6px",
-  fontSize: "0.8125rem",
-  fontWeight: 500,
-  lineHeight: 1.2,
-  cursor: "pointer",
-  transition: "background 0.15s, border-color 0.15s",
+const HistoryValue = ({ value }: { value: InventoryHistoryChange["old"] }) =>
+  value === null || value === undefined || value === "" ? (
+    <span className="muted">n/a</span>
+  ) : (
+    <span className="mono">{value}</span>
+  );
+
+const HistoryChangeLine = ({ change, t }: { change: InventoryHistoryChange; t: TranslateFn }) => (
+  <span className="inventory-history-change">
+    {change.field !== "version" && <span>{historyFieldLabel(change.field, t)}</span>}
+    {/* Free text would swamp a one-line log; the item itself shows it. */}
+    {change.field === "notes" ? (
+      <span className="muted">{t("changed", "geändert")}</span>
+    ) : (
+      <>
+        <HistoryValue value={change.old} />
+        <LuArrowRight aria-hidden="true" />
+        <span className="visually-hidden">{t("to", "auf")}</span>
+        <HistoryValue value={change.new} />
+      </>
+    )}
+  </span>
+);
+
+const HistoryEntrySummary = ({ entry, t }: { entry: InventoryHistoryEntry; t: TranslateFn }) => {
+  const version = entry.changes.find((change) => change.field === "version");
+  if (entry.action === "created") {
+    return (
+      <span className="inventory-history-change">
+        {t("Added at", "Angelegt mit")} <HistoryValue value={version?.new} />
+      </span>
+    );
+  }
+  if (entry.action === "deleted") {
+    return (
+      <span className="inventory-history-change">
+        {t("Deleted at", "Gelöscht bei")} <HistoryValue value={version?.old} />
+      </span>
+    );
+  }
+  return (
+    <>
+      {entry.changes.map((change) => (
+        <HistoryChangeLine key={change.field} change={change} t={t} />
+      ))}
+    </>
+  );
 };
 
-const neutralActionStyle: CSSProperties = {
-  ...actionButtonBaseStyle,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.15)",
-  color: "rgba(255,255,255,0.85)",
-};
-
-const primaryActionStyle: CSSProperties = {
-  ...actionButtonBaseStyle,
-  background: "rgba(92,132,255,0.12)",
-  border: "1px solid rgba(92,132,255,0.35)",
-  color: "#93bbfd",
-};
-
-const dangerActionStyle: CSSProperties = {
-  ...actionButtonBaseStyle,
-  background: "rgba(255,107,107,0.1)",
-  border: "1px solid rgba(255,107,107,0.3)",
-  color: "#ff6b6b",
-};
+const InventoryHistoryList = ({
+  entries,
+  showItem = false,
+  t,
+}: {
+  entries: InventoryHistoryEntry[];
+  showItem?: boolean;
+  t: TranslateFn;
+}) => (
+  <ol className="inventory-history">
+    {entries.map((entry) => (
+      <li key={entry.id}>
+        <time dateTime={entry.createdAt}>{formatDateTime(entry.createdAt)}</time>
+        <div className="inventory-history-body">
+          {showItem && <span className="inventory-history-item">{entry.itemName}</span>}
+          <HistoryEntrySummary entry={entry} t={t} />
+        </div>
+        <span className="inventory-history-source">
+          {historySourceLabel(entry.source, t)}
+          {entry.actor ? `: ${entry.actor}` : ""}
+        </span>
+      </li>
+    ))}
+  </ol>
+);
 
 export const InventoryPage = () => {
   const { t } = useI18n();
@@ -423,6 +576,12 @@ export const InventoryPage = () => {
 
   // endoflife.date support status per item (eager-loaded, parallel to affectedById).
   const [eolById, setEolById] = useState<Record<string, EolStatus | "loading">>({});
+  const [historyById, setHistoryById] = useState<
+    Record<string, InventoryHistoryEntry[] | "loading" | { error: string }>
+  >({});
+  const [recentChanges, setRecentChanges] = useState<
+    InventoryHistoryEntry[] | "loading" | { error: string }
+  >("loading");
   // Manual EOL-product link in the modal: only sent to the backend when the
   // user touches the picker, so an untouched create/edit lets the backend
   // auto-match (or re-match when the product changes).
@@ -446,6 +605,32 @@ export const InventoryPage = () => {
     void loadItems();
   }, [loadItems]);
 
+  const loadRecentChanges = useCallback(async () => {
+    try {
+      const response = await fetchInventoryHistory();
+      setRecentChanges(response.items);
+    } catch (exc: unknown) {
+      setRecentChanges({ error: exc instanceof Error ? exc.message : String(exc) });
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRecentChanges();
+  }, [loadRecentChanges]);
+
+  const loadItemHistory = useCallback(async (itemId: string) => {
+    setHistoryById((prev) => ({ ...prev, [itemId]: "loading" }));
+    try {
+      const response = await fetchInventoryItemHistory(itemId);
+      setHistoryById((prev) => ({ ...prev, [itemId]: response.items }));
+    } catch (exc: unknown) {
+      setHistoryById((prev) => ({
+        ...prev,
+        [itemId]: { error: exc instanceof Error ? exc.message : String(exc) },
+      }));
+    }
+  }, []);
+
   // Eagerly resolve affected vulnerabilities for every item so the card
   // border color reflects real severity without requiring a click on
   // "Show CVEs". Runs each lookup in parallel and populates the same
@@ -454,7 +639,8 @@ export const InventoryPage = () => {
   useEffect(() => {
     if (items.length === 0) return;
     let cancelled = false;
-    const pending = items.filter((item) => affectedById[item.id] === undefined);
+    // "loading" counts as pending: a cleaned-up run left it behind without a result.
+    const pending = items.filter((item) => affectedById[item.id] === undefined || affectedById[item.id] === "loading");
     if (pending.length === 0) return;
 
     (async () => {
@@ -492,7 +678,7 @@ export const InventoryPage = () => {
   useEffect(() => {
     if (!eolEnabled || items.length === 0) return;
     let cancelled = false;
-    const pending = items.filter((item) => eolById[item.id] === undefined);
+    const pending = items.filter((item) => eolById[item.id] === undefined || eolById[item.id] === "loading");
     if (pending.length === 0) return;
 
     (async () => {
@@ -553,6 +739,23 @@ export const InventoryPage = () => {
     [selectedVendor],
   );
 
+  // Finding the product is the hard part, so it can come first. The vendor then
+  // follows from it and stays editable in its own field.
+  const selectVendorForProduct = async (product: ProductOption) => {
+    const slug = primaryVendorSlug(product.value, product.vendorSlugs);
+    if (!slug) return;
+    let vendor: CatalogVendor | undefined;
+    try {
+      const response = await fetchVendors(slug, 5);
+      vendor = response.items.find((item) => item.slug === slug);
+    } catch (exc) {
+      console.error("Failed to load vendor", exc);
+    }
+    const name = vendor?.name ?? slug;
+    setSelectedVendor({ value: slug, label: name, aliases: vendor?.aliases ?? [] });
+    setForm((prev) => ({ ...prev, vendorSlug: slug, vendorName: name }));
+  };
+
   const resetForm = () => {
     setForm(emptyForm());
     setSelectedVendor(null);
@@ -561,6 +764,21 @@ export const InventoryPage = () => {
     setEolTouched(false);
     setCreating(false);
     setEditingId(null);
+  };
+
+  // A version or product change invalidates the cached CVEs and EOL status: the
+  // eager `[items]` effects then re-fetch, so the row updates without a reload.
+  const forgetItemDetails = (itemId: string) => {
+    setAffectedById((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+    setEolById((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
   };
 
   const startEditing = (item: InventoryItem) => {
@@ -634,19 +852,11 @@ export const InventoryPage = () => {
       // effects re-fetch and the row, EOL badge and Flagged-CVEs table update
       // without a manual reload. (A new item gets a fresh id → fetched anyway.)
       if (wasEditingId) {
-        setAffectedById((prev) => {
-          const next = { ...prev };
-          delete next[wasEditingId];
-          return next;
-        });
-        setEolById((prev) => {
-          const next = { ...prev };
-          delete next[wasEditingId];
-          return next;
-        });
+        forgetItemDetails(wasEditingId);
       }
       resetForm();
       await loadItems();
+      void loadRecentChanges();
       showToast(
         editingId
           ? t("Inventory item updated.", "Inventar-Eintrag aktualisiert.")
@@ -661,6 +871,14 @@ export const InventoryPage = () => {
     }
   };
 
+  const handleVersionSaved = (updated: InventoryItem) => {
+    forgetItemDetails(updated.id);
+    setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    void loadItemHistory(updated.id);
+    void loadRecentChanges();
+    showToast(t("Version updated.", "Version aktualisiert."), "success");
+  };
+
   const handleDelete = async (itemId: string) => {
     const confirmed = window.confirm(
       t(
@@ -673,6 +891,7 @@ export const InventoryPage = () => {
       await deleteInventoryItem(itemId);
       if (editingId === itemId) resetForm();
       await loadItems();
+      void loadRecentChanges();
       showToast(t("Inventory item deleted.", "Inventar-Eintrag gelöscht."), "success");
     } catch (exc: unknown) {
       showToast(exc instanceof Error ? exc.message : String(exc), "error");
@@ -700,6 +919,9 @@ export const InventoryPage = () => {
     setExpandedItemId(itemId);
     if (affectedById[itemId] === undefined) {
       void loadAffected(itemId);
+    }
+    if (historyById[itemId] === undefined) {
+      void loadItemHistory(itemId);
     }
   };
 
@@ -883,59 +1105,460 @@ export const InventoryPage = () => {
     return result;
   }, [items]);
 
+  const columnCount = eolEnabled ? 9 : 8;
+
   return (
-    <div className="page">
-      {/* Intro / summary */}
-      <section className="card">
-        <h2>{t("Inventory", "Inventar")}</h2>
-        <p className="muted">
+    <div className="page inventory-page">
+      <PageHeader
+        title={t("Inventory", "Inventar")}
+        description={t(
+          "Declare the products and versions you run. Hecate flags matching CVEs on every vulnerability page, enriches AI analyses with your environment impact, and fires notifications when a new CVE matches any item.",
+          "Deklarieren Sie die Produkte und Versionen, die Sie betreiben. Hecate markiert passende CVEs auf jeder Schwachstellen-Seite, reichert KI-Analysen mit Ihrer Umgebungswirkung an und sendet Benachrichtigungen, sobald ein neuer CVE zu einem Eintrag passt.",
+        )}
+        actions={
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              resetForm();
+              setCreating(true);
+            }}
+            title={t("Add inventory item", "Inventar-Eintrag hinzufügen")}
+            aria-label={t("Add inventory item", "Inventar-Eintrag hinzufügen")}
+          >
+            <LuPlus aria-hidden="true" />
+            {t("Add", "Hinzufügen")}
+          </button>
+        }
+      />
+
+      {totalItems > 0 && (
+        <dl className="stat-row inventory-stats">
+          <Stat
+            label={t("Flagged CVEs", "Gemeldete CVEs")}
+            value={
+              aggregatedLoading && aggregatedCves.length === 0 ? (
+                <SkeletonBlock height="2rem" width="3rem" radius={4} />
+              ) : (
+                aggregatedCves.length
+              )
+            }
+          />
+          <Stat
+            label={t(totalItems === 1 ? "Item" : "Items", totalItems === 1 ? "Eintrag" : "Einträge")}
+            value={totalItems}
+          />
+          <Stat
+            label={t(
+              totalInstances === 1 ? "Instance" : "Instances",
+              totalInstances === 1 ? "Instanz" : "Instanzen",
+            )}
+            value={totalInstances}
+          />
+        </dl>
+      )}
+
+      {error && <ErrorState title={error} />}
+
+      {/* Items list */}
+      <Section title={t("Configuration management", "Konfigurationsverwaltung")} className="inventory-items">
+        {items.length > 0 && (
+          <div className="filter-row">
+            <input
+              type="search"
+              className="inventory-search"
+              aria-label={t("Search inventory", "Inventar durchsuchen")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t(
+                "Search name, vendor, product, version, owner…",
+                "Name, Hersteller, Produkt, Version, Owner durchsuchen…",
+              )}
+            />
+            {search && (
+              <span className="inventory-search-count">
+                {filteredItems.length} / {items.length}
+              </span>
+            )}
+          </div>
+        )}
+        {loading ? (
+          <div className="inventory-skeleton" role="status">
+            <span className="visually-hidden">{t("Loading...", "Laden...")}</span>
+            {Array.from({ length: 3 }, (_, i) => (
+              <SkeletonBlock key={i} height="3.25rem" radius={4} />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <EmptyState title={t("No inventory items yet.", "Noch keine Einträge.")}>
+            {t(
+              'Use the "Add" button above to add your first product + version.',
+              'Nutzen Sie die Schaltfläche „Hinzufügen" oben, um Ihr erstes Produkt + Version anzulegen.',
+            )}
+          </EmptyState>
+        ) : filteredItems.length === 0 ? (
+          <EmptyState title={t("No items match your search.", "Keine Einträge passen zur Suche.")} />
+        ) : (
+          <div className="table-scroll">
+            <table className="inventory-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t("Item", "Eintrag")}</th>
+                  <th scope="col">{t("Version", "Version")}</th>
+                  <th scope="col">{t("Worst severity", "Höchster Schweregrad")}</th>
+                  <th scope="col">{t("CVEs", "CVEs")}</th>
+                  {eolEnabled && <th scope="col">{t("End of life", "End of Life")}</th>}
+                  <th scope="col">{t("Environment", "Umgebung")}</th>
+                  <th scope="col">{t("Deployment", "Betriebsart")}</th>
+                  <th scope="col">{t("Instances", "Instanzen")}</th>
+                  <th scope="col">
+                    <span className="visually-hidden">{t("Actions", "Aktionen")}</span>
+                  </th>
+                </tr>
+              </thead>
+              {filteredItems.map((item) => {
+                const expanded = expandedItemId === item.id;
+                const affected = affectedById[item.id];
+                const isLoading = affected === "loading";
+                const isError =
+                  !!affected && typeof affected === "object" && !Array.isArray(affected) && "error" in affected;
+                const vulns = Array.isArray(affected) ? affected : [];
+                const worst = vulns.length > 0 ? severityOf(vulns[0]?.severity as string | null) : "unknown";
+                const eolEntry = eolEnabled ? eolById[item.id] : undefined;
+                const itemHistory = historyById[item.id];
+                const eolStatus =
+                  eolEntry && eolEntry !== "loading" && eolEntry.linked ? eolEntry : null;
+
+                return (
+                  <tbody key={item.id} className="inventory-item">
+                    {/* The whole row toggles; the button is the keyboard and
+                        screen-reader path and bubbles its click to the row. */}
+                    <tr className="inventory-item-row" onClick={() => toggleExpanded(item.id)}>
+                      <td className="inventory-cell-name">
+                        <button type="button" className="inventory-toggle" aria-expanded={expanded}>
+                          <LuChevronRight
+                            aria-hidden="true"
+                            className={`inventory-chevron${expanded ? " is-open" : ""}`}
+                          />
+                          <span>{item.name}</span>
+                        </button>
+                        <div className="inventory-sub">
+                          <span>
+                            {[item.vendorName || item.vendorSlug, item.productName || item.productSlug]
+                              .filter(Boolean)
+                              .join(" / ")}
+                          </span>
+                          {item.owner && <span>{item.owner}</span>}
+                        </div>
+                        {item.notes && <div className="inventory-notes">{item.notes}</div>}
+                      </td>
+                      <td className="inventory-cell-version mono">{item.version}</td>
+                      <td className="inventory-cell-severity">
+                        {vulns.length > 0 && (
+                          <SeverityTag severity={worst}>{severityLabel(worst, t)}</SeverityTag>
+                        )}
+                      </td>
+                      <td className="inventory-cell-cves">
+                        {isLoading ? (
+                          <SkeletonBlock height="1rem" width="2rem" radius={4} />
+                        ) : (
+                          <span className={isError ? "inventory-cve-count is-error" : "inventory-cve-count"}>
+                            {isError ? "!" : vulns.length}
+                            <span className="inventory-unit"> {t("CVEs", "CVEs")}</span>
+                          </span>
+                        )}
+                      </td>
+                      {eolEnabled && (
+                        <td className="inventory-cell-eol">
+                          {eolStatus && (
+                            <div onClick={(e) => e.stopPropagation()} role="presentation">
+                              <EolStatusBadge status={eolStatus} t={t} />
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      <td className="inventory-cell-meta">{environmentLabel(item.environment, t)}</td>
+                      <td className="inventory-cell-meta">{deploymentLabel(item.deployment, t)}</td>
+                      <td className="inventory-cell-meta inventory-cell-instances">
+                        {item.instanceCount}
+                        <span className="inventory-unit">
+                          {" "}
+                          {t(
+                            item.instanceCount === 1 ? "instance" : "instances",
+                            item.instanceCount === 1 ? "Instanz" : "Instanzen",
+                          )}
+                        </span>
+                      </td>
+                      <td className="inventory-cell-actions">
+                        <div
+                          className="inventory-actions"
+                          role="presentation"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="btn btn-secondary inventory-dql"
+                            onClick={() => void handleOpenInList(item)}
+                            disabled={dqlLoadingId === item.id}
+                            title={t(
+                              "Open a pre-built DQL query for this item in the Vulnerabilities list",
+                              "Vorbereitete DQL-Abfrage für diesen Eintrag in der Schwachstellen-Liste öffnen",
+                            )}
+                          >
+                            {dqlLoadingId === item.id ? t("…", "…") : t("DQL", "DQL")}
+                          </button>
+                          <IconButton label={t("Edit", "Bearbeiten")} onClick={() => startEditing(item)}>
+                            <LuPencil aria-hidden="true" />
+                          </IconButton>
+                          <IconButton
+                            label={t("Delete", "Löschen")}
+                            className="inventory-delete"
+                            onClick={() => void handleDelete(item.id)}
+                          >
+                            <LuTrash2 aria-hidden="true" />
+                          </IconButton>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {expanded && (
+                      <tr className="inventory-expansion-row">
+                        <td colSpan={columnCount}>
+                          <div className="well inventory-expansion">
+                            <div className="inventory-expansion-side">
+                              <VersionUpdateForm
+                                key={item.version}
+                                item={item}
+                                suggested={eolStatus?.isOutdated ? (eolStatus.latestVersion ?? null) : null}
+                                onSaved={handleVersionSaved}
+                                t={t}
+                              />
+                              {eolStatus && <EolDetailBlock status={eolStatus} t={t} />}
+                              <div className="inventory-item-history">
+                                <div className="inventory-expansion-head">
+                                  <h3>{t("History", "Verlauf")}</h3>
+                                </div>
+                                {itemHistory === undefined || itemHistory === "loading" ? (
+                                  <SkeletonBlock height="1.5rem" radius={4} />
+                                ) : "error" in itemHistory ? (
+                                  <ErrorState title={itemHistory.error} />
+                                ) : itemHistory.length === 0 ? (
+                                  <p className="inventory-note">
+                                    {t(
+                                      "No changes recorded yet. Changes are tracked from now on.",
+                                      "Noch keine Änderungen erfasst. Änderungen werden ab jetzt aufgezeichnet.",
+                                    )}
+                                  </p>
+                                ) : (
+                                  <InventoryHistoryList entries={itemHistory} t={t} />
+                                )}
+                              </div>
+                            </div>
+                            <div className="inventory-expansion-cves">
+                              {isLoading ? (
+                                <div className="inventory-skeleton" role="status">
+                                  <span className="visually-hidden">
+                                    {t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")}
+                                  </span>
+                                  {Array.from({ length: 3 }, (_, i) => (
+                                    <SkeletonBlock key={i} height="1.5rem" radius={4} />
+                                  ))}
+                                </div>
+                              ) : isError ? (
+                                <ErrorState title={(affected as { error: string }).error} />
+                              ) : vulns.length === 0 ? (
+                                <EmptyState
+                                  title={t(
+                                    "No known vulnerabilities currently affect this version.",
+                                    "Aktuell sind keine Schwachstellen für diese Version bekannt.",
+                                  )}
+                                />
+                              ) : (
+                                <>
+                                  <div className="inventory-expansion-head">
+                                    <h3>
+                                      {vulns.length}{" "}
+                                      {t(
+                                        vulns.length === 1 ? "affecting vulnerability" : "affecting vulnerabilities",
+                                        vulns.length === 1 ? "betroffene Schwachstelle" : "betroffene Schwachstellen",
+                                      )}
+                                    </h3>
+                                  </div>
+                                  <ul className="inventory-cve-list">
+                                    {vulns.slice(0, 50).map((v) => {
+                                      const sev = severityOf(v.severity);
+                                      return (
+                                        <li key={v.vulnId}>
+                                          <Link
+                                            to={`/vulnerability/${encodeURIComponent(v.vulnId)}`}
+                                            className="row-link inventory-cve-row"
+                                          >
+                                            <span className="mono inventory-cve-id">{v.vulnId}</span>
+                                            <span className="inventory-cve-severity">
+                                              <SeverityTag severity={sev}>{severityLabel(sev, t)}</SeverityTag>
+                                            </span>
+                                            {v.exploited && <span className="chip inventory-kev">KEV</span>}
+                                            {v.title && v.title !== v.vulnId && (
+                                              <span className="inventory-cve-title">{v.title}</span>
+                                            )}
+                                          </Link>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                  {vulns.length > 50 && (
+                                    <p className="inventory-cve-more">
+                                      {t("... and", "... und")} {vulns.length - 50} {t("more", "weitere")}
+                                    </p>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                );
+              })}
+            </table>
+          </div>
+        )}
+      </Section>
+
+      {/* Aggregated CVE roll-up across every configured item */}
+      <Section title={t("Flagged CVEs", "Gemeldete CVEs")}>
+        <p className="inventory-note">
           {t(
-            "Declare the products and versions you run. Hecate flags matching CVEs on every vulnerability page, enriches AI analyses with your environment impact, and fires notifications when a new CVE matches any item.",
-            "Deklarieren Sie die Produkte und Versionen, die Sie betreiben. Hecate markiert passende CVEs auf jeder Schwachstellen-Seite, reichert KI-Analysen mit Ihrer Umgebungswirkung an und sendet Benachrichtigungen, sobald ein neuer CVE zu einem Eintrag passt.",
+            "Every distinct CVE matching any configured item, sorted by severity.",
+            "Jeder eindeutige CVE, der zu einem konfigurierten Eintrag passt, nach Schweregrad sortiert.",
           )}
         </p>
-        {totalItems > 0 && (
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
-            <span className="chip">
-              {totalItems}{" "}
-              {t(totalItems === 1 ? "item" : "items", totalItems === 1 ? "Eintrag" : "Einträge")}
-            </span>
-            <span className="chip">
-              {totalInstances}{" "}
-              {t(
-                totalInstances === 1 ? "instance" : "instances",
-                totalInstances === 1 ? "Instanz" : "Instanzen",
-              )}
-            </span>
-          </div>
+        {aggregatedCves.length === 0 ? (
+          aggregatedLoading ? (
+            <div className="inventory-skeleton" role="status">
+              <span className="visually-hidden">
+                {t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")}
+              </span>
+              {Array.from({ length: 5 }, (_, i) => (
+                <SkeletonBlock key={i} height="2.25rem" radius={4} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title={
+                items.length === 0
+                  ? t("Add inventory items to see flagged CVEs.", "Fügen Sie Einträge hinzu, um gemeldete CVEs zu sehen.")
+                  : t("No known vulnerabilities affect your inventory.", "Keine bekannten Schwachstellen betreffen Ihr Inventar.")
+              }
+            />
+          )
+        ) : (
+          <>
+            {aggregatedLoading && (
+              <p className="inventory-note">
+                {t("Still resolving some items…", "Einige Einträge werden noch geladen…")}
+              </p>
+            )}
+            <div className="table-scroll">
+              <table className="inventory-flagged-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t("CVE", "CVE")}</th>
+                    <th scope="col">{t("Severity", "Schweregrad")}</th>
+                    <th scope="col">{t("CVSS", "CVSS")}</th>
+                    <th scope="col">{t("EPSS", "EPSS")}</th>
+                    <th scope="col">{t("Published", "Veröffentlicht")}</th>
+                    <th scope="col">{t("Affected items", "Betroffene Einträge")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aggregatedCves.map((row) => {
+                    const sev = severityOf(row.severity);
+                    return (
+                      <tr key={row.vulnId}>
+                        <td>
+                          <span className="inventory-flagged-id">
+                            <Link
+                              to={`/vulnerability/${encodeURIComponent(row.vulnId)}`}
+                              className="row-link mono"
+                            >
+                              {row.vulnId}
+                            </Link>
+                            {row.exploited && <span className="chip inventory-kev">KEV</span>}
+                          </span>
+                        </td>
+                        <td>
+                          <SeverityTag severity={sev}>{severityLabel(sev, t)}</SeverityTag>
+                        </td>
+                        <td>{row.cvssScore != null ? row.cvssScore.toFixed(1) : "n/a"}</td>
+                        <td>
+                          {row.epssScore != null ? `${(row.epssScore * 100).toFixed(1)}%` : "n/a"}
+                        </td>
+                        <td className="inventory-flagged-date">
+                          {row.published ? formatDateTime(row.published) : "n/a"}
+                        </td>
+                        <td>
+                          <div className="inventory-flagged-items">
+                            {row.items.map((it) => (
+                              <span key={it.id} className="chip inventory-flagged-item">
+                                <span>{it.product}</span>
+                                <span className="inventory-version">{it.version}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
-        {error && (
-          <div className="alert error" style={{ marginTop: "1rem" }}>
-            {error}
-          </div>
-        )}
-      </section>
+      </Section>
 
-      {/* Add / edit modal — triggered from the Configuration management header */}
+      <Section title={t("Recent changes", "Letzte Änderungen")} className="inventory-recent-changes">
+        {recentChanges === "loading" ? (
+          <SkeletonBlock height="4rem" radius={4} />
+        ) : "error" in recentChanges ? (
+          <ErrorState title={recentChanges.error} />
+        ) : recentChanges.length === 0 ? (
+          <EmptyState
+            title={t("No changes recorded yet.", "Noch keine Änderungen erfasst.")}
+          >
+            {t(
+              "Every version change, from here or through the API, shows up in this list.",
+              "Jede Versionsänderung, ob hier oder über die API, erscheint in dieser Liste.",
+            )}
+          </EmptyState>
+        ) : (
+          <InventoryHistoryList entries={recentChanges} showItem t={t} />
+        )}
+      </Section>
+
+      {/* Add / edit modal, opened from the page header and the row edit action */}
       {(creating || editingId !== null) && (
         <div className="dialog-overlay" role="presentation" onClick={resetForm}>
           <div
             className="dialog dialog--wide"
             role="dialog"
             aria-modal="true"
+            aria-labelledby="inventory-dialog-title"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Escape") resetForm();
             }}
           >
             <div className="dialog-head">
-              <div style={{ minWidth: 0 }}>
-                <h3 style={{ margin: "0 0 0.25rem" }}>
+              <div className="inventory-dialog-title">
+                <h3 id="inventory-dialog-title">
                   {editingId
                     ? t("Edit Item", "Eintrag bearbeiten")
                     : t("Add Item", "Eintrag hinzufügen")}
                 </h3>
-                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                <p className="inventory-dialog-hint">
                   {t(
                     "Vendor and product auto-complete from the asset catalog. Versions accept exact values (8.0.25) or wildcards (8.0.*).",
                     "Hersteller und Produkt werden aus dem Asset-Katalog vervollständigt. Versionen akzeptieren exakte Werte (8.0.25) oder Wildcards (8.0.*).",
@@ -949,194 +1572,75 @@ export const InventoryPage = () => {
                 aria-label={t("Close", "Schließen")}
                 title={t("Close", "Schließen")}
               >
-                <LuX aria-hidden />
+                <LuX aria-hidden="true" />
               </button>
             </div>
-            <div style={formGridStyle}>
-            <div style={fieldFullStyle}>
-              <label className="advanced-filter-label">{t("Name", "Name")}</label>
-              <input
-                type="text"
-                className="advanced-filter-input"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder={t(".NET 8.0.25 — prod cluster", ".NET 8.0.25 – Prod-Cluster")}
-              />
-            </div>
-
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">{t("Vendor", "Hersteller")}</label>
-              <AsyncSelect<VendorOption, false>
-                cacheOptions
-                defaultOptions
-                loadOptions={loadVendorOptions}
-                value={selectedVendor}
-                onChange={(option) => {
-                  setSelectedVendor(option);
-                  // Product becomes invalid when vendor changes
-                  setSelectedProduct(null);
-                  setForm({
-                    ...form,
-                    vendorSlug: option?.value ?? "",
-                    vendorName: option?.label ?? "",
-                    productSlug: "",
-                    productName: "",
-                  });
-                }}
-                placeholder={t("Select vendor...", "Hersteller auswählen...")}
-                styles={selectStyles}
-                menuPortalTarget={document.body}
-                menuPosition="fixed"
-                isClearable
-                noOptionsMessage={({ inputValue }) =>
-                  inputValue
-                    ? t(`No vendors found for "${inputValue}"`, `Keine Hersteller gefunden für "${inputValue}"`)
-                    : t("Type to search", "Tippen Sie, um zu suchen")
-                }
-                formatOptionLabel={(option) => (
-                  <span style={{ display: "flex", flexDirection: "column" }}>
-                    <span>{option.label}</span>
-                    {option.aliases.length > 0 ? (
-                      <small style={{ opacity: 0.65, fontSize: "0.75rem" }}>
-                        {option.aliases.slice(0, 2).join(", ")}
-                        {option.aliases.length > 2 ? " …" : ""}
-                      </small>
-                    ) : null}
-                  </span>
-                )}
-              />
-            </div>
-
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">{t("Product", "Produkt")}</label>
-              <AsyncSelect<ProductOption, false>
-                key={selectedVendor?.value ?? "no-vendor"}
-                cacheOptions
-                defaultOptions={Boolean(selectedVendor)}
-                loadOptions={loadProductOptions}
-                value={selectedProduct}
-                onChange={(option) => {
-                  setSelectedProduct(option);
-                  setForm({
-                    ...form,
-                    productSlug: option?.value ?? "",
-                    productName: option?.label ?? "",
-                  });
-                }}
-                placeholder={
-                  selectedVendor
-                    ? t("Select product...", "Produkt auswählen...")
-                    : t("Select a vendor first", "Zuerst Hersteller wählen")
-                }
-                styles={selectStyles}
-                menuPortalTarget={document.body}
-                menuPosition="fixed"
-                isClearable
-                isDisabled={!selectedVendor}
-                noOptionsMessage={({ inputValue }) =>
-                  inputValue
-                    ? t(`No products found for "${inputValue}"`, `Keine Produkte gefunden für "${inputValue}"`)
-                    : t("Type to search", "Tippen Sie, um zu suchen")
-                }
-                formatOptionLabel={(option) => (
-                  <span style={{ display: "flex", flexDirection: "column" }}>
-                    <span>{option.label}</span>
-                    {option.aliases.length > 0 ? (
-                      <small style={{ opacity: 0.65, fontSize: "0.75rem" }}>
-                        {option.aliases.slice(0, 2).join(", ")}
-                        {option.aliases.length > 2 ? " …" : ""}
-                      </small>
-                    ) : null}
-                  </span>
-                )}
-              />
-            </div>
-
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">{t("Version", "Version")}</label>
-              <input
-                type="text"
-                className="advanced-filter-input"
-                value={form.version}
-                onChange={(e) => setForm({ ...form, version: e.target.value })}
-                placeholder="8.0.25"
-              />
-            </div>
-
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">{t("Deployment", "Betriebsart")}</label>
-              <div className="advanced-filter-chips">
-                {DEPLOYMENTS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    className={`advanced-filter-chip ${form.deployment === d ? "active" : ""}`}
-                    onClick={() => setForm({ ...form, deployment: d })}
-                  >
-                    {deploymentLabel(d, t)}
-                  </button>
-                ))}
+            <div className="inventory-form">
+              <div className="inventory-field inventory-field--full">
+                <label className="inventory-label" htmlFor="inventory-name">{t("Name", "Name")}</label>
+                <input
+                  id="inventory-name"
+                  type="text"
+                  className="inventory-input"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={t(".NET 8.0.25, prod cluster", ".NET 8.0.25, Prod-Cluster")}
+                />
               </div>
-            </div>
 
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">{t("Environment", "Umgebung")}</label>
-              <input
-                type="text"
-                className="advanced-filter-input"
-                list="inventory-environment-suggestions"
-                value={form.environment}
-                onChange={(e) => setForm({ ...form, environment: e.target.value })}
-                placeholder={t("prod, staging, dev, test, …", "prod, staging, dev, test, …")}
-              />
-              <datalist id="inventory-environment-suggestions">
-                {environmentSuggestions.map((env) => (
-                  <option key={env} value={env} />
-                ))}
-              </datalist>
-            </div>
-
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">{t("Instance Count", "Anzahl Instanzen")}</label>
-              <input
-                type="number"
-                min={1}
-                className="advanced-filter-input"
-                value={form.instanceCount}
-                onChange={(e) =>
-                  setForm({ ...form, instanceCount: Math.max(1, Number(e.target.value) || 1) })
-                }
-              />
-            </div>
-
-            <div style={fieldStyle}>
-              <label className="advanced-filter-label">
-                {t("Owner / Team (optional)", "Verantwortlich / Team (optional)")}
-              </label>
-              <input
-                type="text"
-                className="advanced-filter-input"
-                value={form.owner ?? ""}
-                onChange={(e) => setForm({ ...form, owner: e.target.value })}
-                placeholder="platform-team"
-              />
-            </div>
-
-            {eolEnabled && (
-              <div style={fieldStyle}>
-                <label className="advanced-filter-label">
-                  {t("End-of-life tracking", "End-of-Life-Tracking")}
-                </label>
-                <AsyncSelect<EolOption, false>
+              <div className="inventory-field">
+                <label className="inventory-label" htmlFor="inventory-vendor">{t("Vendor", "Hersteller")}</label>
+                <AsyncSelect<VendorOption, false>
+                  inputId="inventory-vendor"
                   cacheOptions
                   defaultOptions
-                  loadOptions={loadEolOptions}
-                  value={selectedEol}
+                  loadOptions={loadVendorOptions}
+                  value={selectedVendor}
                   onChange={(option) => {
-                    setSelectedEol(option);
-                    setEolTouched(true);
+                    setSelectedVendor(option);
+                    // Product becomes invalid when vendor changes
+                    setSelectedProduct(null);
+                    setForm({
+                      ...form,
+                      vendorSlug: option?.value ?? "",
+                      vendorName: option?.label ?? "",
+                      productSlug: "",
+                      productName: "",
+                    });
                   }}
-                  placeholder={t("Auto-detected", "Automatisch")}
+                  placeholder={t("Select vendor...", "Hersteller auswählen...")}
+                  styles={selectStyles}
+                  menuPortalTarget={document.body}
+                  menuPosition="fixed"
+                  isClearable
+                  noOptionsMessage={({ inputValue }) =>
+                    inputValue
+                      ? t(`No vendors found for "${inputValue}"`, `Keine Hersteller gefunden für "${inputValue}"`)
+                      : t("Type to search", "Tippen Sie, um zu suchen")
+                  }
+                  formatOptionLabel={renderCatalogOption}
+                />
+              </div>
+
+              <div className="inventory-field">
+                <label className="inventory-label" htmlFor="inventory-product">{t("Product", "Produkt")}</label>
+                <AsyncSelect<ProductOption, false>
+                  key={selectedVendor?.value ?? "no-vendor"}
+                  inputId="inventory-product"
+                  cacheOptions
+                  defaultOptions={Boolean(selectedVendor)}
+                  loadOptions={loadProductOptions}
+                  value={selectedProduct}
+                  onChange={(option) => {
+                    setSelectedProduct(option);
+                    setForm({
+                      ...form,
+                      productSlug: option?.value ?? "",
+                      productName: option?.label ?? "",
+                    });
+                    if (option && !selectedVendor) void selectVendorForProduct(option);
+                  }}
+                  placeholder={t("Search product...", "Produkt suchen...")}
                   styles={selectStyles}
                   menuPortalTarget={document.body}
                   menuPosition="fixed"
@@ -1144,404 +1648,159 @@ export const InventoryPage = () => {
                   noOptionsMessage={({ inputValue }) =>
                     inputValue
                       ? t(`No products found for "${inputValue}"`, `Keine Produkte gefunden für "${inputValue}"`)
-                      : t("Type to search endoflife.date", "Tippen, um endoflife.date zu durchsuchen")
+                      : t("Type to search", "Tippen Sie, um zu suchen")
+                  }
+                  formatOptionLabel={renderCatalogOption}
+                />
+              </div>
+
+              <div className="inventory-field">
+                <label className="inventory-label" htmlFor="inventory-version">{t("Version", "Version")}</label>
+                <input
+                  id="inventory-version"
+                  type="text"
+                  className="inventory-input"
+                  value={form.version}
+                  onChange={(e) => setForm({ ...form, version: e.target.value })}
+                  placeholder="8.0.25"
+                />
+              </div>
+
+              <div className="inventory-field">
+                <span className="inventory-label" id="inventory-deployment-label">
+                  {t("Deployment", "Betriebsart")}
+                </span>
+                <div className="inventory-choices" role="group" aria-labelledby="inventory-deployment-label">
+                  {DEPLOYMENTS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      className={`inventory-choice ${form.deployment === d ? "active" : ""}`}
+                      aria-pressed={form.deployment === d}
+                      onClick={() => setForm({ ...form, deployment: d })}
+                    >
+                      {deploymentLabel(d, t)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="inventory-field">
+                <label className="inventory-label" htmlFor="inventory-environment">{t("Environment", "Umgebung")}</label>
+                <input
+                  id="inventory-environment"
+                  type="text"
+                  className="inventory-input"
+                  list="inventory-environment-suggestions"
+                  value={form.environment}
+                  onChange={(e) => setForm({ ...form, environment: e.target.value })}
+                  placeholder={t("prod, staging, dev, test, …", "prod, staging, dev, test, …")}
+                />
+                <datalist id="inventory-environment-suggestions">
+                  {environmentSuggestions.map((env) => (
+                    <option key={env} value={env} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="inventory-field">
+                <label className="inventory-label" htmlFor="inventory-instances">
+                  {t("Instance Count", "Anzahl Instanzen")}
+                </label>
+                <input
+                  id="inventory-instances"
+                  type="number"
+                  min={1}
+                  className="inventory-input"
+                  value={form.instanceCount}
+                  onChange={(e) =>
+                    setForm({ ...form, instanceCount: Math.max(1, Number(e.target.value) || 1) })
                   }
                 />
-                <small className="muted" style={{ fontSize: "0.7rem" }}>
-                  {t(
-                    "endoflife.date product — auto-detected from the product name; change or clear to override.",
-                    "endoflife.date-Produkt — automatisch aus dem Produktnamen erkannt; ändern oder leeren zum Überschreiben.",
-                  )}
-                </small>
               </div>
-            )}
 
-            <div style={fieldFullStyle}>
-              <label className="advanced-filter-label">{t("Notes (optional)", "Notizen (optional)")}</label>
-              <textarea
-                className="advanced-filter-input"
-                value={form.notes ?? ""}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={3}
-                style={{ resize: "vertical", fontFamily: "inherit" }}
-              />
-            </div>
-
+              <div className="inventory-field">
+                <label className="inventory-label" htmlFor="inventory-owner">
+                  {t("Owner / Team (optional)", "Verantwortlich / Team (optional)")}
+                </label>
+                <input
+                  id="inventory-owner"
+                  type="text"
+                  className="inventory-input"
+                  value={form.owner ?? ""}
+                  onChange={(e) => setForm({ ...form, owner: e.target.value })}
+                  placeholder="platform-team"
+                />
               </div>
-              <div className="dialog-actions" style={{ marginTop: "1rem" }}>
-                <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                  {t("Cancel", "Abbrechen")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void handleSave()}
-                  disabled={saving}
-                >
-                  {saving
-                    ? t("Saving...", "Speichern…")
-                    : editingId
-                      ? t("Save", "Speichern")
-                      : t("Create", "Erstellen")}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
-      {/* Items list */}
-      <section className="card">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "1rem",
-          }}
-        >
-          <h2 style={{ margin: 0 }}>{t("Configuration management", "Konfigurationsverwaltung")}</h2>
-          <button
-            type="button"
-            className="btn btn-primary inventory-add-btn"
-            onClick={() => {
-              resetForm();
-              setCreating(true);
-            }}
-            title={t("Add inventory item", "Inventar-Eintrag hinzufügen")}
-            aria-label={t("Add inventory item", "Inventar-Eintrag hinzufügen")}
-          >
-            <LuPlus aria-hidden />
-            <span className="hide-mobile">{t("Add", "Hinzufügen")}</span>
-          </button>
-        </div>
-        {items.length > 0 && (
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginTop: "0.5rem", marginBottom: "0.75rem" }}>
-            <input
-              type="search"
-              className="advanced-filter-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t(
-                "Search name, vendor, product, version, owner…",
-                "Name, Hersteller, Produkt, Version, Owner durchsuchen…",
-              )}
-              style={{ flex: 1, minWidth: "240px", maxWidth: "480px" }}
-            />
-            {search && (
-              <span className="muted" style={{ fontSize: "0.8125rem" }}>
-                {filteredItems.length} / {items.length}
-              </span>
-            )}
-          </div>
-        )}
-        {loading ? (
-          <p className="muted">{t("Loading...", "Laden...")}</p>
-        ) : items.length === 0 ? (
-          <p className="muted">
-            {t(
-              'No inventory items yet. Use the "Add" button above to add your first product + version.',
-              'Noch keine Einträge. Nutzen Sie die Schaltfläche „Hinzufügen" oben, um Ihr erstes Produkt + Version anzulegen.',
-            )}
-          </p>
-        ) : filteredItems.length === 0 ? (
-          <p className="muted">
-            {t("No items match your search.", "Keine Einträge passen zur Suche.")}
-          </p>
-        ) : (
-          <div className="inventory-list">
-            {filteredItems.map((item) => {
-              const expanded = expandedItemId === item.id;
-              const affected = affectedById[item.id];
-              const isLoading = affected === "loading";
-              const isError =
-                !!affected && typeof affected === "object" && !Array.isArray(affected) && "error" in affected;
-              const vulns = Array.isArray(affected) ? affected : [];
-              const worst = vulns.length > 0 ? severityOf(vulns[0]?.severity as string | null) : "unknown";
-              const eolEntry = eolEnabled ? eolById[item.id] : undefined;
-              const eolStatus =
-                eolEntry && eolEntry !== "loading" && eolEntry.linked ? eolEntry : null;
-
-              return (
-                <div key={item.id} className={`inventory-row ${worst}`}>
-                  <div
-                    className="inventory-row__main"
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={expanded}
-                    onClick={() => toggleExpanded(item.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleExpanded(item.id);
-                      }
+              {eolEnabled && (
+                <div className="inventory-field">
+                  <label className="inventory-label" htmlFor="inventory-eol">
+                    {t("End-of-life tracking", "End-of-Life-Tracking")}
+                  </label>
+                  <AsyncSelect<EolOption, false>
+                    inputId="inventory-eol"
+                    cacheOptions
+                    defaultOptions
+                    loadOptions={loadEolOptions}
+                    value={selectedEol}
+                    onChange={(option) => {
+                      setSelectedEol(option);
+                      setEolTouched(true);
                     }}
-                  >
-                    <span className={`inventory-row__dot ${worst}`} aria-hidden />
-                    <div className="inventory-row__id">
-                      <div className="inventory-row__name">{item.name}</div>
-                      <div className="inventory-row__sub muted">
-                        {[item.vendorName || item.vendorSlug, item.productName || item.productSlug]
-                          .filter(Boolean)
-                          .join(" / ")}{" "}
-                        · <strong>{item.version}</strong>
-                        {item.owner ? ` · ${item.owner}` : ""}
-                      </div>
-                    </div>
-                    <div className="inventory-row__meta">
-                      <span className="chip">{deploymentLabel(item.deployment, t)}</span>
-                      <span className="chip">{environmentLabel(item.environment, t)}</span>
-                      <span className="chip">
-                        {item.instanceCount}× {t("inst", "Inst")}
-                      </span>
-                    </div>
-                    {eolStatus && (
-                      <div
-                        className="inventory-row__eol"
-                        onClick={(e) => e.stopPropagation()}
-                        role="presentation"
-                      >
-                        <EolStatusBadge status={eolStatus} t={t} />
-                      </div>
+                    placeholder={t("Auto-detected", "Automatisch")}
+                    styles={selectStyles}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    isClearable
+                    noOptionsMessage={({ inputValue }) =>
+                      inputValue
+                        ? t(`No products found for "${inputValue}"`, `Keine Produkte gefunden für "${inputValue}"`)
+                        : t("Type to search endoflife.date", "Tippen, um endoflife.date zu durchsuchen")
+                    }
+                  />
+                  <small className="inventory-hint">
+                    {t(
+                      "endoflife.date product, auto-detected from the product name; change or clear to override.",
+                      "endoflife.date-Produkt, automatisch aus dem Produktnamen erkannt; ändern oder leeren zum Überschreiben.",
                     )}
-                    <span className={`inventory-row__cve ${vulns.length > 0 ? worst : "none"}`}>
-                      {isLoading ? "…" : isError ? "!" : vulns.length}
-                      <span className="hide-mobile"> {t("CVEs", "CVEs")}</span>
-                    </span>
-                    <span className="inventory-row__chevron" aria-hidden>
-                      {expanded ? "▾" : "▸"}
-                    </span>
-                    <div
-                      className="inventory-row__actions"
-                      role="presentation"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => void handleOpenInList(item)}
-                        disabled={dqlLoadingId === item.id}
-                        title={t(
-                          "Open a pre-built DQL query for this item in the Vulnerabilities list",
-                          "Vorbereitete DQL-Abfrage für diesen Eintrag in der Schwachstellen-Liste öffnen",
-                        )}
-                        style={{ ...primaryActionStyle, cursor: dqlLoadingId === item.id ? "wait" : "pointer" }}
-                      >
-                        {dqlLoadingId === item.id ? t("…", "…") : t("DQL", "DQL")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => startEditing(item)}
-                        title={t("Edit", "Bearbeiten")}
-                        aria-label={t("Edit", "Bearbeiten")}
-                        style={neutralActionStyle}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(item.id)}
-                        title={t("Delete", "Löschen")}
-                        aria-label={t("Delete", "Löschen")}
-                        style={dangerActionStyle}
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  </div>
-
-                  {item.notes && (
-                    <div className="inventory-row__notes muted">{item.notes}</div>
-                  )}
-
-                  {expanded && (
-                    <div className="inventory-row__expand">
-                      {eolStatus && <EolDetailBlock status={eolStatus} t={t} />}
-                      {isLoading ? (
-                        <p className="muted" style={{ margin: 0, fontSize: "0.8125rem" }}>
-                          {t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")}
-                        </p>
-                      ) : isError ? (
-                        <div className="alert error">{(affected as { error: string }).error}</div>
-                      ) : vulns.length === 0 ? (
-                        <p className="muted" style={{ margin: 0, fontSize: "0.8125rem" }}>
-                          {t(
-                            "No known vulnerabilities currently affect this version.",
-                            "Aktuell sind keine Schwachstellen für diese Version bekannt.",
-                          )}
-                        </p>
-                      ) : (
-                        <div>
-                          <div className="muted" style={{ fontSize: "0.8125rem", marginBottom: "0.5rem" }}>
-                            {vulns.length}{" "}
-                            {t(
-                              vulns.length === 1 ? "affecting vulnerability" : "affecting vulnerabilities",
-                              vulns.length === 1 ? "betroffene Schwachstelle" : "betroffene Schwachstellen",
-                            )}
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                            {vulns.slice(0, 50).map((v) => {
-                              const sev = severityOf(v.severity);
-                              return (
-                                <Link
-                                  key={v.vulnId}
-                                  to={`/vulnerability/${encodeURIComponent(v.vulnId)}`}
-                                  style={{
-                                    display: "flex",
-                                    gap: "0.5rem",
-                                    alignItems: "center",
-                                    padding: "0.35rem 0.5rem",
-                                    borderRadius: "4px",
-                                    background: "rgba(255,255,255,0.03)",
-                                    color: "rgba(255,255,255,0.85)",
-                                    textDecoration: "none",
-                                    fontSize: "0.8125rem",
-                                    minWidth: 0,
-                                  }}
-                                >
-                                  <strong style={{ flexShrink: 0 }}>{v.vulnId}</strong>
-                                  {v.exploited && (
-                                    <span
-                                      className="chip"
-                                      style={{
-                                        background: "rgba(255,107,107,0.18)",
-                                        color: "#ff6b6b",
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      KEV
-                                    </span>
-                                  )}
-                                  <span
-                                    className="muted"
-                                    style={{
-                                      flex: 1,
-                                      minWidth: 0,
-                                      overflow: "hidden",
-                                      whiteSpace: "nowrap",
-                                      textOverflow: "ellipsis",
-                                    }}
-                                  >
-                                    {v.title ?? ""}
-                                  </span>
-                                  <span
-                                    className={`tag ${sev}`}
-                                    style={{
-                                      height: "1.35rem",
-                                      padding: "0 0.4rem",
-                                      fontSize: "0.7rem",
-                                      marginLeft: "auto",
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {sev}
-                                  </span>
-                                </Link>
-                              );
-                            })}
-                            {vulns.length > 50 && (
-                              <div className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-                                {t("... and", "... und")} {vulns.length - 50} {t("more", "weitere")}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  </small>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+              )}
 
-      {/* Aggregated CVE roll-up across every configured item */}
-      <section className="card">
-        <h2>{t("Flagged CVEs", "Gemeldete CVEs")}</h2>
-        <p className="muted">
-          {t(
-            "Every distinct CVE matching any configured item, sorted by severity.",
-            "Jeder eindeutige CVE, der zu einem konfigurierten Eintrag passt, nach Schweregrad sortiert.",
-          )}
-        </p>
-        {aggregatedCves.length === 0 ? (
-          <p className="muted" style={{ marginTop: "0.75rem" }}>
-            {aggregatedLoading
-              ? t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")
-              : items.length === 0
-                ? t("Add inventory items to see flagged CVEs.", "Fügen Sie Einträge hinzu, um gemeldete CVEs zu sehen.")
-                : t("No known vulnerabilities affect your inventory.", "Keine bekannten Schwachstellen betreffen Ihr Inventar.")}
-          </p>
-        ) : (
-          <>
-            {aggregatedLoading && (
-              <p className="muted" style={{ fontSize: "0.8125rem", marginTop: "0.5rem" }}>
-                {t("Still resolving some items…", "Einige Einträge werden noch geladen…")}
-              </p>
-            )}
-            <div style={{ overflowX: "auto", marginTop: "0.75rem" }}>
-              <table className="impacted-products__table">
-                <thead>
-                  <tr>
-                    <th>{t("CVE", "CVE")}</th>
-                    <th>{t("Severity", "Schweregrad")}</th>
-                    <th>{t("CVSS", "CVSS")}</th>
-                    <th>{t("EPSS", "EPSS")}</th>
-                    <th>{t("Published", "Veröffentlicht")}</th>
-                    <th>{t("Affected items", "Betroffene Einträge")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aggregatedCves.map((row) => {
-                    const sev = severityOf(row.severity);
-                    return (
-                      <tr key={row.vulnId}>
-                        <td>
-                          <Link
-                            to={`/vulnerability/${encodeURIComponent(row.vulnId)}`}
-                            className="impacted-products__link"
-                          >
-                            {row.vulnId}
-                          </Link>
-                          {row.exploited && (
-                            <span
-                              className="chip"
-                              style={{
-                                marginLeft: "0.4rem",
-                                background: "rgba(255,107,107,0.18)",
-                                color: "#ff6b6b",
-                              }}
-                            >
-                              KEV
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`tag ${sev}`}>{sev}</span>
-                        </td>
-                        <td>{row.cvssScore != null ? row.cvssScore.toFixed(1) : "—"}</td>
-                        <td>
-                          {row.epssScore != null ? `${(row.epssScore * 100).toFixed(1)}%` : "—"}
-                        </td>
-                        <td>{row.published ? formatDateTime(row.published) : "—"}</td>
-                        <td>
-                          <div className="impacted-products__version-list">
-                            {row.items.map((it) => (
-                              <span key={it.id} className="impacted-products__version-tag">
-                                {it.product} · {it.version}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="inventory-field inventory-field--full">
+                <label className="inventory-label" htmlFor="inventory-notes">
+                  {t("Notes (optional)", "Notizen (optional)")}
+                </label>
+                <textarea
+                  id="inventory-notes"
+                  className="inventory-input"
+                  value={form.notes ?? ""}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  rows={3}
+                />
+              </div>
             </div>
-          </>
-        )}
-      </section>
+            <div className="dialog-actions inventory-dialog-actions">
+              <button type="button" className="btn btn-secondary" onClick={resetForm}>
+                {t("Cancel", "Abbrechen")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleSave()}
+                disabled={saving}
+              >
+                {saving
+                  ? t("Saving...", "Speichern…")
+                  : editingId
+                    ? t("Save", "Speichern")
+                    : t("Create", "Erstellen")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

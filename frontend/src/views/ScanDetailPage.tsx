@@ -1,13 +1,33 @@
+import "../screens/scan-detail.css";
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Markdown from "react-markdown";
+import {
+  LuArrowLeft,
+  LuArrowLeftRight,
+  LuArrowRight,
+  LuCheck,
+  LuChevronDown,
+  LuChevronUp,
+  LuCircleAlert,
+  LuExternalLink,
+  LuList,
+  LuMinus,
+  LuPlus,
+  LuTriangleAlert,
+  LuX,
+} from "react-icons/lu";
 
 import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex, importVex, bulkUpdateVexByIds, dismissFindings, triggerScanAiAnalysis } from "../api/scans";
 import { getAiProviders } from "../api/vulnerabilities";
 import type { AIProviderInfo } from "../types";
 import { TriggeredByBadge } from "../ui/TriggeredByBadge";
-import { TabBadge } from "../ui/TabPill";
+import { TabPill } from "../ui/TabPill";
+import { EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Stat, severityLevel, severityVar } from "../ui/primitives";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
+import { cleanAdvisoryText } from "../utils/advisoryText";
 import { fetchScanLicenseCompliance, fetchLicensePolicies } from "../api/licensePolicy";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
@@ -196,6 +216,12 @@ function pickBestFixVersion(packageVersion: string, candidates: (string | null |
   // Among valid upgrades, prefer same major (closest upgrade path)
   const sameMajor = nonDowngrades.filter(v => parseInt(v.split(".")[0] ?? "0", 10) === pkgMajor);
   return sameMajor[0] ?? nonDowngrades[0];
+}
+
+/** Advisory fix versions the scanner's fix value does not already state. */
+function newAdvisoryVersions(fixVersion: string | null, advisoryVersions: string[]): string[] {
+  const stated = new Set((fixVersion ?? "").split(/[,\s]+/).filter(Boolean).map(normalizeVersion));
+  return advisoryVersions.filter(v => !stated.has(normalizeVersion(v)));
 }
 
 function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
@@ -481,7 +507,7 @@ export const ScanDetailPage = () => {
     }
     for (const sev of seen.values()) {
       const k = sev as keyof typeof counts;
-      if (k in counts && k !== "total") (counts[k] as number)++;
+      if (k in counts && k !== "total") counts[k] = (counts[k] as number) + 1;
       else counts.unknown++;
       counts.total++;
     }
@@ -685,27 +711,26 @@ export const ScanDetailPage = () => {
   }, [tab, scanId]);
 
   if (loading) return (
-    <div className="page">
-      <section className="card">
-        <SkeletonBlock height="1rem" width="120px" style={{ marginBottom: "0.75rem" }} />
-        <SkeletonBlock height="1.5rem" width="60%" style={{ marginBottom: "0.5rem" }} />
-        <SkeletonBlock height="0.85rem" width="40%" style={{ marginBottom: "1rem" }} />
-        <SkeletonBlock height={8} radius={4} style={{ marginBottom: "0.75rem" }} />
-        <div style={{ display: "flex", gap: "1rem" }}>
+    <div className="page scan-detail">
+      <div className="scan-detail-skeleton">
+        <SkeletonBlock height="0.75rem" width="120px" radius={4} />
+        <SkeletonBlock height="1.5rem" width="40%" radius={4} />
+        <div className="scan-detail-skeleton-row">
           {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonBlock key={i} height="0.85rem" width="80px" />
+            <SkeletonBlock key={i} height="3rem" width="80px" radius={4} />
           ))}
         </div>
-      </section>
-      <section className="card" style={{ marginTop: "1rem" }}>
+        <SkeletonBlock height={4} radius={4} />
+      </div>
+      <div className="scan-detail-skeleton">
         {Array.from({ length: 8 }).map((_, i) => (
-          <SkeletonBlock key={i} height={36} radius={4} style={{ marginBottom: "0.5rem" }} />
+          <SkeletonBlock key={i} height={36} radius={4} />
         ))}
-      </section>
+      </div>
     </div>
   );
-  if (error) return <div className="page"><section className="card"><p className="muted">{error}</p></section></div>;
-  if (!scan) return <div className="page"><section className="card"><p className="muted">{t("Scan not found.", "Scan nicht gefunden.")}</p></section></div>;
+  if (error) return <div className="page scan-detail"><ErrorState title={error} /></div>;
+  if (!scan) return <div className="page scan-detail"><EmptyState title={t("Scan not found.", "Scan nicht gefunden.")} /></div>;
 
   const sourceUrl = buildSourceUrl(scan);
   const baseSourceUrl = buildBaseSourceUrl(scan);
@@ -726,2298 +751,1493 @@ export const ScanDetailPage = () => {
       .finally(() => setHistoryLoading(false));
   };
 
+  const findingSortColumns = [
+    ["severity", t("Severity", "Schweregrad")],
+    ["package", t("Package", "Paket")],
+    ["version", t("Version", "Version")],
+    ["cve", "CVE"],
+    ["fix", "Fix"],
+  ] as const;
+  const sbomSortColumns = ([
+    { col: "name", label: t("Component", "Komponente"), show: true },
+    { col: "version", label: t("Version", "Version"), show: true },
+    { col: "type", label: t("Type", "Typ"), show: true },
+    { col: "provenance", label: t("Provenance", "Provenienz"), show: hasAnyProvenance },
+    { col: "licenses", label: t("Licenses", "Lizenzen"), show: true },
+  ] as const).filter(h => h.show);
+  const allVisibleSelected = filteredMerged.length > 0 && filteredMerged.every(f => selectedKeys.has(f.key));
+  const toggleAllVisible = (checked: boolean) =>
+    setSelectedKeys(checked ? new Set(filteredMerged.map(f => f.key)) : new Set<string>());
+
   return (
-    <div className="page">
-      {/* Header */}
-      <section className="card" style={{ overflow: "visible" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
-          <div>
-            <Link to="/scans" style={{ color: "rgba(255,255,255,0.4)", textDecoration: "none", fontSize: "0.8125rem" }}>
-              ← {t("Back to Scans", "Zurück zu Scans")}
-            </Link>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.5rem 0 0.25rem" }}>
-              <h2 style={{ margin: 0 }}>{scan.targetName || scan.targetId}</h2>
-              {baseSourceUrl && (
-                <a
-                  href={baseSourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={t("Open source", "Quelle öffnen")}
-                  style={{ color: "#ffd43b", textDecoration: "none", fontSize: "1rem", lineHeight: 1 }}
-                >
-                  ↗
-                </a>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
-              <StatusBadge status={scan.status} />
-              <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)" }}>
-                {scan.scanners.join(", ")}
-              </span>
-              {scan.startedAt && (
-                <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)" }}>
-                  {formatDateTime(scan.startedAt)}
-                </span>
-              )}
-              {scan.durationSeconds != null && (
-                <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)" }}>
-                  ({scan.durationSeconds.toFixed(1)}s)
-                </span>
-              )}
-            </div>
-          </div>
-          <div style={{ textAlign: "right", fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", marginLeft: "auto" }}>
-            {scan.imageRef && (() => {
-              const tag = getImageTag(scan.imageRef);
-              const digest = getImageDigest(scan.imageRef);
-              const baseRef = scan.imageRef.split("@")[0].split(":")[0];
-              return (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                    <span style={{ wordBreak: "break-all" }}>{baseRef}{tag ? `:${tag}` : ""}</span>
-                    {sourceUrl && (
-                      <a href={sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#ffd43b", fontSize: "0.75rem", flexShrink: 0 }}>↗</a>
-                    )}
-                  </div>
-                  {digest && (
-                    <div title={digest} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", wordBreak: "break-all", maxWidth: "320px" }}>
-                      {digest.length > 20 ? `${digest.substring(0, 20)}…` : digest}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            {!scan.imageRef && scan.commitSha && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.2rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                  <span style={{ wordBreak: "break-all" }}>{scan.targetName || scan.targetId}</span>
-                  {baseSourceUrl && (
-                    <a href={baseSourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#ffd43b", fontSize: "0.75rem", flexShrink: 0 }}>↗</a>
-                  )}
-                </div>
-                {sourceUrl ? (
-                  <a href={sourceUrl} target="_blank" rel="noopener noreferrer" title={scan.commitSha} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", textDecoration: "none" }}>
-                    {scan.commitSha.substring(0, 12)} ↗
-                  </a>
-                ) : (
-                  <div title={scan.commitSha} style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "rgba(255,255,255,0.3)" }}>
-                    {scan.commitSha.substring(0, 12)}
-                  </div>
-                )}
-              </div>
+    <div className="page scan-detail">
+      <Link to="/scans" className="scan-detail-back">
+        <LuArrowLeft aria-hidden="true" />
+        {t("Back to Scans", "Zurück zu Scans")}
+      </Link>
+      <PageHeader
+        title={
+          <span className="scan-detail-title">
+            <span>{scan.targetName || scan.targetId}</span>
+            {baseSourceUrl && (
+              <a
+                href={baseSourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t("Open source", "Quelle öffnen")}
+                aria-label={t("Open source", "Quelle öffnen")}
+                className="scan-detail-icon-link"
+              >
+                <LuExternalLink aria-hidden="true" />
+              </a>
             )}
-            {scan.branch && <div>Branch: {scan.branch}</div>}
-            {scan.source === "ci_cd" && <div style={{ color: "#5c84ff" }}>CI/CD</div>}
-            {scan.source === "scheduled" && <div style={{ color: "#69db7c" }}>Auto</div>}
-          </div>
-        </div>
+          </span>
+        }
+      />
+
+      <div className="scan-detail-overview">
+        <SeveritySummaryBar summary={vulnFindings.length > 0 ? mergedSummary : scan.summary} />
+        <dl className="scan-detail-meta">
+          <MetaItem label={t("Status", "Status")}>
+            <StatusBadge status={scan.status} />
+          </MetaItem>
+          <MetaItem label={t("Scanners", "Scanner")}>{scan.scanners.join(", ")}</MetaItem>
+          {scan.startedAt && (
+            <MetaItem label={t("Started", "Gestartet")}>{formatDateTime(scan.startedAt)}</MetaItem>
+          )}
+          {scan.durationSeconds != null && (
+            <MetaItem label={t("Duration", "Dauer")}>{scan.durationSeconds.toFixed(1)}s</MetaItem>
+          )}
+          {scan.imageRef && (() => {
+            const tag = getImageTag(scan.imageRef);
+            const digest = getImageDigest(scan.imageRef);
+            const baseRef = scan.imageRef.split("@")[0].split(":")[0];
+            return (
+              <>
+                <MetaItem label={t("Image", "Image")}>
+                  <span className="scan-detail-inline">
+                    <span className="mono">{baseRef}{tag ? `:${tag}` : ""}</span>
+                    {sourceUrl && (
+                      <a
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={t("Open source", "Quelle öffnen")}
+                        aria-label={t("Open source", "Quelle öffnen")}
+                        className="scan-detail-icon-link"
+                      >
+                        <LuExternalLink aria-hidden="true" />
+                      </a>
+                    )}
+                  </span>
+                </MetaItem>
+                {digest && (
+                  <MetaItem label={t("Digest", "Digest")}>
+                    <span className="mono" title={digest}>
+                      {digest.length > 20 ? `${digest.substring(0, 20)}…` : digest}
+                    </span>
+                  </MetaItem>
+                )}
+              </>
+            );
+          })()}
+          {!scan.imageRef && scan.commitSha && (
+            <MetaItem label={t("Commit", "Commit")}>
+              {sourceUrl ? (
+                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" title={scan.commitSha} className="scan-detail-link scan-detail-inline">
+                  <span className="mono">{scan.commitSha.substring(0, 12)}</span>
+                  <LuExternalLink aria-hidden="true" />
+                </a>
+              ) : (
+                <span className="mono" title={scan.commitSha}>{scan.commitSha.substring(0, 12)}</span>
+              )}
+            </MetaItem>
+          )}
+          {scan.branch && <MetaItem label={t("Branch", "Branch")}><span className="mono">{scan.branch}</span></MetaItem>}
+          {scan.source === "ci_cd" && <MetaItem label={t("Source", "Quelle")}>CI/CD</MetaItem>}
+          {scan.source === "scheduled" && <MetaItem label={t("Source", "Quelle")}>Auto</MetaItem>}
+        </dl>
 
         {scan.error && (
-          <div style={{ marginTop: "0.75rem", padding: "0.5rem 0.75rem", background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.2)", borderRadius: "6px", color: "#ff6b6b", fontSize: "0.8125rem" }}>
-            {scan.error}
-          </div>
+          <p className="well scan-detail-error" role="alert">
+            <LuCircleAlert aria-hidden="true" />
+            <span>{scan.error}</span>
+          </p>
         )}
-
-        {/* Severity summary bar */}
-        <SeveritySummaryBar summary={vulnFindings.length > 0 ? mergedSummary : scan.summary} />
-
-        {/* Library vulnerability bubble chart */}
-        {vulnFindings.length > 0 && <BubbleChart findings={vulnFindings} />}
-      </section>
+      </div>
 
       {/* Findings / SBOM / History / Compare tabs */}
-      <section className="card" style={{ marginTop: "1rem" }}>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => setTab("findings")}
-            style={tabStyle(tab === "findings")}
-          >
-            {t("Findings", "Ergebnisse")}
-            <TabBadge count={findings.length > 0 ? vulnFindings.length : findingsTotal} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("attack-chain")}
-            style={{
-              ...tabStyle(tab === "attack-chain"),
-              ...{
-                borderColor: tab === "attack-chain" ? "rgba(151,117,250,0.55)" : "rgba(151,117,250,0.3)",
-                background: tab === "attack-chain" ? "rgba(151,117,250,0.18)" : "rgba(151,117,250,0.05)",
-                color: tab === "attack-chain" ? "#c8b3ff" : "#a78bfa",
-              },
-            }}
-          >
-            {t("Attack Chain", "Angriffskette")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("sbom")}
-            style={tabStyle(tab === "sbom")}
-          >
-            SBOM
-            <TabBadge count={sbomFetched ? sbomTotal : (scan.sbomComponentCount ?? 0)} />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab("history");
-              if (history.length === 0 && !historyLoading) {
-                loadHistory(historyRange);
-              }
-            }}
-            style={tabStyle(tab === "history")}
-          >
-            {t("History", "Verlauf")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("ai-analysis")}
-            style={tabStyle(tab === "ai-analysis")}
-          >
-            {t("AI Analysis", "KI-Analyse")}
-            {scan.aiAnalyses && scan.aiAnalyses.length > 0 && <TabBadge count={scan.aiAnalyses.length} />}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab("compare");
-              if (otherScans.length === 0 && !compareLoading) {
-                fetchScans({ targetId: scan.targetId, limit: 200 }).then(res => {
-                  setOtherScans(res.items.filter(s => s.id !== scanId && s.status === "completed"));
-                  setCompareTargetId(scan.targetId);
-                }).catch(err => console.error("Failed to load scans", err));
-              }
-            }}
-            style={tabStyle(tab === "compare")}
-          >
-            {t("Compare", "Vergleichen")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("alerts")}
-            style={{
-              ...tabStyle(tab === "alerts"),
-              ...(alertFindings.length > 0 ? {
-                borderColor: tab === "alerts" ? "rgba(255,107,107,0.5)" : "rgba(255,107,107,0.3)",
-                background: tab === "alerts" ? "rgba(255,107,107,0.15)" : "rgba(255,107,107,0.05)",
-                color: tab === "alerts" ? "#ff6b6b" : "#ff8787",
-              } : {}),
-            }}
-          >
-            {t("Security Alerts", "Sicherheitswarnungen")}
-            <TabBadge count={alertFindings.length} />
-          </button>
-          {isContainerImage && (
-            <>
-              <button
-                type="button"
-                onClick={() => setTab("bestpractices")}
-                style={{
-                  ...tabStyle(tab === "bestpractices"),
-                  ...(complianceFindings.length > 0 ? {
-                    borderColor: tab === "bestpractices" ? "rgba(252,196,25,0.5)" : "rgba(252,196,25,0.3)",
-                    background: tab === "bestpractices" ? "rgba(252,196,25,0.15)" : "rgba(252,196,25,0.05)",
-                    color: tab === "bestpractices" ? "#fcc419" : "#ffd43b",
-                  } : {}),
-                }}
-              >
-                {t("Best Practices", "Best Practices")}
-                <TabBadge count={complianceFindings.length} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTab("layers");
-                  if (!layerAnalysis && !layerLoading && scan?.layerAnalysisAvailable) {
-                    setLayerLoading(true);
-                    fetchScanLayers(scan.id)
-                      .then(setLayerAnalysis)
-                      .catch(err => console.error("Failed to load layer analysis", err))
-                      .finally(() => setLayerLoading(false));
-                  }
-                }}
-                style={tabStyle(tab === "layers")}
-              >
-                {t("Layer Analysis", "Schichtanalyse")}
-              </button>
-            </>
-          )}
-          {sastFindings.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setTab("sast")}
-              style={{
-                ...tabStyle(tab === "sast"),
-                borderColor: tab === "sast" ? "rgba(167,139,250,0.5)" : "rgba(167,139,250,0.3)",
-                background: tab === "sast" ? "rgba(167,139,250,0.15)" : "rgba(167,139,250,0.05)",
-                color: tab === "sast" ? "#a78bfa" : "#c4b5fd",
-              }}
-            >
-              SAST
-              <TabBadge count={sastFindings.length} />
-            </button>
-          )}
-          {secretFindings.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setTab("secrets")}
-              style={{
-                ...tabStyle(tab === "secrets"),
-                borderColor: tab === "secrets" ? "rgba(56,189,248,0.5)" : "rgba(56,189,248,0.3)",
-                background: tab === "secrets" ? "rgba(56,189,248,0.15)" : "rgba(56,189,248,0.05)",
-                color: tab === "secrets" ? "#38bdf8" : "#7dd3fc",
-              }}
-            >
-              {t("Secrets", "Secrets")}
-              <TabBadge count={secretFindings.length} />
-            </button>
-          )}
-          {sbomTotal > 0 && hasLicensePolicy && (
-            <button
-              type="button"
-              onClick={() => setTab("license-compliance")}
-              style={{
-                ...tabStyle(tab === "license-compliance"),
-                borderColor: tab === "license-compliance" ? "rgba(99,230,190,0.5)" : "rgba(99,230,190,0.3)",
-                background: tab === "license-compliance" ? "rgba(99,230,190,0.15)" : "rgba(99,230,190,0.05)",
-                color: tab === "license-compliance" ? "#63e6be" : "#96f2d7",
-              }}
-            >
-              {t("Licenses", "Lizenzen")}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setTab("scanner-breakdown")}
-            style={tabStyle(tab === "scanner-breakdown")}
-          >
-            {t("Scanner Breakdown", "Scanner-Übersicht")}
-            <TabBadge count={scan.scanners?.length ?? 0} />
-          </button>
-        </div>
-
-        {tab === "findings" && (
+      <div className="scan-detail-tabs">
+        <TabPill active={tab === "findings"} onClick={() => setTab("findings")} count={findings.length > 0 ? vulnFindings.length : findingsTotal}>
+          {t("Findings", "Ergebnisse")}
+        </TabPill>
+        <TabPill active={tab === "attack-chain"} onClick={() => setTab("attack-chain")}>
+          {t("Attack chain", "Angriffskette")}
+        </TabPill>
+        <TabPill active={tab === "sbom"} onClick={() => setTab("sbom")} count={sbomFetched ? sbomTotal : (scan.sbomComponentCount ?? 0)}>
+          SBOM
+        </TabPill>
+        <TabPill
+          active={tab === "history"}
+          onClick={() => {
+            setTab("history");
+            if (history.length === 0 && !historyLoading) {
+              loadHistory(historyRange);
+            }
+          }}
+        >
+          {t("History", "Verlauf")}
+        </TabPill>
+        <TabPill
+          active={tab === "ai-analysis"}
+          onClick={() => setTab("ai-analysis")}
+          count={scan.aiAnalyses && scan.aiAnalyses.length > 0 ? scan.aiAnalyses.length : null}
+        >
+          {t("AI analysis", "KI-Analyse")}
+        </TabPill>
+        <TabPill
+          active={tab === "compare"}
+          onClick={() => {
+            setTab("compare");
+            if (otherScans.length === 0 && !compareLoading) {
+              fetchScans({ targetId: scan.targetId, limit: 200 }).then(res => {
+                setOtherScans(res.items.filter(s => s.id !== scanId && s.status === "completed"));
+                setCompareTargetId(scan.targetId);
+              }).catch(err => console.error("Failed to load scans", err));
+            }
+          }}
+        >
+          {t("Compare", "Vergleichen")}
+        </TabPill>
+        <TabPill active={tab === "alerts"} onClick={() => setTab("alerts")} count={alertFindings.length}>
+          {t("Security alerts", "Sicherheitswarnungen")}
+        </TabPill>
+        {isContainerImage && (
           <>
-            {/* Search + severity filter + actions */}
-            <div style={{ marginBottom: "0.5rem", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="text"
-                value={findingsSearch}
-                onChange={e => setFindingsSearch(e.target.value)}
-                placeholder={t("Search by CVE, package, scanner...", "Nach CVE, Paket, Scanner suchen...")}
-                style={{
-                  padding: "0.375rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  flex: "1 1 200px",
-                  maxWidth: "500px",
-                  minWidth: 0,
-                  boxSizing: "border-box",
-                  outline: "none",
-                }}
-              />
-              <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
-                {filteredMerged.length} {t("findings", "Ergebnisse")}
-              </span>
-            </div>
-            <div style={{ display: "flex", gap: "0.375rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
-              {[undefined, "critical", "high", "medium", "low"].map(sev => (
-                <button
-                  key={sev ?? "all"}
-                  type="button"
-                  onClick={() => setSeverityFilter(sev)}
-                  style={{
-                    height: "1.75rem",
-                    padding: "0 0.625rem",
-                    borderRadius: "4px",
-                    border: severityFilter === sev ? "1px solid rgba(255,193,7,0.5)" : "1px solid rgba(255,255,255,0.1)",
-                    background: severityFilter === sev ? "rgba(255,193,7,0.1)" : "transparent",
-                    color: severityFilter === sev ? "#ffd43b" : "rgba(255,255,255,0.5)",
-                    cursor: "pointer",
-                    fontSize: "0.75rem",
-                    lineHeight: 1,
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {sev ? sev.charAt(0).toUpperCase() + sev.slice(1) : t("All", "Alle")}
-                </button>
-              ))}
-              <label style={{
-                display: "inline-flex", alignItems: "center", gap: "0.375rem",
-                height: "1.75rem",
-                padding: "0 0.625rem", borderRadius: "4px",
-                border: "1px solid rgba(255,255,255,0.1)",
-                fontSize: "0.75rem", lineHeight: 1, color: "rgba(255,255,255,0.6)", cursor: "pointer",
-                boxSizing: "border-box",
-              }}>
-                <input
-                  type="checkbox"
-                  checked={showDismissed}
-                  onChange={e => setShowDismissed(e.target.checked)}
-                  style={{ width: "12px", height: "12px", margin: 0, flexShrink: 0 }}
-                />
-                {t("Show dismissed", "Verworfene anzeigen")}
-              </label>
-              <input
-                ref={vexImportRef}
-                type="file"
-                accept=".json,application/json"
-                style={{ display: "none" }}
-                onChange={async e => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!file || !scan) return;
-                  setVexImporting(true);
-                  try {
-                    const text = await file.text();
-                    const doc = JSON.parse(text);
-                    const result = await importVex({ vexDocument: doc, targetId: scan.targetId });
-                    setToast({ type: "success", message: t(
-                      `VEX imported: ${result.applied} applied, ${result.skipped} skipped, ${result.notFound} not found`,
-                      `VEX importiert: ${result.applied} angewendet, ${result.skipped} übersprungen, ${result.notFound} nicht gefunden`,
-                    ) });
-                    if (scanId) {
-                      const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
-                      setFindings(data.items);
-                      setFindingsTotal(data.total);
-                    }
-                  } catch (err) {
-                    console.error("VEX import failed", err);
-                    setToast({ type: "error", message: t("VEX import failed. Check file format.", "VEX-Import fehlgeschlagen. Dateiformat prüfen.") });
-                  } finally {
-                    setVexImporting(false);
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => vexImportRef.current?.click()}
-                disabled={vexImporting}
-                title={t("Import a CycloneDX VEX document and apply to matching findings", "CycloneDX VEX-Dokument importieren und auf passende Ergebnisse anwenden")}
-                style={{
-                  height: "1.75rem",
-                  padding: "0 0.625rem", borderRadius: "4px",
-                  border: "1px solid rgba(99,230,190,0.3)",
-                  background: "rgba(99,230,190,0.08)",
-                  color: "#63e6be", cursor: vexImporting ? "wait" : "pointer", fontSize: "0.75rem", fontWeight: 500,
-                  lineHeight: 1, boxSizing: "border-box",
-                }}
-              >
-                {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
-              </button>
-              {/* Open all CVEs in vulnerability list */}
-              {(() => {
-                const cveIds = [...new Set(filteredMerged.map(f => f.vulnerabilityId).filter((v): v is string => !!v))];
-                if (cveIds.length === 0) return null;
-                const dql = `vuln_id:(${cveIds.join(" OR ")})`;
-                return (
-                  <Link
-                    to={`/vulnerabilities?search=${encodeURIComponent(dql)}&mode=dql`}
-                    style={{
-                      marginLeft: "auto",
-                      height: "1.75rem",
-                      padding: "0 0.625rem",
-                      borderRadius: "4px",
-                      border: "1px solid rgba(255,193,7,0.3)",
-                      background: "rgba(255,193,7,0.08)",
-                      color: "#ffd43b",
-                      textDecoration: "none",
-                      fontSize: "0.75rem",
-                      lineHeight: 1,
-                      fontWeight: 500,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                      boxSizing: "border-box",
-                    }}
-                    title={t("Open all CVEs in vulnerability list", "Alle CVEs in Schwachstellenliste öffnen")}
-                  >
-                    ☰ {t("Open in vulnerability list", "In Schwachstellenliste öffnen")} ({cveIds.length})
-                  </Link>
-                );
-              })()}
-            </div>
+            <TabPill active={tab === "bestpractices"} onClick={() => setTab("bestpractices")} count={complianceFindings.length}>
+              {t("Best practices", "Best Practices")}
+            </TabPill>
+            <TabPill
+              active={tab === "layers"}
+              onClick={() => {
+                setTab("layers");
+                if (!layerAnalysis && !layerLoading && scan?.layerAnalysisAvailable) {
+                  setLayerLoading(true);
+                  fetchScanLayers(scan.id)
+                    .then(setLayerAnalysis)
+                    .catch(err => console.error("Failed to load layer analysis", err))
+                    .finally(() => setLayerLoading(false));
+                }
+              }}
+            >
+              {t("Layer analysis", "Schichtanalyse")}
+            </TabPill>
+          </>
+        )}
+        {sastFindings.length > 0 && (
+          <TabPill active={tab === "sast"} onClick={() => setTab("sast")} count={sastFindings.length}>
+            SAST
+          </TabPill>
+        )}
+        {secretFindings.length > 0 && (
+          <TabPill active={tab === "secrets"} onClick={() => setTab("secrets")} count={secretFindings.length}>
+            {t("Secrets", "Secrets")}
+          </TabPill>
+        )}
+        {sbomTotal > 0 && hasLicensePolicy && (
+          <TabPill active={tab === "license-compliance"} onClick={() => setTab("license-compliance")}>
+            {t("Licenses", "Lizenzen")}
+          </TabPill>
+        )}
+        <TabPill active={tab === "scanner-breakdown"} onClick={() => setTab("scanner-breakdown")} count={scan.scanners?.length ?? 0}>
+          {t("Scanner breakdown", "Scanner-Übersicht")}
+        </TabPill>
+      </div>
 
-            {selectedKeys.size > 0 && (() => {
-              // Collect raw finding IDs across all selected merged rows
-              const selectedRows = filteredMerged.filter(f => selectedKeys.has(f.key));
-              const allFindingIds = selectedRows.flatMap(f => f.findingIds);
-              const anyDismissed = selectedRows.some(f => f.dismissed);
-              const refetch = async () => {
-                if (!scanId) return;
-                const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
-                setFindings(data.items);
-                setFindingsTotal(data.total);
-              };
+      {tab === "findings" && (
+        <>
+          {/* Library vulnerability bubble chart */}
+          {vulnFindings.length > 0 && <BubbleChart findings={vulnFindings} />}
+
+          {/* Search + severity filter + actions */}
+          <div className="filter-row">
+            <input
+              type="text"
+              className="scan-detail-search"
+              value={findingsSearch}
+              onChange={e => setFindingsSearch(e.target.value)}
+              placeholder={t("Search by CVE, package, scanner...", "Nach CVE, Paket, Scanner suchen...")}
+              aria-label={t("Search by CVE, package, scanner...", "Nach CVE, Paket, Scanner suchen...")}
+            />
+            <span className="scan-detail-count">
+              {filteredMerged.length} {t("findings", "Ergebnisse")}
+            </span>
+          </div>
+          <div className="filter-row">
+            {[undefined, "critical", "high", "medium", "low"].map(sev => (
+              <button
+                key={sev ?? "all"}
+                type="button"
+                className="scan-detail-filter"
+                aria-pressed={severityFilter === sev}
+                onClick={() => setSeverityFilter(sev)}
+              >
+                {sev ? sentenceCase(sev) : t("All", "Alle")}
+              </button>
+            ))}
+            <label className="scan-detail-toggle">
+              <input
+                type="checkbox"
+                checked={showDismissed}
+                onChange={e => setShowDismissed(e.target.checked)}
+              />
+              {t("Show dismissed", "Verworfene anzeigen")}
+            </label>
+            <input
+              ref={vexImportRef}
+              type="file"
+              accept=".json,application/json"
+              className="scan-detail-file-input"
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file || !scan) return;
+                setVexImporting(true);
+                try {
+                  const text = await file.text();
+                  const doc = JSON.parse(text);
+                  const result = await importVex({ vexDocument: doc, targetId: scan.targetId });
+                  setToast({ type: "success", message: t(
+                    `VEX imported: ${result.applied} applied, ${result.skipped} skipped, ${result.notFound} not found`,
+                    `VEX importiert: ${result.applied} angewendet, ${result.skipped} übersprungen, ${result.notFound} nicht gefunden`,
+                  ) });
+                  if (scanId) {
+                    const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
+                    setFindings(data.items);
+                    setFindingsTotal(data.total);
+                  }
+                } catch (err) {
+                  console.error("VEX import failed", err);
+                  setToast({ type: "error", message: t("VEX import failed. Check file format.", "VEX-Import fehlgeschlagen. Dateiformat prüfen.") });
+                } finally {
+                  setVexImporting(false);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={() => vexImportRef.current?.click()}
+              disabled={vexImporting}
+              title={t("Import a CycloneDX VEX document and apply to matching findings", "CycloneDX VEX-Dokument importieren und auf passende Ergebnisse anwenden")}
+            >
+              {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
+            </button>
+            {/* Open all CVEs in vulnerability list */}
+            {(() => {
+              const cveIds = [...new Set(filteredMerged.map(f => f.vulnerabilityId).filter((v): v is string => !!v))];
+              if (cveIds.length === 0) return null;
+              const dql = `vuln_id:(${cveIds.join(" OR ")})`;
               return (
-                <div style={{
-                  position: "sticky", top: 0, zIndex: 5,
-                  display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem",
-                  padding: "0.625rem 0.75rem", marginBottom: "0.75rem",
-                  borderRadius: "6px",
-                  background: "rgba(99,230,190,0.08)",
-                  border: "1px solid rgba(99,230,190,0.25)",
-                }}>
-                  <span style={{ fontSize: "0.75rem", color: "#63e6be", fontWeight: 600 }}>
-                    {selectedKeys.size} {t("selected", "ausgewählt")} ({allFindingIds.length} {t("findings", "Ergebnisse")})
-                  </span>
-                  <select value={bulkVexStatus} onChange={e => setBulkVexStatus(e.target.value)} disabled={bulkBusy}
-                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem" }}>
-                    <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
-                    <option value="affected">{t("Affected", "Betroffen")}</option>
-                    <option value="fixed">{t("Fixed", "Behoben")}</option>
-                    <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={bulkVexJustification}
-                    onChange={e => setBulkVexJustification(e.target.value)}
-                    placeholder={t("Justification (optional)", "Begründung (optional)")}
-                    disabled={bulkBusy}
-                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 180px", minWidth: 0 }}
-                  />
-                  <input
-                    type="text"
-                    value={bulkVexDetail}
-                    onChange={e => setBulkVexDetail(e.target.value)}
-                    placeholder={t("Detail (optional)", "Detail (optional)")}
-                    disabled={bulkBusy}
-                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 180px", minWidth: 0 }}
-                  />
-                  <button
-                    type="button"
-                    disabled={bulkBusy || allFindingIds.length === 0}
-                    onClick={async () => {
-                      setBulkBusy(true);
-                      try {
-                        const res = await bulkUpdateVexByIds({
-                          findingIds: allFindingIds,
-                          vexStatus: bulkVexStatus,
-                          vexJustification: bulkVexJustification || undefined,
-                          vexDetail: bulkVexDetail || undefined,
-                        });
-                        setToast({ type: "success", message: t(`Updated ${res.updated} findings`, `${res.updated} Ergebnisse aktualisiert`) });
-                        setSelectedKeys(new Set());
-                        setBulkVexJustification("");
-                        setBulkVexDetail("");
-                        await refetch();
-                      } catch (err) {
-                        console.error("Bulk VEX update failed", err);
-                        setToast({ type: "error", message: t("Bulk update failed", "Bulk-Update fehlgeschlagen") });
-                      } finally {
-                        setBulkBusy(false);
-                      }
-                    }}
-                    style={{ padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, cursor: bulkBusy ? "wait" : "pointer", background: "rgba(99,230,190,0.18)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.4)" }}
-                  >
-                    {t("Apply VEX", "VEX anwenden")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={bulkBusy || allFindingIds.length === 0}
-                    onClick={async () => {
-                      setBulkBusy(true);
-                      try {
-                        const res = await dismissFindings({
-                          findingIds: allFindingIds,
-                          dismissed: !anyDismissed,
-                          reason: bulkVexJustification || undefined,
-                        });
-                        setToast({ type: "success", message: anyDismissed
-                          ? t(`Restored ${res.updated} findings`, `${res.updated} Ergebnisse wiederhergestellt`)
-                          : t(`Dismissed ${res.updated} findings`, `${res.updated} Ergebnisse verworfen`) });
-                        setSelectedKeys(new Set());
-                        await refetch();
-                      } catch (err) {
-                        console.error("Dismiss failed", err);
-                        setToast({ type: "error", message: t("Dismiss failed", "Verwerfen fehlgeschlagen") });
-                      } finally {
-                        setBulkBusy(false);
-                      }
-                    }}
-                    style={{ padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, cursor: bulkBusy ? "wait" : "pointer", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.15)" }}
-                  >
-                    {anyDismissed ? t("Restore", "Wiederherstellen") : t("Dismiss", "Verwerfen")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedKeys(new Set())}
-                    disabled={bulkBusy}
-                    style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", fontSize: "0.75rem", cursor: "pointer", background: "transparent", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.1)" }}
-                  >
-                    {t("Clear", "Leeren")}
-                  </button>
-                </div>
+                <Link
+                  to={`/vulnerabilities?search=${encodeURIComponent(dql)}&mode=dql`}
+                  className="btn scan-detail-push"
+                  title={t("Open all CVEs in vulnerability list", "Alle CVEs in Schwachstellenliste öffnen")}
+                >
+                  <LuList aria-hidden="true" />
+                  {t("Open in vulnerability list", "In Schwachstellenliste öffnen")} ({cveIds.length})
+                </Link>
               );
             })()}
+          </div>
 
-            {filteredMerged.length === 0 ? (
-              <p className="muted">{t("No findings.", "Keine Ergebnisse.")}</p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                      <th style={{ ...thStyle, width: "1.75rem" }}>
-                        <input
-                          type="checkbox"
-                          checked={filteredMerged.length > 0 && filteredMerged.every(f => selectedKeys.has(f.key))}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              setSelectedKeys(new Set(filteredMerged.map(f => f.key)));
-                            } else {
-                              setSelectedKeys(new Set());
-                            }
-                          }}
-                          title={t("Select all visible", "Alle sichtbaren auswählen")}
-                        />
-                      </th>
-                      {([
-                        ["cve", "CVE"],
-                        ["package", t("Package", "Paket")],
-                        ["version", t("Version", "Version")],
-                        ["severity", t("Severity", "Schweregrad")],
-                        ["fix", "Fix"],
-                        ["scanner", t("Scanner", "Scanner")],
-                      ] as const).map(([col, label]) => (
-                        <th
-                          key={col}
-                          style={{ ...thStyle, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
-                          onClick={() => setFindingsSort(prev => prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })}
-                        >
-                          {label} {findingsSort.col === col ? (findingsSort.dir === "asc" ? "\u25B2" : "\u25BC") : ""}
-                        </th>
-                      ))}
-                      <th style={thStyle}>VEX</th>
-                      <th style={thStyle}>{t("Links", "Links")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMerged.map(f => {
-                      const fDepsUrl = buildDepsDevUrl(f.packageName, f.packageVersion, f.packageType);
-                      const fSnykUrl = buildSnykUrl(f.packageName, f.packageVersion, f.packageType);
-                      const fRegistry = buildRegistryUrl(f.packageName, f.packageVersion, f.packageType);
-                      const fSocketUrl = buildSocketUrl(f.packageName, f.packageVersion, f.packageType);
-                      const fAikidoUrl = buildAikidoUrl(f.packageName, f.packageVersion, f.packageType);
-                      const fBundlephobiaUrl = buildBundlephobiaUrl(f.packageName, f.packageVersion, f.packageType);
-                      const fNpmGraphUrl = buildNpmGraphUrl(f.packageName, f.packageVersion, f.packageType);
-                      const isSelected = selectedKeys.has(f.key);
-                      const isVexExpanded = vexEditingId === f.key;
-                      const isDetailExpanded = detailExpandedId === f.key;
-                      return (
-                        <Fragment key={f.key}>
-                        <tr style={{
-                          borderBottom: "1px solid rgba(255,255,255,0.04)",
-                          opacity: f.dismissed ? 0.45 : 1,
-                          background: isSelected ? "rgba(99,230,190,0.06)" : undefined,
-                        }}>
-                          <td style={tdStyle}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={e => {
-                                setSelectedKeys(prev => {
-                                  const next = new Set(prev);
-                                  if (e.target.checked) next.add(f.key); else next.delete(f.key);
-                                  return next;
-                                });
-                              }}
-                            />
-                          </td>
-                          <td style={tdStyle}>
+          {selectedKeys.size > 0 && (() => {
+            // Collect raw finding IDs across all selected merged rows
+            const selectedRows = filteredMerged.filter(f => selectedKeys.has(f.key));
+            const allFindingIds = selectedRows.flatMap(f => f.findingIds);
+            const anyDismissed = selectedRows.some(f => f.dismissed);
+            const refetch = async () => {
+              if (!scanId) return;
+              const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
+              setFindings(data.items);
+              setFindingsTotal(data.total);
+            };
+            return (
+              <div className="scan-detail-toolbar">
+                <span className="scan-detail-toolbar-count">
+                  {selectedKeys.size} {t("selected", "ausgewählt")} ({allFindingIds.length} {t("findings", "Ergebnisse")})
+                </span>
+                <select
+                  value={bulkVexStatus}
+                  onChange={e => setBulkVexStatus(e.target.value)}
+                  disabled={bulkBusy}
+                  aria-label={t("Status", "Status")}
+                >
+                  <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
+                  <option value="affected">{t("Affected", "Betroffen")}</option>
+                  <option value="fixed">{t("Fixed", "Behoben")}</option>
+                  <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
+                </select>
+                <input
+                  type="text"
+                  className="scan-detail-toolbar-input"
+                  value={bulkVexJustification}
+                  onChange={e => setBulkVexJustification(e.target.value)}
+                  placeholder={t("Justification (optional)", "Begründung (optional)")}
+                  aria-label={t("Justification (optional)", "Begründung (optional)")}
+                  disabled={bulkBusy}
+                />
+                <input
+                  type="text"
+                  className="scan-detail-toolbar-input"
+                  value={bulkVexDetail}
+                  onChange={e => setBulkVexDetail(e.target.value)}
+                  placeholder={t("Detail (optional)", "Detail (optional)")}
+                  aria-label={t("Detail (optional)", "Detail (optional)")}
+                  disabled={bulkBusy}
+                />
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={bulkBusy || allFindingIds.length === 0}
+                  onClick={async () => {
+                    setBulkBusy(true);
+                    try {
+                      const res = await bulkUpdateVexByIds({
+                        findingIds: allFindingIds,
+                        vexStatus: bulkVexStatus,
+                        vexJustification: bulkVexJustification || undefined,
+                        vexDetail: bulkVexDetail || undefined,
+                      });
+                      setToast({ type: "success", message: t(`Updated ${res.updated} findings`, `${res.updated} Ergebnisse aktualisiert`) });
+                      setSelectedKeys(new Set());
+                      setBulkVexJustification("");
+                      setBulkVexDetail("");
+                      await refetch();
+                    } catch (err) {
+                      console.error("Bulk VEX update failed", err);
+                      setToast({ type: "error", message: t("Bulk update failed", "Bulk-Update fehlgeschlagen") });
+                    } finally {
+                      setBulkBusy(false);
+                    }
+                  }}
+                >
+                  {t("Apply VEX", "VEX anwenden")}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={bulkBusy || allFindingIds.length === 0}
+                  onClick={async () => {
+                    setBulkBusy(true);
+                    try {
+                      const res = await dismissFindings({
+                        findingIds: allFindingIds,
+                        dismissed: !anyDismissed,
+                        reason: bulkVexJustification || undefined,
+                      });
+                      setToast({ type: "success", message: anyDismissed
+                        ? t(`Restored ${res.updated} findings`, `${res.updated} Ergebnisse wiederhergestellt`)
+                        : t(`Dismissed ${res.updated} findings`, `${res.updated} Ergebnisse verworfen`) });
+                      setSelectedKeys(new Set());
+                      await refetch();
+                    } catch (err) {
+                      console.error("Dismiss failed", err);
+                      setToast({ type: "error", message: t("Dismiss failed", "Verwerfen fehlgeschlagen") });
+                    } finally {
+                      setBulkBusy(false);
+                    }
+                  }}
+                >
+                  {anyDismissed ? t("Restore", "Wiederherstellen") : t("Dismiss", "Verwerfen")}
+                </button>
+                <button type="button" className="btn" onClick={() => setSelectedKeys(new Set())} disabled={bulkBusy}>
+                  {t("Clear", "Leeren")}
+                </button>
+              </div>
+            );
+          })()}
+
+          {filteredMerged.length === 0 ? (
+            <EmptyState title={t("No findings.", "Keine Ergebnisse.")} />
+          ) : (
+            <div className="table-scroll">
+              <PhoneSortBar
+                id="scan-detail-sort-findings"
+                columns={[...findingSortColumns, ["scanner", t("Scanner", "Scanner")]]}
+                sort={findingsSort}
+                onSort={setFindingsSort}
+              >
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={e => toggleAllVisible(e.target.checked)}
+                  title={t("Select all visible", "Alle sichtbaren auswählen")}
+                  aria-label={t("Select all visible", "Alle sichtbaren auswählen")}
+                />
+              </PhoneSortBar>
+              <table className="scan-detail-table scan-detail-stack">
+                <thead>
+                  <tr>
+                    <th className="scan-detail-cell-check">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={e => toggleAllVisible(e.target.checked)}
+                        title={t("Select all visible", "Alle sichtbaren auswählen")}
+                        aria-label={t("Select all visible", "Alle sichtbaren auswählen")}
+                      />
+                    </th>
+                    {findingSortColumns.map(([col, label]) => (
+                      <SortHeader
+                        key={col}
+                        label={label}
+                        active={findingsSort.col === col}
+                        dir={findingsSort.dir}
+                        onClick={() => setFindingsSort(prev => prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })}
+                      />
+                    ))}
+                    <th>VEX</th>
+                    <SortHeader
+                      label={t("Scanner", "Scanner")}
+                      active={findingsSort.col === "scanner"}
+                      dir={findingsSort.dir}
+                      onClick={() => setFindingsSort(prev => prev.col === "scanner" ? { col: "scanner", dir: prev.dir === "asc" ? "desc" : "asc" } : { col: "scanner", dir: "asc" })}
+                    />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMerged.map(f => {
+                    const isSelected = selectedKeys.has(f.key);
+                    const isVexExpanded = vexEditingId === f.key;
+                    const isDetailExpanded = detailExpandedId === f.key;
+                    const advisoryExtras = newAdvisoryVersions(f.fixVersion, f.advisoryFixVersions);
+                    const rowClass = [
+                      "scan-detail-finding",
+                      f.dismissed ? "scan-detail-finding--dismissed" : "",
+                      isSelected ? "scan-detail-finding--selected" : "",
+                    ].filter(Boolean).join(" ");
+                    return (
+                      <Fragment key={f.key}>
+                      <tr className={rowClass}>
+                        <td className="scan-detail-cell-check">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            aria-label={f.vulnerabilityId ?? f.packageName}
+                            onChange={e => {
+                              setSelectedKeys(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(f.key); else next.delete(f.key);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td className="scan-detail-cell-sev"><SeverityWord severity={f.severity} /></td>
+                        <td className="scan-detail-cell-name">
+                          <button
+                            type="button"
+                            className="scan-detail-link-button"
+                            aria-expanded={isDetailExpanded}
+                            onClick={() => setDetailExpandedId(prev => prev === f.key ? null : f.key)}
+                            title={t("Click to show details", "Klicken für Details")}
+                          >
+                            {f.packageName}
+                          </button>
+                        </td>
+                        <td className="scan-detail-cell-version" data-label={t("Version", "Version")}>
+                          {f.packageVersion ? <span className="mono">{f.packageVersion}</span> : <NotAvailable />}
+                        </td>
+                        <td className="scan-detail-cell-id">
+                          <span className="scan-detail-inline">
                             {f.dismissed && (
-                              <span title={f.dismissedReason || t("Dismissed", "Verworfen")} style={{
-                                display: "inline-block", marginRight: "0.375rem",
-                                padding: "0 0.375rem", borderRadius: "3px",
-                                fontSize: "0.625rem", fontWeight: 600,
-                                background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)",
-                                border: "1px solid rgba(255,255,255,0.12)",
-                              }}>
+                              <span className="tag" title={f.dismissedReason || t("Dismissed", "Verworfen")}>
                                 {t("dismissed", "verworfen")}
                               </span>
                             )}
                             {f.vulnerabilityId ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
-                                <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ color: "#ffd43b", textDecoration: "none" }}>
+                              <>
+                                <Link to={`/vulnerability/${f.vulnerabilityId}`} className="scan-detail-link mono">
                                   {f.vulnerabilityId}
                                 </Link>
                                 {f.matchedFrom && (
-                                  <span style={{ fontSize: "0.625rem", color: "rgba(255,193,7,0.6)", padding: "0 0.25rem", borderRadius: "3px", background: "rgba(255,193,7,0.08)" }} title={t("Auto-matched from local DB", "Automatisch aus lokaler DB zugeordnet")}>
+                                  <span className="chip" title={t("Auto-matched from local DB", "Automatisch aus lokaler DB zugeordnet")}>
                                     auto
                                   </span>
                                 )}
-                              </span>
+                              </>
                             ) : (
-                              <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>
+                              <NotAvailable />
+                            )}
+                          </span>
+                        </td>
+                        <td className="scan-detail-cell-fix" data-label="Fix">
+                          <div className="scan-detail-fix">
+                            {f.fixVersion ? (
+                              <span className="mono">{f.fixVersion}</span>
+                            ) : advisoryExtras.length === 0 ? (
+                              f.fixState === "not_fixed" ? <span className="muted">{t("No fix", "Kein Fix")}</span> : <NotAvailable />
+                            ) : null}
+                            {advisoryExtras.length > 0 && (
+                              <span
+                                className="chip"
+                                title={t(
+                                  `Unaffected/patched per advisory: ${f.advisoryFixVersions.join(", ")}`,
+                                  `Nicht betroffen/gepatcht laut Advisory: ${f.advisoryFixVersions.join(", ")}`,
+                                )}
+                              >
+                                {t("adv", "adv")}:&nbsp;
+                                <span className="mono">{advisoryExtras.slice(0, 2).join(", ")}</span>
+                                {advisoryExtras.length > 2 ? ` +${advisoryExtras.length - 2}` : ""}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="scan-detail-cell-vex" data-label="VEX">
+                          <button
+                            type="button"
+                            className="scan-detail-vex-toggle"
+                            aria-expanded={isVexExpanded}
+                            aria-label={f.vexStatus ? undefined : t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
+                            onClick={() => {
+                              if (vexEditingId === f.key) {
+                                setVexEditingId(null);
+                              } else {
+                                setVexEditingId(f.key);
+                                setVexEditStatus(f.vexStatus || "");
+                                setVexEditJustification(f.vexJustification || "");
+                                setVexEditDetail(f.vexDetail || "");
+                              }
+                            }}
+                            title={f.vexJustification || t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
+                          >
+                            {f.vexStatus ? <span className="chip">{vexStatusLabel(f.vexStatus, t)}</span> : null}
+                            {isVexExpanded ? <LuChevronUp aria-hidden="true" /> : <LuChevronDown aria-hidden="true" />}
+                          </button>
+                        </td>
+                        <td className="scan-detail-cell-scanner" data-label={t("Scanner", "Scanner")}>{f.scanners.join(", ")}</td>
+                      </tr>
+                      {isDetailExpanded && (
+                        <tr className="scan-detail-expansion">
+                          <td colSpan={FINDING_COLUMNS}>
+                            <dl className="scan-detail-facts">
+                              {f.packagePath && (
+                                <>
+                                  <dt>{t("Source", "Quelle")}</dt>
+                                  <dd className="mono">{stripScanPath(f.packagePath)}</dd>
+                                </>
+                              )}
+                              {f.packageType && (
+                                <>
+                                  <dt>{t("Type", "Typ")}</dt>
+                                  <dd>{TYPE_ALIASES[f.packageType] || f.packageType}</dd>
+                                </>
+                              )}
+                              {f.cvssScore != null && (
+                                <>
+                                  <dt>CVSS</dt>
+                                  <dd>{f.cvssScore.toFixed(1)}</dd>
+                                </>
+                              )}
+                              {f.dataSource && (
+                                <>
+                                  <dt>{t("Data Source", "Datenquelle")}</dt>
+                                  <dd>{f.dataSource}</dd>
+                                </>
+                              )}
+                              {f.title && (
+                                <>
+                                  <dt>{t("Title", "Titel")}</dt>
+                                  <dd>{f.title}</dd>
+                                </>
+                              )}
+                              {f.urls.length > 0 && (
+                                <>
+                                  <dt>{t("References", "Referenzen")}</dt>
+                                  <dd className="link-list">
+                                    {f.urls.slice(0, 5).map((url, i) => (
+                                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                        {urlDomain(url)}
+                                      </a>
+                                    ))}
+                                    {f.urls.length > 5 && <span className="muted">+{f.urls.length - 5}</span>}
+                                  </dd>
+                                </>
+                              )}
+                              <dt>{t("Links", "Links")}</dt>
+                              <dd><PackageLinks name={f.packageName} version={f.packageVersion} type={f.packageType} fallback={<NotAvailable />} /></dd>
+                            </dl>
+                            {f.vulnerabilityId && (
+                              <button
+                                type="button"
+                                className="btn scan-detail-expansion-action"
+                                onClick={() =>
+                                  setAttackPathExpandedId(prev => prev === f.key ? null : f.key)
+                                }
+                              >
+                                {attackPathExpandedId === f.key
+                                  ? t("Hide attack path", "Angriffspfad ausblenden")
+                                  : t("Show attack path", "Angriffspfad anzeigen")}
+                              </button>
                             )}
                           </td>
-                          <td style={tdStyle}>
-                            <span
-                              onClick={() => setDetailExpandedId(prev => prev === f.key ? null : f.key)}
-                              style={{ cursor: "pointer", color: "#74c0fc", borderBottom: "1px dashed rgba(116,192,252,0.3)" }}
-                              title={t("Click to show details", "Klicken für Details")}
-                            >
-                              {f.packageName}
-                            </span>
+                        </tr>
+                      )}
+                      {attackPathExpandedId === f.key && f.vulnerabilityId && (
+                        <tr className="scan-detail-expansion">
+                          <td colSpan={FINDING_COLUMNS}>
+                            <ScanFindingAttackPath
+                              vulnerabilityId={f.vulnerabilityId}
+                              scanId={scanId}
+                              targetId={scan?.targetId}
+                              packageName={f.packageName}
+                              packageVersion={f.packageVersion}
+                              aiEnabled={aiEnabled}
+                            />
                           </td>
-                          <td style={tdStyle}>{f.packageVersion || "—"}</td>
-                          <td style={tdStyle}><SeverityChip severity={f.severity} /></td>
-                          <td style={tdStyle}>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", alignItems: "flex-start" }}>
-                              {f.fixVersion ? (
-                                <span style={{ color: "#69db7c", fontSize: "0.75rem" }}>{f.fixVersion}</span>
-                              ) : f.advisoryFixVersions.length === 0 ? (
-                                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.75rem" }}>
-                                  {f.fixState === "not_fixed" ? t("No fix", "Kein Fix") : "—"}
-                                </span>
-                              ) : null}
-                              {f.advisoryFixVersions.length > 0 && (
-                                <span
-                                  title={t(
-                                    `Unaffected/patched per advisory: ${f.advisoryFixVersions.join(", ")}`,
-                                    `Nicht betroffen/gepatcht laut Advisory: ${f.advisoryFixVersions.join(", ")}`,
-                                  )}
-                                  style={{
-                                    color: "#3bc9db",
-                                    fontSize: "0.7rem",
-                                    background: "rgba(59,201,219,0.1)",
-                                    border: "1px solid rgba(59,201,219,0.25)",
-                                    borderRadius: 5,
-                                    padding: "0.05rem 0.4rem",
-                                  }}
-                                >
-                                  {t("adv", "adv")}: {f.advisoryFixVersions.slice(0, 2).join(", ")}
-                                  {f.advisoryFixVersions.length > 2 ? ` +${f.advisoryFixVersions.length - 2}` : ""}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td style={tdStyle}>
-                            <span style={{ color: "rgba(255,255,255,0.4)" }}>{f.scanners.join(", ")}</span>
-                          </td>
-                          <td style={tdStyle}>
-                            <span
-                              onClick={() => {
-                                if (vexEditingId === f.key) {
-                                  setVexEditingId(null);
-                                } else {
-                                  setVexEditingId(f.key);
-                                  setVexEditStatus(f.vexStatus || "");
-                                  setVexEditJustification(f.vexJustification || "");
-                                  setVexEditDetail(f.vexDetail || "");
-                                }
-                              }}
-                              style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
-                              title={f.vexJustification || t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
-                            >
-                              {f.vexStatus ? (() => {
-                                const vexColors: Record<string, string> = { not_affected: "#69db7c", affected: "#ff6b6b", fixed: "#5c84ff", under_investigation: "#fcc419" };
-                                const vexLabels: Record<string, string> = { not_affected: "Not Affected", affected: "Affected", fixed: "Fixed", under_investigation: "Investigating" };
-                                const c = vexColors[f.vexStatus] || "rgba(255,255,255,0.4)";
-                                return (
-                                  <span style={{ padding: "0.0625rem 0.375rem", borderRadius: "4px", fontSize: "0.6875rem", fontWeight: 500, background: `${c}15`, color: c, border: `1px solid ${c}30` }}>
-                                    {vexLabels[f.vexStatus] || f.vexStatus}
-                                  </span>
-                                );
-                              })() : (
-                                <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "0.6875rem" }}>—</span>
-                              )}
-                              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.625rem" }}>
-                                {vexEditingId === f.key ? "▴" : "▾"}
-                              </span>
-                            </span>
-                          </td>
-                          <td style={tdStyle}>
-                            <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
-                              {fDepsUrl && (
-                                <a href={fDepsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
-                                  style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
-                                  deps.dev
-                                </a>
-                              )}
-                              {fSnykUrl && (
-                                <a href={fSnykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
-                                  style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
-                                  Snyk
-                                </a>
-                              )}
-                              {fRegistry && (
-                                <a href={fRegistry.url} target="_blank" rel="noopener noreferrer" title={fRegistry.label}
-                                  style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
-                                  {fRegistry.label}
-                                </a>
-                              )}
-                              {fSocketUrl && (
-                                <a href={fSocketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
-                                  style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
-                                  socket.dev
-                                </a>
-                              )}
-                              {fAikidoUrl && (
-                                <a href={fAikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
-                                  style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
-                                  aikido
-                                </a>
-                              )}
-                              {fBundlephobiaUrl && (
-                                <a href={fBundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
-                                  style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
-                                  bundlephobia
-                                </a>
-                              )}
-                              {fNpmGraphUrl && (
-                                <a href={fNpmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
-                                  style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
-                                  npmgraph
-                                </a>
-                              )}
+                        </tr>
+                      )}
+                      {isVexExpanded && (
+                        <tr className="scan-detail-expansion">
+                          <td colSpan={FINDING_COLUMNS}>
+                            <div className="scan-detail-vex-form">
+                              <p className="scan-detail-form-title">
+                                {t("Edit VEX annotation", "VEX-Annotation bearbeiten")}
+                              </p>
+                              <label htmlFor="scan-detail-vex-status">{t("Status", "Status")}</label>
+                              <select id="scan-detail-vex-status" value={vexEditStatus} onChange={e => setVexEditStatus(e.target.value)}>
+                                <option value="">{t("Clear", "Löschen")}</option>
+                                <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
+                                <option value="affected">{t("Affected", "Betroffen")}</option>
+                                <option value="fixed">{t("Fixed", "Behoben")}</option>
+                                <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
+                              </select>
+                              <label htmlFor="scan-detail-vex-justification">{t("Justification", "Begründung")}</label>
+                              <input
+                                id="scan-detail-vex-justification"
+                                type="text"
+                                value={vexEditJustification}
+                                onChange={e => setVexEditJustification(e.target.value)}
+                                placeholder={t("Short reason (e.g. code_not_reachable)", "Kurze Begründung (z.B. code_not_reachable)")}
+                              />
+                              <label htmlFor="scan-detail-vex-detail">{t("Detail", "Detail")}</label>
+                              <textarea
+                                id="scan-detail-vex-detail"
+                                value={vexEditDetail}
+                                onChange={e => setVexEditDetail(e.target.value)}
+                                rows={3}
+                                placeholder={t("Longer explanation (optional)", "Längere Erläuterung (optional)")}
+                              />
+                              <div className="scan-detail-form-actions">
+                                <button type="button" className="btn" disabled={vexSaving} onClick={async () => {
+                                  setVexSaving(true);
+                                  try {
+                                    // Update every raw finding (multi-scanner duplicates) so the merged view is consistent
+                                    await Promise.all(f.findingIds.map(fid => updateFindingVex(fid, {
+                                      vexStatus: vexEditStatus || null,
+                                      vexJustification: vexEditJustification || undefined,
+                                      vexDetail: vexEditDetail || undefined,
+                                    })));
+                                    setVexEditingId(null);
+                                    if (scanId) {
+                                      const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
+                                      setFindings(data.items);
+                                      setFindingsTotal(data.total);
+                                    }
+                                  } catch (err) {
+                                    console.error("VEX save failed", err);
+                                    setToast({ type: "error", message: t("VEX save failed", "VEX-Speichern fehlgeschlagen") });
+                                  } finally {
+                                    setVexSaving(false);
+                                  }
+                                }}>
+                                  {vexSaving ? "..." : t("Save", "Speichern")}
+                                </button>
+                                <button type="button" className="btn" onClick={() => setVexEditingId(null)} disabled={vexSaving}>
+                                  {t("Cancel", "Abbrechen")}
+                                </button>
+                              </div>
                             </div>
                           </td>
                         </tr>
-                        {isDetailExpanded && (
-                          <tr style={{ background: "rgba(116,192,252,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <td colSpan={9} className="finding-detail-cell" style={{ padding: "0.625rem 1rem" }}>
-                              <div className="finding-detail-grid" style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.75rem", maxWidth: "800px" }}>
-                                {f.packagePath && (
-                                  <>
-                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Source", "Quelle")}</span>
-                                    <span style={{ color: "#74c0fc", fontFamily: "monospace", fontSize: "0.7rem" }}>{stripScanPath(f.packagePath)}</span>
-                                  </>
-                                )}
-                                {f.packageType && (
-                                  <>
-                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Type", "Typ")}</span>
-                                    <span style={{ color: "rgba(255,255,255,0.7)" }}>{TYPE_ALIASES[f.packageType] || f.packageType}</span>
-                                  </>
-                                )}
-                                {f.cvssScore != null && (
-                                  <>
-                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>CVSS</span>
-                                    <span style={{ color: f.cvssScore >= 9 ? "#ff6b6b" : f.cvssScore >= 7 ? "#ffa94d" : f.cvssScore >= 4 ? "#fcc419" : "#69db7c" }}>{f.cvssScore.toFixed(1)}</span>
-                                  </>
-                                )}
-                                {f.dataSource && (
-                                  <>
-                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Data Source", "Datenquelle")}</span>
-                                    <span style={{ color: "rgba(255,255,255,0.7)" }}>{f.dataSource}</span>
-                                  </>
-                                )}
-                                {f.title && (
-                                  <>
-                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("Title", "Titel")}</span>
-                                    <span style={{ color: "rgba(255,255,255,0.7)" }}>{f.title}</span>
-                                  </>
-                                )}
-                                {f.urls.length > 0 && (
-                                  <>
-                                    <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>{t("References", "Referenzen")}</span>
-                                    <span style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
-                                      {f.urls.slice(0, 5).map((url, i) => (
-                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                                          style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.6875rem" }}>
-                                          {urlDomain(url)}
-                                        </a>
-                                      ))}
-                                      {f.urls.length > 5 && (
-                                        <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6875rem" }}>+{f.urls.length - 5}</span>
-                                      )}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                              {f.vulnerabilityId && (
-                                <div style={{ marginTop: "0.5rem" }}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setAttackPathExpandedId(prev => prev === f.key ? null : f.key)
-                                    }
-                                    style={{
-                                      background: "rgba(151,117,250,0.12)",
-                                      color: "#c8b3ff",
-                                      border: "1px solid rgba(151,117,250,0.35)",
-                                      borderRadius: "4px",
-                                      padding: "0.3rem 0.65rem",
-                                      fontSize: "0.7rem",
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    {attackPathExpandedId === f.key
-                                      ? t("Hide attack path", "Angriffspfad ausblenden")
-                                      : t("Show attack path", "Angriffspfad anzeigen")}
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                        {attackPathExpandedId === f.key && f.vulnerabilityId && (
-                          <tr style={{ background: "rgba(151,117,250,0.05)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <td colSpan={9} style={{ padding: "0.75rem 1rem" }}>
-                              <ScanFindingAttackPath
-                                vulnerabilityId={f.vulnerabilityId}
-                                scanId={scanId}
-                                targetId={scan?.targetId}
-                                packageName={f.packageName}
-                                packageVersion={f.packageVersion}
-                                aiEnabled={aiEnabled}
-                              />
-                            </td>
-                          </tr>
-                        )}
-                        {isVexExpanded && (
-                          <tr style={{ background: "rgba(99,230,190,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <td colSpan={9} style={{ padding: "0.75rem 1rem" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "720px" }}>
-                                <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
-                                  {t("Edit VEX annotation", "VEX-Annotation bearbeiten")}
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-                                  <label style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", minWidth: "70px" }}>
-                                    {t("Status", "Status")}
-                                  </label>
-                                  <select value={vexEditStatus} onChange={e => setVexEditStatus(e.target.value)}
-                                    style={{ padding: "0.3rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "0 0 200px" }}>
-                                    <option value="">{t("— Clear —", "— Löschen —")}</option>
-                                    <option value="not_affected">{t("Not Affected", "Nicht betroffen")}</option>
-                                    <option value="affected">{t("Affected", "Betroffen")}</option>
-                                    <option value="fixed">{t("Fixed", "Behoben")}</option>
-                                    <option value="under_investigation">{t("Investigating", "In Prüfung")}</option>
-                                  </select>
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-                                  <label style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", minWidth: "70px" }}>
-                                    {t("Justification", "Begründung")}
-                                  </label>
-                                  <input type="text" value={vexEditJustification} onChange={e => setVexEditJustification(e.target.value)}
-                                    placeholder={t("Short reason (e.g. code_not_reachable)", "Kurze Begründung (z.B. code_not_reachable)")}
-                                    style={{ padding: "0.3rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 300px", minWidth: 0 }} />
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "flex-start" }}>
-                                  <label style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", minWidth: "70px", paddingTop: "0.35rem" }}>
-                                    {t("Detail", "Detail")}
-                                  </label>
-                                  <textarea value={vexEditDetail} onChange={e => setVexEditDetail(e.target.value)}
-                                    rows={3}
-                                    placeholder={t("Longer explanation (optional)", "Längere Erläuterung (optional)")}
-                                    style={{ padding: "0.4rem 0.5rem", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: "0.75rem", flex: "1 1 300px", minWidth: 0, resize: "vertical", fontFamily: "inherit" }} />
-                                </div>
-                                <div style={{ display: "flex", gap: "0.375rem", marginTop: "0.25rem" }}>
-                                  <button type="button" disabled={vexSaving} onClick={async () => {
-                                    setVexSaving(true);
-                                    try {
-                                      // Update every raw finding (multi-scanner duplicates) so the merged view is consistent
-                                      await Promise.all(f.findingIds.map(fid => updateFindingVex(fid, {
-                                        vexStatus: vexEditStatus || null,
-                                        vexJustification: vexEditJustification || undefined,
-                                        vexDetail: vexEditDetail || undefined,
-                                      })));
-                                      setVexEditingId(null);
-                                      if (scanId) {
-                                        const data = await fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed });
-                                        setFindings(data.items);
-                                        setFindingsTotal(data.total);
-                                      }
-                                    } catch (err) {
-                                      console.error("VEX save failed", err);
-                                      setToast({ type: "error", message: t("VEX save failed", "VEX-Speichern fehlgeschlagen") });
-                                    } finally {
-                                      setVexSaving(false);
-                                    }
-                                  }} style={{ padding: "0.3rem 0.75rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, cursor: vexSaving ? "wait" : "pointer", background: "rgba(99,230,190,0.18)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.4)" }}>
-                                    {vexSaving ? "..." : t("Save", "Speichern")}
-                                  </button>
-                                  <button type="button" onClick={() => setVexEditingId(null)} disabled={vexSaving}
-                                    style={{ padding: "0.3rem 0.75rem", borderRadius: "4px", fontSize: "0.75rem", cursor: "pointer", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.12)" }}>
-                                    {t("Cancel", "Abbrechen")}
-                                  </button>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-
-        {tab === "sbom" && (
-          <>
-            <div style={{ marginBottom: "1rem", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="text"
-                value={sbomSearch}
-                onChange={e => setSbomSearch(e.target.value)}
-                placeholder={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
-                style={{
-                  padding: "0.375rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  flex: "1 1 200px",
-                  maxWidth: "500px",
-                  minWidth: 0,
-                  boxSizing: "border-box",
-                  outline: "none",
-                }}
-              />
-              {hasAnyProvenance && (
-                <select
-                  value={sbomFilterProvenance || ""}
-                  onChange={e => setSbomFilterProvenance(e.target.value || null)}
-                  style={{
-                    padding: "0.375rem 0.625rem", borderRadius: "6px",
-                    border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)",
-                    color: "#fff", fontSize: "0.8125rem",
-                  }}
-                >
-                  <option value="">{t("All Provenance", "Alle Provenienz")}</option>
-                  <option value="verified">{t("Verified", "Verifiziert")}</option>
-                  <option value="unverified">{t("Unverified", "Nicht verifiziert")}</option>
-                  <option value="unknown">{t("Unknown", "Unbekannt")}</option>
-                </select>
-              )}
-              <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
-                {filteredSortedSbom.length !== sbomComponents.length
-                  ? `${filteredSortedSbom.length} / ${sbomComponents.length}`
-                  : sbomComponents.length}
-                {sbomComponents.length < sbomTotal ? ` / ${sbomTotal}` : ""}{" "}
-                {t("components", "Komponenten")}
-              </span>
-              <div style={{ display: "flex", gap: "0.375rem", marginLeft: "auto" }}>
-                <button
-                  onClick={() => void handleSbomExport("cyclonedx-json")}
-                  disabled={!!sbomExporting || sbomComponents.length === 0}
-                  style={{
-                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: sbomExporting ? "wait" : "pointer",
-                    background: "rgba(105,219,124,0.12)", color: "#69db7c", border: "1px solid rgba(105,219,124,0.3)",
-                  }}
-                >
-                  {sbomExporting === "cyclonedx-json" ? "..." : "CycloneDX"}
-                </button>
-                <button
-                  onClick={() => void handleSbomExport("spdx-json")}
-                  disabled={!!sbomExporting || sbomComponents.length === 0}
-                  style={{
-                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: sbomExporting ? "wait" : "pointer",
-                    background: "rgba(139,148,252,0.12)", color: "#8b94fc", border: "1px solid rgba(139,148,252,0.3)",
-                  }}
-                >
-                  {sbomExporting === "spdx-json" ? "..." : "SPDX"}
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!scanId || vexExporting) return;
-                    setVexExporting(true);
-                    try {
-                      const blob = await exportVex(scanId);
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `vex-${scanId}.cdx.json`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    } catch {
-                      setToast({ type: "error", message: t("No VEX data available. Set VEX statuses on findings first.", "Keine VEX-Daten vorhanden. Setzen Sie zuerst VEX-Status bei den Findings.") });
-                    } finally {
-                      setVexExporting(false);
-                    }
-                  }}
-                  disabled={vexExporting}
-                  style={{
-                    padding: "0.25rem 0.625rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, cursor: vexExporting ? "wait" : "pointer",
-                    background: "rgba(99,230,190,0.12)", color: "#63e6be", border: "1px solid rgba(99,230,190,0.3)",
-                  }}
-                >
-                  {vexExporting ? "..." : "VEX"}
-                </button>
-              </div>
-            </div>
-
-            {sbomComponents.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
-                {([
-                  { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, color: "#ffd43b", filterKey: "eco" as const, activeFilter: sbomFilterEco },
-                  { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, color: "#69db7c", filterKey: "license" as const, activeFilter: sbomFilterLicense },
-                  { title: t("Types", "Typen"), data: sbomStats.types, color: "#8b94fc", filterKey: "type" as const, activeFilter: sbomFilterType },
-                ] as const).map(card => (
-                  <div key={card.title} style={{ padding: "0.75rem", borderRadius: "8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      {card.title}
-                      {card.activeFilter && (
-                        <button type="button" onClick={() => {
-                          if (card.filterKey === "eco") setSbomFilterEco(null);
-                          else if (card.filterKey === "license") setSbomFilterLicense(null);
-                          else setSbomFilterType(null);
-                        }} style={{ marginLeft: "0.375rem", background: "none", border: "none", color: "#ffa3a3", cursor: "pointer", fontSize: "0.7rem", padding: 0 }}>
-                          ✕
-                        </button>
                       )}
-                    </div>
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "sbom" && (
+        <>
+          <div className="filter-row">
+            <input
+              type="text"
+              className="scan-detail-search"
+              value={sbomSearch}
+              onChange={e => setSbomSearch(e.target.value)}
+              placeholder={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
+              aria-label={t("Search by name, type, license, purl...", "Nach Name, Typ, Lizenz, PURL suchen...")}
+            />
+            {hasAnyProvenance && (
+              <select
+                value={sbomFilterProvenance || ""}
+                onChange={e => setSbomFilterProvenance(e.target.value || null)}
+                aria-label={t("All Provenance", "Alle Provenienz")}
+              >
+                <option value="">{t("All Provenance", "Alle Provenienz")}</option>
+                <option value="verified">{t("Verified", "Verifiziert")}</option>
+                <option value="unverified">{t("Unverified", "Nicht verifiziert")}</option>
+                <option value="unknown">{t("Unknown", "Unbekannt")}</option>
+              </select>
+            )}
+            <span className="scan-detail-count">
+              {filteredSortedSbom.length !== sbomComponents.length
+                ? `${filteredSortedSbom.length} / ${sbomComponents.length}`
+                : sbomComponents.length}
+              {sbomComponents.length < sbomTotal ? ` / ${sbomTotal}` : ""}{" "}
+              {t("components", "Komponenten")}
+            </span>
+            <div className="scan-detail-actions scan-detail-push">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void handleSbomExport("cyclonedx-json")}
+                disabled={!!sbomExporting || sbomComponents.length === 0}
+              >
+                {sbomExporting === "cyclonedx-json" ? "..." : "CycloneDX"}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void handleSbomExport("spdx-json")}
+                disabled={!!sbomExporting || sbomComponents.length === 0}
+              >
+                {sbomExporting === "spdx-json" ? "..." : "SPDX"}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={async () => {
+                  if (!scanId || vexExporting) return;
+                  setVexExporting(true);
+                  try {
+                    const blob = await exportVex(scanId);
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `vex-${scanId}.cdx.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch {
+                    setToast({ type: "error", message: t("No VEX data available. Set VEX statuses on findings first.", "Keine VEX-Daten vorhanden. Setzen Sie zuerst VEX-Status bei den Findings.") });
+                  } finally {
+                    setVexExporting(false);
+                  }
+                }}
+                disabled={vexExporting}
+              >
+                {vexExporting ? "..." : "VEX"}
+              </button>
+            </div>
+          </div>
+
+          {sbomComponents.length > 0 && (
+            <div className="scan-detail-facets">
+              {([
+                { title: t("Ecosystems", "Ökosysteme"), data: sbomStats.ecosystems, filterKey: "eco" as const, activeFilter: sbomFilterEco },
+                { title: t("Licenses", "Lizenzen"), data: sbomStats.licenses, filterKey: "license" as const, activeFilter: sbomFilterLicense },
+                { title: t("Types", "Typen"), data: sbomStats.types, filterKey: "type" as const, activeFilter: sbomFilterType },
+              ] as const).map(card => (
+                <div key={card.title} className="scan-detail-facet">
+                  <p className="scan-detail-facet-title">{card.title}</p>
+                  <div className="scan-detail-facet-values">
                     {card.data.slice(0, 5).map(([name, count]) => {
                       const isActive = card.activeFilter === name;
                       return (
-                        <div key={name}
+                        <button
+                          key={name}
+                          type="button"
+                          className="scan-detail-facet-value"
+                          aria-pressed={isActive}
                           onClick={() => {
                             if (card.filterKey === "eco") setSbomFilterEco(isActive ? null : name);
                             else if (card.filterKey === "license") setSbomFilterLicense(isActive ? null : name);
                             else setSbomFilterType(isActive ? null : name);
                           }}
-                          style={{
-                            display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.125rem 0.25rem", fontSize: "0.75rem",
-                            cursor: "pointer", borderRadius: "3px",
-                            background: isActive ? `${card.color}22` : "transparent",
-                          }}
                         >
-                          <span style={{ color: isActive ? card.color : "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "0.5rem" }}>{name}</span>
-                          <span style={{ color: card.color, fontWeight: 600, flexShrink: 0 }}>{count}</span>
-                        </div>
+                          <span className="scan-detail-facet-name">{name}</span>
+                          <span className="scan-detail-facet-count">{count}</span>
+                        </button>
                       );
                     })}
                     {card.data.length > 5 && (
-                      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginTop: "0.25rem" }}>
+                      <span className="scan-detail-count">
                         +{card.data.length - 5} {t("more", "weitere")}
-                      </div>
+                      </span>
                     )}
-                    {card.data.length === 0 && (
-                      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.2)" }}>—</div>
+                    {card.data.length === 0 && <NotAvailable />}
+                    {card.activeFilter && (
+                      <IconButton
+                        label={t("Clear", "Leeren")}
+                        onClick={() => {
+                          if (card.filterKey === "eco") setSbomFilterEco(null);
+                          else if (card.filterKey === "license") setSbomFilterLicense(null);
+                          else setSbomFilterType(null);
+                        }}
+                      >
+                        <LuX aria-hidden="true" />
+                      </IconButton>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
+          )}
 
-            {sbomComponents.length === 0 ? (
-              <p className="muted">{t("No SBOM components.", "Keine SBOM-Komponenten.")}</p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
+          {sbomComponents.length === 0 ? (
+            <EmptyState title={t("No SBOM components.", "Keine SBOM-Komponenten.")} />
+          ) : (
+            <>
+              <div className="table-scroll">
+                <PhoneSortBar
+                  id="scan-detail-sort-sbom"
+                  columns={sbomSortColumns.map(h => [h.col, h.label] as const)}
+                  sort={sbomSort}
+                  onSort={setSbomSort}
+                />
+                <table className="scan-detail-table scan-detail-stack">
                   <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                      {([
-                        { col: "name", label: t("Component", "Komponente"), show: true },
-                        { col: "version", label: t("Version", "Version"), show: true },
-                        { col: "type", label: t("Type", "Typ"), show: true },
-                        { col: "provenance", label: t("Provenance", "Provenienz"), show: hasAnyProvenance },
-                        { col: "licenses", label: t("Licenses", "Lizenzen"), show: true },
-                      ] as const).filter(h => h.show).map(h => (
-                        <th key={h.col} style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
-                          onClick={() => setSbomSort(prev => ({ col: h.col, dir: prev.col === h.col && prev.dir === "asc" ? "desc" : "asc" }))}>
-                          {h.label} {sbomSort.col === h.col ? (sbomSort.dir === "asc" ? "▲" : "▼") : ""}
-                        </th>
+                    <tr>
+                      {sbomSortColumns.map(h => (
+                        <SortHeader
+                          key={h.col}
+                          label={h.label}
+                          active={sbomSort.col === h.col}
+                          dir={sbomSort.dir}
+                          onClick={() => setSbomSort(prev => ({ col: h.col, dir: prev.col === h.col && prev.dir === "asc" ? "desc" : "asc" }))}
+                        />
                       ))}
-                      {hasAnySupplier && <th style={thStyle}>{t("Supplier", "Lieferant")}</th>}
-                      <th style={thStyle}>{t("Links", "Links")}</th>
+                      {hasAnySupplier && <th>{t("Supplier", "Lieferant")}</th>}
+                      <th>{t("Links", "Links")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSortedSbom.map(c => {
-                      const depsUrl = buildDepsDevUrl(c.name, c.version, c.type, c.purl);
-                      const snykUrl = buildSnykUrl(c.name, c.version, c.type, c.purl);
-                      const registryLink = buildRegistryUrl(c.name, c.version, c.type, c.purl);
-                      const socketUrl = buildSocketUrl(c.name, c.version, c.type, c.purl);
-                      const aikidoUrl = buildAikidoUrl(c.name, c.version, c.type, c.purl);
-                      const bundlephobiaUrl = buildBundlephobiaUrl(c.name, c.version, c.type, c.purl);
-                      const npmGraphUrl = buildNpmGraphUrl(c.name, c.version, c.type, c.purl);
-                      return (
-                        <tr key={c.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                          <td style={tdStyle}>
-                            <div>{c.name}</div>
-                            {c.purl && (
-                              <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", wordBreak: "break-all", marginTop: "0.125rem" }}>
-                                {c.purl}
-                              </div>
-                            )}
-                          </td>
-                          <td style={tdStyle}>{c.version || "—"}</td>
-                          <td style={tdStyle}>
-                            <span style={{
-                              padding: "0.125rem 0.375rem",
-                              borderRadius: "3px",
-                              fontSize: "0.7rem",
-                              background: "rgba(255,255,255,0.06)",
-                              color: "rgba(255,255,255,0.5)",
-                            }}>
-                              {c.type || "—"}
-                            </span>
-                          </td>
-                          {hasAnyProvenance && (
-                          <td style={tdStyle}>
+                    {filteredSortedSbom.map(c => (
+                      <tr key={c.id}>
+                        <td className="scan-detail-cell-full">
+                          <div>{c.name}</div>
+                          {c.purl && <div className="scan-detail-purl mono">{c.purl}</div>}
+                        </td>
+                        <td data-label={t("Version", "Version")}>{c.version ? <span className="mono">{c.version}</span> : <NotAvailable />}</td>
+                        <td data-label={t("Type", "Typ")}>{c.type ? <span className="chip">{c.type}</span> : <NotAvailable />}</td>
+                        {hasAnyProvenance && (
+                          <td data-label={t("Provenance", "Provenienz")}>
                             {c.provenanceVerified === true ? (
                               <span
+                                className="scan-detail-inline scan-detail-outcome--ok scan-detail-help"
                                 title={[
                                   c.provenanceAttestationType && `Attestation: ${c.provenanceAttestationType}`,
                                   c.provenanceBuildSystem && `Build: ${c.provenanceBuildSystem}`,
                                   c.provenanceSourceRepo && `Source: ${c.provenanceSourceRepo}`,
                                 ].filter(Boolean).join("\n") || t("Provenance verified", "Provenienz verifiziert")}
-                                style={{ color: "#69db7c", fontSize: "0.8125rem", cursor: "help" }}
                               >
-                                &#10003; {c.provenanceAttestationType || t("Verified", "Verifiziert")}
+                                <LuCheck aria-hidden="true" />
+                                {c.provenanceAttestationType || t("Verified", "Verifiziert")}
                               </span>
                             ) : c.provenanceVerified === false ? (
-                              <span style={{ color: "#ffa94d", fontSize: "0.75rem" }} title={t("No provenance attestation found", "Keine Provenienz-Attestierung gefunden")}>
-                                &#9888; {t("Unverified", "Nicht verifiziert")}
+                              <span className="scan-detail-inline muted" title={t("No provenance attestation found", "Keine Provenienz-Attestierung gefunden")}>
+                                <LuTriangleAlert aria-hidden="true" />
+                                {t("Unverified", "Nicht verifiziert")}
                               </span>
-                            ) : (
-                              <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>
-                            )}
+                            ) : null}
                           </td>
-                          )}
-                          <td style={tdStyle}>
-                            {c.licenses.length > 0
-                              ? c.licenses.map((lic, i) => (
-                                  <span key={i} style={{
-                                    display: "inline-block",
-                                    padding: "0.125rem 0.375rem",
-                                    borderRadius: "3px",
-                                    fontSize: "0.7rem",
-                                    background: "rgba(105,219,124,0.1)",
-                                    color: "#69db7c",
-                                    marginRight: "0.25rem",
-                                    marginBottom: "0.125rem",
-                                  }}>
-                                    {lic}
-                                  </span>
-                                ))
-                              : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                        )}
+                        <td data-label={t("Licenses", "Lizenzen")}>
+                          {c.licenses.length > 0 ? (
+                            <span className="scan-detail-chips">
+                              {c.licenses.map((lic, i) => <span key={i} className="chip">{lic}</span>)}
+                            </span>
+                          ) : null}
+                        </td>
+                        {hasAnySupplier && (
+                          <td className="muted" data-label={t("Supplier", "Lieferant")}>{c.supplier}</td>
+                        )}
+                        <td className="scan-detail-cell-full">
+                          <PackageLinks name={c.name} version={c.version} type={c.type} purl={c.purl} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {sbomComponents.length < sbomTotal && (
+                <div className="scan-detail-more">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => void handleSbomLoadMore()}
+                    disabled={sbomLoadingMore}
+                  >
+                    {sbomLoadingMore
+                      ? t("Loading...", "Lädt...")
+                      : t(
+                          `Load more (${sbomComponents.length} / ${sbomTotal})`,
+                          `Mehr laden (${sbomComponents.length} / ${sbomTotal})`,
+                        )}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* History tab */}
+      {tab === "history" && (
+        <>
+          <div className="filter-row">
+            {(["7d", "30d", "90d", "all"] as HistoryRange[]).map(range => (
+              <button
+                key={range}
+                type="button"
+                className="scan-detail-filter"
+                aria-pressed={historyRange === range}
+                onClick={() => { setHistoryRange(range); loadHistory(range); }}
+              >
+                {range === "all" ? t("All", "Alle") : range}
+              </button>
+            ))}
+            <span className="scan-detail-count scan-detail-push">
+              {history.length} {t("scans", "Scans")}
+            </span>
+          </div>
+          {historyLoading ? (
+            <div className="scan-detail-skeleton">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonBlock key={i} height={40} radius={4} />
+              ))}
+            </div>
+          ) : history.length < 2 ? (
+            <EmptyState title={t("Not enough scan history for a chart. Run more scans.", "Nicht genügend Scan-Verlauf für ein Diagramm. Führen Sie weitere Scans durch.")} />
+          ) : (
+            <>
+              <HistoryChart history={history} />
+              <HistoryChangesTable history={history} targetId={scan.targetId} />
+            </>
+          )}
+        </>
+      )}
+
+      {/* Attack Chain tab */}
+      {tab === "attack-chain" && scanId && (
+        <ScanAttackChainView
+          scanId={scanId}
+          aiEnabled={aiEnabled}
+          onPersistedNarrativeChange={() => {
+            fetchScan(scanId).then(setScan).catch(() => {});
+          }}
+        />
+      )}
+
+      {/* AI Analysis tab */}
+      {tab === "ai-analysis" && (
+        <ScanAiAnalysisTab scan={scan} onRefresh={() => {
+          if (!scanId) return;
+          fetchScan(scanId).then(setScan).catch(() => {});
+        }} />
+      )}
+
+      {/* Compare tab */}
+      {tab === "compare" && (
+        <>
+          <div className="filter-row">
+            <label htmlFor="scan-detail-compare" className="scan-detail-count">
+              {t("Compare with:", "Vergleichen mit:")}
+            </label>
+            <select
+              id="scan-detail-compare"
+              value={compareScanId || ""}
+              onChange={async (e) => {
+                const selected = e.target.value || null;
+                setCompareScanId(selected);
+                setComparison(null);
+                if (!selected || !scanId) return;
+                setCompareLoading(true);
+                try {
+                  const result = await compareScans(selected, scanId);
+                  setComparison(result);
+                } catch (err) {
+                  console.error("Compare failed", err);
+                } finally {
+                  setCompareLoading(false);
+                }
+              }}
+            >
+              <option value="">{t("Select a scan...", "Scan auswählen...")}</option>
+              {otherScans.map(s => (
+                <option key={s.id} value={s.id}>
+                  {formatDateTime(s.startedAt)}: {s.summary.total} findings
+                </option>
+              ))}
+            </select>
+            {compareLoading && <span className="scan-detail-count">{t("Comparing...", "Vergleiche...")}</span>}
+          </div>
+
+          {comparison && <ComparisonView comparison={comparison} />}
+          {!comparison && !compareScanId && !compareLoading && (
+            <EmptyState title={t("Select another scan of this target to compare.", "Wählen Sie einen anderen Scan dieses Ziels zum Vergleich.")} />
+          )}
+        </>
+      )}
+
+      {tab === "bestpractices" && (
+        <>
+          {complianceFindings.length === 0 ? (
+            <EmptyState title={t("All CIS Docker Benchmark checks passed.", "Alle CIS-Docker-Benchmark-Checks bestanden.")} />
+          ) : (
+            <>
+              <ItemsSummary
+                title={t(
+                  `${complianceFindings.length} compliance issue${complianceFindings.length !== 1 ? "s" : ""} found`,
+                  `${complianceFindings.length} Compliance-Problem${complianceFindings.length !== 1 ? "e" : ""} gefunden`,
+                )}
+              >
+                <SeverityCounts items={complianceFindings} />
+              </ItemsSummary>
+
+              {/* Compliance items */}
+              <div className="scan-detail-items">
+                {complianceFindings.map((check, idx) => {
+                  const category = check.dataSource?.includes("cis") ? "CIS" : "DKL";
+                  const alerts = (check.description || "").split("\n").filter(Boolean);
+
+                  return (
+                    <article key={idx} className="scan-detail-item">
+                      <div className="scan-detail-item-head">
+                        <SeverityWord severity={check.severity} />
+                        <h3>{check.title}</h3>
+                        <span className="chip">{category}</span>
+                      </div>
+
+                      {/* Alert messages as bullet list */}
+                      {alerts.length > 0 && (
+                        <ul className="scan-detail-item-list">
+                          {alerts.map((msg, i) => <li key={i}>{msg}</li>)}
+                        </ul>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {tab === "layers" && (
+        <>
+          {layerLoading ? (
+            <SkeletonBlock height={160} radius={4} />
+          ) : !scan?.layerAnalysisAvailable ? (
+            <EmptyState
+              title={t(
+                "No layer analysis available. Run a scan with Dive enabled to see layer data.",
+                "Keine Schichtanalyse verfügbar. Führen Sie einen Scan mit aktiviertem Dive durch.",
+              )}
+            />
+          ) : layerAnalysis ? (
+            <>
+              {/* Efficiency & Waste summary */}
+              <div className="scan-detail-layer-summary">
+                <dl className="stat-row">
+                  <Stat
+                    label={t("Image Efficiency", "Image-Effizienz")}
+                    value={(
+                      <>
+                        {(layerAnalysis.efficiency * 100).toFixed(1)}%
+                        <span className="scan-detail-meter" aria-hidden="true">
+                          <span style={{ width: `${Math.min(layerAnalysis.efficiency * 100, 100)}%` }} />
+                        </span>
+                      </>
+                    )}
+                  />
+                  <Stat
+                    label={t("Wasted Space", "Verschwendeter Speicher")}
+                    value={(
+                      <>
+                        {formatBytes(layerAnalysis.wastedBytes)}
+                        <span className="scan-detail-stat-note">
+                          {(layerAnalysis.userWastedPercent * 100).toFixed(1)}% {t("of total", "vom Gesamten")}
+                        </span>
+                      </>
+                    )}
+                  />
+                  <Stat
+                    label={t("Total Image Size", "Gesamte Image-Größe")}
+                    value={(
+                      <>
+                        {formatBytes(layerAnalysis.totalImageSize)}
+                        <span className="scan-detail-stat-note">
+                          {layerAnalysis.layers.length} {t("layers", "Schichten")}
+                        </span>
+                      </>
+                    )}
+                  />
+                </dl>
+                <span className={`scan-detail-verdict scan-detail-outcome--${layerAnalysis.passThreshold ? "ok" : "error"}`}>
+                  {layerAnalysis.passThreshold ? t("Pass", "OK") : t("Fail", "Fehler")}
+                </span>
+              </div>
+
+              {/* Layer table */}
+              <div className="table-scroll">
+                <table className="scan-detail-table scan-detail-pin">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>{t("Command", "Befehl")}</th>
+                      <th className="scan-detail-num">{t("Size", "Größe")}</th>
+                      <th className="scan-detail-num">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {layerAnalysis.layers.map((layer) => {
+                      const pct = layerAnalysis.totalImageSize > 0
+                        ? (layer.sizeBytes / layerAnalysis.totalImageSize) * 100
+                        : 0;
+                      return (
+                        <tr key={layer.index}>
+                          <td className="muted">{layer.index + 1}</td>
+                          <td className="scan-detail-layer-command mono" title={layer.command}>
+                            {layer.command || layer.digest.substring(0, 12)}
                           </td>
-                          {hasAnySupplier && (
-                          <td style={tdStyle}>
-                            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.75rem" }}>{c.supplier || "—"}</span>
-                          </td>
-                          )}
-                          <td style={tdStyle}>
-                            <div style={{ display: "flex", gap: "0.5rem" }}>
-                              {depsUrl && (
-                                <a href={depsUrl} target="_blank" rel="noopener noreferrer" title="deps.dev"
-                                  style={{ color: "#ffd43b", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.2)" }}>
-                                  deps.dev
-                                </a>
-                              )}
-                              {snykUrl && (
-                                <a href={snykUrl} target="_blank" rel="noopener noreferrer" title="Snyk"
-                                  style={{ color: "#a78bfa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)" }}>
-                                  Snyk
-                                </a>
-                              )}
-                              {registryLink && (
-                                <a href={registryLink.url} target="_blank" rel="noopener noreferrer" title={registryLink.label}
-                                  style={{ color: "#63e6be", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(99,230,190,0.1)", border: "1px solid rgba(99,230,190,0.2)" }}>
-                                  {registryLink.label}
-                                </a>
-                              )}
-                              {socketUrl && (
-                                <a href={socketUrl} target="_blank" rel="noopener noreferrer" title="socket.dev"
-                                  style={{ color: "#ff8787", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(255,135,135,0.1)", border: "1px solid rgba(255,135,135,0.2)" }}>
-                                  socket.dev
-                                </a>
-                              )}
-                              {aikidoUrl && (
-                                <a href={aikidoUrl} target="_blank" rel="noopener noreferrer" title="intel.aikido.dev"
-                                  style={{ color: "#9775fa", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(151,117,250,0.1)", border: "1px solid rgba(151,117,250,0.2)" }}>
-                                  aikido
-                                </a>
-                              )}
-                              {bundlephobiaUrl && (
-                                <a href={bundlephobiaUrl} target="_blank" rel="noopener noreferrer" title="bundlephobia"
-                                  style={{ color: "#74c0fc", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(116,192,252,0.1)", border: "1px solid rgba(116,192,252,0.2)" }}>
-                                  bundlephobia
-                                </a>
-                              )}
-                              {npmGraphUrl && (
-                                <a href={npmGraphUrl} target="_blank" rel="noopener noreferrer" title="npmgraph"
-                                  style={{ color: "#faa2c1", textDecoration: "none", fontSize: "0.7rem", padding: "0.125rem 0.375rem", borderRadius: "3px", background: "rgba(250,162,193,0.1)", border: "1px solid rgba(250,162,193,0.2)" }}>
-                                  npmgraph
-                                </a>
-                              )}
-                              {!depsUrl && !snykUrl && !registryLink && !socketUrl && !aikidoUrl && !bundlephobiaUrl && !npmGraphUrl && <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>}
-                            </div>
+                          <td className="scan-detail-num">{formatBytes(layer.sizeBytes)}</td>
+                          <td className="scan-detail-num">
+                            <span className="scan-detail-layer-share">
+                              <span className="scan-detail-meter" aria-hidden="true">
+                                <span style={{ width: `${Math.min(pct, 100)}%` }} />
+                              </span>
+                              <span className="muted">{pct.toFixed(1)}%</span>
+                            </span>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                {sbomComponents.length < sbomTotal && (
-                  <div style={{ marginTop: "0.75rem", textAlign: "center" }}>
-                    <button
-                      type="button"
-                      onClick={() => void handleSbomLoadMore()}
-                      disabled={sbomLoadingMore}
-                      style={{
-                        padding: "0.4rem 1rem", borderRadius: "6px", fontSize: "0.8125rem", fontWeight: 600,
-                        cursor: sbomLoadingMore ? "wait" : "pointer",
-                        background: "rgba(139,148,252,0.12)", color: "#8b94fc",
-                        border: "1px solid rgba(139,148,252,0.3)",
-                      }}
-                    >
-                      {sbomLoadingMore
-                        ? t("Loading...", "Lädt...")
-                        : t(
-                            `Load more (${sbomComponents.length} / ${sbomTotal})`,
-                            `Mehr laden (${sbomComponents.length} / ${sbomTotal})`,
-                          )}
-                    </button>
-                  </div>
+              </div>
+            </>
+          ) : null}
+        </>
+      )}
+
+      {tab === "alerts" && (
+        <>
+          {alertFindings.length === 0 ? (
+            <EmptyState title={t("No malicious package indicators detected.", "Keine Hinweise auf bösartige Pakete erkannt.")} />
+          ) : (
+            <>
+              <ItemsSummary
+                title={t(
+                  `${alertFindings.length} security alert${alertFindings.length !== 1 ? "s" : ""} detected`,
+                  `${alertFindings.length} Sicherheitswarnung${alertFindings.length !== 1 ? "en" : ""} erkannt`,
                 )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* History tab */}
-        {tab === "history" && (
-          <>
-            <div style={{ display: "flex", gap: "0.25rem", marginBottom: "1rem" }}>
-              {(["7d", "30d", "90d", "all"] as HistoryRange[]).map(range => {
-                const active = historyRange === range;
-                const label = range === "all" ? t("All", "Alle") : range;
-                return (
-                  <button
-                    key={range}
-                    type="button"
-                    onClick={() => { setHistoryRange(range); loadHistory(range); }}
-                    style={{
-                      padding: "0 0.625rem",
-                      borderRadius: "4px",
-                      border: `1px solid ${active ? "#ffd43b" : "rgba(255,255,255,0.1)"}`,
-                      background: active ? "rgba(255,212,59,0.13)" : "transparent",
-                      color: active ? "#ffd43b" : "rgba(255,255,255,0.4)",
-                      cursor: "pointer",
-                      fontSize: "0.75rem",
-                      fontWeight: active ? 600 : 400,
-                      height: "32px",
-                      boxSizing: "border-box" as const,
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-              <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.3)", fontSize: "0.75rem", alignSelf: "center" }}>
-                {history.length} {t("scans", "Scans")}
-              </span>
-            </div>
-            {historyLoading ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <SkeletonBlock key={i} height={40} radius={4} />
-                ))}
-              </div>
-            ) : history.length < 2 ? (
-              <p className="muted">{t("Not enough scan history for a chart. Run more scans.", "Nicht genügend Scan-Verlauf für ein Diagramm. Führen Sie weitere Scans durch.")}</p>
-            ) : (
-              <>
-                <HistoryChart history={history} />
-                <HistoryChangesTable history={history} targetId={scan.targetId} />
-              </>
-            )}
-          </>
-        )}
-
-        {/* Attack Chain tab */}
-        {tab === "attack-chain" && scanId && (
-          <ScanAttackChainView
-            scanId={scanId}
-            aiEnabled={aiEnabled}
-            onPersistedNarrativeChange={() => {
-              fetchScan(scanId).then(setScan).catch(() => {});
-            }}
-          />
-        )}
-
-        {/* AI Analysis tab */}
-        {tab === "ai-analysis" && (
-          <ScanAiAnalysisTab scan={scan} onRefresh={() => {
-            if (!scanId) return;
-            fetchScan(scanId).then(setScan).catch(() => {});
-          }} />
-        )}
-
-        {/* Compare tab */}
-        {tab === "compare" && (
-          <>
-            <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)" }}>
-                {t("Compare with:", "Vergleichen mit:")}
-              </span>
-              <select
-                value={compareScanId || ""}
-                onChange={async (e) => {
-                  const selected = e.target.value || null;
-                  setCompareScanId(selected);
-                  setComparison(null);
-                  if (!selected || !scanId) return;
-                  setCompareLoading(true);
-                  try {
-                    const result = await compareScans(selected, scanId);
-                    setComparison(result);
-                  } catch (err) {
-                    console.error("Compare failed", err);
-                  } finally {
-                    setCompareLoading(false);
-                  }
-                }}
-                style={{
-                  padding: "0.375rem 0.75rem",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  fontSize: "0.8125rem",
-                  outline: "none",
-                }}
               >
-                <option value="">{t("Select a scan...", "Scan auswählen...")}</option>
-                {otherScans.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {formatDateTime(s.startedAt)} — {s.summary.total} findings
-                  </option>
-                ))}
-              </select>
-              {compareLoading && <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)" }}>{t("Comparing...", "Vergleiche...")}</span>}
-            </div>
+                {(() => {
+                  const cats: Record<string, number> = {};
+                  for (const f of alertFindings) {
+                    const cat = f.dataSource?.replace("hecate-malware-detector:", "") || "unknown";
+                    cats[cat] = (cats[cat] || 0) + 1;
+                  }
+                  return Object.entries(cats).map(([cat, count]) => (
+                    <span key={cat} className="chip">{count} {cat.replace(/_/g, " ")}</span>
+                  ));
+                })()}
+              </ItemsSummary>
 
-            {comparison && <ComparisonView comparison={comparison} />}
-            {!comparison && !compareScanId && !compareLoading && (
-              <p className="muted">{t("Select another scan of this target to compare.", "Wählen Sie einen anderen Scan dieses Ziels zum Vergleich.")}</p>
-            )}
-          </>
-        )}
+              {/* Alert items */}
+              <div className="scan-detail-items">
+                {alertFindings.map((alert, idx) => {
+                  const category = alert.dataSource?.replace("hecate-malware-detector:", "") || "";
+                  // Split description into main text and evidence
+                  const descParts = (alert.description || "").split("\n\nEvidence: ");
+                  const mainDesc = cleanAdvisoryText(descParts[0]);
+                  const evidenceAndConf = descParts[1] || "";
+                  const evidenceParts = evidenceAndConf.split("\nConfidence: ");
+                  const evidence = evidenceParts[0] || "";
+                  const confidence = evidenceParts[1] || "medium";
 
-        {tab === "bestpractices" && (
-          <>
-            {complianceFindings.length === 0 ? (
-              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
-                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
-                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
-                  {t("All CIS Docker Benchmark checks passed.", "Alle CIS-Docker-Benchmark-Checks bestanden.")}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Summary banner */}
-                <div style={{
-                  padding: "0.75rem 1rem",
-                  marginBottom: "1rem",
-                  background: "rgba(252,196,25,0.08)",
-                  border: "1px solid rgba(252,196,25,0.2)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  gap: "1rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}>
-                  <span style={{ color: "#fcc419", fontWeight: 600, fontSize: "0.875rem" }}>
-                    {t(
-                      `${complianceFindings.length} compliance issue${complianceFindings.length !== 1 ? "s" : ""} found`,
-                      `${complianceFindings.length} Compliance-Problem${complianceFindings.length !== 1 ? "e" : ""} gefunden`,
-                    )}
-                  </span>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    {(() => {
-                      const sevs: Record<string, number> = {};
-                      for (const f of complianceFindings) {
-                        const s = f.severity.toLowerCase();
-                        sevs[s] = (sevs[s] || 0) + 1;
-                      }
-                      return Object.entries(sevs).map(([s, count]) => (
-                        <span key={s} style={{
-                          padding: "0.125rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          background: s === "critical" ? "rgba(255,107,107,0.1)" : s === "medium" ? "rgba(252,196,25,0.1)" : "rgba(255,255,255,0.06)",
-                          color: s === "critical" ? "#ff6b6b" : s === "medium" ? "#fcc419" : "rgba(255,255,255,0.5)",
-                        }}>
-                          {count} {s}
+                  return (
+                    <article key={idx} className="scan-detail-item">
+                      {/* Title with severity */}
+                      <div className="scan-detail-item-head">
+                        <SeverityWord severity={alert.severity} />
+                        <h3>{alert.title}</h3>
+                        <span className="scan-detail-chips">
+                          {category && <span className="chip">{category.replace(/_/g, " ")}</span>}
+                          <span className="chip">{confidence} {t("confidence", "Konfidenz")}</span>
                         </span>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                {/* Compliance cards */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {complianceFindings.map((check, idx) => {
-                    const sev = check.severity.toLowerCase();
-                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : sev === "low" ? "#69db7c" : "#868e96";
-                    const category = check.dataSource?.includes("cis") ? "CIS" : "DKL";
-                    const alerts = (check.description || "").split("\n").filter(Boolean);
-
-                    return (
-                      <div key={idx} style={{
-                        background: "rgba(255,255,255,0.02)",
-                        border: `1px solid ${sevColor}33`,
-                        borderLeft: `4px solid ${sevColor}`,
-                        borderRadius: "8px",
-                        padding: "1rem",
-                      }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
-                              <span style={{
-                                padding: "0.125rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.7rem",
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                background: `${sevColor}20`,
-                                color: sevColor,
-                              }}>
-                                {sev}
-                              </span>
-                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
-                                {check.title}
-                              </span>
-                            </div>
-
-                            {/* Alert messages as bullet list */}
-                            {alerts.length > 0 && (
-                              <ul style={{ margin: "0.375rem 0 0 0", paddingLeft: "1.25rem", listStyle: "disc" }}>
-                                {alerts.map((msg, i) => (
-                                  <li key={i} style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
-                                    {msg}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-
-                          {/* Category badge */}
-                          <span style={{
-                            padding: "0.125rem 0.5rem",
-                            borderRadius: "4px",
-                            fontSize: "0.7rem",
-                            background: "rgba(92,132,255,0.1)",
-                            color: "#5c84ff",
-                            border: "1px solid rgba(92,132,255,0.2)",
-                            flexShrink: 0,
-                          }}>
-                            {category}
-                          </span>
-                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </>
-        )}
 
-        {tab === "layers" && (
-          <>
-            {layerLoading ? (
-              <SkeletonBlock height={160} />
-            ) : !scan?.layerAnalysisAvailable ? (
-              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px" }}>
-                <p style={{ color: "rgba(255,255,255,0.4)", margin: 0, fontSize: "0.875rem" }}>
-                  {t(
-                    "No layer analysis available. Run a scan with Dive enabled to see layer data.",
-                    "Keine Schichtanalyse verfügbar. Führen Sie einen Scan mit aktiviertem Dive durch.",
-                  )}
-                </p>
+                      {/* Package info */}
+                      <p className="scan-detail-item-package">
+                        <span>{alert.packageName}</span>
+                        {alert.packageVersion && <span className="mono">@ {alert.packageVersion}</span>}
+                        {alert.packagePath && <span className="mono muted">{alert.packagePath}</span>}
+                      </p>
+
+                      {/* Description */}
+                      {mainDesc && <p className="scan-detail-item-text">{mainDesc}</p>}
+
+                      {/* Evidence block */}
+                      {evidence && <pre className="scan-detail-code">{evidence}</pre>}
+                    </article>
+                  );
+                })}
               </div>
-            ) : layerAnalysis ? (
-              <>
-                {/* Efficiency & Waste summary */}
-                <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-                  {/* Efficiency gauge */}
-                  <div style={{
-                    flex: "1 1 200px",
-                    padding: "1rem",
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: "8px",
-                  }}>
-                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.5rem" }}>
-                      {t("Image Efficiency", "Image-Effizienz")}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <span style={{
-                        fontSize: "1.5rem",
-                        fontWeight: 700,
-                        color: layerAnalysis.efficiency >= 0.9 ? "#63e6be" : layerAnalysis.efficiency >= 0.7 ? "#fcc419" : "#ff6b6b",
-                      }}>
-                        {(layerAnalysis.efficiency * 100).toFixed(1)}%
-                      </span>
-                      <div style={{ flex: 1, height: "8px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", overflow: "hidden" }}>
-                        <div style={{
-                          height: "100%",
-                          width: `${Math.min(layerAnalysis.efficiency * 100, 100)}%`,
-                          background: layerAnalysis.efficiency >= 0.9 ? "#63e6be" : layerAnalysis.efficiency >= 0.7 ? "#fcc419" : "#ff6b6b",
-                          borderRadius: "4px",
-                          transition: "width 0.3s",
-                        }} />
+            </>
+          )}
+        </>
+      )}
+
+      {tab === "sast" && (
+        <>
+          {sastFindings.length === 0 ? (
+            <EmptyState title={t("No SAST findings.", "Keine SAST-Ergebnisse.")} />
+          ) : (
+            <>
+              <ItemsSummary
+                title={t(
+                  `${sastFindings.length} code issue${sastFindings.length !== 1 ? "s" : ""} found by ${sastScannerLabel}`,
+                  `${sastFindings.length} Code-Problem${sastFindings.length !== 1 ? "e" : ""} von ${sastScannerLabel} gefunden`,
+                )}
+              >
+                <SeverityCounts items={sastFindings} />
+              </ItemsSummary>
+
+              {/* SAST items */}
+              <div className="scan-detail-items">
+                {sastFindings.map((finding, idx) => {
+                  const ruleId = finding.packageName || "";
+                  // Parse structured sections from description
+                  const desc = finding.description || "";
+                  const codeSplit = desc.split("\n\nCode:\n");
+                  const textPart = codeSplit[0] || "";
+                  const codeRaw = codeSplit[1]?.replace(/^```\n?/, "").replace(/\n?```$/, "") || "";
+                  const codeBlock = (codeRaw && codeRaw !== "requires login") ? codeRaw : "";
+                  // Extract CWE, OWASP, and main message from text
+                  const lines = textPart.split("\n\n");
+                  const message = lines[0] || "";
+                  const cweLines: string[] = [];
+                  const owaspItems: string[] = [];
+                  for (const line of lines.slice(1)) {
+                    if (line.startsWith("CWE: ")) cweLines.push(...line.slice(5).split(", ").map(s => s.trim()));
+                    else if (line.startsWith("OWASP: ")) owaspItems.push(...line.slice(7).split(", ").map(s => s.trim()));
+                  }
+
+                  return (
+                    <article key={idx} className="scan-detail-item">
+                      <div className="scan-detail-item-head">
+                        <SeverityWord severity={finding.severity} />
+                        <h3>{finding.title}</h3>
+                        <span className="scan-detail-chips">
+                          {finding.scanners.length > 0 && <span className="chip">{finding.scanners.join(", ")}</span>}
+                          <span className="chip mono scan-detail-rule" title={ruleId}>{ruleId.split(".").slice(-2).join(".")}</span>
+                        </span>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Wasted space */}
-                  <div style={{
-                    flex: "1 1 200px",
-                    padding: "1rem",
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: "8px",
-                  }}>
-                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.5rem" }}>
-                      {t("Wasted Space", "Verschwendeter Speicher")}
-                    </div>
-                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: layerAnalysis.wastedBytes > 0 ? "#ff922b" : "#63e6be" }}>
-                      {formatBytes(layerAnalysis.wastedBytes)}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.25rem" }}>
-                      {(layerAnalysis.userWastedPercent * 100).toFixed(1)}% {t("of total", "vom Gesamten")}
-                    </div>
-                  </div>
+                      {/* File path (stripped) */}
+                      {finding.packagePath && (
+                        <p className="scan-detail-item-path mono">{stripScanPath(finding.packagePath)}</p>
+                      )}
 
-                  {/* Total image size */}
-                  <div style={{
-                    flex: "1 1 200px",
-                    padding: "1rem",
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: "8px",
-                  }}>
-                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginBottom: "0.5rem" }}>
-                      {t("Total Image Size", "Gesamte Image-Größe")}
-                    </div>
-                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff" }}>
-                      {formatBytes(layerAnalysis.totalImageSize)}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: "0.25rem" }}>
-                      {layerAnalysis.layers.length} {t("layers", "Schichten")}
-                    </div>
-                  </div>
+                      {/* Message */}
+                      <p className="scan-detail-item-text">{message}</p>
 
-                  {/* Pass/Fail badge */}
-                  <div style={{
-                    flex: "0 0 auto",
-                    padding: "1rem",
-                    background: layerAnalysis.passThreshold ? "rgba(99,230,190,0.05)" : "rgba(255,107,107,0.05)",
-                    border: `1px solid ${layerAnalysis.passThreshold ? "rgba(99,230,190,0.15)" : "rgba(255,107,107,0.15)"}`,
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: "80px",
-                  }}>
-                    <span style={{
-                      fontSize: "1rem",
-                      fontWeight: 700,
-                      color: layerAnalysis.passThreshold ? "#63e6be" : "#ff6b6b",
-                    }}>
-                      {layerAnalysis.passThreshold ? t("PASS", "OK") : t("FAIL", "FEHLER")}
+                      {/* CWE chips */}
+                      {cweLines.length > 0 && (
+                        <div className="scan-detail-chips scan-detail-item-row">
+                          {cweLines.map((cwe, i) => {
+                            const idMatch = cwe.match(/^(CWE-\d+):?\s*(.*)/);
+                            return (
+                              <span key={i} className="chip scan-detail-gap-chip">
+                                <span className="mono">{idMatch?.[1] || cwe}</span>
+                                {idMatch?.[2] && <span className="muted">{idMatch[2]}</span>}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* OWASP chips */}
+                      {owaspItems.length > 0 && (
+                        <div className="scan-detail-chips scan-detail-item-row">
+                          {owaspItems.map((item, i) => {
+                            const parts = item.split(" - ");
+                            return (
+                              <span key={i} className="chip scan-detail-gap-chip">
+                                <span className="mono">{parts[0]}</span>
+                                {parts[1] && <span className="muted">{parts[1]}</span>}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Code snippet */}
+                      {codeBlock && <pre className="scan-detail-code scan-detail-code--source">{codeBlock}</pre>}
+
+                      {/* Reference links with domain + icon */}
+                      {finding.urls && finding.urls.length > 0 && (
+                        <div className="link-list scan-detail-item-row">
+                          {finding.urls.slice(0, 3).map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="scan-detail-inline">
+                              <LuExternalLink aria-hidden="true" />
+                              {urlDomain(url)}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {tab === "license-compliance" && (
+        <>
+          {licenseComplianceLoading ? (
+            <div className="scan-detail-skeleton">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonBlock key={i} height={40} radius={4} />
+              ))}
+            </div>
+          ) : !licenseCompliance || !licenseCompliance.policyId ? (
+            <EmptyState title={t("No license policy configured. Create a default policy on the System page.", "Keine Lizenzrichtlinie konfiguriert. Erstellen Sie eine Standardrichtlinie auf der Systemseite.")} />
+          ) : (
+            <>
+              {/* Summary */}
+              <div className="scan-detail-summary">
+                <p className="scan-detail-policy">
+                  {t("Policy", "Richtlinie")}: <strong>{licenseCompliance.policyName}</strong>
+                </p>
+                <div className="scan-detail-chips">
+                  {(["allowed", "denied", "warned", "unknown"] as const).map(status => (
+                    <span key={status} className={`chip${licenseCompliance.summary[status] > 0 ? ` scan-detail-license--${status}` : ""}`}>
+                      {licenseCompliance.summary[status]} {status}
                     </span>
-                  </div>
+                  ))}
                 </div>
+              </div>
 
-                {/* Layer table */}
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              {/* Violations list */}
+              {licenseCompliance.violations.length === 0 ? (
+                <EmptyState title={t("All components comply with the license policy.", "Alle Komponenten entsprechen der Lizenzrichtlinie.")} />
+              ) : (
+                <div className="table-scroll">
+                  <table className="scan-detail-table scan-detail-pin">
                     <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                        <th style={{ ...thStyle, width: "50px" }}>#</th>
-                        <th style={thStyle}>{t("Command", "Befehl")}</th>
-                        <th style={{ ...thStyle, width: "120px", textAlign: "right" }}>{t("Size", "Größe")}</th>
-                        <th style={{ ...thStyle, width: "100px", textAlign: "right" }}>%</th>
+                      <tr>
+                        <th>{t("Component", "Komponente")}</th>
+                        <th>{t("Version", "Version")}</th>
+                        <th>{t("Licenses", "Lizenzen")}</th>
+                        <th>{t("Status", "Status")}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {layerAnalysis.layers.map((layer) => {
-                        const pct = layerAnalysis.totalImageSize > 0
-                          ? (layer.sizeBytes / layerAnalysis.totalImageSize) * 100
-                          : 0;
-                        return (
-                          <tr key={layer.index} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                            <td style={{ ...tdStyle, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", fontSize: "0.75rem" }}>
-                              {layer.index + 1}
-                            </td>
-                            <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "0.75rem", maxWidth: "600px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                              title={layer.command}
-                            >
-                              {layer.command || layer.digest.substring(0, 12)}
-                            </td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", fontSize: "0.8125rem" }}>
-                              {formatBytes(layer.sizeBytes)}
-                            </td>
-                            <td style={{ ...tdStyle, textAlign: "right" }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.5rem" }}>
-                                <div style={{
-                                  width: "60px",
-                                  height: "6px",
-                                  background: "rgba(255,255,255,0.06)",
-                                  borderRadius: "3px",
-                                  overflow: "hidden",
-                                }}>
-                                  <div style={{
-                                    height: "100%",
-                                    width: `${Math.min(pct, 100)}%`,
-                                    background: pct > 50 ? "#ff922b" : pct > 20 ? "#fcc419" : "#63e6be",
-                                    borderRadius: "3px",
-                                  }} />
-                                </div>
-                                <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", minWidth: "40px", textAlign: "right" }}>
-                                  {pct.toFixed(1)}%
+                      {licenseCompliance.violations.map((v, i) => (
+                        <tr key={i}>
+                          <td>{v.name}</td>
+                          <td className="mono">{v.version}</td>
+                          <td>
+                            <span className="scan-detail-chips">
+                              {v.evaluatedLicenses.map((el, j) => (
+                                <span key={j} className={`chip mono scan-detail-license--${el.status}`} title={el.status}>
+                                  {el.licenseId}
                                 </span>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                              ))}
+                            </span>
+                          </td>
+                          <td><span className={`scan-detail-license--${v.status}`}>{v.status}</span></td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
-              </>
-            ) : null}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </>
+      )}
 
-        {tab === "alerts" && (
-          <>
-            {alertFindings.length === 0 ? (
-              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
-                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
-                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
-                  {t("No malicious package indicators detected.", "Keine Hinweise auf bösartige Pakete erkannt.")}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Summary banner */}
-                <div style={{
-                  padding: "0.75rem 1rem",
-                  marginBottom: "1rem",
-                  background: "rgba(255,107,107,0.08)",
-                  border: "1px solid rgba(255,107,107,0.2)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  gap: "1rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}>
-                  <span style={{ color: "#ff6b6b", fontWeight: 600, fontSize: "0.875rem" }}>
-                    {t(
-                      `${alertFindings.length} security alert${alertFindings.length !== 1 ? "s" : ""} detected`,
-                      `${alertFindings.length} Sicherheitswarnung${alertFindings.length !== 1 ? "en" : ""} erkannt`,
-                    )}
-                  </span>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    {(() => {
-                      const cats: Record<string, number> = {};
-                      for (const f of alertFindings) {
-                        const cat = f.dataSource?.replace("hecate-malware-detector:", "") || "unknown";
-                        cats[cat] = (cats[cat] || 0) + 1;
-                      }
-                      return Object.entries(cats).map(([cat, count]) => (
-                        <span key={cat} style={{
-                          padding: "0.125rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          background: "rgba(255,255,255,0.06)",
-                          color: "rgba(255,255,255,0.5)",
-                        }}>
-                          {count} {cat.replace(/_/g, " ")}
-                        </span>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                {/* Alert cards */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {alertFindings.map((alert, idx) => {
-                    const sev = alert.severity.toLowerCase();
-                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : "#69db7c";
-                    const category = alert.dataSource?.replace("hecate-malware-detector:", "") || "";
-                    // Split description into main text and evidence
-                    const descParts = (alert.description || "").split("\n\nEvidence: ");
-                    const mainDesc = descParts[0] || "";
-                    const evidenceAndConf = descParts[1] || "";
-                    const evidenceParts = evidenceAndConf.split("\nConfidence: ");
-                    const evidence = evidenceParts[0] || "";
-                    const confidence = evidenceParts[1] || "medium";
-
-                    return (
-                      <div key={idx} style={{
-                        background: "rgba(255,255,255,0.02)",
-                        border: `1px solid ${sevColor}33`,
-                        borderLeft: `4px solid ${sevColor}`,
-                        borderRadius: "8px",
-                        padding: "1rem",
-                      }}>
-                        <div className="scan-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            {/* Title with severity */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
-                              <span style={{
-                                padding: "0.125rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.7rem",
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                background: `${sevColor}20`,
-                                color: sevColor,
-                              }}>
-                                {sev}
-                              </span>
-                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
-                                {alert.title}
-                              </span>
-                            </div>
-
-                            {/* Package info */}
-                            <div style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.6)", marginBottom: "0.375rem" }}>
-                              <span style={{ color: "rgba(255,255,255,0.8)" }}>{alert.packageName}</span>
-                              {alert.packageVersion && <span> @ {alert.packageVersion}</span>}
-                              {alert.packagePath && (
-                                <span style={{ marginLeft: "0.75rem", color: "rgba(255,255,255,0.4)", fontFamily: "monospace", fontSize: "0.75rem" }}>
-                                  {alert.packagePath}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Description */}
-                            <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0.375rem 0", lineHeight: 1.5 }}>
-                              {mainDesc}
-                            </p>
-
-                            {/* Evidence block */}
-                            {evidence && (
-                              <div style={{
-                                marginTop: "0.5rem",
-                                padding: "0.5rem 0.75rem",
-                                background: "rgba(0,0,0,0.3)",
-                                borderRadius: "4px",
-                                fontFamily: "monospace",
-                                fontSize: "0.75rem",
-                                color: "rgba(255,255,255,0.6)",
-                                overflowX: "auto",
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-all",
-                                maxHeight: "120px",
-                              }}>
-                                {evidence}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Right side badges */}
-                          <div className="scan-card-badges" style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
-                            {category && (
-                              <span style={{
-                                padding: "0.125rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.7rem",
-                                background: "rgba(92,132,255,0.1)",
-                                color: "#5c84ff",
-                                border: "1px solid rgba(92,132,255,0.2)",
-                              }}>
-                                {category.replace(/_/g, " ")}
-                              </span>
-                            )}
-                            <span style={{
-                              padding: "0.125rem 0.5rem",
-                              borderRadius: "4px",
-                              fontSize: "0.7rem",
-                              background: confidence === "high" ? "rgba(255,107,107,0.1)" : confidence === "medium" ? "rgba(252,196,25,0.1)" : "rgba(255,255,255,0.05)",
-                              color: confidence === "high" ? "#ff8787" : confidence === "medium" ? "#fcc419" : "rgba(255,255,255,0.4)",
-                              border: `1px solid ${confidence === "high" ? "rgba(255,107,107,0.2)" : confidence === "medium" ? "rgba(252,196,25,0.2)" : "rgba(255,255,255,0.1)"}`,
-                            }}>
-                              {confidence} {t("confidence", "Konfidenz")}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {tab === "sast" && (
-          <>
-            {sastFindings.length === 0 ? (
-              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
-                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
-                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
-                  {t("No SAST findings.", "Keine SAST-Ergebnisse.")}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Summary banner */}
-                <div style={{
-                  padding: "0.75rem 1rem",
-                  marginBottom: "1rem",
-                  background: "rgba(167,139,250,0.08)",
-                  border: "1px solid rgba(167,139,250,0.2)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  gap: "1rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}>
-                  <span style={{ color: "#a78bfa", fontWeight: 600, fontSize: "0.875rem" }}>
-                    {t(
-                      `${sastFindings.length} code issue${sastFindings.length !== 1 ? "s" : ""} found by ${sastScannerLabel}`,
-                      `${sastFindings.length} Code-Problem${sastFindings.length !== 1 ? "e" : ""} von ${sastScannerLabel} gefunden`,
-                    )}
-                  </span>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    {(() => {
-                      const sevs: Record<string, number> = {};
-                      for (const f of sastFindings) {
-                        const s = f.severity.toLowerCase();
-                        sevs[s] = (sevs[s] || 0) + 1;
-                      }
-                      return Object.entries(sevs).sort(([a], [b]) => {
-                        const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-                        return (order[a] ?? 9) - (order[b] ?? 9);
-                      }).map(([s, count]) => (
-                        <span key={s} style={{
-                          padding: "0.125rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          background: s === "critical" ? "rgba(255,107,107,0.1)" : s === "high" ? "rgba(255,146,43,0.1)" : s === "medium" ? "rgba(252,196,25,0.1)" : "rgba(255,255,255,0.06)",
-                          color: s === "critical" ? "#ff6b6b" : s === "high" ? "#ff922b" : s === "medium" ? "#fcc419" : "rgba(255,255,255,0.5)",
-                        }}>
-                          {count} {s}
-                        </span>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                {/* SAST finding cards */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {sastFindings.map((finding, idx) => {
-                    const sev = finding.severity.toLowerCase();
-                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : sev === "low" ? "#69db7c" : "#868e96";
-                    const ruleId = finding.packageName || "";
-                    // Parse structured sections from description
-                    const desc = finding.description || "";
-                    const codeSplit = desc.split("\n\nCode:\n");
-                    const textPart = codeSplit[0] || "";
-                    const codeRaw = codeSplit[1]?.replace(/^```\n?/, "").replace(/\n?```$/, "") || "";
-                    const codeBlock = (codeRaw && codeRaw !== "requires login") ? codeRaw : "";
-                    // Extract CWE, OWASP, and main message from text
-                    const lines = textPart.split("\n\n");
-                    const message = lines[0] || "";
-                    const cweLines: string[] = [];
-                    const owaspItems: string[] = [];
-                    for (const line of lines.slice(1)) {
-                      if (line.startsWith("CWE: ")) cweLines.push(...line.slice(5).split(", ").map(s => s.trim()));
-                      else if (line.startsWith("OWASP: ")) owaspItems.push(...line.slice(7).split(", ").map(s => s.trim()));
-                    }
-                    const chipStyle = { padding: "0.125rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" };
-
-                    return (
-                      <div key={idx} style={{
-                        background: "rgba(255,255,255,0.02)",
-                        border: `1px solid ${sevColor}33`,
-                        borderLeft: `4px solid ${sevColor}`,
-                        borderRadius: "8px",
-                        padding: "1rem",
-                      }}>
-                        <div className="scan-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
-                              <span style={{
-                                padding: "0.125rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.7rem",
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                background: `${sevColor}20`,
-                                color: sevColor,
-                              }}>
-                                {sev}
-                              </span>
-                              {finding.scanners.length > 0 && (
-                                <span style={{
-                                  padding: "0.125rem 0.5rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.7rem",
-                                  fontWeight: 600,
-                                  background: "rgba(167,139,250,0.12)",
-                                  color: "#a78bfa",
-                                  border: "1px solid rgba(167,139,250,0.25)",
-                                }}>
-                                  {finding.scanners.join(", ")}
-                                </span>
-                              )}
-                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
-                                {finding.title}
-                              </span>
-                            </div>
-
-                            {/* File path (stripped) */}
-                            {finding.packagePath && (
-                              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", fontFamily: "monospace", marginBottom: "0.375rem" }}>
-                                {stripScanPath(finding.packagePath)}
-                              </div>
-                            )}
-
-                            {/* Message */}
-                            <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0.375rem 0", lineHeight: 1.5 }}>
-                              {message}
-                            </p>
-
-                            {/* CWE chips */}
-                            {cweLines.length > 0 && (
-                              <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", marginTop: "0.375rem" }}>
-                                {cweLines.map((cwe, i) => {
-                                  const idMatch = cwe.match(/^(CWE-\d+):?\s*(.*)/);
-                                  return (
-                                    <span key={i} style={{ ...chipStyle, background: "rgba(92,132,255,0.1)", border: "1px solid rgba(92,132,255,0.2)" }}>
-                                      <span style={{ fontWeight: 700, color: "#5c84ff", fontSize: "0.7rem" }}>{idMatch?.[1] || cwe}</span>
-                                      {idMatch?.[2] && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}>{idMatch[2]}</span>}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {/* OWASP chips */}
-                            {owaspItems.length > 0 && (
-                              <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", marginTop: "0.375rem" }}>
-                                {owaspItems.map((item, i) => {
-                                  const parts = item.split(" - ");
-                                  return (
-                                    <span key={i} style={{ ...chipStyle, background: "rgba(252,196,25,0.08)", border: "1px solid rgba(252,196,25,0.2)" }}>
-                                      <span style={{ fontWeight: 700, color: "#fcc419", fontSize: "0.7rem" }}>{parts[0]}</span>
-                                      {parts[1] && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}>{parts[1]}</span>}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {/* Code snippet */}
-                            {codeBlock && (
-                              <div style={{
-                                marginTop: "0.5rem",
-                                padding: "0.5rem 0.75rem",
-                                background: "rgba(0,0,0,0.3)",
-                                borderRadius: "4px",
-                                fontFamily: "monospace",
-                                fontSize: "0.75rem",
-                                color: "rgba(255,255,255,0.6)",
-                                overflowX: "auto",
-                                whiteSpace: "pre",
-                                maxHeight: "120px",
-                              }}>
-                                {codeBlock}
-                              </div>
-                            )}
-
-                            {/* Reference links with domain + icon */}
-                            {finding.urls && finding.urls.length > 0 && (
-                              <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                                {finding.urls.slice(0, 3).map((url, i) => (
-                                  <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                                    style={{ fontSize: "0.7rem", color: "#5c84ff", display: "inline-flex", alignItems: "center", gap: "0.25rem", textDecoration: "none" }}>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-                                    {urlDomain(url)}
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Rule ID badge */}
-                          <span style={{
-                            padding: "0.125rem 0.5rem",
-                            borderRadius: "4px",
-                            fontSize: "0.65rem",
-                            fontFamily: "monospace",
-                            background: "rgba(167,139,250,0.1)",
-                            color: "#a78bfa",
-                            border: "1px solid rgba(167,139,250,0.2)",
-                            flexShrink: 0,
-                            maxWidth: "200px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}>
-                            {ruleId.split(".").slice(-2).join(".")}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {tab === "license-compliance" && (
-          <>
-            {licenseComplianceLoading ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <SkeletonBlock key={i} height={40} radius={6} />
-                ))}
-              </div>
-            ) : !licenseCompliance || !licenseCompliance.policyId ? (
-              <div style={{ textAlign: "center", padding: "2rem 0" }}>
-                <p className="muted">{t("No license policy configured. Create a default policy on the System page.", "Keine Lizenzrichtlinie konfiguriert. Erstellen Sie eine Standardrichtlinie auf der Systemseite.")}</p>
-              </div>
-            ) : (
-              <>
-                {/* Summary banner */}
-                <div style={{
-                  display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap",
-                  padding: "0.75rem 1rem",
-                  background: "rgba(255,255,255,0.02)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: "8px",
-                }}>
-                  <div style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", alignSelf: "center" }}>
-                    {t("Policy", "Richtlinie")}: <strong style={{ color: "#fff" }}>{licenseCompliance.policyName}</strong>
-                  </div>
-                  <div style={{ marginLeft: "auto", display: "flex", gap: "0.75rem" }}>
-                    {(["allowed", "denied", "warned", "unknown"] as const).map(status => {
-                      const count = licenseCompliance.summary[status];
-                      const colors: Record<string, string> = { allowed: "#69db7c", denied: "#ff6b6b", warned: "#fcc419", unknown: "rgba(255,255,255,0.4)" };
-                      return (
-                        <span key={status} style={{
-                          padding: "0.125rem 0.625rem",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                          background: `${colors[status]}15`,
-                          color: colors[status],
-                        }}>
-                          {count} {status}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Violations list */}
-                {licenseCompliance.violations.length === 0 ? (
-                  <p style={{ textAlign: "center", padding: "1rem 0", color: "#69db7c", fontSize: "0.875rem" }}>
-                    {t("All components comply with the license policy.", "Alle Komponenten entsprechen der Lizenzrichtlinie.")}
-                  </p>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Component", "Komponente")}</th>
-                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Version", "Version")}</th>
-                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Licenses", "Lizenzen")}</th>
-                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "0.8125rem" }}>{t("Status", "Status")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {licenseCompliance.violations.map((v, i) => {
-                          const statusColors: Record<string, string> = { denied: "#ff6b6b", warned: "#fcc419", unknown: "rgba(255,255,255,0.4)" };
-                          const color = statusColors[v.status] || "rgba(255,255,255,0.4)";
-                          return (
-                            <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle" }}>
-                                <span style={{ fontWeight: 500, color: "#fff" }}>{v.name}</span>
-                              </td>
-                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle", fontFamily: "monospace", fontSize: "0.8125rem" }}>{v.version}</td>
-                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle" }}>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
-                                  {v.evaluatedLicenses.map((el, j) => {
-                                    const licColor = el.status === "denied" ? "#ff6b6b" : el.status === "warned" ? "#fcc419" : el.status === "allowed" ? "#69db7c" : "rgba(255,255,255,0.4)";
-                                    return (
-                                      <span key={j} style={{
-                                        padding: "0.0625rem 0.375rem",
-                                        borderRadius: "4px",
-                                        fontSize: "0.6875rem",
-                                        fontWeight: 500,
-                                        background: `${licColor}15`,
-                                        color: licColor,
-                                        border: `1px solid ${licColor}30`,
-                                      }}>
-                                        {el.licenseId}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </td>
-                              <td style={{ padding: "0.625rem 0.75rem", verticalAlign: "middle" }}>
-                                <span style={{
-                                  padding: "0.125rem 0.5rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.75rem",
-                                  fontWeight: 600,
-                                  background: `${color}15`,
-                                  color,
-                                }}>
-                                  {v.status}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+      {tab === "secrets" && (
+        <>
+          {secretFindings.length === 0 ? (
+            <EmptyState title={t("No secrets detected.", "Keine Secrets erkannt.")} />
+          ) : (
+            <>
+              <ItemsSummary
+                title={t(
+                  `${secretFindings.length} secret${secretFindings.length !== 1 ? "s" : ""} detected by TruffleHog`,
+                  `${secretFindings.length} Secret${secretFindings.length !== 1 ? "s" : ""} von TruffleHog erkannt`,
                 )}
-              </>
-            )}
-          </>
-        )}
+              >
+                {(() => {
+                  const types: Record<string, number> = {};
+                  for (const f of secretFindings) {
+                    types[f.packageName] = (types[f.packageName] || 0) + 1;
+                  }
+                  return Object.entries(types).slice(0, 8).map(([type, count]) => (
+                    <span key={type} className="chip">{count} {type}</span>
+                  ));
+                })()}
+              </ItemsSummary>
 
-        {tab === "secrets" && (
-          <>
-            {secretFindings.length === 0 ? (
-              <div style={{ padding: "1.5rem", textAlign: "center", background: "rgba(99,230,190,0.05)", border: "1px solid rgba(99,230,190,0.15)", borderRadius: "8px" }}>
-                <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>&#x2713;</div>
-                <p style={{ color: "#63e6be", margin: 0, fontSize: "0.875rem" }}>
-                  {t("No secrets detected.", "Keine Secrets erkannt.")}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Summary banner */}
-                <div style={{
-                  padding: "0.75rem 1rem",
-                  marginBottom: "1rem",
-                  background: "rgba(56,189,248,0.08)",
-                  border: "1px solid rgba(56,189,248,0.2)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  gap: "1rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}>
-                  <span style={{ color: "#38bdf8", fontWeight: 600, fontSize: "0.875rem" }}>
-                    {t(
-                      `${secretFindings.length} secret${secretFindings.length !== 1 ? "s" : ""} detected by TruffleHog`,
-                      `${secretFindings.length} Secret${secretFindings.length !== 1 ? "s" : ""} von TruffleHog erkannt`,
-                    )}
-                  </span>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    {(() => {
-                      const types: Record<string, number> = {};
-                      for (const f of secretFindings) {
-                        types[f.packageName] = (types[f.packageName] || 0) + 1;
-                      }
-                      return Object.entries(types).slice(0, 8).map(([t, count]) => (
-                        <span key={t} style={{
-                          padding: "0.125rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          background: "rgba(255,255,255,0.06)",
-                          color: "rgba(255,255,255,0.5)",
-                        }}>
-                          {count} {t}
+              {/* Secret items */}
+              <div className="scan-detail-items">
+                {secretFindings.map((secret, idx) => {
+                  // Parse verified status from description (set by backend: "Status: Verified" or "Status: Unverified")
+                  const isVerified = /Status:\s*Verified/i.test(secret.description || "");
+                  const detectorType = secret.packageName || "Unknown";
+
+                  return (
+                    <article key={idx} className="scan-detail-item">
+                      <div className="scan-detail-item-head">
+                        <SeverityWord severity={secret.severity} />
+                        <h3>{secret.title}</h3>
+                        <span className="scan-detail-chips">
+                          <span className="chip">{detectorType}</span>
+                          <span className="chip">{isVerified ? t("Verified", "Verifiziert") : t("Unverified", "Unverifiziert")}</span>
                         </span>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                {/* Secret finding cards */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {secretFindings.map((secret, idx) => {
-                    const sev = secret.severity.toLowerCase();
-                    const sevColor = sev === "critical" ? "#ff6b6b" : sev === "high" ? "#ff922b" : sev === "medium" ? "#fcc419" : "#69db7c";
-                    // Parse verified status from description (set by backend: "Status: Verified" or "Status: Unverified")
-                    const isVerified = /Status:\s*Verified/i.test(secret.description || "");
-                    const detectorType = secret.packageName || "Unknown";
-
-                    return (
-                      <div key={idx} style={{
-                        background: "rgba(255,255,255,0.02)",
-                        border: `1px solid ${sevColor}33`,
-                        borderLeft: `4px solid ${sevColor}`,
-                        borderRadius: "8px",
-                        padding: "1rem",
-                      }}>
-                        <div className="scan-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
-                              <span style={{
-                                padding: "0.125rem 0.5rem",
-                                borderRadius: "4px",
-                                fontSize: "0.7rem",
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                background: `${sevColor}20`,
-                                color: sevColor,
-                              }}>
-                                {sev}
-                              </span>
-                              <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#fff" }}>
-                                {secret.title}
-                              </span>
-                            </div>
-
-                            {/* File path (stripped) */}
-                            {secret.packagePath && (
-                              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", fontFamily: "monospace", marginBottom: "0.375rem" }}>
-                                {stripScanPath(secret.packagePath)}
-                              </div>
-                            )}
-
-                            {/* Description */}
-                            <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", margin: "0.375rem 0", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                              {secret.description}
-                            </p>
-                          </div>
-
-                          {/* Right side badges */}
-                          <div className="scan-card-badges" style={{ display: "flex", flexDirection: "column", gap: "0.375rem", alignItems: "flex-end", flexShrink: 0 }}>
-                            <span style={{
-                              padding: "0.125rem 0.5rem",
-                              borderRadius: "4px",
-                              fontSize: "0.7rem",
-                              background: "rgba(56,189,248,0.1)",
-                              color: "#38bdf8",
-                              border: "1px solid rgba(56,189,248,0.2)",
-                            }}>
-                              {detectorType}
-                            </span>
-                            <span style={{
-                              padding: "0.125rem 0.5rem",
-                              borderRadius: "4px",
-                              fontSize: "0.7rem",
-                              background: isVerified ? "rgba(99,230,190,0.1)" : "rgba(252,196,25,0.1)",
-                              color: isVerified ? "#63e6be" : "#fcc419",
-                              border: `1px solid ${isVerified ? "rgba(99,230,190,0.2)" : "rgba(252,196,25,0.2)"}`,
-                            }}>
-                              {isVerified ? t("Verified", "Verifiziert") : t("Unverified", "Unverifiziert")}
-                            </span>
-                          </div>
-                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </>
-        )}
 
-        {tab === "scanner-breakdown" && (
-          <ScannerBreakdownPanel scan={scan} findings={findings} />
-        )}
-      </section>
+                      {/* File path (stripped) */}
+                      {secret.packagePath && (
+                        <p className="scan-detail-item-path mono">{stripScanPath(secret.packagePath)}</p>
+                      )}
+
+                      {/* Description */}
+                      <p className="scan-detail-item-text">{secret.description}</p>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {tab === "scanner-breakdown" && (
+        <ScannerBreakdownPanel scan={scan} findings={findings} />
+      )}
 
       <Toast toast={toast} />
     </div>
@@ -3026,11 +2246,129 @@ export const ScanDetailPage = () => {
 
 // --- Sub-components ---
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ff6b6b",
-  high: "#ff922b",
-  medium: "#fcc419",
-  low: "#69db7c",
+/** Column count of the findings table; expansion rows span all of them. */
+const FINDING_COLUMNS = 8;
+
+const sentenceCase = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
+
+const vexStatusLabel = (status: string, t: (english: string, german: string) => string): string => {
+  const labels: Record<string, string> = {
+    not_affected: t("Not Affected", "Nicht betroffen"),
+    affected: t("Affected", "Betroffen"),
+    fixed: t("Fixed", "Behoben"),
+    under_investigation: t("Investigating", "In Prüfung"),
+  };
+  return labels[status] || status;
+};
+
+const NotAvailable = () => <span className="muted">n/a</span>;
+
+const SeverityWord = ({ severity }: { severity: string }) => (
+  <SeverityTag severity={severity}>{sentenceCase(severity)}</SeverityTag>
+);
+
+const MetaItem = ({ label, children }: { label: ReactNode; children: ReactNode }) => (
+  <div className="scan-detail-meta-item">
+    <dt>{label}</dt>
+    <dd>{children}</dd>
+  </div>
+);
+
+const SortHeader = ({ label, active, dir, onClick }: {
+  label: ReactNode;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+}) => (
+  <th aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}>
+    <button type="button" className="scan-detail-sort" onClick={onClick}>
+      {label}
+      {active && (dir === "asc" ? <LuChevronUp aria-hidden="true" /> : <LuChevronDown aria-hidden="true" />)}
+    </button>
+  </th>
+);
+
+/**
+ * Stacked rows drop the column heads on phones, so sorting moves here.
+ * Hidden by CSS above the phone breakpoint, where SortHeader does the job.
+ */
+const PhoneSortBar = ({ id, columns, sort, onSort, children }: {
+  id: string;
+  columns: readonly (readonly [string, string])[];
+  sort: { col: string; dir: "asc" | "desc" };
+  onSort: (next: { col: string; dir: "asc" | "desc" }) => void;
+  children?: ReactNode;
+}) => {
+  const { t } = useI18n();
+  return (
+    <div className="scan-detail-sortbar">
+      {children}
+      <label htmlFor={id}>{t("Sort by", "Sortieren nach")}</label>
+      <select id={id} value={sort.col} onChange={e => onSort({ col: e.target.value, dir: "asc" })}>
+        {columns.map(([col, label]) => <option key={col} value={col}>{label}</option>)}
+      </select>
+      <IconButton
+        label={t("Sort direction", "Sortierrichtung")}
+        onClick={() => onSort({ col: sort.col, dir: sort.dir === "asc" ? "desc" : "asc" })}
+      >
+        {sort.dir === "asc" ? <LuChevronUp aria-hidden="true" /> : <LuChevronDown aria-hidden="true" />}
+      </IconButton>
+    </div>
+  );
+};
+
+/** A tab's headline count with its neutral breakdown beside it. */
+const ItemsSummary = ({ title, children }: { title: ReactNode; children?: ReactNode }) => (
+  <div className="scan-detail-summary">
+    <h2>{title}</h2>
+    {children ? <div className="scan-detail-chips">{children}</div> : null}
+  </div>
+);
+
+const SeverityCounts = ({ items }: { items: MergedFinding[] }) => {
+  const sevs: Record<string, number> = {};
+  for (const f of items) {
+    const s = f.severity.toLowerCase();
+    sevs[s] = (sevs[s] || 0) + 1;
+  }
+  const entries = Object.entries(sevs).sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 9) - (SEVERITY_ORDER[b] ?? 9));
+  return (
+    <span className="severity-rollup">
+      {entries.map(([s, count]) => (
+        <SeverityTag key={s} severity={s}>{count} {s}</SeverityTag>
+      ))}
+    </span>
+  );
+};
+
+/** Third-party lookups for one package. Neutral: a link carries no brand or severity colour. */
+const PackageLinks = ({ name, version, type, purl, fallback = null }: {
+  name: string;
+  version: string;
+  type: string;
+  purl?: string | null;
+  fallback?: ReactNode;
+}) => {
+  const registry = buildRegistryUrl(name, version, type, purl);
+  const links = [
+    { url: buildDepsDevUrl(name, version, type, purl), label: "deps.dev", title: "deps.dev" },
+    { url: buildSnykUrl(name, version, type, purl), label: "Snyk", title: "Snyk" },
+    { url: registry?.url ?? null, label: registry?.label ?? "", title: registry?.label ?? "" },
+    { url: buildSocketUrl(name, version, type, purl), label: "socket.dev", title: "socket.dev" },
+    { url: buildAikidoUrl(name, version, type, purl), label: "aikido", title: "intel.aikido.dev" },
+    { url: buildBundlephobiaUrl(name, version, type, purl), label: "bundlephobia", title: "bundlephobia" },
+    { url: buildNpmGraphUrl(name, version, type, purl), label: "npmgraph", title: "npmgraph" },
+  ].filter(link => !!link.url);
+  if (links.length === 0) return fallback;
+  return (
+    <div className="link-list">
+      {links.map(link => (
+        <a key={link.title} href={link.url ?? undefined} target="_blank" rel="noopener noreferrer" title={link.title}>
+          {link.label}
+        </a>
+      ))}
+    </div>
+  );
 };
 
 const SEVERITY_ZONES = ["low", "medium", "high", "critical"] as const;
@@ -3066,7 +2404,7 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
     const map = new Map<string, BubbleData>();
     for (const f of findings) {
       const sev = f.severity.toLowerCase();
-      if (!(sev in SEVERITY_COLORS)) continue;
+      if (!(SEVERITY_ZONES as readonly string[]).includes(sev)) continue;
       const key = `${f.packageName}:${sev}`;
       const existing = map.get(key);
       if (existing) {
@@ -3112,19 +2450,19 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
   const maxR = Math.min(zoneWidth / 4, chartH / 6, 24);
 
   return (
-    <div style={{ marginTop: "1rem" }}>
-      <div style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.125rem" }}>
-        {t("Library Vulnerability Analysis", "Bibliothek-Schwachstellen-Analyse")}
-      </div>
-      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>
+    <details className="scan-detail-chart">
+      <summary>{t("Library Vulnerability Analysis", "Bibliothek-Schwachstellen-Analyse")}</summary>
+      <p className="scan-detail-chart-note">
         {t(
           "Each bubble is a library. X-axis: severity & CVSS score, Y-axis: count, size: count. Hover for details.",
           "Jede Blase ist eine Bibliothek. X-Achse: Schweregrad & CVSS-Score, Y-Achse: Anzahl, Größe: Anzahl. Hover für Details."
         )}
-      </div>
-      <div ref={containerRef} style={{ width: "100%", position: "relative", overflow: "visible" }}>
+      </p>
+      <div ref={containerRef} className="scan-detail-chart-plot">
         <svg
-          width={width} height={height} style={{ overflow: "visible" }}
+          width={width} height={height}
+          role="img"
+          aria-label={t("Library Vulnerability Analysis", "Bibliothek-Schwachstellen-Analyse")}
           onMouseMove={e => {
             const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
             setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -3136,19 +2474,19 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
             const y = padding.top + chartH - (tick / maxCount) * chartH;
             return (
               <g key={tick}>
-                <line x1={padding.left} x2={padding.left + chartW} y1={y} y2={y} stroke="rgba(255,255,255,0.06)" />
-                <text x={padding.left - 8} y={y + 4} fill="rgba(255,255,255,0.3)" fontSize="10" textAnchor="end">{tick}</text>
+                <line x1={padding.left} x2={padding.left + chartW} y1={y} y2={y} stroke="var(--color-rule)" />
+                <text x={padding.left - 8} y={y + 4} fill="var(--color-muted)" fontSize="12" textAnchor="end">{tick}</text>
               </g>
             );
           })}
           {/* Zone separators */}
           {SEVERITY_ZONES.map((_, i) => i > 0 && (
-            <line key={i} x1={padding.left + i * zoneWidth} x2={padding.left + i * zoneWidth} y1={padding.top} y2={padding.top + chartH} stroke="rgba(255,255,255,0.04)" />
+            <line key={i} x1={padding.left + i * zoneWidth} x2={padding.left + i * zoneWidth} y1={padding.top} y2={padding.top + chartH} stroke="var(--color-rule)" />
           ))}
           {/* Zone labels */}
           {SEVERITY_ZONES.map((sev, i) => (
-            <text key={sev} x={padding.left + (i + 0.5) * zoneWidth} y={height - 6} fill={SEVERITY_COLORS[sev] ?? "rgba(255,255,255,0.3)"} fontSize="10" textAnchor="middle" opacity={0.7}>
-              {sev.charAt(0).toUpperCase() + sev.slice(1)}
+            <text key={sev} x={padding.left + (i + 0.5) * zoneWidth} y={height - 6} fill={severityVar(sev)} fontSize="12" textAnchor="middle">
+              {sentenceCase(sev)}
             </text>
           ))}
           {/* Bubbles */}
@@ -3169,18 +2507,18 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
             const microJitter = ((hashStr(b.packageName) % 100) / 100 - 0.5) * Math.min(r * 2, usableWidth * 0.1);
             const cx = Math.max(padding.left + zoneIdx * zoneWidth + r, Math.min(padding.left + (zoneIdx + 1) * zoneWidth - r, baseX + microJitter));
             const cy = padding.top + chartH - (b.count / maxCount) * chartH;
-            const color = SEVERITY_COLORS[b.severity] ?? "#888";
+            const color = severityVar(b.severity);
             const isHovered = hovered?.packageName === b.packageName && hovered?.severity === b.severity;
             return (
               <circle
                 key={i}
+                className="scan-detail-bubble"
                 cx={cx} cy={cy} r={isHovered ? r + 2 : r}
                 fill={color}
                 fillOpacity={isHovered ? 0.9 : 0.55}
                 stroke={color}
                 strokeWidth={isHovered ? 2 : 1}
                 strokeOpacity={0.8}
-                style={{ cursor: "pointer", transition: "r 0.1s, fill-opacity 0.1s" }}
                 onMouseEnter={() => setHovered(b)}
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => {
@@ -3196,45 +2534,36 @@ const BubbleChart = ({ findings }: { findings: MergedFinding[] }) => {
         {/* Tooltip */}
         {hovered && (
           <div
+            className="scan-detail-tooltip"
             style={{
-              position: "absolute",
               top: Math.max(0, mousePos.y - 10),
               ...(mousePos.x > width * 0.6 ? { right: width - mousePos.x + 12 } : { left: mousePos.x + 12 }),
-              background: "rgba(15,15,25,0.95)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: "6px",
-              padding: "0.5rem 0.75rem",
-              fontSize: "0.75rem",
-              pointerEvents: "none",
-              zIndex: 10,
-              maxWidth: "220px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: "0.25rem", wordBreak: "break-all", lineHeight: 1.3 }}>{hovered.packageName}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", color: SEVERITY_COLORS[hovered.severity], lineHeight: 1.6 }}>
-              <span>{hovered.severity.charAt(0).toUpperCase() + hovered.severity.slice(1)}</span>
-              <span style={{ fontWeight: 600 }}>{hovered.count} CVE{hovered.count !== 1 ? "s" : ""}</span>
+            <div className="scan-detail-tooltip-title">{hovered.packageName}</div>
+            <div className={`scan-detail-tooltip-row sev-${severityLevel(hovered.severity)}`}>
+              <span>{sentenceCase(hovered.severity)}</span>
+              <strong>{hovered.count} CVE{hovered.count !== 1 ? "s" : ""}</strong>
             </div>
             {hovered.maxCvss != null && (
-              <div style={{ fontSize: "0.6875rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
-                CVSS: <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{hovered.maxCvss.toFixed(1)}</span>
+              <div className="muted">
+                CVSS: <strong>{hovered.maxCvss.toFixed(1)}</strong>
               </div>
             )}
             {hovered.cves.length > 0 && (
-              <div style={{ marginTop: "0.25rem", borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: "0.25rem" }}>
+              <div className="scan-detail-tooltip-foot">
                 {hovered.cves.slice(0, 8).map(cve => (
-                  <div key={cve} style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.6875rem", lineHeight: 1.5 }}>{cve}</div>
+                  <div key={cve} className="mono muted">{cve}</div>
                 ))}
                 {hovered.cves.length > 8 && (
-                  <div style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6875rem" }}>+{hovered.cves.length - 8} more</div>
+                  <div className="muted">+{hovered.cves.length - 8} more</div>
                 )}
               </div>
             )}
           </div>
         )}
       </div>
-    </div>
+    </details>
   );
 };
 
@@ -3242,20 +2571,12 @@ const ScannerBreakdownPanel = ({ scan, findings }: { scan: Scan; findings: ScanF
   const { t } = useI18n();
 
   const SEV_KEYS = ["critical", "high", "medium", "low", "negligible", "unknown"] as const;
-  const SEV_COLOR: Record<string, string> = {
-    critical: "#ff6b6b",
-    high: "#ff922b",
-    medium: "#fcc419",
-    low: "#69db7c",
-    negligible: "rgba(255,255,255,0.55)",
-    unknown: "rgba(255,255,255,0.5)",
-  };
 
   const persisted = scan.scannerBreakdown ?? null;
 
   // Fallback: aggregate from in-memory findings grouped by scanner. SBOM
   // counts are unavailable in this path (the SBOM rows don't carry a scanner
-  // field) — show "—" in those cells.
+  // field), so those cells show "n/a".
   const fallbackErrors: Record<string, string> = useMemo(() => {
     const out: Record<string, string> = {};
     if (persisted) return out;
@@ -3313,89 +2634,62 @@ const ScannerBreakdownPanel = ({ scan, findings }: { scan: Scan; findings: ScanF
   const entries = persisted ?? fallbackEntries;
 
   if (entries.length === 0) {
-    return (
-      <div style={{ padding: "1.5rem", textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: "0.875rem" }}>
-        {t("No scanner data recorded for this scan.", "Keine Scanner-Daten zu diesem Scan gespeichert.")}
-      </div>
-    );
+    return <EmptyState title={t("No scanner data recorded for this scan.", "Keine Scanner-Daten zu diesem Scan gespeichert.")} />;
   }
 
-  const statusPill = (status: ScannerBreakdownEntry["status"]) => {
-    const map: Record<ScannerBreakdownEntry["status"], { label: string; bg: string; color: string }> = {
-      ok: { label: t("ok", "ok"), bg: "rgba(105,219,124,0.15)", color: "#69db7c" },
-      empty: { label: t("empty", "leer"), bg: "rgba(252,196,25,0.12)", color: "#fcc419" },
-      error: { label: t("error", "Fehler"), bg: "rgba(255,107,107,0.15)", color: "#ff6b6b" },
+  const statusWord = (status: ScannerBreakdownEntry["status"]) => {
+    const labels: Record<ScannerBreakdownEntry["status"], string> = {
+      ok: t("ok", "ok"),
+      empty: t("empty", "leer"),
+      error: t("error", "Fehler"),
     };
-    const m = map[status];
-    return (
-      <span style={{
-        padding: "0.125rem 0.5rem", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600,
-        background: m.bg, color: m.color,
-      }}>
-        {m.label}
-      </span>
-    );
-  };
-
-  const cellStyle: React.CSSProperties = {
-    padding: "0.5rem 0.75rem", textAlign: "left", verticalAlign: "top",
-    borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: "0.8125rem",
+    return <span className={`scan-detail-outcome--${status}`}>{labels[status]}</span>;
   };
 
   return (
     <div>
       {!persisted && (
-        <div style={{ marginBottom: "0.75rem", fontSize: "0.75rem", color: "rgba(255,255,255,0.5)" }}>
+        <p className="scan-detail-note">
           {t(
             "Computed client-side from this scan’s findings. SBOM contributions are not available for older scans.",
             "Im Browser aus den Findings dieses Scans berechnet. SBOM-Beiträge sind für ältere Scans nicht verfügbar.",
           )}
-        </div>
+        </p>
       )}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="table-scroll">
+        <table className="scan-detail-table scan-detail-pin">
           <thead>
-            <tr style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.75rem", textAlign: "left" }}>
-              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("Scanner", "Scanner")}</th>
-              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("Status", "Status")}</th>
-              <th style={{ ...cellStyle, fontWeight: 600, textAlign: "right" }}>{t("Findings", "Findings")}</th>
-              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("By severity", "Nach Schweregrad")}</th>
-              <th style={{ ...cellStyle, fontWeight: 600, textAlign: "right" }}>{t("SBOM rows", "SBOM-Einträge")}</th>
-              <th style={{ ...cellStyle, fontWeight: 600 }}>{t("Error", "Fehler")}</th>
+            <tr>
+              <th>{t("Scanner", "Scanner")}</th>
+              <th>{t("Status", "Status")}</th>
+              <th className="scan-detail-num">{t("Findings", "Findings")}</th>
+              <th>{t("By severity", "Nach Schweregrad")}</th>
+              <th className="scan-detail-num">{t("SBOM rows", "SBOM-Einträge")}</th>
+              <th>{t("Error", "Fehler")}</th>
             </tr>
           </thead>
           <tbody>
             {entries.map((e) => (
               <tr key={e.scanner}>
-                <td style={{ ...cellStyle, fontWeight: 600 }}>{e.scanner}</td>
-                <td style={cellStyle}>{statusPill(e.status)}</td>
-                <td style={{ ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{e.findings_total}</td>
-                <td style={cellStyle}>
-                  {e.findings_total === 0 ? (
-                    <span style={{ color: "rgba(255,255,255,0.35)" }}>—</span>
-                  ) : (
-                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                <td className="scan-detail-strong">{e.scanner}</td>
+                <td>{statusWord(e.status)}</td>
+                <td className="scan-detail-num">{e.findings_total}</td>
+                <td>
+                  {e.findings_total > 0 && (
+                    <span className="severity-rollup">
                       {SEV_KEYS.map((k) => {
                         const n = e.by_severity[k];
                         if (!n) return null;
-                        return (
-                          <span key={k} style={{
-                            padding: "0.125rem 0.45rem", borderRadius: "4px", fontSize: "0.7rem",
-                            background: "rgba(255,255,255,0.05)", color: SEV_COLOR[k],
-                            fontVariantNumeric: "tabular-nums",
-                          }}>
-                            {n} {k}
-                          </span>
-                        );
+                        return <SeverityTag key={k} severity={k}>{n} {k}</SeverityTag>;
                       })}
-                    </div>
+                    </span>
                   )}
                 </td>
-                <td style={{ ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {persisted ? e.sbom_components : <span style={{ color: "rgba(255,255,255,0.35)" }}>—</span>}
+                <td className="scan-detail-num">
+                  {persisted ? e.sbom_components : <NotAvailable />}
                 </td>
-                <td style={{ ...cellStyle, color: "#ff8787", fontSize: "0.75rem", maxWidth: "320px", wordBreak: "break-word" }}>
-                  {e.error_message || <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                <td className="scan-detail-scanner-error">
+                  {e.error_message}
                 </td>
               </tr>
             ))}
@@ -3435,7 +2729,7 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
         provider: selectedProvider,
         additionalContext: additionalContext.trim() || undefined,
       }, aiAnalysisPassword.trim() || undefined);
-      // Background task — poll the scan a couple times to catch the result
+      // Background task: poll the scan a couple times to catch the result
       const poll = async (attempt: number) => {
         if (attempt > 30) { setAiLoading(false); return; }
         await new Promise(r => setTimeout(r, 4000));
@@ -3492,15 +2786,13 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
   }, [scan, t]);
 
   const triggerForm = (
-    <div className="ai-analysis" style={{ marginBottom: analyses.length > 0 ? "1rem" : 0 }}>
+    <div className="scan-detail-ai-form">
       {providers.length === 0 ? (
-        <div className="muted">{t("No AI providers configured.", "Keine AI-Provider konfiguriert.")}</div>
+        <EmptyState title={t("No AI providers configured.", "Keine AI-Provider konfiguriert.")} />
       ) : (
         <>
-          <div className="ai-analysis__controls">
-            <label htmlFor="scan-ai-provider" className="muted" style={{ fontSize: "0.9rem" }}>
-              {t("Provider", "Anbieter")}
-            </label>
+          <div className="scan-detail-ai-controls">
+            <label htmlFor="scan-ai-provider">{t("Provider", "Anbieter")}</label>
             <select
               id="scan-ai-provider"
               value={selectedProvider}
@@ -3511,41 +2803,26 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
             </select>
             <button
               type="button"
+              className="btn-primary"
               onClick={() => void handleStart()}
               disabled={aiLoading || !selectedProvider}
             >
               {aiLoading ? t("Analysis running...", "Analyse läuft...") : t("Start AI analysis", "AI-Analyse starten")}
             </button>
           </div>
-          <div style={{ marginTop: "1rem" }}>
-            <label htmlFor="scan-ai-context" className="muted" style={{ fontSize: "0.9rem", display: "block", marginBottom: "0.5rem" }}>
-              {t("Additional information (optional)", "Zusätzliche Informationen (optional)")}
-            </label>
-            <textarea
-              id="scan-ai-context"
-              value={additionalContext}
-              onChange={(e) => setAdditionalContext(e.target.value)}
-              disabled={aiLoading}
-              placeholder={t(
-                "Enter additional information to include in the AI analysis...",
-                "Geben Sie zusätzliche Informationen ein, die bei der AI-Analyse berücksichtigt werden sollen..."
-              )}
-              style={{
-                width: "100%",
-                minHeight: "80px",
-                padding: "0.6rem 0.75rem",
-                background: "rgba(15, 18, 30, 0.85)",
-                border: "1px solid rgba(255,255,255,0.18)",
-                borderRadius: "8px",
-                color: "#f5f7fa",
-                fontSize: "0.95rem",
-                resize: "vertical",
-                fontFamily: "inherit",
-                lineHeight: 1.5,
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
+          <label htmlFor="scan-ai-context">
+            {t("Additional information (optional)", "Zusätzliche Informationen (optional)")}
+          </label>
+          <textarea
+            id="scan-ai-context"
+            value={additionalContext}
+            onChange={(e) => setAdditionalContext(e.target.value)}
+            disabled={aiLoading}
+            placeholder={t(
+              "Enter additional information to include in the AI analysis...",
+              "Geben Sie zusätzliche Informationen ein, die bei der AI-Analyse berücksichtigt werden sollen..."
+            )}
+          />
         </>
       )}
     </div>
@@ -3558,55 +2835,43 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
   return (
     <div>
       {triggerForm}
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      {analyses.map((analysis, idx) => {
-        const originChipLabel = analysis.triggeredBy ? "MCP - Scan" : "API - Scan";
-        const cleanedSummary = stripAiSummaryFooter(analysis.summary);
-        return (
-          <div
-            key={`${analysis.generatedAt}-${idx}`}
-            className="ai-analysis__batch-card"
-          >
-            <div className="ai-analysis__batch-header">
-              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                {scanRef && (
-                  <code style={{
-                    fontSize: "0.72rem",
-                    padding: "0.15rem 0.5rem",
-                    borderRadius: "4px",
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    color: "rgba(255,255,255,0.7)",
-                  }}>
-                    {scanRef.label}: {scanRef.value}
-                  </code>
-                )}
-                <TriggeredByBadge triggeredBy={analysis.triggeredBy} />
-              </span>
-              <span className={`chip ${analysis.triggeredBy ? "chip-batch" : "chip-single"}`}>
-                {originChipLabel}
-              </span>
-            </div>
-            {cleanedSummary ? (
-              <div className="ai-analysis__text">
-                <Markdown>{cleanedSummary}</Markdown>
+      <div className="scan-detail-items">
+        {analyses.map((analysis, idx) => {
+          const originChipLabel = analysis.triggeredBy ? "MCP - Scan" : "API - Scan";
+          const cleanedSummary = stripAiSummaryFooter(analysis.summary);
+          return (
+            <article key={`${analysis.generatedAt}-${idx}`} className="scan-detail-item">
+              <div className="scan-detail-item-head">
+                <span className="scan-detail-chips scan-detail-push-end">
+                  {scanRef && (
+                    <span className="chip scan-detail-gap-chip">
+                      {scanRef.label}: <span className="mono">{scanRef.value}</span>
+                    </span>
+                  )}
+                  <TriggeredByBadge triggeredBy={analysis.triggeredBy} />
+                </span>
+                <span className="chip">{originChipLabel}</span>
               </div>
-            ) : (
-              <div className="muted">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</div>
-            )}
-            {(analysis.provider || analysis.language || analysis.generatedAt || analysis.tokenUsage) && (
-              <div className="ai-analysis__meta">
-                {analysis.provider && <span>{analysis.provider}</span>}
-                {analysis.language && <span> · {t("Language", "Sprache")}: {analysis.language.toUpperCase()}</span>}
-                {analysis.generatedAt && <span> · {formatDateTime(analysis.generatedAt)}</span>}
-                {analysis.tokenUsage && analysis.tokenUsage.inputTokens !== undefined && (
-                  <span> · {t("Tokens", "Tokens")}: {analysis.tokenUsage.inputTokens.toLocaleString()} in / {(analysis.tokenUsage.outputTokens ?? 0).toLocaleString()} out</span>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              {cleanedSummary ? (
+                <div className="scan-detail-ai-text">
+                  <Markdown>{cleanedSummary}</Markdown>
+                </div>
+              ) : (
+                <p className="scan-detail-note">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</p>
+              )}
+              {(analysis.provider || analysis.language || analysis.generatedAt || analysis.tokenUsage) && (
+                <div className="scan-detail-ai-meta">
+                  {analysis.provider && <span>{analysis.provider}</span>}
+                  {analysis.language && <span>{t("Language", "Sprache")}: {analysis.language.toUpperCase()}</span>}
+                  {analysis.generatedAt && <span>{formatDateTime(analysis.generatedAt)}</span>}
+                  {analysis.tokenUsage && analysis.tokenUsage.inputTokens !== undefined && (
+                    <span>{t("Tokens", "Tokens")}: {analysis.tokenUsage.inputTokens.toLocaleString()} in / {(analysis.tokenUsage.outputTokens ?? 0).toLocaleString()} out</span>
+                  )}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
     </div>
   );
@@ -3642,21 +2907,21 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
   const getX = (i: number) => padding.left + (history.length > 1 ? i * xStep : chartW / 2);
 
   return (
-    <div ref={containerRef} style={{ width: "100%", position: "relative" }}>
-      <svg width={width} height={height} style={{ overflow: "visible" }}>
+    <div ref={containerRef} className="scan-detail-chart-plot">
+      <svg width={width} height={height} aria-hidden="true">
         {/* Grid lines */}
         {yTicks.map(tick => {
           const y = padding.top + chartH - (tick / maxTotal) * chartH;
           return (
             <g key={tick}>
-              <line x1={padding.left} x2={padding.left + chartW} y1={y} y2={y} stroke="rgba(255,255,255,0.06)" />
-              <text x={padding.left - 8} y={y + 4} fill="rgba(255,255,255,0.3)" fontSize="10" textAnchor="end">{tick}</text>
+              <line x1={padding.left} x2={padding.left + chartW} y1={y} y2={y} stroke="var(--color-rule)" />
+              <text x={padding.left - 8} y={y + 4} fill="var(--color-muted)" fontSize="12" textAnchor="end">{tick}</text>
             </g>
           );
         })}
         {/* Lines per severity */}
         {severities.map(sev => {
-          const color = SEVERITY_COLORS[sev];
+          const color = severityVar(sev);
           const points = history.map((h, i) => {
             const x = getX(i);
             const y = padding.top + chartH - (h.summary[sev] / maxTotal) * chartH;
@@ -3670,7 +2935,7 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
                 const y = padding.top + chartH - (h.summary[sev] / maxTotal) * chartH;
                 const isHovered = hoveredIndex === i;
                 return h.summary[sev] > 0 ? (
-                  <circle key={i} cx={x} cy={y} r={isHovered ? 5 : 3} fill={color} style={{ transition: "r 0.1s" }} />
+                  <circle key={i} cx={x} cy={y} r={isHovered ? 5 : 3} fill={color} />
                 ) : null;
               })}
             </g>
@@ -3681,7 +2946,7 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
           <line
             x1={getX(hoveredIndex)} x2={getX(hoveredIndex)}
             y1={padding.top} y2={padding.top + chartH}
-            stroke="rgba(255,255,255,0.15)" strokeDasharray="4,3"
+            stroke="var(--color-rule-strong)" strokeDasharray="4,3"
           />
         )}
         {/* X axis labels */}
@@ -3693,7 +2958,7 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
             day: "numeric", month: "numeric", timeZone: getCurrentTimezone(),
           });
           return (
-            <text key={i} x={x} y={height - 5} fill={hoveredIndex === i ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)"} fontSize="10" textAnchor="middle">{label}</text>
+            <text key={i} x={x} y={height - 5} fill={hoveredIndex === i ? "var(--color-ink-2)" : "var(--color-muted)"} fontSize="12" textAnchor="middle">{label}</text>
           );
         })}
         {/* Invisible hover areas (must be last so they're on top) */}
@@ -3703,12 +2968,12 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
           return (
             <rect
               key={i}
+              className="scan-detail-chart-hit"
               x={x - halfStep}
               y={padding.top}
               width={halfStep * 2}
               height={chartH}
               fill="transparent"
-              style={{ cursor: "crosshair" }}
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
             />
@@ -3731,51 +2996,49 @@ const HistoryChart = ({ history }: { history: ScanHistoryEntry[] }) => {
         });
         return (
           <div
+            className="scan-detail-tooltip"
             style={{
-              position: "absolute",
               top: padding.top,
               ...(xPct > 0.6
                 ? { right: width - x + 8 }
                 : { left: x + 8 }),
-              background: "rgba(15,15,25,0.95)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: "6px",
-              padding: "0.5rem 0.75rem",
-              fontSize: "0.75rem",
-              pointerEvents: "none",
-              zIndex: 10,
-              minWidth: "110px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
             }}
           >
-            <div style={{ color: "rgba(255,255,255,0.6)", marginBottom: "0.375rem", fontWeight: 500 }}>
+            <div className="scan-detail-tooltip-title">
               {dateStr} {timeStr}
             </div>
             {severities.map(sev => h.summary[sev] > 0 && (
-              <div key={sev} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", color: SEVERITY_COLORS[sev], lineHeight: 1.6 }}>
-                <span>{sev.charAt(0).toUpperCase() + sev.slice(1)}</span>
-                <span style={{ fontWeight: 600 }}>{h.summary[sev]}</span>
+              <div key={sev} className={`scan-detail-tooltip-row sev-${sev}`}>
+                <span>{sentenceCase(sev)}</span>
+                <strong>{h.summary[sev]}</strong>
               </div>
             ))}
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", color: "rgba(255,255,255,0.4)", borderTop: "1px solid rgba(255,255,255,0.07)", marginTop: "0.25rem", paddingTop: "0.25rem" }}>
+            <div className="scan-detail-tooltip-row scan-detail-tooltip-foot muted">
               <span>Total</span>
-              <span style={{ fontWeight: 600 }}>{h.summary.total}</span>
+              <strong>{h.summary.total}</strong>
             </div>
           </div>
         );
       })()}
 
       {/* Legend */}
-      <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem", justifyContent: "center" }}>
+      <div className="scan-detail-legend">
         {severities.map(sev => (
-          <div key={sev} style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.75rem" }}>
-            <span style={{ width: "10px", height: "3px", background: SEVERITY_COLORS[sev], display: "inline-block", borderRadius: "1px" }} />
-            <span style={{ color: "rgba(255,255,255,0.5)" }}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</span>
+          <div key={sev} className="scan-detail-inline">
+            <span className="scan-detail-swatch" style={{ background: severityVar(sev) }} />
+            <span className="muted">{sentenceCase(sev)}</span>
           </div>
         ))}
       </div>
     </div>
   );
+};
+
+/** A change in a count: up is worse, down is better, zero stays quiet. */
+const Delta = ({ value }: { value: number }) => {
+  if (value === 0) return <span className="muted">0</span>;
+  if (value > 0) return <span className="scan-detail-delta scan-detail-outcome--error">+{value}</span>;
+  return <span className="scan-detail-delta scan-detail-outcome--ok">{value}</span>;
 };
 
 const HistoryChangesTable = ({ history, targetId }: { history: ScanHistoryEntry[]; targetId?: string }) => {
@@ -3811,62 +3074,54 @@ const HistoryChangesTable = ({ history, targetId }: { history: ScanHistoryEntry[
 
   if (changes.length === 0) return null;
 
-  const renderDelta = (d: number) => {
-    if (d === 0) return <span style={{ color: "rgba(255,255,255,0.2)" }}>—</span>;
-    if (d > 0) return <span style={{ color: "#ff6b6b", fontWeight: 600 }}>+{d}</span>;
-    return <span style={{ color: "#69db7c", fontWeight: 600 }}>{d}</span>;
-  };
-
   const hasAnyCommit = changes.some(c => c.newer.commitSha);
-  const thCenter: React.CSSProperties = { ...thStyle, textAlign: "center" };
 
   return (
-    <div style={{ marginTop: "1.25rem" }}>
-      <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.875rem", color: "rgba(255,255,255,0.7)" }}>
-        {t("Significant Changes", "Wesentliche Änderungen")}
-      </h4>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
+    <div className="scan-detail-group">
+      <h2>{t("Significant Changes", "Wesentliche Änderungen")}</h2>
+      <div className="table-scroll">
+        <table className="scan-detail-table scan-detail-pin">
           <thead>
-            <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              <th style={thStyle}>{t("Date", "Datum")}</th>
-              {hasAnyCommit && <th style={thStyle}>Commit</th>}
+            <tr>
+              <th>{t("Date", "Datum")}</th>
+              {hasAnyCommit && <th>Commit</th>}
               {sevs.map(sev => (
-                <th key={sev} style={{ ...thCenter, color: SEVERITY_COLORS[sev] }}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</th>
+                <th key={sev} className={`scan-detail-num sev-${sev}`}>{sentenceCase(sev)}</th>
               ))}
-              <th style={thCenter}>Total</th>
+              <th className="scan-detail-num">Total</th>
             </tr>
           </thead>
           <tbody>
             {changes.map(({ newer, deltas }, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.75rem" }}>{formatDateTime(newer.startedAt)}</td>
+              <tr key={i}>
+                <td className="scan-detail-nowrap">{formatDateTime(newer.startedAt)}</td>
                 {hasAnyCommit && (
-                  <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "0.75rem" }}>
+                  <td className="scan-detail-nowrap">
                     {newer.commitSha ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
-                        <code style={{ color: "#ffd43b", fontSize: "0.7rem" }}>{newer.commitSha.slice(0, 7)}</code>
+                      <span className="scan-detail-inline">
+                        <span className="mono">{newer.commitSha.slice(0, 7)}</span>
                         {commitUrlBase && (
                           <a
                             href={`${commitUrlBase}${newer.commitSha}`}
                             target="_blank"
                             rel="noreferrer"
-                            style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.7rem", lineHeight: 1 }}
+                            className="scan-detail-icon-link"
                             title={t("View commit", "Commit anzeigen")}
+                            aria-label={t("View commit", "Commit anzeigen")}
                           >
-                            ↗
+                            <LuExternalLink aria-hidden="true" />
                           </a>
                         )}
                       </span>
                     ) : (
-                      <span style={{ color: "rgba(255,255,255,0.15)" }}>—</span>
+                      <NotAvailable />
                     )}
                   </td>
                 )}
                 {sevs.map(sev => (
-                  <td key={sev} style={{ ...tdStyle, textAlign: "center" }}>{renderDelta(deltas[sev])}</td>
+                  <td key={sev} className="scan-detail-num"><Delta value={deltas[sev]} /></td>
                 ))}
-                <td style={{ ...tdStyle, textAlign: "center", fontWeight: 600 }}>{renderDelta(deltas.total)}</td>
+                <td className="scan-detail-num"><Delta value={deltas.total} /></td>
               </tr>
             ))}
           </tbody>
@@ -3876,115 +3131,122 @@ const HistoryChangesTable = ({ history, targetId }: { history: ScanHistoryEntry[
   );
 };
 
+const ComparisonTable = ({ items }: { items: ScanComparisonResponse["added"] }) => {
+  const { t } = useI18n();
+  return (
+    <div className="table-scroll">
+      <table className="scan-detail-table scan-detail-pin">
+        <thead>
+          <tr>
+            <th>CVE</th>
+            <th>{t("Package", "Paket")}</th>
+            <th>{t("Version", "Version")}</th>
+            <th>{t("Severity", "Schweregrad")}</th>
+            <th>Fix</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((f, i) => (
+            <tr key={i}>
+              <td>
+                {f.vulnerabilityId ? (
+                  <Link to={`/vulnerability/${f.vulnerabilityId}`} className="scan-detail-link mono">{f.vulnerabilityId}</Link>
+                ) : <NotAvailable />}
+              </td>
+              <td>{f.packageName}</td>
+              <td>{f.packageVersion ? <span className="mono">{f.packageVersion}</span> : <NotAvailable />}</td>
+              <td><SeverityWord severity={f.severity} /></td>
+              <td>{f.fixVersion ? <span className="mono">{f.fixVersion}</span> : <NotAvailable />}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 const ComparisonView = ({ comparison }: { comparison: ScanComparisonResponse }) => {
   const { t } = useI18n();
   const summaryA = comparison.summaryA;
   const summaryB = comparison.summaryB;
 
-  const renderDelta = (a: number, b: number) => {
-    const diff = b - a;
-    if (diff === 0) return <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>;
-    if (diff > 0) return <span style={{ color: "#ff6b6b", fontWeight: 600 }}>+{diff}</span>;
-    return <span style={{ color: "#69db7c", fontWeight: 600 }}>{diff}</span>;
-  };
-
   return (
     <div>
       {/* Summary comparison */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "0.75rem", marginBottom: "1.5rem" }}>
+      <dl className="stat-row scan-detail-compare">
         {(["critical", "high", "medium", "low", "total"] as const).map(sev => (
-          <div key={sev} style={{ padding: "0.625rem", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px", textAlign: "center" }}>
-            <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: "0.25rem" }}>{sev}</div>
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.375rem" }}>
-              <span style={{ fontSize: "0.875rem" }}>{(summaryA as any)[sev]}</span>
-              <span style={{ color: "rgba(255,255,255,0.2)" }}>→</span>
-              <span style={{ fontSize: "0.875rem" }}>{(summaryB as any)[sev]}</span>
-              <span style={{ fontSize: "0.75rem" }}>{renderDelta((summaryA as any)[sev], (summaryB as any)[sev])}</span>
-            </div>
-          </div>
+          <Stat
+            key={sev}
+            label={sentenceCase(sev)}
+            value={(
+              <span className="scan-detail-inline">
+                <span>{(summaryA as any)[sev]}</span>
+                <LuArrowRight aria-hidden="true" />
+                <span>{(summaryB as any)[sev]}</span>
+                <Delta value={(summaryB as any)[sev] - (summaryA as any)[sev]} />
+              </span>
+            )}
+          />
         ))}
-      </div>
+      </dl>
 
-      <div style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.5)", marginBottom: "1rem" }}>
+      <p className="scan-detail-note">
         {t("Unchanged", "Unverändert")}: {comparison.unchangedCount} findings
-      </div>
+      </p>
 
       {/* Added findings */}
       {comparison.added.length > 0 && (
-        <div style={{ marginBottom: "1rem" }}>
-          <h4 style={{ margin: "0 0 0.5rem", color: "#ff6b6b", fontSize: "0.875rem" }}>
-            + {t("Added", "Hinzugefügt")} ({comparison.added.length})
-          </h4>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,107,107,0.2)" }}>
-                  <th style={thStyle}>CVE</th>
-                  <th style={thStyle}>{t("Package", "Paket")}</th>
-                  <th style={thStyle}>{t("Version", "Version")}</th>
-                  <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
-                  <th style={thStyle}>Fix</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparison.added.map((f, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid rgba(255,107,107,0.06)", background: "rgba(255,107,107,0.03)" }}>
-                    <td style={tdStyle}>
-                      {f.vulnerabilityId ? (
-                        <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ color: "#ffd43b", textDecoration: "none" }}>{f.vulnerabilityId}</Link>
-                      ) : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
-                    </td>
-                    <td style={tdStyle}>{f.packageName}</td>
-                    <td style={tdStyle}>{f.packageVersion || "—"}</td>
-                    <td style={tdStyle}><SeverityChip severity={f.severity} /></td>
-                    <td style={tdStyle}>{f.fixVersion ? <span style={{ color: "#69db7c", fontSize: "0.75rem" }}>{f.fixVersion}</span> : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="scan-detail-group">
+          <h2 className="scan-detail-inline">
+            <LuPlus aria-hidden="true" />
+            {t("Added", "Hinzugefügt")} ({comparison.added.length})
+          </h2>
+          <ComparisonTable items={comparison.added} />
         </div>
       )}
 
       {/* Changed findings (same package, different vuln ID) */}
       {(comparison.changed?.length ?? 0) > 0 && (
-        <div style={{ marginBottom: "1rem" }}>
-          <h4 style={{ margin: "0 0 0.5rem", color: "#ffd43b", fontSize: "0.875rem" }}>
-            ↔ {t("Changed", "Geändert")} ({comparison.changed!.length})
-          </h4>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
+        <div className="scan-detail-group">
+          <h2 className="scan-detail-inline">
+            <LuArrowLeftRight aria-hidden="true" />
+            {t("Changed", "Geändert")} ({comparison.changed!.length})
+          </h2>
+          <div className="table-scroll">
+            <table className="scan-detail-table scan-detail-pin">
               <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,212,59,0.2)" }}>
-                  <th style={thStyle}>{t("Package", "Paket")}</th>
-                  <th style={thStyle}>{t("Version", "Version")}</th>
-                  <th style={thStyle}>{t("Before", "Vorher")}</th>
-                  <th style={thStyle}>{t("After", "Nachher")}</th>
-                  <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
+                <tr>
+                  <th>{t("Package", "Paket")}</th>
+                  <th>{t("Version", "Version")}</th>
+                  <th>{t("Before", "Vorher")}</th>
+                  <th>{t("After", "Nachher")}</th>
+                  <th>{t("Severity", "Schweregrad")}</th>
                 </tr>
               </thead>
               <tbody>
                 {comparison.changed!.map((c, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid rgba(255,212,59,0.06)", background: "rgba(255,212,59,0.03)" }}>
-                    <td style={tdStyle}>{c.after.packageName}</td>
-                    <td style={tdStyle}>{c.after.packageVersion || "—"}</td>
-                    <td style={tdStyle}>
+                  <tr key={i}>
+                    <td>{c.after.packageName}</td>
+                    <td>{c.after.packageVersion ? <span className="mono">{c.after.packageVersion}</span> : <NotAvailable />}</td>
+                    <td>
                       {c.before.vulnerabilityId ? (
-                        <Link to={`/vulnerability/${c.before.vulnerabilityId}`} style={{ color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>{c.before.vulnerabilityId}</Link>
-                      ) : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                        <Link to={`/vulnerability/${c.before.vulnerabilityId}`} className="scan-detail-link mono">{c.before.vulnerabilityId}</Link>
+                      ) : <NotAvailable />}
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       {c.after.vulnerabilityId ? (
-                        <Link to={`/vulnerability/${c.after.vulnerabilityId}`} style={{ color: "#ffd43b", textDecoration: "none" }}>{c.after.vulnerabilityId}</Link>
-                      ) : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                        <Link to={`/vulnerability/${c.after.vulnerabilityId}`} className="scan-detail-link mono">{c.after.vulnerabilityId}</Link>
+                      ) : <NotAvailable />}
                     </td>
-                    <td style={tdStyle}>
-                      <SeverityChip severity={c.after.severity} />
-                      {c.before.severity !== c.after.severity && (
-                        <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.3)", marginLeft: "0.375rem" }}>
-                          ({t("was", "war")} {c.before.severity})
-                        </span>
-                      )}
+                    <td>
+                      <span className="scan-detail-inline">
+                        <SeverityWord severity={c.after.severity} />
+                        {c.before.severity !== c.after.severity && (
+                          <span className="scan-detail-count">
+                            ({t("was", "war")} {c.before.severity})
+                          </span>
+                        )}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -3996,43 +3258,17 @@ const ComparisonView = ({ comparison }: { comparison: ScanComparisonResponse }) 
 
       {/* Removed findings */}
       {comparison.removed.length > 0 && (
-        <div>
-          <h4 style={{ margin: "0 0 0.5rem", color: "#69db7c", fontSize: "0.875rem" }}>
-            − {t("Removed", "Entfernt")} ({comparison.removed.length})
-          </h4>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(105,219,124,0.2)" }}>
-                  <th style={thStyle}>CVE</th>
-                  <th style={thStyle}>{t("Package", "Paket")}</th>
-                  <th style={thStyle}>{t("Version", "Version")}</th>
-                  <th style={thStyle}>{t("Severity", "Schweregrad")}</th>
-                  <th style={thStyle}>Fix</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparison.removed.map((f, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid rgba(105,219,124,0.06)", background: "rgba(105,219,124,0.03)" }}>
-                    <td style={tdStyle}>
-                      {f.vulnerabilityId ? (
-                        <Link to={`/vulnerability/${f.vulnerabilityId}`} style={{ color: "#ffd43b", textDecoration: "none" }}>{f.vulnerabilityId}</Link>
-                      ) : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
-                    </td>
-                    <td style={tdStyle}>{f.packageName}</td>
-                    <td style={tdStyle}>{f.packageVersion || "—"}</td>
-                    <td style={tdStyle}><SeverityChip severity={f.severity} /></td>
-                    <td style={tdStyle}>{f.fixVersion ? <span style={{ color: "#69db7c", fontSize: "0.75rem" }}>{f.fixVersion}</span> : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="scan-detail-group">
+          <h2 className="scan-detail-inline">
+            <LuMinus aria-hidden="true" />
+            {t("Removed", "Entfernt")} ({comparison.removed.length})
+          </h2>
+          <ComparisonTable items={comparison.removed} />
         </div>
       )}
 
       {comparison.added.length === 0 && comparison.removed.length === 0 && (comparison.changed?.length ?? 0) === 0 && (
-        <p className="muted">{t("No differences found between the two scans.", "Keine Unterschiede zwischen den beiden Scans gefunden.")}</p>
+        <EmptyState title={t("No differences found between the two scans.", "Keine Unterschiede zwischen den beiden Scans gefunden.")} />
       )}
     </div>
   );
@@ -4042,37 +3278,30 @@ const SeveritySummaryBar = ({ summary }: { summary: ScanSummary }) => {
   const { t } = useI18n();
   if (summary.total === 0) {
     return (
-      <div style={{ marginTop: "1rem", padding: "0.75rem", background: "rgba(105,219,124,0.08)", border: "1px solid rgba(105,219,124,0.2)", borderRadius: "6px", color: "#69db7c", textAlign: "center", fontSize: "0.875rem" }}>
+      <p className="scan-detail-clean">
         {t("No vulnerabilities found", "Keine Schwachstellen gefunden")}
-      </div>
+      </p>
     );
   }
 
   const segments = [
-    { label: "Unknown", count: summary.unknown, color: "#495057" },
-    { label: "Negligible", count: summary.negligible, color: "#868e96" },
-    { label: "Low", count: summary.low, color: "#69db7c" },
-    { label: "Medium", count: summary.medium, color: "#fcc419" },
-    { label: "High", count: summary.high, color: "#ff922b" },
-    { label: "Critical", count: summary.critical, color: "#ff6b6b" },
+    { label: "Critical", count: summary.critical, level: "critical" },
+    { label: "High", count: summary.high, level: "high" },
+    { label: "Medium", count: summary.medium, level: "medium" },
+    { label: "Low", count: summary.low, level: "low" },
+    { label: "Negligible", count: summary.negligible, level: "none" },
+    { label: "Unknown", count: summary.unknown, level: "none" },
   ].filter(s => s.count > 0);
 
   return (
-    <div style={{ marginTop: "1rem" }}>
-      {/* Bar */}
-      <div style={{ display: "flex", height: "8px", borderRadius: "4px", overflow: "hidden", marginBottom: "0.75rem" }}>
+    <div className="scan-detail-severity">
+      <dl className="stat-row">
+        {segments.map(s => <Stat key={s.label} label={s.label} value={s.count} tone={s.level} />)}
+      </dl>
+      {/* Share of each severity; the words and figures above carry the meaning */}
+      <div className="scan-detail-sevbar" aria-hidden="true">
         {segments.map(s => (
-          <div key={s.label} style={{ width: `${(s.count / summary.total) * 100}%`, background: s.color }} />
-        ))}
-      </div>
-      {/* Legend */}
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        {segments.map(s => (
-          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem" }}>
-            <span style={{ width: "10px", height: "10px", borderRadius: "2px", background: s.color, display: "inline-block" }} />
-            <span style={{ color: "rgba(255,255,255,0.6)" }}>{s.label}</span>
-            <span style={{ fontWeight: 600 }}>{s.count}</span>
-          </div>
+          <span key={s.label} style={{ width: `${(s.count / summary.total) * 100}%`, background: severityVar(s.level) }} />
         ))}
       </div>
     </div>
@@ -4080,75 +3309,11 @@ const SeveritySummaryBar = ({ summary }: { summary: ScanSummary }) => {
 };
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const colors: Record<string, string> = {
-    completed: "#69db7c",
-    running: "#5c84ff",
-    pending: "#fcc419",
-    failed: "#ff6b6b",
+  const outcome: Record<string, string> = {
+    completed: "ok",
+    running: "info",
+    pending: "info",
+    failed: "error",
   };
-  const color = colors[status] || "rgba(255,255,255,0.4)";
-  return (
-    <span style={{
-      padding: "0.125rem 0.5rem",
-      borderRadius: "4px",
-      fontSize: "0.75rem",
-      fontWeight: 600,
-      background: `${color}20`,
-      color,
-    }}>
-      {status}
-    </span>
-  );
+  return <span className={`scan-detail-outcome--${outcome[status] ?? "empty"}`}>{status}</span>;
 };
-
-const SeverityChip = ({ severity }: { severity: string }) => {
-  const colors: Record<string, string> = {
-    critical: "#ff6b6b",
-    high: "#ff922b",
-    medium: "#fcc419",
-    low: "#69db7c",
-    negligible: "#868e96",
-    unknown: "#495057",
-  };
-  const color = colors[severity] || "#495057";
-  return (
-    <span style={{
-      padding: "0.125rem 0.5rem",
-      borderRadius: "4px",
-      fontSize: "0.75rem",
-      fontWeight: 600,
-      background: `${color}20`,
-      color,
-    }}>
-      {severity}
-    </span>
-  );
-};
-
-// Styles
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem 0.75rem",
-  color: "rgba(255,255,255,0.5)",
-  fontWeight: 500,
-  fontSize: "0.8125rem",
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  verticalAlign: "middle",
-};
-
-const tabStyle = (active: boolean): React.CSSProperties => ({
-  padding: "0.375rem 0.875rem",
-  borderRadius: "6px",
-  border: active ? "1px solid rgba(255,193,7,0.5)" : "1px solid rgba(255,255,255,0.1)",
-  background: active ? "rgba(255,193,7,0.15)" : "transparent",
-  color: active ? "#ffd43b" : "rgba(255,255,255,0.6)",
-  cursor: "pointer",
-  fontSize: "0.8125rem",
-  fontWeight: 500,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.4rem",
-});

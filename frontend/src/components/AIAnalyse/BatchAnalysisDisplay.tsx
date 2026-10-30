@@ -1,9 +1,9 @@
 import { useState } from "react";
-import Markdown from "react-markdown";
 import { AIBatchInvestigationResponse, VulnerabilityPreview } from "../../types";
 import { useI18n } from "../../i18n/context";
 import { AILoadingIndicator } from "../AILoadingIndicator";
 import { formatDateTime } from "../../utils/dateFormat";
+import { ReportMarkdown, ReportMeta } from "./ReportParts";
 
 interface BatchAnalysisDisplayProps {
   response: AIBatchInvestigationResponse | null;
@@ -48,7 +48,7 @@ export const BatchAnalysisDisplay = ({
 
   if (loading) {
     return (
-      <div className="batch-analysis-display">
+      <div className="ai-analyse-result">
         <AILoadingIndicator startedAt={loadingStartedAt} />
       </div>
     );
@@ -56,14 +56,12 @@ export const BatchAnalysisDisplay = ({
 
   if (!response) {
     return (
-      <div className="batch-analysis-display">
-        <p className="muted">
-          {t(
-            "Select vulnerabilities and start the analysis to display results here.",
-            "Wählen Sie Schwachstellen aus und starten Sie die Analyse, um die Ergebnisse hier anzuzeigen."
-          )}
-        </p>
-      </div>
+      <p className="ai-analyse-result-idle">
+        {t(
+          "Select vulnerabilities and start the analysis to display results here.",
+          "Wählen Sie Schwachstellen aus und starten Sie die Analyse, um die Ergebnisse hier anzuzeigen."
+        )}
+      </p>
     );
   }
 
@@ -96,20 +94,43 @@ export const BatchAnalysisDisplay = ({
     }
   }
 
+  const metaRows = [
+    { label: t("Provider", "Provider"), value: response.provider },
+    { label: t("Language", "Sprache"), value: response.language },
+    { label: t("Vulnerabilities", "Schwachstellen"), value: response.vulnerabilityCount.toLocaleString(locale) },
+    { label: t("Generated", "Erstellt"), value: formatDateTime(response.generatedAt) },
+    ...(response.tokenUsage
+      ? [
+          {
+            label: t("Tokens", "Tokens"),
+            value: `${response.tokenUsage.inputTokens.toLocaleString(locale)} in / ${response.tokenUsage.outputTokens.toLocaleString(locale)} out`,
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <div className="batch-analysis-display">
+    <div className="ai-analyse-result">
+      <h3 className="visually-hidden">
+        {activeTab === "combined" ? t("Combined analysis", "Kombinierte Analyse") : activeTab}
+      </h3>
+
       {/* Tab navigation */}
-      <div className="batch-analysis-tabs">
+      <div className="ai-analyse-tabs">
         <button
-          className={`batch-analysis-tab ${activeTab === "combined" ? "active" : ""}`}
+          type="button"
+          className={`ai-analyse-tab${activeTab === "combined" ? " ai-analyse-tab--active" : ""}`}
+          aria-pressed={activeTab === "combined"}
           onClick={() => setActiveTab("combined")}
         >
-          {t("Combined Analysis", "Kombinierte Analyse")}
+          {t("Combined analysis", "Kombinierte Analyse")}
         </button>
         {vulnerabilities.map((vuln) => (
           <button
+            type="button"
             key={vuln.vulnId}
-            className={`batch-analysis-tab ${activeTab === vuln.vulnId ? "active" : ""}`}
+            className={`ai-analyse-tab mono${activeTab === vuln.vulnId ? " ai-analyse-tab--active" : ""}`}
+            aria-pressed={activeTab === vuln.vulnId}
             onClick={() => setActiveTab(vuln.vulnId)}
           >
             {vuln.vulnId}
@@ -118,41 +139,14 @@ export const BatchAnalysisDisplay = ({
       </div>
 
       {/* Content area */}
-      <div className="batch-analysis-content">
-        <div className="ai-summary-text">
-          <Markdown>{contentToDisplay}</Markdown>
-          {typing && <span className="typing-cursor">▋</span>}
-        </div>
+      <ReportMarkdown>{contentToDisplay}</ReportMarkdown>
 
-        {/* Metadata footer */}
-        {!typing && (
-          <div className="ai-summary-meta">
-            <span className="muted">
-              Provider: <strong>{response.provider}</strong>
-            </span>
-            {" · "}
-            <span className="muted">
-              {t("Language", "Sprache")}: <strong>{response.language}</strong>
-            </span>
-            {" · "}
-            <span className="muted">
-              {t("Vulnerabilities", "Schwachstellen")}: <strong>{response.vulnerabilityCount.toLocaleString(locale)}</strong>
-            </span>
-            {" · "}
-            <span className="muted">
-              {t("Generated", "Erstellt")}: <strong>{formatDateTime(response.generatedAt)}</strong>
-            </span>
-            {response.tokenUsage && (
-              <>
-                {" · "}
-                <span className="muted">
-                  {t("Tokens", "Tokens")}: <strong>{response.tokenUsage.inputTokens.toLocaleString(locale)} in / {response.tokenUsage.outputTokens.toLocaleString(locale)} out</strong>
-                </span>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Metadata footer */}
+      {!typing && (
+        <div className="ai-analyse-result-meta">
+          <ReportMeta rows={metaRows} />
+        </div>
+      )}
     </div>
   );
 };

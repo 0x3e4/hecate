@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { LuCheck } from "react-icons/lu";
 import { useI18n } from "../i18n/context";
+import "../screens/ai-analyse.css";
 
 interface AILoadingIndicatorProps {
   /** Compact mode for inline use (e.g., within vulnerability detail) */
@@ -46,35 +48,33 @@ export const AILoadingIndicator = ({ compact = false, startedAt }: AILoadingIndi
   };
 
   return (
-    <div className="ai-loading-indicator" style={compact ? { padding: "1.5rem 1rem" } : undefined}>
-      <div className="ai-loading-indicator__brain">
-        <div className="ai-loading-indicator__ring" />
-        <div className="ai-loading-indicator__ring ai-loading-indicator__ring--inner" />
-        <div className="ai-loading-indicator__icon">🧠</div>
-      </div>
-
-      <div className="ai-loading-indicator__status">
-        {t("AI analysis in progress...", "AI-Analyse wird durchgeführt...")}
+    <div className={`ai-analyse-loader${compact ? " ai-analyse-loader--compact" : ""}`}>
+      <div className="ai-analyse-loader-head">
+        <p className="ai-analyse-loader-status" role="status">
+          {t("AI analysis in progress...", "AI-Analyse wird durchgeführt...")}
+        </p>
+        <span className="ai-analyse-loader-elapsed">{formatElapsed(elapsed)}</span>
       </div>
 
       {!compact && (
-        <div className="ai-loading-indicator__steps">
+        <ol className="ai-analyse-loader-steps">
           {steps.map((step, i) => (
-            <div
+            <li
               key={i}
-              className={`ai-loading-indicator__step${
-                i < activeStep ? " ai-loading-indicator__step--done" :
-                i === activeStep ? " ai-loading-indicator__step--active" : ""
+              className={`ai-analyse-loader-step${
+                i < activeStep ? " ai-analyse-loader-step--done" :
+                i === activeStep ? " ai-analyse-loader-step--active" : ""
               }`}
+              aria-current={i === activeStep ? "step" : undefined}
             >
-              <span>{i < activeStep ? "✓" : i === activeStep ? "›" : "·"}</span>
+              <span className="ai-analyse-loader-mark">
+                {i < activeStep ? <LuCheck size={14} aria-hidden="true" /> : null}
+              </span>
               <span>{step}</span>
-            </div>
+            </li>
           ))}
-        </div>
+        </ol>
       )}
-
-      <div className="ai-loading-indicator__elapsed">{formatElapsed(elapsed)}</div>
     </div>
   );
 };

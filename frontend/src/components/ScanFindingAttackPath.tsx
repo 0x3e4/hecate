@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { fetchAttackPath } from "../api/attackPath";
 import { useI18n } from "../i18n/context";
 import type { AIProviderInfo, AttackPathResponse } from "../types";
+import { EmptyState, ErrorState } from "../ui/primitives";
 import { AttackPathGraphView } from "./AttackPathGraph";
+import { SkeletonBlock } from "./Skeleton";
 
 interface ScanFindingAttackPathProps {
   vulnerabilityId: string;
@@ -18,7 +20,7 @@ interface ScanFindingAttackPathProps {
 /**
  * Inline panel mounted inside the Findings tab's expanded detail row.
  * Fetches the attack path lazily when the finding is opened. Reuses the
- * shared AttackPathGraphView for rendering — no narrative-trigger wiring
+ * shared AttackPathGraphView for rendering. No narrative-trigger wiring
  * here because findings on the scan page link out to the full vulnerability
  * detail tab when the user wants to (re)generate the AI narrative.
  */
@@ -68,18 +70,13 @@ export function ScanFindingAttackPath({
 
   if (loading) {
     return (
-      <div className="muted" style={{ padding: "0.75rem", textAlign: "center" }}>
-        {t("Loading attack path…", "Angriffspfad wird geladen…")}
+      <div role="status" aria-label={t("Loading attack path…", "Angriffspfad wird geladen…")}>
+        <SkeletonBlock height={160} radius={4} />
       </div>
     );
   }
-  if (error || !response) {
-    return (
-      <div className="muted" style={{ padding: "0.75rem", textAlign: "center" }}>
-        {error ?? t("No attack path available.", "Kein Angriffspfad verfügbar.")}
-      </div>
-    );
-  }
+  if (error) return <ErrorState title={error} />;
+  if (!response) return <EmptyState title={t("No attack path available.", "Kein Angriffspfad verfügbar.")} />;
   return (
     <AttackPathGraphView
       graph={response.graph}

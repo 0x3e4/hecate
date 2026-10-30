@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import "../screens/vulnerability-detail.css";
 import type { CWEInfo } from "../api/cwe";
 import { getCweBulk } from "../api/cwe";
 import { useI18n } from "../i18n/context";
+import { EmptyState } from "../ui/primitives";
+import { SkeletonBlock } from "./Skeleton";
 
 interface CweListProps {
   cwes: string[];
@@ -37,23 +40,32 @@ export const CweList = ({ cwes }: CweListProps) => {
   }, [cwes, t]);
 
   if (!cwes.length) {
-    return <span>—</span>;
+    return <EmptyState title={t("No CWEs listed.", "Keine CWEs hinterlegt.")} />;
   }
 
   if (loading) {
-    return <div className="muted">{t("Loading CWE information...", "CWE-Informationen werden geladen...")}</div>;
+    return (
+      <div role="status">
+        <span className="visually-hidden">{t("Loading CWE information...", "CWE-Informationen werden geladen...")}</span>
+        <div className="vulnerability-detail-skeleton-stack">
+          {cwes.map((cwe) => (
+            <SkeletonBlock key={cwe} height="3rem" radius={4} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      <div className="link-list">
         {cwes.map((cwe) => (
           <a
             key={cwe}
             href={`https://cwe.mitre.org/data/definitions/${cwe.replace(/[^0-9]/g, "")}.html`}
             target="_blank"
             rel="noreferrer"
-            className="chip"
+            className="vulnerability-detail-entry-id"
           >
             {cwe}
           </a>
@@ -63,41 +75,34 @@ export const CweList = ({ cwes }: CweListProps) => {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+    <ul className="vulnerability-detail-entries">
       {cwes.map((cwe) => {
         const normalized = cwe.replace(/[^0-9]/g, "");
         const info = cweInfo[normalized];
 
         return (
-          <div key={cwe} className="cwe-item">
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-              <a
-                href={`https://cwe.mitre.org/data/definitions/${normalized}.html`}
-                target="_blank"
-                rel="noreferrer"
-                className="chip"
-                style={{ textDecoration: "none" }}
-              >
-                {cwe}
-              </a>
+          <li key={cwe} className="vulnerability-detail-entry">
+            <a
+              href={`https://cwe.mitre.org/data/definitions/${normalized}.html`}
+              target="_blank"
+              rel="noreferrer"
+              className="vulnerability-detail-entry-id"
+            >
+              {cwe}
+            </a>
+            <div className="vulnerability-detail-entry-body">
               {info ? (
-                <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-                  {info.name}
-                </span>
+                <div className="vulnerability-detail-entry-name">{info.name}</div>
               ) : (
-                <span className="muted" style={{ fontSize: "0.9rem" }}>
-                  {t("See CWE database for details", "Siehe CWE-Datenbank für Details")}
-                </span>
+                <div className="muted">{t("See CWE database for details", "Siehe CWE-Datenbank für Details")}</div>
+              )}
+              {info && info.description && info.description !== info.name && (
+                <p className="vulnerability-detail-entry-text">{info.description}</p>
               )}
             </div>
-            {info && info.description && info.description !== info.name && (
-              <div className="muted" style={{ fontSize: "0.9rem", paddingLeft: "0.25rem" }}>
-                {info.description}
-              </div>
-            )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 };

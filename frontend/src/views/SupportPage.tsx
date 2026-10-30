@@ -1,86 +1,19 @@
 import { useEffect, useState } from "react";
-import {
-  LuCoffee,
-  LuExternalLink,
-  LuGithub,
-  LuHeart,
-  LuStar,
-  LuCircleCheck,
-  LuTriangleAlert,
-  LuCircleAlert,
-} from "react-icons/lu";
+import { LuCoffee, LuExternalLink, LuGithub } from "react-icons/lu";
 
+import "../screens/support.css";
 import { fetchVersionInfo } from "../api/version";
+import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import type { VersionInfo } from "../types";
+import { ErrorState, PageHeader, Section } from "../ui/primitives";
 
-const KOFI_RED = "#FF5E5B";
-const GITHUB_BG = "#24292f";
+type StatusTone = "ok" | "info" | "error" | "muted";
 
-const buttonBase: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.55rem",
-  padding: "0.65rem 1.1rem",
-  borderRadius: "10px",
-  fontSize: "0.95rem",
-  fontWeight: 600,
-  textDecoration: "none",
-  border: "1px solid transparent",
-  transition: "transform 120ms ease, box-shadow 120ms ease",
-};
-
-const kofiStyle: React.CSSProperties = {
-  ...buttonBase,
-  background: KOFI_RED,
-  color: "#fff",
-  boxShadow: "0 6px 18px rgba(255, 94, 91, 0.35)",
-};
-
-const githubStyle: React.CSSProperties = {
-  ...buttonBase,
-  background: GITHUB_BG,
-  color: "#fff",
-  borderColor: "rgba(255,255,255,0.12)",
-};
-
-const releaseLinkStyle: React.CSSProperties = {
-  ...buttonBase,
-  background: "rgba(252, 196, 25, 0.14)",
-  border: "1px solid rgba(252, 196, 25, 0.45)",
-  color: "rgba(252, 196, 25)",
-};
-
-const badgeBase: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  padding: "0.35rem 0.7rem",
-  borderRadius: "999px",
-  fontSize: "0.85rem",
-  fontWeight: 600,
-};
-
-const upToDateBadge: React.CSSProperties = {
-  ...badgeBase,
-  background: "rgba(105, 219, 124, 0.14)",
-  border: "1px solid rgba(105, 219, 124, 0.35)",
-  color: "rgba(105, 219, 124)",
-};
-
-const updateBadge: React.CSSProperties = {
-  ...badgeBase,
-  background: "rgba(252, 196, 25, 0.14)",
-  border: "1px solid rgba(252, 196, 25, 0.45)",
-  color: "rgba(252, 196, 25)",
-};
-
-const unreachableBadge: React.CSSProperties = {
-  ...badgeBase,
-  background: "rgba(160, 160, 160, 0.12)",
-  border: "1px solid rgba(160, 160, 160, 0.3)",
-  color: "rgba(200, 200, 200)",
-};
+/** A state as a word, never colour alone. */
+const StatusWord = ({ tone, children }: { tone: StatusTone; children: React.ReactNode }) => (
+  <span className={`support-screen-status support-screen-status--${tone}`}>{children}</span>
+);
 
 export const SupportPage = () => {
   const { t } = useI18n();
@@ -88,7 +21,7 @@ export const SupportPage = () => {
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    document.title = `${t("Support", "Unterstützung")} – Hecate`;
+    document.title = `${t("Support", "Unterstützung")} | Hecate`;
   }, [t]);
 
   useEffect(() => {
@@ -144,35 +77,15 @@ export const SupportPage = () => {
 
   const renderRowStatus = (status: Status): React.ReactNode => {
     if (status === "up_to_date") {
-      return (
-        <span style={upToDateBadge}>
-          <LuCircleCheck aria-hidden="true" />
-          {t("Up to date", "Aktuell")}
-        </span>
-      );
+      return <StatusWord tone="ok">{t("Up to date", "Aktuell")}</StatusWord>;
     }
     if (status === "build_update") {
-      return (
-        <span style={updateBadge}>
-          <LuTriangleAlert aria-hidden="true" />
-          {t("New build available", "Neuer Build verfügbar")}
-        </span>
-      );
+      return <StatusWord tone="info">{t("New build available", "Neuer Build verfügbar")}</StatusWord>;
     }
     if (status === "unreachable") {
-      return (
-        <span style={unreachableBadge}>
-          <LuCircleAlert aria-hidden="true" />
-          {t("Unreachable", "Nicht erreichbar")}
-        </span>
-      );
+      return <StatusWord tone="error">{t("Unreachable", "Nicht erreichbar")}</StatusWord>;
     }
-    return (
-      <span style={unreachableBadge}>
-        <LuCircleAlert aria-hidden="true" />
-        {t("Build SHA unknown", "Build-SHA unbekannt")}
-      </span>
-    );
+    return <StatusWord tone="muted">{t("Build SHA unknown", "Build-SHA unbekannt")}</StatusWord>;
   };
 
   type Row = {
@@ -232,117 +145,112 @@ export const SupportPage = () => {
     const anyOutdated = statuses.includes("build_update");
 
     if (allUpToDate) {
-      return (
-        <span style={upToDateBadge}>
-          <LuCircleCheck aria-hidden="true" />
-          {t("All components up to date", "Alle Komponenten aktuell")}
-        </span>
-      );
+      return <StatusWord tone="ok">{t("All components up to date", "Alle Komponenten aktuell")}</StatusWord>;
     }
     if (info.semverTag) {
       const tag = info.semverTag.tag.replace(/^v/, "");
-      return (
-        <span style={updateBadge}>
-          <LuTriangleAlert aria-hidden="true" />
-          {t(`Release available: ${tag}`, `Release verfügbar: ${tag}`)}
-        </span>
-      );
+      return <StatusWord tone="info">{t(`Release available: ${tag}`, `Release verfügbar: ${tag}`)}</StatusWord>;
     }
     if (anyOutdated) {
       const count = statuses.filter((s) => s === "build_update").length;
       return (
-        <span style={updateBadge}>
-          <LuTriangleAlert aria-hidden="true" />
+        <StatusWord tone="info">
           {t(
             `${count} component${count === 1 ? "" : "s"} out of date`,
             `${count} Komponente${count === 1 ? "" : "n"} veraltet`
           )}
-        </span>
+        </StatusWord>
       );
     }
-    return (
-      <span style={unreachableBadge}>
-        <LuCircleAlert aria-hidden="true" />
-        {t("Status partial", "Status unvollständig")}
-      </span>
-    );
+    return <StatusWord tone="muted">{t("Status partial", "Status unvollständig")}</StatusWord>;
   };
 
   const renderVersionBody = () => {
     if (loadError) {
       return (
-        <p className="muted">
-          {t(
+        <ErrorState
+          title={t(
             "Couldn't load version information.",
             "Versionsinformationen konnten nicht geladen werden."
           )}
-        </p>
+        />
       );
     }
     if (!info) {
-      return <p className="muted">{t("Loading…", "Wird geladen…")}</p>;
+      return (
+        <div className="support-screen-skeleton" role="status">
+          <span className="visually-hidden">{t("Loading…", "Wird geladen…")}</span>
+          <SkeletonBlock height={36} />
+          <SkeletonBlock height={36} />
+          <SkeletonBlock height={36} />
+        </div>
+      );
     }
 
     const rows = buildRows(info);
 
-    const runningLabel = (row: Row): string => {
-      if (!row.reachable) return t("(not reachable)", "(nicht erreichbar)");
-      if (!row.runningSha) return t("(SHA unknown)", "(SHA unbekannt)");
-      const v = row.runningVersion ? `${row.runningVersion} · ` : "";
-      return `${v}${row.runningSha}`;
+    const renderRunning = (row: Row): React.ReactNode => {
+      if (!row.reachable) return <span className="muted">{t("(not reachable)", "(nicht erreichbar)")}</span>;
+      if (!row.runningSha) return <span className="muted">{t("(SHA unknown)", "(SHA unbekannt)")}</span>;
+      return (
+        <span className="support-screen-value">
+          {row.runningVersion ? <span className="mono">{row.runningVersion}</span> : null}
+          <span className="mono muted">{row.runningSha}</span>
+        </span>
+      );
     };
 
-    const latestLabel = (row: Row): string => {
-      if (!row.latestTag) return t("(no signal)", "(kein Signal)");
+    const renderLatest = (row: Row): React.ReactNode => {
+      if (!row.latestTag) return <span className="muted">{t("(no signal)", "(kein Signal)")}</span>;
       const ago = formatRelative(row.publishedAt);
-      return ago ? `${row.latestTag} · ${ago}` : row.latestTag;
+      return (
+        <span className="support-screen-value">
+          {row.packageUrl ? (
+            <a className="mono" href={row.packageUrl} target="_blank" rel="noopener noreferrer">
+              {row.latestTag}
+            </a>
+          ) : (
+            <span className="mono">{row.latestTag}</span>
+          )}
+          {ago ? <span className="muted">{ago}</span> : null}
+        </span>
+      );
     };
 
     return (
       <>
-        <div className="support-version-table">
-          <div className="support-version-table-header">
-            <div>{t("Component", "Komponente")}</div>
-            <div>{t("Running", "Laufend")}</div>
-            <div>{t("Latest on GitHub", "Aktuell auf GitHub")}</div>
-            <div aria-hidden="true" />
-          </div>
-
-          {rows.map((row) => {
-            const status = componentStatus(row.runningSha, row.latestSha, row.reachable);
-            return (
-              <div className="support-version-row" key={row.key}>
-                <div className="support-version-name">{row.label}</div>
-                <div className="support-version-running">
-                  <span className="support-version-mobile-label">
-                    {t("Running", "Laufend")}
-                  </span>
-                  {runningLabel(row)}
-                </div>
-                <div className="support-version-latest">
-                  <span className="support-version-mobile-label">
-                    {t("Latest", "Aktuell")}
-                  </span>
-                  {row.packageUrl && row.latestTag ? (
-                    <a href={row.packageUrl} target="_blank" rel="noopener noreferrer">
-                      {latestLabel(row)}
-                    </a>
-                  ) : (
-                    latestLabel(row)
-                  )}
-                </div>
-                <div className="support-version-status">{renderRowStatus(status)}</div>
-              </div>
-            );
-          })}
+        <div className="table-scroll">
+          <table className="support-screen-table">
+            <thead>
+              <tr>
+                <th>{t("Component", "Komponente")}</th>
+                <th>{t("Running", "Laufend")}</th>
+                <th>{t("Latest on GitHub", "Aktuell auf GitHub")}</th>
+                <th>{t("Status", "Status")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const status = componentStatus(row.runningSha, row.latestSha, row.reachable);
+                return (
+                  <tr key={row.key}>
+                    <td className="support-screen-component">{row.label}</td>
+                    <td data-label={t("Running", "Laufend")}>{renderRunning(row)}</td>
+                    <td data-label={t("Latest", "Aktuell")}>{renderLatest(row)}</td>
+                    <td className="support-screen-state">{renderRowStatus(status)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
         {info.semverTag && (
-          <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
+          <p className="support-screen-release">
             <a
+              className="btn btn-secondary"
               href={info.semverTag.releaseUrl}
               target="_blank"
               rel="noopener noreferrer"
-              style={releaseLinkStyle}
             >
               <LuExternalLink aria-hidden="true" />
               {t(
@@ -366,65 +274,45 @@ export const SupportPage = () => {
 
   return (
     <div className="page support-page">
-      <section className="card">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: "0.75rem 1rem",
-          }}
-        >
-          <h2 style={{ marginBottom: 0 }}>{t("Version", "Version")}</h2>
-          {renderVersionBadge()}
-        </div>
-        <p className="muted" style={{ marginTop: "0.5rem" }}>
-          {t(
-            "Hourly check against GitHub for new tags and main-<sha> builds. Running here on top, latest available below.",
-            "Stündlicher GitHub-Abgleich auf neue Tags und main-<sha>-Builds. Oben: was hier läuft. Unten: was verfügbar ist."
-          )}
-        </p>
-        {renderVersionBody()}
-      </section>
+      <PageHeader
+        title={t("Support", "Unterstützung")}
+        description={t(
+          "Hourly check against GitHub for new tags and main-<sha> builds.",
+          "Stündlicher GitHub-Abgleich auf neue Tags und main-<sha>-Builds."
+        )}
+      />
 
-      <div className="support-grid">
-        <section className="card">
-          <h2>
-            <LuHeart aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "0.4rem", color: KOFI_RED }} />
-            {t("Support Hecate", "Hecate unterstützen")}
-          </h2>
-          <p className="muted">
+      <Section title={t("Version", "Version")} actions={renderVersionBadge()}>
+        {renderVersionBody()}
+      </Section>
+
+      <div className="support-screen-ways">
+        <section className="support-screen-way">
+          <h2>{t("Support Hecate", "Hecate unterstützen")}</h2>
+          <p>
             {t(
               "Hecate is a free, self-hosted vulnerability-management platform. If it saves you time or helps keep your systems safer, please consider supporting development. It directly funds new data sources, scanner integrations, and feature work.",
               "Hecate ist eine kostenlose, selbst gehostete Schwachstellenmanagement-Plattform. Wenn sie Ihnen Zeit spart oder Ihre Systeme sicherer macht, freuen wir uns über Ihre Unterstützung. Sie fließt direkt in neue Datenquellen, Scanner-Integrationen und neue Funktionen."
             )}
           </p>
-          <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
-            <a href={kofiUrl} target="_blank" rel="noopener noreferrer" style={kofiStyle}>
-              <LuCoffee aria-hidden="true" />
-              {t("Donate on Ko-fi", "Auf Ko-fi spenden")}
-            </a>
-          </p>
+          <a className="btn btn-primary" href={kofiUrl} target="_blank" rel="noopener noreferrer">
+            <LuCoffee aria-hidden="true" />
+            {t("Donate on Ko-fi", "Auf Ko-fi spenden")}
+          </a>
         </section>
 
-        <section className="card">
-          <h2>
-            <LuStar aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "0.4rem", color: "#fcc419" }} />
-            {t("Star us on GitHub", "GitHub-Star vergeben")}
-          </h2>
-          <p className="muted">
+        <section className="support-screen-way">
+          <h2>{t("Star us on GitHub", "GitHub-Star vergeben")}</h2>
+          <p>
             {t(
               "A star on GitHub helps other defenders discover Hecate and signals which features the community values. It costs nothing and takes ten seconds.",
               "Ein Stern auf GitHub hilft anderen Verteidiger:innen, Hecate zu finden, und zeigt uns, welche Funktionen der Community wichtig sind. Es kostet nichts und dauert zehn Sekunden."
             )}
           </p>
-          <p style={{ marginTop: "1.25rem", marginBottom: 0 }}>
-            <a href={repoUrl} target="_blank" rel="noopener noreferrer" style={githubStyle}>
-              <LuGithub aria-hidden="true" />
-              {t("Star on GitHub", "Stern auf GitHub vergeben")}
-            </a>
-          </p>
+          <a className="btn btn-secondary" href={repoUrl} target="_blank" rel="noopener noreferrer">
+            <LuGithub aria-hidden="true" />
+            {t("Star on GitHub", "Stern auf GitHub vergeben")}
+          </a>
         </section>
       </div>
     </div>

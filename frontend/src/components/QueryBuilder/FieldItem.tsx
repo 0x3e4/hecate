@@ -1,6 +1,7 @@
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import type { DQLFieldHint } from "../../constants/dqlFields";
 import { useI18n } from "../../i18n/context";
+import { IconButton } from "../../ui/primitives";
 
 interface FieldItemProps {
   field: DQLFieldHint;
@@ -9,53 +10,32 @@ interface FieldItemProps {
   isExpanded: boolean;
 }
 
-const getTypeColor = (type: string): string => {
-  switch (type) {
-    case "string":
-      return "#60a5fa"; // blue
-    case "number":
-      return "#34d399"; // green
-    case "boolean":
-      return "#f59e0b"; // orange
-    case "date":
-      return "#a78bfa"; // purple
-    case "array":
-      return "#ec4899"; // pink
-    default:
-      return "#9ca3af"; // gray
-  }
-};
-
 export const FieldItem = ({ field, onClick, onExpand, isExpanded }: FieldItemProps) => {
   const { language, t } = useI18n();
-  const typeColor = getTypeColor(field.type);
   const description = language === "de" ? field.descriptionDe : field.description;
+  const descriptionId = `query-builder-field-${field.field}`;
 
   return (
-    <div className="field-item">
-      <div className="field-item-main">
-        <div className="field-item-content" onClick={onClick}>
-          <code className="field-name">{field.field}</code>
-          <span className="field-type-badge" style={{ backgroundColor: typeColor }}>
-            {field.type.toUpperCase()}
-          </span>
-          <p className="field-description">{description}</p>
-        </div>
+    <div className="query-builder-field">
+      <button type="button" className="query-builder-field-insert" aria-describedby={descriptionId} onClick={onClick}>
+        <code className="mono">{field.field}</code>
+        <span className="query-builder-field-type">{field.type}</span>
+      </button>
+      <p id={descriptionId} className="query-builder-field-description">{description}</p>
 
-        {field.aggregatable && (
-          <button
-            className="field-expand-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onExpand();
-            }}
-            type="button"
-            title={t("Show values", "Werte anzeigen")}
-          >
-            {isExpanded ? <LuChevronDown /> : <LuChevronRight />}
-          </button>
-        )}
-      </div>
+      {field.aggregatable && (
+        <IconButton
+          className="query-builder-field-expand"
+          label={t("Show values", "Werte anzeigen")}
+          aria-expanded={isExpanded}
+          onClick={(e) => {
+            e.stopPropagation();
+            onExpand();
+          }}
+        >
+          {isExpanded ? <LuChevronDown size={16} aria-hidden="true" /> : <LuChevronRight size={16} aria-hidden="true" />}
+        </IconButton>
+      )}
     </div>
   );
 };

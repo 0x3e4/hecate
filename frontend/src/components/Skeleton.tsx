@@ -7,7 +7,7 @@ export type SkeletonBlockProps = {
   style?: CSSProperties;
 };
 
-export const SkeletonBlock = ({ height, width = "100%", radius = 8, style }: SkeletonBlockProps) => (
+export const SkeletonBlock = ({ height, width = "100%", radius = 4, style }: SkeletonBlockProps) => (
   <div
     className="skeleton"
     style={{ height, width, borderRadius: radius, ...style }}

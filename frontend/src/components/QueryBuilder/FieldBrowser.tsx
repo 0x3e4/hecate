@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { LuChevronDown, LuChevronRight, LuSearch } from "react-icons/lu";
 import { DQL_FIELD_HINTS, FIELD_CATEGORIES } from "../../constants/dqlFields";
 import { useI18n } from "../../i18n/context";
+import { EmptyState } from "../../ui/primitives";
 import { FieldItem } from "./FieldItem";
 
 interface FieldBrowserProps {
@@ -56,40 +57,43 @@ export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: Fi
   };
 
   return (
-    <div className="field-browser">
-      <div className="field-browser-header">
-        <h3>{t("Available Fields", "Verfügbare Felder")}</h3>
-        <div className="field-browser-search">
-          <LuSearch className="search-icon" />
+    <div className="query-builder-fields">
+      <div className="query-builder-fields-head">
+        <h2>{t("Available fields", "Verfügbare Felder")}</h2>
+        <div className="query-builder-fields-search">
+          <LuSearch size={16} aria-hidden="true" />
           <input
             type="text"
+            aria-label={t("Search fields...", "Felder durchsuchen...")}
             placeholder={t("Search fields...", "Felder durchsuchen...")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
           />
         </div>
       </div>
 
-      <div className="field-categories">
+      <div className="query-builder-fields-list">
         {categorizedFields.map(category => {
           const isExpanded = expandedCategories.has(category.name);
           return (
-            <div key={category.name} className="field-category">
-              <button
-                className="field-category-header"
-                onClick={() => toggleCategory(category.name)}
-                type="button"
-              >
-                {isExpanded ? <LuChevronDown /> : <LuChevronRight />}
-                <span className="category-name">
-                  {language === "de" ? category.nameDe : category.name}
-                </span>
-                <span className="category-count">({category.fields.length})</span>
-              </button>
+            <div key={category.name} className="query-builder-category">
+              <h3>
+                <button
+                  className="query-builder-category-toggle"
+                  onClick={() => toggleCategory(category.name)}
+                  type="button"
+                  aria-expanded={isExpanded}
+                >
+                  {isExpanded ? <LuChevronDown size={16} aria-hidden="true" /> : <LuChevronRight size={16} aria-hidden="true" />}
+                  <span className="query-builder-category-name">
+                    {language === "de" ? category.nameDe : category.name}
+                  </span>
+                  <span className="query-builder-category-count">{category.fields.length}</span>
+                </button>
+              </h3>
 
               {isExpanded && (
-                <div className="field-list">
+                <div>
                   {category.fields.map(field => (
                     <FieldItem
                       key={field.field}
@@ -106,9 +110,7 @@ export const FieldBrowser = ({ onFieldClick, onFieldExpand, expandedFields }: Fi
         })}
 
         {categorizedFields.length === 0 && (
-          <div className="no-results">
-            {t(`No fields found for "${searchTerm}"`, `Keine Felder gefunden für "${searchTerm}"`)}
-          </div>
+          <EmptyState title={t(`No fields found for "${searchTerm}"`, `Keine Felder gefunden für "${searchTerm}"`)} />
         )}
       </div>
     </div>

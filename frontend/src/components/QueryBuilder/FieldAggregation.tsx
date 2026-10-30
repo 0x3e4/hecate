@@ -3,6 +3,8 @@ import { getFieldAggregation } from "../../api/vulnerabilities";
 import { useI18n } from "../../i18n/context";
 import { getCurrentLocale } from "../../i18n/language";
 import type { DQLFieldValueBucket } from "../../types";
+import { EmptyState, ErrorState } from "../../ui/primitives";
+import { SkeletonBlock } from "../Skeleton";
 
 interface FieldAggregationProps {
   fieldName: string;
@@ -35,46 +37,45 @@ export const FieldAggregation = ({ fieldName, onValueClick }: FieldAggregationPr
 
   if (loading) {
     return (
-      <div className="field-aggregation loading">
-        <p>{t("Loading values...", "Lade Werte...")}</p>
+      <div className="query-builder-values-loading" role="status">
+        <span className="visually-hidden">{t("Loading values...", "Lade Werte...")}</span>
+        {["70%", "55%", "62%", "48%", "66%"].map((width) => (
+          <div key={width} className="query-builder-values-loading-row" aria-hidden="true">
+            <SkeletonBlock height={14} width={width} />
+            <SkeletonBlock height={14} width={48} />
+          </div>
+        ))}
       </div>
     );
   }
 
   if (error) {
-    return (
-      <div className="field-aggregation error">
-        <p>{error}</p>
-      </div>
-    );
+    return <ErrorState title={error} />;
   }
 
   if (buckets.length === 0) {
-    return (
-      <div className="field-aggregation empty">
-        <p>{t("No values available", "Keine Werte verfügbar")}</p>
-      </div>
-    );
+    return <EmptyState title={t("No values available", "Keine Werte verfügbar")} />;
   }
 
   return (
-    <div className="field-aggregation">
-      <div className="aggregation-header">
-        <span>{t(`Top ${buckets.length} values:`, `Top ${buckets.length} Werte:`)}</span>
-      </div>
-      <table className="aggregation-table">
+    <div>
+      <p className="query-builder-values-note">
+        {t(`Top ${buckets.length} values:`, `Top ${buckets.length} Werte:`)}
+      </p>
+      <table className="query-builder-values-table">
         <tbody>
           {buckets.map((bucket, index) => (
             <tr
               key={index}
               onClick={() => onValueClick(fieldName, bucket.value)}
-              className="aggregation-row"
             >
-              <td className="aggregation-value">
-                <code>{bucket.value}</code>
+              <td>
+                <button type="button" className="query-builder-value">
+                  <code className="mono">{bucket.value}</code>
+                </button>
               </td>
-              <td className="aggregation-count">
-                ({bucket.count.toLocaleString(getCurrentLocale())})
+              <td className="query-builder-value-count">
+                {bucket.count.toLocaleString(getCurrentLocale())}
               </td>
             </tr>
           ))}

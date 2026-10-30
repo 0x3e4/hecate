@@ -1,0 +1,115 @@
+/* Hallmark · modern-minimal · Hecate 2.0 system settings, one group per h2, hairlines between rows. Tokens only; see design.md. */
+.system-page { --system-label-width: 24rem; }
+
+.dialog-overlay.system-overlay { background: var(--scrim); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+.system-tabs { display: flex; margin-bottom: var(--space-lg); border-bottom: var(--rule-hair) solid var(--color-rule); }
+.system-tabs > button { flex-shrink: 0; white-space: nowrap; }
+
+.system-section-help { max-width: 75ch; margin-bottom: var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
+
+/* Settings: label and help left, control right */
+.system-setting { display: grid; grid-template-columns: var(--system-label-width) minmax(0, 1fr); align-items: start; gap: var(--space-xs) var(--space-lg); padding-block: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
+.system-setting-text { min-width: 0; padding-top: var(--space-xs); }
+.system-setting-label { display: block; font-size: var(--text-sm); font-weight: 600; }
+.system-setting-help { margin-top: var(--space-3xs); color: var(--color-muted); font-size: var(--text-xs); }
+.system-setting-help a { text-decoration: underline; text-decoration-color: var(--color-rule-strong); }
+.system-setting-control { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs) var(--space-sm); min-width: 0; min-height: var(--control-height); }
+.system-setting-note { flex-basis: 100%; color: var(--color-muted); font-size: var(--text-xs); }
+
+.system-input { flex: 1 1 16rem; min-width: 0; max-width: 28rem; font-size: var(--text-sm); }
+.system-input--wide { flex-basis: 100%; max-width: 48rem; }
+.system-input--number { flex: 0 0 7rem; }
+.system-input--tag { flex: 0 1 8rem; }
+.system-textarea { width: 100%; min-width: 0; font-size: var(--text-sm); resize: vertical; }
+
+.system-check { display: inline-flex; align-items: center; gap: var(--space-2xs); min-height: var(--control-height); font-size: var(--text-sm); cursor: pointer; }
+
+/* Inline forms */
+.system-form { margin-bottom: var(--space-md); }
+.system-form .system-setting { border-top: 0; padding-block: var(--space-xs); }
+.system-form-title { margin-bottom: var(--space-xs); }
+.system-form-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); padding-top: var(--space-xs); padding-left: calc(var(--system-label-width) + var(--space-lg)); }
+.system-fill-row { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: var(--space-xs); }
+
+/* Tables */
+.system-table td { vertical-align: middle; }
+.system-table strong { font-weight: 600; }
+.system-table th.system-cell-action, .system-table td.system-cell-action { text-align: right; white-space: nowrap; }
+.system-cell-nowrap { white-space: nowrap; }
+.system-cell-detail { min-width: 10rem; color: var(--color-ink-2); }
+.system-cell-sub { margin-top: var(--space-3xs); color: var(--color-muted); font-size: var(--text-xs); }
+.system-name-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); }
+.system-row-actions { display: inline-flex; gap: var(--space-xs); }
+.system-row-actions--start { display: flex; flex-wrap: wrap; }
+
+.system-row--expandable { cursor: pointer; }
+.system-row--expandable:hover, .system-row--expanded { background: var(--overlay-1); }
+.system-row-toggle { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: 0; border: 0; background: none; color: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.system-row-toggle svg { flex-shrink: 0; color: var(--color-muted); transition: transform var(--dur-micro) var(--ease-out); }
+.system-row-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.system-detail-row > td { padding-block: 0 var(--space-sm); }
+.system-detail-row .system-form { margin-bottom: 0; }
+
+.system-detail-meta { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-lg); margin: 0 0 var(--space-sm); }
+.system-detail-meta dt { color: var(--color-muted); font-size: var(--text-xs); }
+.system-detail-meta dd { margin: 0; }
+.system-detail-error { color: var(--color-error); }
+.system-pre { margin: var(--space-2xs) 0 0; font-family: var(--font-outlier); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.system-code { font-family: var(--font-outlier); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.system-loops { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 0; }
+.system-loop-fields { color: var(--color-muted); }
+
+/* State as a word */
+.system-status { font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
+.system-status--ok { color: var(--color-success); }
+.system-status--error { color: var(--color-error); }
+.system-status--info { color: var(--color-info); }
+.system-status--muted { color: var(--color-muted); font-weight: 400; }
+
+.system-table .system-toggle { min-height: var(--control-height); padding: 0; border: 0; background: none; color: var(--color-ink); font-size: var(--text-sm); font-weight: 600; text-decoration: underline dotted; text-decoration-color: var(--color-rule-strong); text-underline-offset: 0.2em; cursor: pointer; }
+.system-table .system-toggle:hover, .system-table .system-toggle:active { color: var(--color-link); }
+.system-table .system-toggle--off { color: var(--color-muted); font-weight: 400; }
+.system-toggle:focus-visible, .system-row-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* Destructive: outlined, the error colour only on the label */
+.btn-secondary.system-btn-danger, .btn-secondary.system-btn-danger:hover, .btn-secondary.system-btn-danger:active, .btn-secondary.system-btn-danger:disabled { color: var(--color-error); }
+
+.system-resync { display: flex; flex-direction: column; gap: var(--space-xs); max-width: 48rem; }
+
+.system-skeleton { display: flex; flex-direction: column; gap: var(--space-xs); padding-block: var(--space-xs); }
+
+@media (prefers-reduced-motion: reduce) {
+  .system-row-toggle svg { transition: none; }
+}
+
+@media (max-width: 60rem) {
+  .system-page { --system-label-width: 16rem; }
+}
+
+@media (max-width: 40rem) {
+  .system-tabs { flex-wrap: wrap; }
+  .system-setting { grid-template-columns: minmax(0, 1fr); }
+  .system-setting-text { padding-top: 0; }
+  .system-setting-control { min-height: 0; }
+  .system-form-actions { padding-left: 0; }
+  .system-input, .system-textarea { font-size: var(--text-md); }
+  .system-input, .system-input--tag { flex: 1 1 100%; max-width: none; }
+  .system-input--number { flex: 0 0 7rem; }
+  .system-setting-control .btn, .system-setting-control .btn-secondary, .system-setting-control .btn-primary { flex: 1 1 auto; }
+
+  /* Rows stack: the name and its action stay on the first line */
+  .system-table, .system-table tbody { display: block; }
+  .system-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .system-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2xs) var(--space-sm); padding-block: var(--space-sm); border-bottom: var(--rule-hair) solid var(--color-rule); }
+  .system-table td { display: block; grid-column: 1 / -1; min-width: 0; padding: 0; border: 0; }
+  .system-table td.system-cell-name { grid-column: 1; grid-row: 1; }
+  .system-table td.system-cell-action { grid-column: 2; grid-row: 1; }
+  .system-table td[data-label] { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-md); white-space: normal; text-align: right; }
+  .system-table td[data-label]::before { flex-shrink: 0; content: attr(data-label); color: var(--color-muted); font-size: var(--text-xs); }
+  .system-table--stack-actions td.system-cell-action { grid-column: 1 / -1; grid-row: auto; padding-top: var(--space-2xs); text-align: left; }
+  .system-table--stack-actions .system-row-actions { flex-wrap: wrap; }
+  .system-detail-row { padding-block: 0 var(--space-sm); }
+  .system-detail-row > td { padding: 0; }
+}
+.system-gate-title { max-width: none; margin-bottom: var(--space-sm); font-size: var(--text-section); }

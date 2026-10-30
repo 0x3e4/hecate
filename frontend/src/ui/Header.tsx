@@ -12,9 +12,9 @@ export const Header = ({ onMenuToggle, isMobileMenuOpen }: HeaderProps) => {
   return (
     <header className="app-header">
       <Link to="/" className="header-branding">
-        <img src="/logo.png" alt="Hecate Logo" className="header-logo" />
+        <img src="/logo.png" alt="" width={32} height={32} className="header-logo" />
         <div>
-          <h1>Hecate Cyber Defense</h1>
+          <p className="header-title">Hecate Cyber Defense</p>
           <p>{t("AI-powered vulnerability analysis", "KI-gestützte Schwachstellenanalyse")}</p>
         </div>
       </Link>

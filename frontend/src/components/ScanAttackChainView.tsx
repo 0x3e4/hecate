@@ -9,8 +9,10 @@ import type {
   ScanAttackChainResponse,
   ScanAttackChainStage,
 } from "../types";
+import { EmptyState, ErrorState } from "../ui/primitives";
 import { AttackPathGraphView } from "./AttackPathGraph";
 import { AILoadingIndicator } from "./AILoadingIndicator";
+import { SkeletonBlock } from "./Skeleton";
 
 interface ScanAttackChainViewProps {
   scanId: string;
@@ -18,14 +20,7 @@ interface ScanAttackChainViewProps {
   onPersistedNarrativeChange?: () => void;
 }
 
-const STAGE_TONE: Record<string, "danger" | "warning" | "info" | "muted"> = {
-  foothold: "warning",
-  credential_access: "info",
-  priv_escalation: "warning",
-  lateral_movement: "info",
-  impact: "danger",
-};
-
+/** A kill-chain stage is a position in the attack, not a severity, so it stays neutral. */
 function StageChip({
   stage,
   active,
@@ -35,45 +30,10 @@ function StageChip({
   active: boolean;
   onClick: () => void;
 }) {
-  const tone = STAGE_TONE[stage.stage] ?? "muted";
-  const palette = {
-    danger: { bg: "rgba(255,107,107,0.15)", border: "rgba(255,107,107,0.45)", text: "#ffd6d6" },
-    warning: { bg: "rgba(240,166,71,0.16)", border: "rgba(240,166,71,0.45)", text: "#ffe4bd" },
-    info: { bg: "rgba(92,132,255,0.15)", border: "rgba(92,132,255,0.45)", text: "#d8e3ff" },
-    muted: { bg: "rgba(255,255,255,0.06)", border: "rgba(255,255,255,0.18)", text: "rgba(220,224,235,0.9)" },
-  }[tone];
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.4rem",
-        padding: "0.4rem 0.75rem",
-        background: palette.bg,
-        border: `1px solid ${palette.border}`,
-        borderRadius: "999px",
-        color: palette.text,
-        fontSize: "0.8rem",
-        fontWeight: 500,
-        cursor: "pointer",
-        outline: active ? "2px solid rgba(255,255,255,0.45)" : "none",
-        outlineOffset: "1px",
-      }}
-    >
+    <button type="button" className="scan-detail-stage" aria-pressed={active} onClick={onClick}>
       <span>{stage.label}</span>
-      <span
-        style={{
-          background: "rgba(0,0,0,0.25)",
-          padding: "0.05rem 0.45rem",
-          borderRadius: "999px",
-          fontSize: "0.7rem",
-          fontWeight: 700,
-        }}
-      >
-        {stage.findings.length}
-      </span>
+      <span className="scan-detail-stage-count">{stage.findings.length}</span>
     </button>
   );
 }
@@ -137,7 +97,7 @@ export function ScanAttackChainView({
   );
 
   // Wrapped in useCallback so the prop reference stays stable across pill
-  // clicks / activeStage changes — otherwise AttackPathGraphView re-renders
+  // clicks / activeStage changes. Otherwise AttackPathGraphView re-renders
   // and (in some browsers) the synthetic-event reconciliation interrupted
   // panzoom's drag-tracking, manifesting as "graph resets and freezes".
   const handleTriggerNarrative = useCallback(
@@ -201,56 +161,42 @@ export function ScanAttackChainView({
 
   if (loading && !response) {
     return (
-      <div className="muted" style={{ padding: "1.5rem", textAlign: "center" }}>
-        {t("Loading attack chain…", "Angriffskette wird geladen…")}
+      <div className="scan-detail-skeleton" role="status" aria-label={t("Loading attack chain…", "Angriffskette wird geladen…")}>
+        <SkeletonBlock height="1.25rem" width="240px" radius={4} />
+        <SkeletonBlock height={36} width="60%" radius={4} />
+        <SkeletonBlock height={240} radius={4} />
       </div>
     );
   }
   if (!response) {
-    return (
-      <div className="muted" style={{ padding: "1.5rem", textAlign: "center" }}>
-        {error ?? t("No attack chain available.", "Keine Angriffskette verfügbar.")}
-      </div>
-    );
+    return error
+      ? <ErrorState title={error} />
+      : <EmptyState title={t("No attack chain available.", "Keine Angriffskette verfügbar.")} />;
   }
   if (totalCves === 0) {
     return (
-      <div className="muted" style={{ padding: "1.5rem", textAlign: "center" }}>
-        {t(
-          "This scan has no CVE-typed findings — nothing to chain yet.",
-          "Dieser Scan hat keine CVE-Findings — noch keine Kette aufbauen.",
+      <EmptyState
+        title={t(
+          "This scan has no CVE-typed findings: nothing to chain yet.",
+          "Dieser Scan hat keine CVE-Findings: noch keine Kette aufbauen.",
         )}
-      </div>
+      />
     );
   }
 
   return (
     <div className="attack-chain">
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          padding: "0.85rem 1rem",
-          marginBottom: "1rem",
-          background: "rgba(151,117,250,0.08)",
-          border: "1px solid rgba(151,117,250,0.3)",
-          borderRadius: "0.65rem",
-          color: "rgba(228,220,255,0.95)",
-        }}
-      >
+      <div className="scan-detail-chain-head">
         <div>
-          <strong style={{ display: "block", marginBottom: "0.25rem" }}>
-            {t("Cross-CVE Attack Chain", "Angriffskette über mehrere CVEs")}
-          </strong>
-          <span style={{ fontSize: "0.85rem", opacity: 0.85 }}>
+          <h2>{t("Cross-CVE Attack Chain", "Angriffskette über mehrere CVEs")}</h2>
+          <p className="scan-detail-chain-text">
             {t(
-              `${stages.length} stages · ${totalCves} CVEs chained from this scan's findings.`,
-              `${stages.length} Stufen · ${totalCves} CVEs aus den Findings dieses Scans verkettet.`,
+              `${stages.length} stages, ${totalCves} CVEs chained from this scan's findings.`,
+              `${stages.length} Stufen, ${totalCves} CVEs aus den Findings dieses Scans verkettet.`,
             )}
-          </span>
+          </p>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div className="scan-detail-chips">
           {stages.map((stage) => (
             <StageChip
               key={stage.stage}
@@ -276,7 +222,7 @@ export function ScanAttackChainView({
       />
 
       {narrativeLoading && !error ? (
-        <div style={{ marginTop: "0.75rem" }}>
+        <div className="scan-detail-chain-loading">
           <AILoadingIndicator compact startedAt={narrativeStartedAt ?? undefined} />
         </div>
       ) : null}

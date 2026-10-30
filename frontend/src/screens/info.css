@@ -1,0 +1,67 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
+ * Documentation screens: /info/cicd, /info/api, /info/mcp. Tokens only; see design.md. */
+
+/* One readable column; the only structure is whitespace, hairlines and headings */
+.info-doc { max-width: 75ch; }
+.info-doc .page-header-description { max-width: 58ch; color: var(--color-ink-2); font-size: var(--text-md); }
+
+.info-tags { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-bottom: var(--space-lg); }
+
+/* Vertical rhythm */
+.info-section { color: var(--color-ink-2); }
+.info-section h2, .info-section h3 { color: var(--color-ink); text-wrap: balance; }
+/* Plex Sans sets about 1.3 characters per ch, so 58ch is a true 75 character line. Tables and code keep the full column. */
+.info-section p, .info-list, .info-prompts { max-width: 58ch; }
+.info-section > * + * { margin-top: var(--space-sm); }
+.info-section > h3 { margin-top: var(--space-lg); }
+.info-section > h3 + * { margin-top: var(--space-xs); }
+.info-section a { display: inline; }
+.info-section a:hover { color: var(--color-link); }
+
+.info-note { color: var(--color-muted); font-size: var(--text-sm); }
+
+.info-list { margin: 0; padding-left: var(--space-lg); }
+.info-list > li + li { margin-top: var(--space-2xs); }
+.info-list > li::marker { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+
+/* Inline code */
+.info-doc code { padding-inline: var(--space-3xs); border-radius: var(--radius-control); background: var(--overlay-2); font-family: var(--font-outlier); font-size: 0.92em; overflow-wrap: anywhere; }
+
+/* Code block */
+.info-code { display: flex; align-items: flex-start; background: var(--color-paper-2); border-radius: var(--radius-card); }
+.info-code pre { flex: 1; min-width: 0; margin: 0; padding: var(--space-sm) var(--space-md); overflow-x: auto; color: var(--color-ink); font-family: var(--font-outlier); font-size: var(--text-sm); line-height: 1.6; }
+.info-code code { padding: 0; background: none; font-size: inherit; overflow-wrap: normal; }
+.info-code-copy { margin: var(--space-2xs); }
+.info-code-copy:active { background: var(--overlay-3); }
+.info-code-copy:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* Reference tables */
+.info-table th, .info-table td { padding-block: var(--space-xs); vertical-align: top; }
+.info-table th:first-child, .info-table td:first-child { padding-left: 0; }
+.info-table th:last-child, .info-table td:last-child { padding-right: 0; }
+.info-table code { padding: 0; background: none; color: var(--color-ink); white-space: nowrap; overflow-wrap: normal; }
+.info-table td:last-child code { color: inherit; white-space: normal; overflow-wrap: anywhere; }
+.info-table-default { min-width: 8rem; color: var(--color-muted); }
+.info-table .info-table-default code { white-space: normal; overflow-wrap: anywhere; }
+.info-table-pair { display: flex; flex-direction: column; gap: var(--space-3xs); }
+
+/* Well for the warnings that must not be skimmed past */
+.info-section > .info-callout { margin-top: var(--space-lg); }
+.info-callout h3 { display: flex; align-items: center; gap: var(--space-xs); }
+.info-callout .info-list { margin-top: var(--space-xs); }
+
+.info-prompts { margin: 0; padding: 0; list-style: none; }
+.info-prompts li { padding-block: var(--space-xs); border-top: var(--rule-hair) solid var(--color-rule); }
+.info-prompts li:first-child { border-top: 0; padding-top: 0; }
+
+/* Phones: rows stack, so the identifier stays in view without sideways scrolling */
+@media (max-width: 40rem) {
+  .info-table, .info-table tbody { display: block; }
+  .info-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .info-table tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-3xs) var(--space-sm); padding-block: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule); }
+  .info-table th, .info-table td { padding: 0; border: 0; }
+  .info-table td:last-child { flex-basis: 100%; }
+  .info-table code { white-space: normal; overflow-wrap: anywhere; }
+  .info-table-default { min-width: 0; }
+  .info-table td[data-label]::before { content: attr(data-label) ": "; color: var(--color-muted); }
+}

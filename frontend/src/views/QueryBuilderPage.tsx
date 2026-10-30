@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import "../screens/query-builder.css";
 import { FieldBrowser } from "../components/QueryBuilder/FieldBrowser";
 import { QueryEditor } from "../components/QueryBuilder/QueryEditor";
 import { FieldAggregation } from "../components/QueryBuilder/FieldAggregation";
@@ -7,6 +8,7 @@ import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useI18n } from "../i18n/context";
 import { Toast, useToast } from "../components/Toast";
 import { DQL_FIELD_HINTS } from "../constants/dqlFields";
+import { EmptyState, PageHeader } from "../ui/primitives";
 
 export const QueryBuilderPage = () => {
   const { t } = useI18n();
@@ -131,63 +133,77 @@ export const QueryBuilderPage = () => {
   });
 
   return (
-    <div className="page query-builder-page">
-      <section className="card">
-        <h2>Query Builder</h2>
-        <p className="muted">
-          {t(
-            "Create DQL queries with an intuitive visual interface. Click fields to add them to the query.",
-            "Erstelle DQL-Abfragen mit einem intuitiven visuellen Interface. Klicke auf Felder, um sie zur Query hinzuzufügen."
-          )}
-        </p>
+    <div className="page query-builder">
+      <PageHeader
+        title={t("Query builder", "Query Builder")}
+        description={t(
+          "Create DQL queries with an intuitive visual interface. Click fields to add them to the query.",
+          "Erstelle DQL-Abfragen mit einem intuitiven visuellen Interface. Klicke auf Felder, um sie zur Query hinzuzufügen."
+        )}
+      />
 
-        <div className="query-builder-layout">
-          <div className="query-builder-left">
-            <FieldBrowser
-              onFieldClick={handleFieldClick}
-              onFieldExpand={handleFieldExpand}
-              expandedFields={expandedFields}
-            />
-          </div>
+      <div className="query-builder-panes">
+        <section className="query-builder-pane query-builder-pane--fields">
+          <FieldBrowser
+            onFieldClick={handleFieldClick}
+            onFieldExpand={handleFieldExpand}
+            expandedFields={expandedFields}
+          />
+        </section>
 
-          <div className="query-builder-right">
-            <QueryEditor
-              query={currentQuery}
-              onQueryChange={setCurrentQuery}
-              onInsertText={handleInsertText}
-              onSave={() => setShowSaveDialog(true)}
-              onCopyURL={handleCopyURL}
-              onExecute={handleExecute}
-            />
+        <section className="query-builder-pane query-builder-pane--editor">
+          <QueryEditor
+            query={currentQuery}
+            onQueryChange={setCurrentQuery}
+            onInsertText={handleInsertText}
+            onSave={() => setShowSaveDialog(true)}
+            onCopyURL={handleCopyURL}
+            onExecute={handleExecute}
+          />
+        </section>
 
-            {/* Show aggregations for expanded fields */}
-            {expandedFieldsWithAggregation.length > 0 && (
-              <div className="expanded-aggregations">
-                <h4>{t("Field Values", "Feldwerte")}</h4>
-                {expandedFieldsWithAggregation.map((fieldName) => (
-                  <div key={fieldName} className="aggregation-section">
-                    <h5>
-                      <code>{fieldName}</code>
-                    </h5>
-                    <FieldAggregation fieldName={fieldName} onValueClick={handleValueClick} />
-                  </div>
-                ))}
+        {/* Aggregations for expanded fields */}
+        <section className="query-builder-pane query-builder-pane--values">
+          <h2>{t("Field values", "Feldwerte")}</h2>
+          {expandedFieldsWithAggregation.length > 0 ? (
+            expandedFieldsWithAggregation.map((fieldName) => (
+              <div key={fieldName} className="query-builder-values">
+                <h3>
+                  <code className="mono">{fieldName}</code>
+                </h3>
+                <FieldAggregation fieldName={fieldName} onValueClick={handleValueClick} />
               </div>
-            )}
-          </div>
-        </div>
-      </section>
+            ))
+          ) : (
+            <EmptyState title={t("No field open", "Kein Feld geöffnet")}>
+              {t(
+                "Open a field to see its most common values, then click one to add it to the query.",
+                "Öffne ein Feld, um seine häufigsten Werte zu sehen, und klicke einen an, um ihn zur Query hinzuzufügen."
+              )}
+            </EmptyState>
+          )}
+        </section>
+      </div>
 
       {/* Save Dialog */}
       {showSaveDialog && (
-        <div className="dialog-overlay" onClick={() => setShowSaveDialog(false)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>{t("Save Query", "Query speichern")}</h3>
+        <div className="dialog-overlay query-builder-overlay" onClick={() => setShowSaveDialog(false)}>
+          <div
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="query-builder-save-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="query-builder-save-title" className="query-builder-dialog-title">
+              {t("Save query", "Query speichern")}
+            </h2>
             <p>{t("Enter a name for the saved query:", "Gebe einen Namen für die gespeicherte Query ein:")}</p>
             <input
               type="text"
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
+              aria-label={t("Query name...", "Query-Name...")}
               placeholder={t("Query name...", "Query-Name...")}
               maxLength={200}
               autoFocus

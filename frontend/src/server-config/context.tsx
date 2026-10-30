@@ -27,7 +27,7 @@ const splashStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   minHeight: "100vh",
-  color: "#888",
+  color: "var(--color-muted)",
   fontFamily: "system-ui, sans-serif",
 };
 

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncSelect from "react-select/async";
 
 import { fetchProducts, fetchVendors, fetchVersions } from "../api/assets";
+import { renderCatalogOption } from "./CatalogOption";
+import { primaryVendorSlug } from "../utils/catalog";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import type {
@@ -25,6 +27,7 @@ interface VendorOption {
   value: string;
   label: string;
   aliases: string[];
+  vulnerabilityCount?: number | null;
 }
 
 interface ProductOption {
@@ -32,6 +35,8 @@ interface ProductOption {
   label: string;
   vendorSlugs: string[];
   aliases: string[];
+  vulnerabilityCount?: number | null;
+  hint?: string | null;
 }
 
 interface VersionOption {
@@ -532,49 +537,43 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
   const hasProducts = selectedProducts.length > 0;
 
   return (
-    <div className="asset-filter-selects" style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
-          <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-            {t("Vendors", "Vendors")}
-          </span>
-          <AsyncSelect<VendorOption, true>
-            isMulti
-            cacheOptions
-            defaultOptions={false}
-            loadOptions={loadVendorOptions}
-            value={selectedVendors}
-            onChange={(options) => {
-              setSelectedVendors(Array.isArray(options) ? options : []);
-            }}
-            placeholder={t("Select vendors...", "Vendors auswählen...")}
-            styles={selectStyles}
-            menuPortalTarget={document.body}
-            menuPosition="fixed"
-            noOptionsMessage={({ inputValue }) =>
-              inputValue
-                ? t(`No vendors found for "${inputValue}"`, `Keine Vendors gefunden für "${inputValue}"`)
-                : t("Type to search", "Tippen Sie, um zu suchen")
-            }
-            formatOptionLabel={(option) => (
-              <span style={{ display: "flex", flexDirection: "column" }}>
-                <span>{option.label}</span>
-                {option.aliases.length > 0 ? (
-                  <small style={{ opacity: 0.65, fontSize: "0.75rem" }}>
-                    {option.aliases.slice(0, 2).join(", ")}
-                    {option.aliases.length > 2 ? " …" : ""}
-                  </small>
-                ) : null}
-              </span>
-            )}
-          />
-        </div>
+    <div className="vulnerability-list-asset-filters">
+      <div className="vulnerability-list-asset-field">
+        <span className="vulnerability-list-asset-label" id="vulnerability-list-vendors-label">
+          {t("Vendors", "Vendors")}
+        </span>
+        <AsyncSelect<VendorOption, true>
+          className="vulnerability-list-asset-control"
+          aria-labelledby="vulnerability-list-vendors-label"
+          isMulti
+          cacheOptions
+          defaultOptions={false}
+          loadOptions={loadVendorOptions}
+          value={selectedVendors}
+          onChange={(options) => {
+            setSelectedVendors(Array.isArray(options) ? options : []);
+          }}
+          placeholder={t("Select vendors...", "Vendors auswählen...")}
+          styles={selectStyles}
+          menuPortalTarget={document.body}
+          menuPosition="fixed"
+          noOptionsMessage={({ inputValue }) =>
+            inputValue
+              ? t(`No vendors found for "${inputValue}"`, `Keine Vendors gefunden für "${inputValue}"`)
+              : t("Type to search", "Tippen Sie, um zu suchen")
+          }
+          formatOptionLabel={renderCatalogOption}
+        />
+      </div>
 
-        {hasVendors && (
-        <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
-          <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
+      {hasVendors && (
+        <div className="vulnerability-list-asset-field">
+          <span className="vulnerability-list-asset-label" id="vulnerability-list-products-label">
             {t("Products", "Produkte")}
           </span>
           <AsyncSelect<ProductOption, true>
+            className="vulnerability-list-asset-control"
+            aria-labelledby="vulnerability-list-products-label"
             isMulti
             cacheOptions
             defaultOptions={false}
@@ -592,27 +591,19 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
                 ? t(`No products found for "${inputValue}"`, `Keine Produkte gefunden für "${inputValue}"`)
                 : t("Type to search", "Tippen Sie, um zu suchen")
             }
-            formatOptionLabel={(option) => (
-              <span style={{ display: "flex", flexDirection: "column" }}>
-                <span>{option.label}</span>
-                {option.aliases.length > 0 ? (
-                  <small style={{ opacity: 0.65, fontSize: "0.75rem" }}>
-                    {option.aliases.slice(0, 2).join(", ")}
-                    {option.aliases.length > 2 ? " …" : ""}
-                  </small>
-                ) : null}
-              </span>
-            )}
+            formatOptionLabel={renderCatalogOption}
           />
         </div>
-        )}
+      )}
 
-        {hasProducts && !isVersionDisabled && (
-        <div className="asset-filter-col" style={{ display: "flex", flexDirection: "column", minWidth: "240px", flex: 1 }}>
-          <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
+      {hasProducts && !isVersionDisabled && (
+        <div className="vulnerability-list-asset-field">
+          <span className="vulnerability-list-asset-label" id="vulnerability-list-versions-label">
             {t("Versions", "Versionen")}
           </span>
           <AsyncSelect<VersionOption, true>
+            className="vulnerability-list-asset-control"
+            aria-labelledby="vulnerability-list-versions-label"
             isMulti
             cacheOptions
             defaultOptions={false}
@@ -632,7 +623,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             }
           />
         </div>
-        )}
+      )}
     </div>
   );
 };
@@ -641,6 +632,7 @@ const mapVendorToOption = (item: CatalogVendor): VendorOption => ({
   value: item.slug,
   label: item.name,
   aliases: item.aliases,
+  vulnerabilityCount: item.vulnerabilityCount,
 });
 
 const mapProductToOption = (item: CatalogProduct): ProductOption => ({
@@ -648,6 +640,8 @@ const mapProductToOption = (item: CatalogProduct): ProductOption => ({
   label: item.name,
   vendorSlugs: item.vendorSlugs,
   aliases: item.aliases,
+  vulnerabilityCount: item.vulnerabilityCount,
+  hint: primaryVendorSlug(item.slug, item.vendorSlugs),
 });
 
 const mapVersionToOption = (item: CatalogVersion): VersionOption => ({
@@ -659,45 +653,103 @@ const mapVersionToOption = (item: CatalogVersion): VersionOption => ({
 const selectStyles = {
   control: (provided: any, state: any) => ({
     ...provided,
-    background: "rgba(15, 18, 30, 0.85)",
-    borderColor: state.isFocused ? "rgba(255, 212, 59, 0.7)" : "rgba(255, 255, 255, 0.12)",
-    borderRadius: "8px",
-    color: "#f5f7fa",
+    minHeight: "var(--control-height)",
+    alignItems: "stretch",
+    flexWrap: "nowrap",
+    background: "var(--color-paper)",
+    border: 0,
+    borderRadius: "var(--radius-control)",
+    color: "var(--color-ink)",
+    fontSize: "var(--text-sm)",
     boxShadow: "none",
-    "&:hover": {
-      borderColor: state.isFocused ? "rgba(255, 212, 59, 0.7)" : "rgba(255, 255, 255, 0.25)",
-    },
+    outline: state.isFocused ? "2px solid var(--color-focus)" : "none",
+    outlineOffset: "-1px",
+  }),
+  // The field edge is drawn on these two parts so it sits next to the input it bounds.
+  valueContainer: (provided: any) => ({
+    ...provided,
+    padding: "0 var(--space-xs)",
+    gap: "var(--space-2xs)",
+    border: "var(--rule-hair) solid var(--color-field-edge)",
+    borderRight: 0,
+    borderRadius: "var(--radius-control) 0 0 var(--radius-control)",
+  }),
+  indicatorsContainer: (provided: any) => ({
+    ...provided,
+    border: "var(--rule-hair) solid var(--color-field-edge)",
+    borderLeft: 0,
+    borderRadius: "0 var(--radius-control) var(--radius-control) 0",
   }),
   menu: (provided: any) => ({
     ...provided,
-    background: "rgba(10, 12, 20, 0.95)",
-    zIndex: 100,
+    marginBlock: "var(--space-2xs)",
+    background: "var(--color-paper-2)",
+    border: "var(--rule-hair) solid var(--color-rule-strong)",
+    borderRadius: "var(--radius-card)",
+    boxShadow: "var(--shadow-pop)",
+    fontSize: "var(--text-sm)",
+    zIndex: "var(--z-dropdown)",
   }),
   menuPortal: (provided: any) => ({
     ...provided,
-    zIndex: 9999,
+    zIndex: "var(--z-modal)",
   }),
   option: (provided: any, state: any) => ({
     ...provided,
-    backgroundColor: state.isFocused ? "rgba(92,132,255,0.2)" : "transparent",
-    color: "#f5f7fa",
+    backgroundColor: state.isFocused ? "var(--overlay-2)" : "transparent",
+    color: "var(--color-ink)",
+    padding: "var(--space-xs) var(--space-sm)",
+    "&:active": {
+      backgroundColor: "var(--overlay-3)",
+    },
   }),
   multiValue: (provided: any) => ({
     ...provided,
-    background: "rgba(92,132,255,0.15)",
+    margin: 0,
+    background: "transparent",
+    border: "var(--rule-hair) solid var(--color-rule-strong)",
+    borderRadius: "var(--radius-control)",
   }),
   multiValueLabel: (provided: any) => ({
     ...provided,
-    color: "#f5f7fa",
+    color: "var(--color-ink-2)",
+    fontSize: "var(--text-xs)",
+  }),
+  multiValueRemove: (provided: any) => ({
+    ...provided,
+    color: "var(--color-muted)",
+    "&:hover": {
+      background: "var(--overlay-2)",
+      color: "var(--color-ink)",
+    },
+  }),
+  dropdownIndicator: (provided: any) => ({
+    ...provided,
+    padding: "var(--space-xs)",
+    color: "var(--color-muted)",
+    "&:hover": {
+      color: "var(--color-ink)",
+    },
+  }),
+  clearIndicator: (provided: any) => ({
+    ...provided,
+    padding: "var(--space-xs)",
+    color: "var(--color-muted)",
+    "&:hover": {
+      color: "var(--color-ink)",
+    },
   }),
   indicatorSeparator: () => ({
     display: "none",
   }),
   input: (provided: any) => ({
     ...provided,
-    color: "#f5f7fa",
-    caretColor: "transparent",
+    margin: 0,
+    padding: 0,
+    color: "var(--color-ink)",
+    caretColor: "var(--color-accent)",
     "& input": {
+      minHeight: "32px !important",
       outline: "none !important",
       boxShadow: "none !important",
       border: "none !important",
@@ -705,10 +757,19 @@ const selectStyles = {
   }),
   singleValue: (provided: any) => ({
     ...provided,
-    color: "#f5f7fa",
+    color: "var(--color-ink)",
   }),
   placeholder: (provided: any) => ({
     ...provided,
-    color: "rgba(255, 255, 255, 0.6)",
+    margin: 0,
+    color: "var(--color-muted)",
+  }),
+  noOptionsMessage: (provided: any) => ({
+    ...provided,
+    color: "var(--color-muted)",
+  }),
+  loadingMessage: (provided: any) => ({
+    ...provided,
+    color: "var(--color-muted)",
   }),
 };

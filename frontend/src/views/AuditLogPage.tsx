@@ -8,6 +8,8 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
+import { EmptyState, PageHeader } from "../ui/primitives";
+import "../screens/audit.css";
 
 const JOB_LABELS: Record<string, string> = {
   euvd_ingestion: "EUVD Sync",
@@ -40,13 +42,14 @@ const JOB_LABELS: Record<string, string> = {
   mcp_oauth: "MCP",
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  completed: "#8fffb0",
-  running: "#ffcc66",
-  failed: "#ffa3a3",
-  timeout: "#fcd34d",
-  overdue: "#fcd34d",
-  cancelled: "#9ca3af",
+/** An outcome wears its outcome colour; everything else is neutral state. Never a severity colour. */
+const STATUS_TONE: Record<string, string> = {
+  completed: "success",
+  running: "info",
+  failed: "error",
+  timeout: "info",
+  overdue: "info",
+  cancelled: "muted",
 };
 
 const PAGE_SIZE = 50;
@@ -171,12 +174,12 @@ export const AuditLogPage = () => {
   const rows = useMemo(
     () =>
       logs.map((entry) => {
-        const duration = entry.durationSeconds != null ? `${entry.durationSeconds.toFixed(1)}s` : "-";
-        const finished = entry.finishedAt ? formatDateTime(entry.finishedAt) : "-";
+        const duration = entry.durationSeconds != null ? `${entry.durationSeconds.toFixed(1)}s` : "";
+        const finished = entry.finishedAt ? formatDateTime(entry.finishedAt) : "";
         const started = formatDateTime(entry.startedAt);
         const isOverdue = entry.overdue === true;
         const statusKey = isOverdue ? "overdue" : entry.status;
-        const statusColor = STATUS_COLOR[statusKey] ?? "#d1d5db";
+        const statusTone = STATUS_TONE[statusKey];
         const statusLabel =
           isOverdue && entry.status === "running"
             ? t("Running (Overdue)", "Läuft (Überfällig)")
@@ -219,19 +222,21 @@ export const AuditLogPage = () => {
             mcpBlob.result = entry.result;
           }
           detailElements.push(
-            <details key="mcp-details">
-              <summary style={{ cursor: "pointer" }}>{t("Show details", "Details anzeigen")}</summary>
-              <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
-                {JSON.stringify(mcpBlob, null, 2)}
-              </pre>
+            <details key="mcp-details" className="audit-details">
+              <summary>{t("Show details", "Details anzeigen")}</summary>
+              <pre className="audit-pre">{JSON.stringify(mcpBlob, null, 2)}</pre>
             </details>,
           );
         } else if (metaClientIp) {
-          detailElements.push(<span key="ip">Client IP: {metaClientIp}</span>);
+          detailElements.push(
+            <span key="ip">
+              Client IP: <span className="mono">{metaClientIp}</span>
+            </span>,
+          );
         }
         if (tokenUsageTyped != null) {
           detailElements.push(
-            <span key="tokens" style={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+            <span key="tokens">
               {t("Tokens", "Tokens")}: {tokenUsageTyped.inputTokens.toLocaleString(locale)} {t("in", "in")} / {tokenUsageTyped.outputTokens.toLocaleString(locale)} {t("out", "out")}
             </span>,
           );
@@ -242,11 +247,11 @@ export const AuditLogPage = () => {
           const prefix = t("Error: ", "Fehler: ");
           if (errorText.length > ERROR_TRUNCATE_LEN) {
             detailElements.push(
-              <details key="error">
-                <summary style={{ cursor: "pointer" }}>
+              <details key="error" className="audit-details">
+                <summary>
                   {prefix}{errorText.slice(0, ERROR_TRUNCATE_LEN)}…
                 </summary>
-                <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>{errorText}</pre>
+                <pre className="audit-pre">{errorText}</pre>
               </details>,
             );
           } else {
@@ -256,11 +261,11 @@ export const AuditLogPage = () => {
           const prefix = t("Hint: ", "Hinweis: ");
           if (hintText.length > ERROR_TRUNCATE_LEN) {
             detailElements.push(
-              <details key="hint">
-                <summary style={{ cursor: "pointer" }}>
+              <details key="hint" className="audit-details">
+                <summary>
                   {prefix}{hintText.slice(0, ERROR_TRUNCATE_LEN)}…
                 </summary>
-                <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>{hintText}</pre>
+                <pre className="audit-pre">{hintText}</pre>
               </details>,
             );
           } else {
@@ -268,26 +273,24 @@ export const AuditLogPage = () => {
           }
         } else if (progressJson) {
           detailElements.push(
-            <details>
-              <summary style={{ cursor: "pointer" }}>{t("Show progress", "Fortschritt anzeigen")}</summary>
-              <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{progressJson}</pre>
+            <details className="audit-details">
+              <summary>{t("Show progress", "Fortschritt anzeigen")}</summary>
+              <pre className="audit-pre">{progressJson}</pre>
             </details>,
           );
         } else if (resultJson && !isMcpJob) {
           detailElements.push(
-            <details>
-              <summary style={{ cursor: "pointer" }}>{t("Show details", "Details anzeigen")}</summary>
-              <pre style={{ margin: "0.25rem 0", whiteSpace: "pre-wrap" }}>{resultJson}</pre>
+            <details className="audit-details">
+              <summary>{t("Show details", "Details anzeigen")}</summary>
+              <pre className="audit-pre">{resultJson}</pre>
             </details>,
           );
         }
-        if (detailElements.length === 0) {
-          detailNode = "-";
-        } else if (detailElements.length === 1) {
+        if (detailElements.length === 1) {
           detailNode = detailElements[0];
-        } else {
+        } else if (detailElements.length > 1) {
           detailNode = (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            <div className="audit-detail-stack">
               {detailElements.map((element, index) => (
                 <div key={`detail-${entry.id}-${index}`}>{element}</div>
               ))}
@@ -299,29 +302,14 @@ export const AuditLogPage = () => {
 
         return (
           <tr key={entry.id}>
-            <td>{jobLabel}</td>
-            <td>
-              <span
-                style={{
-                  display: "inline-block",
-                  padding: "0.25rem 0.5rem",
-                  borderRadius: "0.35rem",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  background: `${statusColor}22`,
-                  color: statusColor,
-                  border: `1px solid ${statusColor}44`,
-                }}
-              >
-                {statusLabel}
-              </span>
+            <td className="audit-cell-time" data-label={t("Started", "Gestartet")}>{started}</td>
+            <td className="audit-cell-job">{jobLabel}</td>
+            <td className="audit-cell-status">
+              <span className={`audit-status${statusTone ? ` audit-status--${statusTone}` : ""}`}>{statusLabel}</span>
             </td>
-            <td>{started}</td>
-            <td>{finished}</td>
-            <td>{duration}</td>
-            <td className="muted" style={{ fontSize: "0.85rem" }}>
-              {detailNode}
-            </td>
+            <td className="audit-cell-time" data-label={t("Finished", "Beendet")}>{finished}</td>
+            <td className="audit-cell-duration" data-label={t("Duration", "Dauer")}>{duration}</td>
+            <td className="audit-cell-detail">{detailNode}</td>
           </tr>
         );
       }),
@@ -345,9 +333,9 @@ export const AuditLogPage = () => {
   return (
     <>
     {authRequired && !authOk ? (
-      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }} onClick={() => navigate(-1)}>
-        <div className="dialog" onClick={(e) => e.stopPropagation()}>
-          <h3>{t("System Password", "System-Passwort")}</h3>
+      <div className="dialog-overlay audit-gate" onClick={() => navigate(-1)}>
+        <div className="dialog audit-gate-dialog" onClick={(e) => e.stopPropagation()}>
+          <h1 className="audit-gate-title">{t("System Password", "System-Passwort")}</h1>
           <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
           <input
             type="password"
@@ -355,6 +343,7 @@ export const AuditLogPage = () => {
             onChange={(e) => setAuthPassword(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
             placeholder={t("Password", "Passwort")}
+            aria-label={t("Password", "Passwort")}
             autoFocus
           />
           <div className="dialog-actions">
@@ -377,126 +366,128 @@ export const AuditLogPage = () => {
         </div>
       </div>
     ) : authRequired === null ? (
-      <div className="dialog-overlay" style={{ backdropFilter: "none", WebkitBackdropFilter: "none" }}>
+      <div className="dialog-overlay audit-gate">
         <div className="dialog">
           <p className="muted">{t("Loading...", "Laden…")}</p>
         </div>
       </div>
     ) : (
-    <div className="page">
-      <section className="card">
-        <h2>Audit Log</h2>
-        <p className="muted">
-          {t(
-            "Logs are generated for selected events that may be relevant. Total:",
-            "Logs werden bei bestimmten Ereignissen generiert, die von Interesse sein könnten. Gesamt:"
-          )}{" "}
-          {total.toLocaleString(locale)} {t("entries.", "Einträge.")}
-        </p>
+    <div className="page audit-page">
+      <PageHeader
+        title={t("Audit log", "Audit-Log")}
+        description={
+          <>
+            {t(
+              "Logs are generated for selected events that may be relevant. Total:",
+              "Logs werden bei bestimmten Ereignissen generiert, die von Interesse sein könnten. Gesamt:"
+            )}{" "}
+            <span className="audit-figure">{total.toLocaleString(locale)}</span> {t("entries.", "Einträge.")}
+          </>
+        }
+      />
 
-        <div style={{ margin: "1rem 0", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", flexDirection: "column", minWidth: "220px" }}>
-            <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-              {t("Job Filter", "Job-Filter")}
-            </span>
-            <select
-              value={jobFilter}
-              onChange={(event) => {
-                setJobFilter(event.target.value);
-                setPage(0);
-              }}
-            >
-              <option value="">{t("All jobs", "Alle Jobs")}</option>
-              <option value="euvd_ingestion">EUVD Sync</option>
-              <option value="euvd_initial_sync">EUVD Initial Sync</option>
-              <option value="cpe_sync">CPE Sync</option>
-              <option value="cpe_initial_sync">CPE Initial Sync</option>
-              <option value="nvd_sync">NVD Sync</option>
-              <option value="nvd_initial_sync">NVD Initial Sync</option>
-              <option value="kev_sync">CISA KEV Sync</option>
-              <option value="kev_initial_sync">CISA KEV Initial Sync</option>
-              <option value="cwe_sync">CWE Cache Refresh</option>
-              <option value="cwe_initial_sync">CWE Initial Cache Prefetch</option>
-              <option value="capec_sync">CAPEC Cache Refresh</option>
-              <option value="capec_initial_sync">CAPEC Initial Cache Prefetch</option>
-              <option value="circl_sync">CIRCL Enrichment Sync</option>
-              <option value="ghsa_sync">GHSA Sync</option>
-              <option value="ghsa_initial_sync">GHSA Initial Sync</option>
-              <option value="manual_refresh">{t("Manual Refresh", "Manueller Refresh")}</option>
-              <option value="saved_search_created">{t("Saved search created", "Gespeicherte Suche erstellt")}</option>
-              <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
-              <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
-              <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
-              <option value="sca-scan">SCA Scan</option>
-              <option value="osv_sync">OSV Sync</option>
-              <option value="osv_initial_sync">OSV Initial Sync</option>
-              <option value="mal_enrichment_backfill">MAL-* deps.dev Enrichment</option>
-              <option value="mcp">MCP</option>
-            </select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", minWidth: "180px" }}>
-            <span className="meta-label" style={{ marginBottom: "0.35rem" }}>
-              {t("Status Filter", "Status-Filter")}
-            </span>
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value);
-                setPage(0);
-              }}
-            >
-              <option value="">{t("All statuses", "Alle Status")}</option>
-              <option value="running">{t("Running", "Läuft")}</option>
-              <option value="completed">{t("Completed", "Abgeschlossen")}</option>
-              <option value="failed">{t("Failed", "Fehlgeschlagen")}</option>
-              <option value="cancelled">{t("Cancelled", "Abgebrochen")}</option>
-            </select>
-          </label>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-            <span className="muted" style={{ fontSize: "0.85rem" }}>
-              {t("Showing", "Zeige")} {total === 0 ? 0 : pageStartIndex}–{pageEndIndex} {t("of", "von")} {total.toLocaleString(locale)}
-            </span>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={!hasPreviousPage || loading}>
-                {t("Previous", "Zurück")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage((current) => current + 1)}
-                disabled={!hasNextPage || loading}
-              >
-                {t("Next", "Weiter")}
-              </button>
-            </div>
-          </div>
+      <div className="filter-row">
+        <label className="audit-filter">
+          <span>{t("Job Filter", "Job-Filter")}</span>
+          <select
+            value={jobFilter}
+            onChange={(event) => {
+              setJobFilter(event.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">{t("All jobs", "Alle Jobs")}</option>
+            <option value="euvd_ingestion">EUVD Sync</option>
+            <option value="euvd_initial_sync">EUVD Initial Sync</option>
+            <option value="cpe_sync">CPE Sync</option>
+            <option value="cpe_initial_sync">CPE Initial Sync</option>
+            <option value="nvd_sync">NVD Sync</option>
+            <option value="nvd_initial_sync">NVD Initial Sync</option>
+            <option value="kev_sync">CISA KEV Sync</option>
+            <option value="kev_initial_sync">CISA KEV Initial Sync</option>
+            <option value="cwe_sync">CWE Cache Refresh</option>
+            <option value="cwe_initial_sync">CWE Initial Cache Prefetch</option>
+            <option value="capec_sync">CAPEC Cache Refresh</option>
+            <option value="capec_initial_sync">CAPEC Initial Cache Prefetch</option>
+            <option value="circl_sync">CIRCL Enrichment Sync</option>
+            <option value="ghsa_sync">GHSA Sync</option>
+            <option value="ghsa_initial_sync">GHSA Initial Sync</option>
+            <option value="manual_refresh">{t("Manual Refresh", "Manueller Refresh")}</option>
+            <option value="saved_search_created">{t("Saved search created", "Gespeicherte Suche erstellt")}</option>
+            <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
+            <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
+            <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
+            <option value="sca-scan">SCA Scan</option>
+            <option value="osv_sync">OSV Sync</option>
+            <option value="osv_initial_sync">OSV Initial Sync</option>
+            <option value="mal_enrichment_backfill">MAL-* deps.dev Enrichment</option>
+            <option value="mcp">MCP</option>
+          </select>
+        </label>
+        <label className="audit-filter">
+          <span>{t("Status Filter", "Status-Filter")}</span>
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">{t("All statuses", "Alle Status")}</option>
+            <option value="running">{t("Running", "Läuft")}</option>
+            <option value="completed">{t("Completed", "Abgeschlossen")}</option>
+            <option value="failed">{t("Failed", "Fehlgeschlagen")}</option>
+            <option value="cancelled">{t("Cancelled", "Abgebrochen")}</option>
+          </select>
+        </label>
+        <div className="audit-pager">
+          <span className="audit-range">
+            {t("Showing", "Zeige")} {total === 0 ? 0 : pageStartIndex}-{pageEndIndex} {t("of", "von")} {total.toLocaleString(locale)}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setPage((current) => Math.max(0, current - 1))}
+            disabled={!hasPreviousPage || loading}
+          >
+            {t("Previous", "Zurück")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setPage((current) => current + 1)}
+            disabled={!hasNextPage || loading}
+          >
+            {t("Next", "Weiter")}
+          </button>
         </div>
+      </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={tableStyle}>
-            <thead>
+      <div className="table-scroll">
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>{t("Started", "Gestartet")}</th>
+              <th>{t("Job", "Job")}</th>
+              <th>{t("Status", "Status")}</th>
+              <th>{t("Finished", "Beendet")}</th>
+              <th className="audit-head-duration">{t("Duration", "Dauer")}</th>
+              <th>{t("Result / Error", "Ergebnis / Fehler")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {showSkeleton && <AuditSkeletonRows rows={6} />}
+            {!showSkeleton && rows}
+            {isEmptyState && (
               <tr>
-                <th>{t("Job", "Job")}</th>
-                <th>{t("Status", "Status")}</th>
-                <th>{t("Started", "Gestartet")}</th>
-                <th>{t("Finished", "Beendet")}</th>
-                <th>{t("Duration", "Dauer")}</th>
-                <th>{t("Result / Error", "Ergebnis / Fehler")}</th>
+                <td colSpan={6} className="audit-cell-empty">
+                  <EmptyState title={t("No entries available.", "Keine Einträge vorhanden.")} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {showSkeleton && <AuditSkeletonRows rows={6} />}
-              {!showSkeleton && rows}
-              {isEmptyState && (
-                <tr>
-                  <td colSpan={6} style={{ padding: "1.5rem 0", textAlign: "center", color: "rgba(255,255,255,0.45)" }}>
-                    {t("No entries available.", "Keine Einträge vorhanden.")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
     )}
     </>
@@ -507,30 +498,25 @@ const AuditSkeletonRows = ({ rows }: { rows: number }) => (
   <>
     {Array.from({ length: rows }).map((_, index) => (
       <tr key={`audit-skeleton-${index}`}>
-        <td>
-          <SkeletonBlock height="0.85rem" width="75%" />
+        <td className="audit-cell-time">
+          <SkeletonBlock height="0.85rem" width="80%" radius={4} />
         </td>
-        <td>
-          <SkeletonBlock height="1.1rem" width="80px" radius={999} />
+        <td className="audit-cell-job">
+          <SkeletonBlock height="0.85rem" width="75%" radius={4} />
         </td>
-        <td>
-          <SkeletonBlock height="0.85rem" width="80%" />
+        <td className="audit-cell-status">
+          <SkeletonBlock height="0.85rem" width="72px" radius={4} />
         </td>
-        <td>
-          <SkeletonBlock height="0.85rem" width="70%" />
+        <td className="audit-cell-time">
+          <SkeletonBlock height="0.85rem" width="70%" radius={4} />
         </td>
-        <td>
-          <SkeletonBlock height="0.85rem" width="60px" />
+        <td className="audit-cell-duration">
+          <SkeletonBlock height="0.85rem" width="48px" radius={4} />
         </td>
-        <td>
-          <SkeletonBlock height="0.85rem" />
+        <td className="audit-cell-detail">
+          <SkeletonBlock height="0.85rem" radius={4} />
         </td>
       </tr>
     ))}
   </>
 );
-
-const tableStyle: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-};

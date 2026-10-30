@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
+import "../screens/vulnerability-detail.css";
 import type { CAPECInfo } from "../api/capec";
 import { getCapecFromCwes } from "../api/capec";
 import { useI18n } from "../i18n/context";
+import { SeverityTag } from "../ui/primitives";
+import { SkeletonBlock } from "./Skeleton";
 
 const INITIAL_DISPLAY_COUNT = 5;
 
-const SEVERITY_COLORS: Record<string, string> = {
-  "Very High": "#ff6b6b",
-  High: "#ffa3a3",
-  Medium: "#ffcc66",
-  Low: "#8fffb0",
-};
+/** CAPEC grades severity on its own five-step scale; the top step reads as critical. */
+const capecSeverityLevel = (severity: string) => (severity === "Very High" ? "critical" : severity);
 
 interface CapecListProps {
   cwes: string[];
@@ -54,7 +53,16 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
   }
 
   if (loading) {
-    return <div className="muted">{t("Loading CAPEC information...", "CAPEC-Informationen werden geladen...")}</div>;
+    return (
+      <div role="status">
+        <span className="visually-hidden">{t("Loading CAPEC information...", "CAPEC-Informationen werden geladen...")}</span>
+        <div className="vulnerability-detail-skeleton-stack">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <SkeletonBlock key={index} height="3rem" radius={4} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -71,64 +79,42 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
   const visibleEntries = expanded ? entries : entries.slice(0, INITIAL_DISPLAY_COUNT);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      {visibleEntries.map(([capecId, info]) => (
-        <div key={capecId} className="cwe-item">
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem", flexWrap: "wrap" }}>
+    <div className="vulnerability-detail-capec">
+      <ul className="vulnerability-detail-entries">
+        {visibleEntries.map(([capecId, info]) => (
+          <li key={capecId} className="vulnerability-detail-entry">
             <a
               href={`https://capec.mitre.org/data/definitions/${capecId}.html`}
               target="_blank"
               rel="noreferrer"
-              className="chip"
-              style={{ textDecoration: "none" }}
+              className="vulnerability-detail-entry-id"
             >
               {info.id}
             </a>
-            <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-              {info.name}
-            </span>
-            {info.severity && (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  padding: "0.15rem 0.4rem",
-                  borderRadius: "0.25rem",
-                  background: `${SEVERITY_COLORS[info.severity] ?? "#d1d5db"}22`,
-                  color: SEVERITY_COLORS[info.severity] ?? "#d1d5db",
-                  border: `1px solid ${SEVERITY_COLORS[info.severity] ?? "#d1d5db"}44`,
-                }}
-              >
-                {info.severity}
-              </span>
-            )}
-            {info.likelihood && (
-              <span className="muted" style={{ fontSize: "0.8rem" }}>
-                {t("Likelihood", "Wahrscheinlichkeit")}: {info.likelihood}
-              </span>
-            )}
-          </div>
-          {info.description && info.description !== info.name && (
-            <div className="muted" style={{ fontSize: "0.9rem", paddingLeft: "0.25rem" }}>
-              {info.description}
+            <div className="vulnerability-detail-entry-body">
+              <div className="vulnerability-detail-entry-head">
+                <span className="vulnerability-detail-entry-name">{info.name}</span>
+                {info.severity && (
+                  <SeverityTag severity={capecSeverityLevel(info.severity)}>{info.severity}</SeverityTag>
+                )}
+                {info.likelihood && (
+                  <span className="vulnerability-detail-entry-meta">
+                    {t("Likelihood", "Wahrscheinlichkeit")}: {info.likelihood}
+                  </span>
+                )}
+              </div>
+              {info.description && info.description !== info.name && (
+                <p className="vulnerability-detail-entry-text">{info.description}</p>
+              )}
             </div>
-          )}
-        </div>
-      ))}
+          </li>
+        ))}
+      </ul>
       {hasMore && (
         <button
           type="button"
+          className="btn btn-secondary"
           onClick={() => setExpanded((prev) => !prev)}
-          style={{
-            background: "none",
-            border: "1px solid rgba(255,255,255,0.15)",
-            color: "rgba(255,255,255,0.6)",
-            cursor: "pointer",
-            padding: "0.4rem 0.75rem",
-            fontSize: "0.85rem",
-            borderRadius: "0.35rem",
-            alignSelf: "flex-start",
-          }}
         >
           {expanded
             ? t("Show less", "Weniger anzeigen")

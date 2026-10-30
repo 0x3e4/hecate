@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { LuChevronRight } from "react-icons/lu";
 import { getFieldAggregation } from "../api/vulnerabilities";
 import { useI18n } from "../i18n/context";
+import { severityLevel } from "../ui/primitives";
 
 /* ── State shape ─────────────────────────────────────────────── */
 
@@ -115,12 +117,10 @@ const ACCESS_COMPLEXITIES_V2 = ["LOW", "MEDIUM", "HIGH"] as const;
 const AUTHENTICATIONS_V2 = ["NONE", "SINGLE", "MULTIPLE"] as const;
 const IMPACTS_V2 = ["NONE", "PARTIAL", "COMPLETE"] as const;
 
-const SEVERITY_COLORS: Record<string, string> = {
-  CRITICAL: "rgba(252, 92, 101, 0.85)",
-  HIGH: "rgba(255, 165, 0, 0.85)",
-  MEDIUM: "rgba(255, 212, 59, 0.85)",
-  LOW: "rgba(92, 184, 92, 0.85)",
-  NONE: "rgba(160, 170, 190, 0.6)",
+/** The API takes the enum value; the chip reads it in sentence case. */
+const chipLabel = (value: string): string => {
+  const words = value.toLowerCase().replace(/_/g, " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 };
 
 /* ── Component ───────────────────────────────────────────────── */
@@ -175,10 +175,10 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
   const impactOptions = isV2 ? IMPACTS_V2 : IMPACTS;
 
   return (
-    <div className="advanced-filters-panel">
+    <div className="vulnerability-list-filter-panel">
       {/* ── Toggle checkboxes (moved from parent) ─────── */}
-      <div className="advanced-filter-toggles">
-        <label className="advanced-filter-toggle-label">
+      <div className="vulnerability-list-filter-toggles">
+        <label className="vulnerability-list-filter-toggle">
           <input
             type="checkbox"
             checked={value.includeRejected}
@@ -186,7 +186,7 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
           />
           {t("Show rejected CVEs", "Abgelehnte CVEs")}
         </label>
-        <label className="advanced-filter-toggle-label">
+        <label className="vulnerability-list-filter-toggle">
           <input
             type="checkbox"
             checked={value.includeReserved}
@@ -194,7 +194,7 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
           />
           {t("Show reserved CVEs", "Reservierte CVEs")}
         </label>
-        <label className="advanced-filter-toggle-label">
+        <label className="vulnerability-list-filter-toggle">
           <input
             type="checkbox"
             checked={value.exploitedOnly}
@@ -202,7 +202,7 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
           />
           {t("Exploited CVEs only", "Nur exploited CVEs")}
         </label>
-        <label className="advanced-filter-toggle-label">
+        <label className="vulnerability-list-filter-toggle">
           <input
             type="checkbox"
             checked={value.aiAnalysedOnly}
@@ -212,35 +212,35 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
         </label>
       </div>
 
-      <div className="advanced-filters-grid">
+      <div className="vulnerability-list-filter-grid">
         {/* ── Row 1: Severity, Sources, Published ──────── */}
         <FilterGroup label={t("Severity", "Schweregrad")}>
-          <div className="advanced-filter-chips">
-            {SEVERITIES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`advanced-filter-chip severity-chip ${value.severity.includes(s) ? "active" : ""}`}
-                style={
-                  value.severity.includes(s)
-                    ? { background: SEVERITY_COLORS[s], borderColor: SEVERITY_COLORS[s], color: s === "MEDIUM" ? "#1a1a2e" : "#fff" }
-                    : undefined
-                }
-                onClick={() => toggleChip("severity", s)}
-              >
-                {s}
-              </button>
-            ))}
+          <div className="vulnerability-list-filter-chips">
+            {SEVERITIES.map((s) => {
+              const active = value.severity.includes(s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className={`vulnerability-list-filter-chip${active ? ` sev-${severityLevel(s)}` : ""}`}
+                  aria-pressed={active}
+                  onClick={() => toggleChip("severity", s)}
+                >
+                  {chipLabel(s)}
+                </button>
+              );
+            })}
           </div>
         </FilterGroup>
 
         <FilterGroup label={t("Sources", "Quellen")}>
-          <div className="advanced-filter-chips">
+          <div className="vulnerability-list-filter-chips">
             {SOURCES.map((s) => (
               <button
                 key={s}
                 type="button"
-                className={`advanced-filter-chip ${value.sources.includes(s) ? "active" : ""}`}
+                className="vulnerability-list-filter-chip"
+                aria-pressed={value.sources.includes(s)}
                 onClick={() => toggleChip("sources", s)}
               >
                 {s}
@@ -250,17 +250,17 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
         </FilterGroup>
 
         <FilterGroup label={t("Published", "Veröffentlicht")}>
-          <div className="advanced-filter-range">
+          <div className="vulnerability-list-filter-range">
             <input
               type="date"
-              className="advanced-filter-input"
+              className="vulnerability-list-filter-input"
               value={value.publishedFrom}
               onChange={handleInput("publishedFrom")}
             />
-            <span className="advanced-filter-range-sep">–</span>
+            <span className="vulnerability-list-filter-range-separator">{t("to", "bis")}</span>
             <input
               type="date"
-              className="advanced-filter-input"
+              className="vulnerability-list-filter-input"
               value={value.publishedTo}
               onChange={handleInput("publishedTo")}
             />
@@ -269,10 +269,10 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
 
         {/* ── Row 2: EPSS, CVSS Version, CVSS Score ───── */}
         <FilterGroup label={t("EPSS Score", "EPSS-Score")}>
-          <div className="advanced-filter-range">
+          <div className="vulnerability-list-filter-range">
             <input
               type="number"
-              className="advanced-filter-input"
+              className="vulnerability-list-filter-input"
               value={value.epssScoreMin}
               onChange={handleInput("epssScoreMin")}
               placeholder="0.0"
@@ -280,10 +280,10 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
               max={100}
               step={0.1}
             />
-            <span className="advanced-filter-range-sep">–</span>
+            <span className="vulnerability-list-filter-range-separator">{t("to", "bis")}</span>
             <input
               type="number"
-              className="advanced-filter-input"
+              className="vulnerability-list-filter-input"
               value={value.epssScoreMax}
               onChange={handleInput("epssScoreMax")}
               placeholder="100.0"
@@ -296,7 +296,7 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
 
         <FilterGroup label={t("CVSS Version", "CVSS-Version")}>
           <select
-            className="advanced-filter-input"
+            className="vulnerability-list-filter-input"
             value={value.cvssVersion}
             onChange={(e) => update({ cvssVersion: e.target.value })}
           >
@@ -308,10 +308,10 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
         </FilterGroup>
 
         <FilterGroup label={t("CVSS Score", "CVSS-Score")}>
-          <div className="advanced-filter-range">
+          <div className="vulnerability-list-filter-range">
             <input
               type="number"
-              className="advanced-filter-input"
+              className="vulnerability-list-filter-input"
               value={value.cvssScoreMin}
               onChange={handleInput("cvssScoreMin")}
               placeholder="0.0"
@@ -319,10 +319,10 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
               max={10}
               step={0.1}
             />
-            <span className="advanced-filter-range-sep">–</span>
+            <span className="vulnerability-list-filter-range-separator">{t("to", "bis")}</span>
             <input
               type="number"
-              className="advanced-filter-input"
+              className="vulnerability-list-filter-input"
               value={value.cvssScoreMax}
               onChange={handleInput("cvssScoreMax")}
               placeholder="10.0"
@@ -337,7 +337,7 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
         <FilterGroup label="CWE">
           <input
             type="text"
-            className="advanced-filter-input"
+            className="vulnerability-list-filter-input"
             value={value.cwes}
             onChange={handleInput("cwes")}
             placeholder={t("e.g. 79, 89 or CWE-79", "z.B. 79, 89 oder CWE-79")}
@@ -347,7 +347,7 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
         <FilterGroup label="Assigner">
           <input
             type="text"
-            className="advanced-filter-input"
+            className="vulnerability-list-filter-input"
             value={value.assigner}
             onChange={handleInput("assigner")}
             placeholder={t("e.g. security@apache.org", "z.B. security@apache.org")}
@@ -359,165 +359,65 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
             ))}
           </datalist>
         </FilterGroup>
-
-        <div className="advanced-filter-spacer" />
       </div>
 
       {/* ── CVSS Vector section ─────────────────────────── */}
-      <details className="advanced-filter-cvss-details">
-        <summary className="advanced-filter-cvss-summary">
+      <details className="vulnerability-list-filter-details">
+        <summary className="vulnerability-list-filter-summary">
+          <LuChevronRight size={14} className="vulnerability-list-filter-summary-icon" aria-hidden="true" />
           {t("CVSS Vector Components", "CVSS-Vektor-Komponenten")}
-          {isV2 && <span className="advanced-filter-version-hint"> (CVSS 2.0)</span>}
-          {isV4 && <span className="advanced-filter-version-hint"> (CVSS 4.0)</span>}
+          {isV2 && <span className="vulnerability-list-filter-version-hint"> (CVSS 2.0)</span>}
+          {isV4 && <span className="vulnerability-list-filter-version-hint"> (CVSS 4.0)</span>}
         </summary>
-        <div className="advanced-filters-grid" style={{ marginTop: "0.75rem" }}>
+        <div className="vulnerability-list-filter-grid">
           <FilterGroup label={isV2 ? t("Access Vector", "Zugriffsvektor") : t("Attack Vector", "Angriffsvektor")}>
-            <div className="advanced-filter-chips">
-              {attackVectorOptions.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`advanced-filter-chip ${value.attackVector.includes(v) ? "active" : ""}`}
-                  onClick={() => toggleChip("attackVector", v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <ChipGroup options={attackVectorOptions} selected={value.attackVector} onToggle={(v) => toggleChip("attackVector", v)} />
           </FilterGroup>
 
           <FilterGroup label={isV2 ? t("Access Complexity", "Zugriffskomplexität") : t("Attack Complexity", "Angriffskomplexität")}>
-            <div className="advanced-filter-chips">
-              {attackComplexityOptions.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`advanced-filter-chip ${value.attackComplexity.includes(v) ? "active" : ""}`}
-                  onClick={() => toggleChip("attackComplexity", v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <ChipGroup options={attackComplexityOptions} selected={value.attackComplexity} onToggle={(v) => toggleChip("attackComplexity", v)} />
           </FilterGroup>
 
           <FilterGroup label={isV2 ? t("Authentication", "Authentifizierung") : t("Privileges Required", "Erforderliche Berechtigungen")}>
-            <div className="advanced-filter-chips">
-              {privilegesOptions.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`advanced-filter-chip ${value.privilegesRequired.includes(v) ? "active" : ""}`}
-                  onClick={() => toggleChip("privilegesRequired", v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <ChipGroup options={privilegesOptions} selected={value.privilegesRequired} onToggle={(v) => toggleChip("privilegesRequired", v)} />
           </FilterGroup>
 
           {isV4 && (
             <FilterGroup label={t("Attack Requirements", "Angriffsanforderungen")}>
-              <div className="advanced-filter-chips">
-                {ATTACK_REQUIREMENTS.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`advanced-filter-chip ${value.attackRequirements.includes(v) ? "active" : ""}`}
-                    onClick={() => toggleChip("attackRequirements", v)}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              <ChipGroup options={ATTACK_REQUIREMENTS} selected={value.attackRequirements} onToggle={(v) => toggleChip("attackRequirements", v)} />
             </FilterGroup>
           )}
 
           {!isV2 && (
             <FilterGroup label={t("User Interaction", "Benutzerinteraktion")}>
-              <div className="advanced-filter-chips">
-                {userInteractions.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`advanced-filter-chip ${value.userInteraction.includes(v) ? "active" : ""}`}
-                    onClick={() => toggleChip("userInteraction", v)}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              <ChipGroup options={userInteractions} selected={value.userInteraction} onToggle={(v) => toggleChip("userInteraction", v)} />
             </FilterGroup>
           )}
 
           {!isV4 && !isV2 && (
             <FilterGroup label={t("Scope", "Geltungsbereich")}>
-              <div className="advanced-filter-chips">
-                {SCOPES.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`advanced-filter-chip ${value.scope.includes(v) ? "active" : ""}`}
-                    onClick={() => toggleChip("scope", v)}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              <ChipGroup options={SCOPES} selected={value.scope} onToggle={(v) => toggleChip("scope", v)} />
             </FilterGroup>
           )}
 
           <FilterGroup label={t("Confidentiality", "Vertraulichkeit")}>
-            <div className="advanced-filter-chips">
-              {impactOptions.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`advanced-filter-chip ${value.confidentialityImpact.includes(v) ? "active" : ""}`}
-                  onClick={() => toggleChip("confidentialityImpact", v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <ChipGroup options={impactOptions} selected={value.confidentialityImpact} onToggle={(v) => toggleChip("confidentialityImpact", v)} />
           </FilterGroup>
 
           <FilterGroup label={t("Integrity", "Integrität")}>
-            <div className="advanced-filter-chips">
-              {impactOptions.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`advanced-filter-chip ${value.integrityImpact.includes(v) ? "active" : ""}`}
-                  onClick={() => toggleChip("integrityImpact", v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <ChipGroup options={impactOptions} selected={value.integrityImpact} onToggle={(v) => toggleChip("integrityImpact", v)} />
           </FilterGroup>
 
           <FilterGroup label={t("Availability", "Verfügbarkeit")}>
-            <div className="advanced-filter-chips">
-              {impactOptions.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`advanced-filter-chip ${value.availabilityImpact.includes(v) ? "active" : ""}`}
-                  onClick={() => toggleChip("availabilityImpact", v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <ChipGroup options={impactOptions} selected={value.availabilityImpact} onToggle={(v) => toggleChip("availabilityImpact", v)} />
           </FilterGroup>
         </div>
       </details>
 
-      <div className="advanced-filters-footer">
+      <div className="vulnerability-list-filter-footer">
         <button
           type="button"
-          className="advanced-filters-clear"
+          className="btn"
           onClick={() => onChange({ ...EMPTY_ADVANCED_FILTERS })}
         >
           {t("Clear all filters", "Alle Filter zurücksetzen")}
@@ -529,9 +429,33 @@ export const AdvancedFilters = ({ value, onChange }: Props) => {
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
-const FilterGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="advanced-filter-group">
-    <label className="advanced-filter-label">{label}</label>
+const FilterGroup = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="vulnerability-list-filter-group" role="group" aria-label={label}>
+    <span className="vulnerability-list-filter-label">{label}</span>
     {children}
+  </div>
+);
+
+const ChipGroup = ({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: readonly string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) => (
+  <div className="vulnerability-list-filter-chips">
+    {options.map((option) => (
+      <button
+        key={option}
+        type="button"
+        className="vulnerability-list-filter-chip"
+        aria-pressed={selected.includes(option)}
+        onClick={() => onToggle(option)}
+      >
+        {chipLabel(option)}
+      </button>
+    ))}
   </div>
 );

@@ -10,6 +10,8 @@ import {
 import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
+import { EmptyState, ErrorState, PageHeader, Section, SeverityTag, Stat, severityVar } from "../ui/primitives";
+import "../screens/stats.css";
 
 export const StatsPage = () => {
   const { t } = useI18n();
@@ -45,254 +47,186 @@ export const StatsPage = () => {
   }, [t]);
 
   return (
-    <div className="page">
-      <section className="card">
-        <h2>{t("Statistics", "Statistiken")}</h2>
-        <p className="muted">
-          {t(
-            "Overview of ingested vulnerabilities, sources, and the derived asset database.",
-            "Überblick über ingestierte Schwachstellen, Quellen und die abgeleitete Asset-Datenbank."
-          )}
-        </p>
-
-        {showSkeleton && <StatsSkeleton />}
-        {error && <p className="muted">{error}</p>}
-
-        {!showSkeleton && stats && (
-          <>
-            <div style={{ display: "grid", gap: "1.5rem" }}>
-              <SummaryGrid stats={stats} />
-              
-              <div style={{ display: "grid", gap: "1.5rem" }}>
-                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" }}>
-                  <ChartCard title={t("Source", "Quelle")}>
-                    <SourcesChart data={stats.vulnerabilities.sources} />
-                  </ChartCard>
-                  <ChartCard title={t("Severity", "Schweregrade")}>
-                    <SeverityChart data={stats.vulnerabilities.severities} />
-                  </ChartCard>
-                </div>
-
-                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))" }}>
-                  <ChartCard title="Top 5 CWEs">
-                    <CweChart data={stats.vulnerabilities.topCwes} />
-                  </ChartCard>
-                  <ChartCard title={t("EPSS Score", "EPSS-Score")}>
-                    <EpssChart data={stats.vulnerabilities.epssRanges} />
-                  </ChartCard>
-                </div>
-
-                <ChartCard title={t("Publication trend (last 30 days)", "Veröffentlichungstrend (letzte 30 Tage)")}>
-                  <TimelineChart data={stats.vulnerabilities.timeline} />
-                </ChartCard>
-
-                <ChartCard title={t("Historical overview of published vulnerabilities", "Historischer Überblick von veröffentlichten Schwachstellen")}>
-                  <TimelineSummaryChart data={stats.vulnerabilities.timelineSummary} />
-                </ChartCard>
-
-                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                  <ChartCard title={t("Most named vendors", "Meistgenannte Hersteller")}>
-                    <TopList data={stats.vulnerabilities.topVendors} emptyMessage={t("No vendors.", "Keine Vendors.")} limit={8} />
-                  </ChartCard>
-                  <ChartCard title={t("Most named products", "Meistgenannte Produkte")}>
-                    <TopList data={stats.vulnerabilities.topProducts} emptyMessage={t("No products.", "Keine Produkte.")} limit={8} />
-                  </ChartCard>
-                </div>
-
-                <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                  <ChartCard title={t("Top reference domains", "Top-Referenzdomains")}>
-                    <TopList data={stats.vulnerabilities.referenceDomains} emptyMessage={t("No references.", "Keine Referenzen.")} limit={10} />
-                  </ChartCard>
-                  <ChartCard title={t("Top assigners", "Top-Assigners")}>
-                    <TopList data={stats.vulnerabilities.topAssigners} emptyMessage={t("No assigners.", "Keine Assigner.")} limit={10} />
-                  </ChartCard>
-                </div>
-              </div>
-
-              <AssetSection assets={stats.assets} />
-            </div>
-          </>
+    <div className="page stats-page">
+      <PageHeader
+        title={t("Statistics", "Statistiken")}
+        description={t(
+          "Overview of ingested vulnerabilities, sources, and the derived asset database.",
+          "Überblick über ingestierte Schwachstellen, Quellen und die abgeleitete Asset-Datenbank."
         )}
-      </section>
+      />
+
+      {showSkeleton && <StatsSkeleton />}
+      {error && <ErrorState title={error} />}
+
+      {!showSkeleton && stats && (
+        <>
+          <section className="stats-lead">
+            <SummaryGrid stats={stats} />
+            <ChartBlock title={t("Severity", "Schweregrade")}>
+              <SeverityChart data={stats.vulnerabilities.severities} />
+            </ChartBlock>
+          </section>
+
+          <Section title={t("Publication trend (last 30 days)", "Veröffentlichungstrend (letzte 30 Tage)")}>
+            <TimelineChart data={stats.vulnerabilities.timeline} />
+          </Section>
+
+          <Section title={t("Historical overview of published vulnerabilities", "Historischer Überblick von veröffentlichten Schwachstellen")}>
+            <TimelineSummaryChart data={stats.vulnerabilities.timelineSummary} />
+          </Section>
+
+          <Section>
+            <div className="stats-columns stats-columns--3">
+              <ChartBlock title={t("EPSS Score", "EPSS-Score")}>
+                <EpssChart data={stats.vulnerabilities.epssRanges} />
+              </ChartBlock>
+              <ChartBlock title="Top 5 CWEs">
+                <CweChart data={stats.vulnerabilities.topCwes} />
+              </ChartBlock>
+              <ChartBlock title={t("Source", "Quelle")}>
+                <SourcesChart data={stats.vulnerabilities.sources} />
+              </ChartBlock>
+            </div>
+          </Section>
+
+          <Section>
+            <div className="stats-columns stats-columns--2">
+              <ChartBlock title={t("Most named vendors", "Meistgenannte Hersteller")}>
+                <TopList data={stats.vulnerabilities.topVendors} emptyMessage={t("No vendors.", "Keine Vendors.")} limit={8} />
+              </ChartBlock>
+              <ChartBlock title={t("Most named products", "Meistgenannte Produkte")}>
+                <TopList data={stats.vulnerabilities.topProducts} emptyMessage={t("No products.", "Keine Produkte.")} limit={8} />
+              </ChartBlock>
+              <ChartBlock title={t("Top reference domains", "Top-Referenzdomains")}>
+                <TopList data={stats.vulnerabilities.referenceDomains} emptyMessage={t("No references.", "Keine Referenzen.")} limit={10} />
+              </ChartBlock>
+              <ChartBlock title={t("Top assigners", "Top-Assigners")}>
+                <TopList data={stats.vulnerabilities.topAssigners} emptyMessage={t("No assigners.", "Keine Assigner.")} limit={10} />
+              </ChartBlock>
+            </div>
+          </Section>
+
+          <AssetSection assets={stats.assets} />
+        </>
+      )}
     </div>
   );
 };
 
+const SkeletonBars = ({ rows }: { rows: number }) => (
+  <div className="stats-skeleton-bars">
+    {Array.from({ length: rows }).map((_, index) => (
+      <SkeletonBlock key={index} height="1rem" radius={2} />
+    ))}
+  </div>
+);
+
 const StatsSkeleton = () => (
-  <div style={{ display: "grid", gap: "1.5rem" }}>
-    <div
-      style={{
-        display: "grid",
-        gap: "1rem",
-        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-      }}
-    >
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div
-          key={index}
-          style={{
-            background: "rgba(255,255,255,0.04)",
-            borderRadius: "12px",
-            padding: "1rem 1.25rem",
-            border: "1px solid rgba(255,255,255,0.05)",
-            display: "grid",
-            gap: "0.85rem",
-          }}
-        >
-          <SkeletonBlock height="0.8rem" width="45%" />
-          <SkeletonBlock height="2.3rem" width="70%" />
+  <div aria-hidden="true">
+    <div className="stats-lead">
+      <div className="stats-summary">
+        <div className="stats-skeleton-figure">
+          <SkeletonBlock height="0.8rem" width="45%" radius={4} />
+          <SkeletonBlock height="2.3rem" width="70%" radius={4} />
         </div>
-      ))}
+        <div className="stats-skeleton-figure">
+          <SkeletonBlock height="0.8rem" width="45%" radius={4} />
+          <SkeletonBlock height="1.8rem" width="60%" radius={4} />
+        </div>
+      </div>
+      <div className="stats-block">
+        <SkeletonBlock height="1rem" width="30%" radius={4} />
+        <SkeletonBars rows={5} />
+      </div>
     </div>
 
-    <div style={{ display: "grid", gap: "1.5rem" }}>
-      <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-        {Array.from({ length: 2 }).map((_, index) => (
-          <div
-            key={index}
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: "12px",
-              padding: "1.25rem",
-              border: "1px solid rgba(255,255,255,0.06)",
-              display: "grid",
-              gap: "1rem",
-            }}
-          >
-            <SkeletonBlock height="1rem" width="40%" />
-            <SkeletonBlock height="160px" />
-          </div>
-        ))}
-      </div>
+    <div className="ui-section stats-block">
+      <SkeletonBlock height="1rem" width="35%" radius={4} />
+      <SkeletonBlock height="240px" radius={4} />
+    </div>
 
-      <div
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          borderRadius: "12px",
-          padding: "1.25rem",
-          border: "1px solid rgba(255,255,255,0.06)",
-          display: "grid",
-          gap: "1rem",
-        }}
-      >
-        <SkeletonBlock height="1rem" width="45%" />
-        <SkeletonBlock height="200px" />
-      </div>
-
-      <div style={{ display: "grid", gap: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-        {Array.from({ length: 2 }).map((_, index) => (
-          <div
-            key={index}
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: "12px",
-              padding: "1.25rem",
-              border: "1px solid rgba(255,255,255,0.06)",
-              display: "grid",
-              gap: "0.85rem",
-            }}
-          >
-            <SkeletonBlock height="1rem" width="50%" />
-            <SkeletonBlock height="110px" />
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          borderRadius: "12px",
-          padding: "1.25rem",
-          border: "1px solid rgba(255,255,255,0.06)",
-          display: "grid",
-          gap: "1.25rem",
-        }}
-      >
-        <SkeletonBlock height="1rem" width="35%" />
-        <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-          {Array.from({ length: 4 }).map((_, index) => (
-            <SkeletonBlock key={index} height="64px" />
-          ))}
+    <div className="ui-section stats-columns stats-columns--3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="stats-block">
+          <SkeletonBlock height="1rem" width="40%" radius={4} />
+          <SkeletonBars rows={5} />
         </div>
-      </div>
+      ))}
     </div>
   </div>
 );
 
 const SummaryGrid = ({ stats }: { stats: StatsResponse }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: "1rem",
-        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-      }}
-    >
-      <StatCard label={t("Vulnerabilities", "Schwachstellen")} value={stats.vulnerabilities.total} accent="#5c84ff" />
-      <StatCard label={t("Exploited (KEV)", "Ausgenutzt (KEV)")} value={stats.vulnerabilities.exploitedCount} accent="#ff6b6b" />
-      <StatCard label={t("Vendors", "Hersteller")} value={stats.assets.vendorTotal} accent="#66d9e8" />
-      <StatCard label={t("Products", "Produkte")} value={stats.assets.productTotal} accent="#ffd43b" />
-      <StatCard label={t("Versions", "Versionen")} value={stats.assets.versionTotal} accent="#a855f7" />
+    <div className="stats-summary">
+      <dl className="stats-hero">
+        <Stat label={t("Exploited (KEV)", "Ausgenutzt (KEV)")} value={stats.vulnerabilities.exploitedCount.toLocaleString(locale)} />
+        <Stat label={t("Vulnerabilities", "Schwachstellen")} value={stats.vulnerabilities.total.toLocaleString(locale)} />
+      </dl>
+      <dl className="stat-row stats-catalog-figures">
+        <Stat label={t("Vendors", "Hersteller")} value={stats.assets.vendorTotal.toLocaleString(locale)} />
+        <Stat label={t("Products", "Produkte")} value={stats.assets.productTotal.toLocaleString(locale)} />
+        <Stat label={t("Versions", "Versionen")} value={stats.assets.versionTotal.toLocaleString(locale)} />
+      </dl>
     </div>
   );
 };
 
-const StatCard = ({ label, value, accent }: { label: string; value: number; accent: string }) => {
-  const { locale } = useI18n();
-  return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        borderRadius: "12px",
-        padding: "1rem 1.25rem",
-        border: `1px solid ${accent}30`,
-        boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset",
-      }}
-    >
-      <span className="muted" style={{ fontSize: "0.85rem" }}>
-        {label}
-      </span>
-      <div style={{ fontSize: "1.8rem", fontWeight: 600, marginTop: "0.25rem", color: accent }}>
-        {value.toLocaleString(locale)}
-      </div>
-    </div>
-  );
-};
-
-const ChartCard = ({ title, children }: { title: string; children: ReactNode }) => (
-  <div
-    style={{
-      background: "rgba(255,255,255,0.03)",
-      borderRadius: "12px",
-      padding: "1.25rem",
-      border: "1px solid rgba(255,255,255,0.06)",
-      overflow: "hidden",
-    }}
-  >
-    <h3 style={{ marginBottom: "0.75rem" }}>{title}</h3>
+const ChartBlock = ({ title, children }: { title: string; children: ReactNode }) => (
+  <div className="stats-block">
+    <h2>{title}</h2>
     {children}
   </div>
 );
 
-const severityColors: Record<string, string> = {
-  CRITICAL: "#ff6b6b",
-  HIGH: "#ff922b",
-  MEDIUM: "#fcc419",
-  LOW: "#69db7c",
-  UNKNOWN: "#808080",
+interface BarItem {
+  key: string;
+  label: ReactNode;
+  value: number;
+  /** Runtime token for the mark. Set only when the colour carries meaning; otherwise the bar stays neutral ink. */
+  color?: string;
+  title?: string;
+}
+
+/** Sorted horizontal bars: label, zero-based bar, direct value. No legend, no axis. */
+const BarList = ({ items, variant }: { items: BarItem[]; variant?: "severity" | "ranking" }) => {
+  const { locale } = useI18n();
+  const maxValue = Math.max(...items.map((item) => item.value), 1);
+
+  return (
+    <ul className={`stats-bars${variant ? ` stats-bars--${variant}` : ""}`}>
+      {items.map((item) => (
+        <li key={item.key} className="stats-bar-row">
+          <span className="stats-bar-label" title={item.title}>
+            {item.label}
+          </span>
+          <span className="stats-bar-track" aria-hidden="true">
+            {item.value > 0 && (
+              <span
+                className="stats-bar-fill"
+                style={{ width: `${(item.value / maxValue) * 100}%`, background: item.color }}
+              />
+            )}
+          </span>
+          <span className="stats-bar-value">{item.value.toLocaleString(locale)}</span>
+        </li>
+      ))}
+    </ul>
+  );
 };
 
-const severityLabels: Record<string, string> = {
-  CRITICAL: "Critical",
-  HIGH: "High",
-  MEDIUM: "Medium",
-  LOW: "Low",
-  UNKNOWN: "Unknown",
+const severityLabels: Record<string, [string, string]> = {
+  CRITICAL: ["Critical", "Kritisch"],
+  HIGH: ["High", "Hoch"],
+  MEDIUM: ["Medium", "Mittel"],
+  LOW: ["Low", "Niedrig"],
+  UNKNOWN: ["Unknown", "Unbekannt"],
 };
 
 const SeverityChart = ({ data }: { data: TermsBucket[] }) => {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const normalized = useMemo(() => {
     if (!data.length) {
       return [];
@@ -314,106 +248,44 @@ const SeverityChart = ({ data }: { data: TermsBucket[] }) => {
   }, [data]);
 
   if (normalized.length === 0) {
-    return <p className="muted">{t("No severity information.", "Keine Severity-Angaben.")}</p>;
+    return <EmptyState title={t("No severity information.", "Keine Severity-Angaben.")} />;
   }
 
-  const maxValue = Math.max(...normalized.map((item) => item.doc_count));
-  const baseHeight = 20;
-  const scaleHeight = 120;
-
   return (
-    <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", minHeight: `${baseHeight + scaleHeight + 20}px` }}>
-      {normalized.map((item) => {
-        const barHeight = maxValue === 0 ? baseHeight : baseHeight + (item.doc_count / maxValue) * scaleHeight;
-        const color = severityColors[item.key] ?? severityColors.UNKNOWN;
-        const label = severityLabels[item.key] ?? item.key;
-        return (
-          <div key={item.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${barHeight}px`,
-                background: `linear-gradient(180deg, ${color}, ${color}99)`,
-                borderRadius: "6px 6px 0 0",
-                boxShadow: `0 0 12px ${color}40`,
-                transition: "height 0.3s ease",
-              }}
-              title={`${label}: ${item.doc_count.toLocaleString(locale)}`}
-            />
-            <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString(locale)}</strong>
-              <div className="muted" style={{ fontSize: "0.7rem", color }}>{label}</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <BarList
+      variant="severity"
+      items={normalized.map((item) => ({
+        key: item.key,
+        label: <SeverityTag severity={item.key}>{severityLabels[item.key] ? t(severityLabels[item.key][0], severityLabels[item.key][1]) : item.key}</SeverityTag>,
+        value: item.doc_count,
+        color: severityVar(item.key),
+      }))}
+    />
   );
 };
 
-const sourceColors = [
-  "#5c84ff",  // Blue
-  "#66d9e8",  // Cyan
-  "#a855f7",  // Purple
-  "#f472b6",  // Pink
-  "#fbbf24",  // Amber
-  "#34d399",  // Emerald
-];
-
 const SourcesChart = ({ data }: { data: TermsBucket[] }) => {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const items = useMemo(() => data.filter((item) => item.doc_count > 0).slice(0, 6), [data]);
 
   if (items.length === 0) {
-    return <p className="muted">{t("No sources recorded.", "Keine Quellen erfasst.")}</p>;
+    return <EmptyState title={t("No sources recorded.", "Keine Quellen erfasst.")} />;
   }
 
-  const maxValue = Math.max(...items.map((item) => item.doc_count));
-  const baseHeight = 20;
-  const scaleHeight = 120;
-
   return (
-    <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", minHeight: `${baseHeight + scaleHeight + 20}px` }}>
-      {items.map((item, index) => {
-        const barHeight = maxValue === 0 ? baseHeight : baseHeight + (item.doc_count / maxValue) * scaleHeight;
-        const color = sourceColors[index % sourceColors.length];
-
-        return (
-          <div key={item.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${barHeight}px`,
-                background: `linear-gradient(180deg, ${color}, ${color}88)`,
-                borderRadius: "6px 6px 0 0",
-                boxShadow: `0 0 16px ${color}30`,
-                transition: "height 0.3s ease",
-              }}
-              title={`${item.key}: ${item.doc_count.toLocaleString(locale)}`}
-            />
-            <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString(locale)}</strong>
-              <div style={{ fontSize: "0.7rem", color, opacity: 0.9 }}>
-                {item.key.length > 14 ? `${item.key.slice(0, 12)}…` : item.key || "–"}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <BarList
+      items={items.map((item) => ({
+        key: item.key,
+        label: item.key || "n/a",
+        value: item.doc_count,
+        title: item.key,
+      }))}
+    />
   );
 };
 
-const cweColors = [
-  "#f472b6",  // Pink
-  "#a855f7",  // Purple
-  "#818cf8",  // Indigo
-  "#38bdf8",  // Sky
-  "#2dd4bf",  // Teal
-];
-
 const CweChart = ({ data }: { data: TermsBucket[] }) => {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const items = useMemo(
     () =>
       data
@@ -423,51 +295,19 @@ const CweChart = ({ data }: { data: TermsBucket[] }) => {
   );
 
   if (items.length === 0) {
-    return <p className="muted">{t("No CWEs recorded.", "Keine CWEs erfasst.")}</p>;
+    return <EmptyState title={t("No CWEs recorded.", "Keine CWEs erfasst.")} />;
   }
 
-  const maxValue = Math.max(...items.map((item) => item.doc_count));
-  const baseHeight = 20;
-  const scaleHeight = 120;
-
   return (
-    <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", minHeight: `${baseHeight + scaleHeight + 20}px` }}>
-      {items.map((item, index) => {
-        const barHeight = maxValue === 0 ? baseHeight : baseHeight + (item.doc_count / maxValue) * scaleHeight;
-        const color = cweColors[index % cweColors.length];
-
-        return (
-          <div key={item.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${barHeight}px`,
-                background: `linear-gradient(180deg, ${color}, ${color}99)`,
-                borderRadius: "6px 6px 0 0",
-                boxShadow: `0 0 12px ${color}40`,
-                transition: "height 0.3s ease",
-              }}
-              title={`${item.key}: ${item.doc_count.toLocaleString(locale)}`}
-            />
-            <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString(locale)}</strong>
-              <div style={{ fontSize: "0.7rem", color, opacity: 0.9 }}>
-                {item.key.length > 12 ? `${item.key.slice(0, 10)}…` : item.key || "–"}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <BarList
+      items={items.map((item) => ({
+        key: item.key,
+        label: <span className="mono">{item.key || "n/a"}</span>,
+        value: item.doc_count,
+        title: item.key,
+      }))}
+    />
   );
-};
-
-const epssColors: Record<string, string> = {
-  "0.0-0.1": "#69db7c",   // Green - Low risk
-  "0.1-0.3": "#a9e34b",   // Light green
-  "0.3-0.5": "#fcc419",   // Yellow - Medium risk
-  "0.5-0.7": "#ff922b",   // Orange - High risk
-  "0.7-1.0": "#ff6b6b",   // Red - Critical risk
 };
 
 const epssLabels: Record<string, string> = {
@@ -479,45 +319,20 @@ const epssLabels: Record<string, string> = {
 };
 
 const EpssChart = ({ data }: { data: TermsBucket[] }) => {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   if (!data.length) {
-    return <p className="muted">{t("No EPSS data.", "Keine EPSS-Daten.")}</p>;
+    return <EmptyState title={t("No EPSS data.", "Keine EPSS-Daten.")} />;
   }
 
-  const maxValue = Math.max(...data.map((item) => item.doc_count), 1);
-  const baseHeight = 20;
-  const scaleHeight = 120;
-
+  // Highest exploitation probability first: that band is the one an analyst reads for.
   return (
-    <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", minHeight: `${baseHeight + scaleHeight + 20}px` }}>
-      {data.map((item) => {
-        const barHeight = maxValue === 0 ? baseHeight : baseHeight + (item.doc_count / maxValue) * scaleHeight;
-        const color = epssColors[item.key] ?? "#5c84ff";
-        const label = epssLabels[item.key] ?? item.key;
-
-        return (
-          <div key={item.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${barHeight}px`,
-                background: `linear-gradient(180deg, ${color}, ${color}99)`,
-                borderRadius: "6px 6px 0 0",
-                boxShadow: `0 0 12px ${color}40`,
-                transition: "height 0.3s ease",
-              }}
-              title={`${label}: ${item.doc_count.toLocaleString(locale)}`}
-            />
-            <div style={{ textAlign: "center", fontSize: "0.75rem", lineHeight: 1.3 }}>
-              <strong>{item.doc_count.toLocaleString(locale)}</strong>
-              <div className="muted" style={{ fontSize: "0.7rem", color }}>
-                {label}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <BarList
+      items={[...data].reverse().map((item) => ({
+        key: item.key,
+        label: epssLabels[item.key] ?? item.key,
+        value: item.doc_count,
+      }))}
+    />
   );
 };
 
@@ -546,23 +361,16 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
-  const [isAnimated, setIsAnimated] = useState(false);
   const containerWidth = useContainerWidth(containerRef);
 
-  // Trigger animation on mount
-  useEffect(() => {
-    const timer = setTimeout(() => setIsAnimated(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
-
   if (!data.length) {
-    return <p className="muted">{t("No timeline data yet.", "Noch keine Zeitreihendaten.")}</p>;
+    return <EmptyState title={t("No timeline data yet.", "Noch keine Zeitreihendaten.")} />;
   }
 
   const baseWidth = containerWidth;
-  const height = 180;
+  const height = 240;
   const isMobile = containerWidth < 500;
-  const padding = { top: 20, bottom: 45, left: isMobile ? 35 : 50, right: isMobile ? 10 : 20 };
+  const padding = { top: 12, bottom: 48, left: isMobile ? 44 : 56, right: isMobile ? 16 : 24 };
   const chartWidth = baseWidth - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
@@ -593,10 +401,6 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   };
 
   const linePath = createSmoothPath();
-  const areaPath = linePath + ` L ${chartPoints[chartPoints.length - 1].x},${height - padding.bottom} L ${chartPoints[0].x},${height - padding.bottom} Z`;
-
-  // Calculate total path length for animation
-  const pathLength = chartPoints.length * step * 1.5;
 
   const hoveredPoint = hoveredIndex != null ? chartPoints[hoveredIndex] : null;
 
@@ -646,184 +450,75 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
   };
 
   const timeLabels = getTimeLabels();
+  const hitWidth = step || chartWidth;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "relative",
-        cursor: "crosshair",
-      }}
-      onMouseLeave={clearHover}
-    >
+    <div ref={containerRef} className="stats-chart" onMouseLeave={clearHover}>
       <svg
+        role="img"
+        aria-label={t("Publication trend (last 30 days)", "Veröffentlichungstrend (letzte 30 Tage)")}
         width={baseWidth}
         height={height}
         viewBox={`0 0 ${baseWidth} ${height}`}
       >
-        <defs>
-          {/* Animated gradient */}
-          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#5c84ff">
-              <animate attributeName="stop-color" values="#5c84ff;#66d9e8;#a855f7;#5c84ff" dur="4s" repeatCount="indefinite" />
-            </stop>
-            <stop offset="50%" stopColor="#66d9e8">
-              <animate attributeName="stop-color" values="#66d9e8;#a855f7;#5c84ff;#66d9e8" dur="4s" repeatCount="indefinite" />
-            </stop>
-            <stop offset="100%" stopColor="#a855f7">
-              <animate attributeName="stop-color" values="#a855f7;#5c84ff;#66d9e8;#a855f7" dur="4s" repeatCount="indefinite" />
-            </stop>
-          </linearGradient>
-
-          {/* Area gradient */}
-          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="rgba(92, 132, 255, 0.3)">
-              <animate attributeName="stop-color" values="rgba(92,132,255,0.3);rgba(102,217,232,0.3);rgba(168,85,247,0.3);rgba(92,132,255,0.3)" dur="4s" repeatCount="indefinite" />
-            </stop>
-            <stop offset="100%" stopColor="rgba(92, 132, 255, 0)" />
-          </linearGradient>
-
-          {/* Glow filter */}
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-            <feMerge>
-              <feMergeNode in="coloredBlur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-
-          {/* Point glow */}
-          <filter id="pointGlow" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
-            <feMerge>
-              <feMergeNode in="coloredBlur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75, 1].map((ratio) => (
+        {/* Grid lines, the baseline first */}
+        {[0, 0.5, 1].map((ratio) => (
           <line
             key={ratio}
+            className="stats-grid-line"
             x1={padding.left}
             y1={padding.top + chartHeight * (1 - ratio)}
             x2={baseWidth - padding.right}
             y2={padding.top + chartHeight * (1 - ratio)}
-            stroke="rgba(255,255,255,0.06)"
-            strokeDasharray="4 4"
           />
         ))}
 
-        {/* Animated area fill */}
-        <path
-          d={areaPath}
-          fill="url(#areaGradient)"
-          style={{
-            opacity: isAnimated ? 1 : 0,
-            transition: "opacity 0.8s ease",
-          }}
-        />
+        <path className="stats-line" d={linePath} />
 
-        {/* Main line with animation */}
-        <path
-          d={linePath}
-          fill="none"
-          stroke="url(#lineGradient)"
-          strokeWidth={3}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          filter="url(#glow)"
-          style={{
-            strokeDasharray: pathLength,
-            strokeDashoffset: isAnimated ? 0 : pathLength,
-            transition: "stroke-dashoffset 1.5s ease-out",
-          }}
-        />
+        {/* Hover indicator */}
+        {hoveredPoint && (
+          <>
+            <line
+              className="stats-hover-line"
+              x1={hoveredPoint.x}
+              y1={padding.top}
+              x2={hoveredPoint.x}
+              y2={height - padding.bottom}
+            />
+            <circle className="stats-hover-point" cx={hoveredPoint.x} cy={hoveredPoint.y} r={4} />
+          </>
+        )}
 
-        {/* Data points */}
-        {chartPoints.map((point, index) => {
-          const isActive = hoveredIndex === index;
-          const hasData = point.count > 0;
-
-          return (
-            <g key={`${point.key}-${index}`}>
-              {/* Pulse animation for points with data */}
-              {hasData && (
-                <circle
-                  cx={point.x}
-                  cy={point.y}
-                  r={isActive ? 12 : 8}
-                  fill="none"
-                  stroke="rgba(92, 132, 255, 0.4)"
-                  strokeWidth={1}
-                  style={{
-                    opacity: isAnimated ? 1 : 0,
-                    transition: "opacity 0.5s ease",
-                  }}
-                >
-                  <animate
-                    attributeName="r"
-                    values={isActive ? "8;16;8" : "6;12;6"}
-                    dur="2s"
-                    repeatCount="indefinite"
-                  />
-                  <animate
-                    attributeName="opacity"
-                    values="0.6;0;0.6"
-                    dur="2s"
-                    repeatCount="indefinite"
-                  />
-                </circle>
-              )}
-
-              {/* Main point */}
-              <circle
-                cx={point.x}
-                cy={point.y}
-                r={isActive ? (isMobile ? 5 : 7) : hasData ? (isMobile ? 3 : 5) : (isMobile ? 2 : 3)}
-                fill={isActive ? "#fff" : hasData ? "#5c84ff" : "rgba(92, 132, 255, 0.3)"}
-                stroke={isActive ? "#5c84ff" : "transparent"}
-                strokeWidth={isActive ? 2 : 0}
-                filter={isActive ? "url(#pointGlow)" : undefined}
-                style={{
-                  cursor: "pointer",
-                  opacity: isAnimated ? 1 : 0,
-                  transition: "all 0.2s ease, opacity 0.5s ease",
-                  transitionDelay: `${index * 10}ms`,
-                }}
-                onMouseEnter={(e) => updateTooltipPosition(index, e)}
-                onMouseMove={(e) => updateTooltipPosition(index, e)}
-              />
-            </g>
-          );
-        })}
+        {/* Hit targets, one per day */}
+        {chartPoints.map((point, index) => (
+          <rect
+            key={`${point.key}-${index}`}
+            className="stats-hit"
+            x={point.x - hitWidth / 2}
+            y={padding.top}
+            width={hitWidth}
+            height={chartHeight}
+            onMouseEnter={(e) => updateTooltipPosition(index, e)}
+            onMouseMove={(e) => updateTooltipPosition(index, e)}
+          />
+        ))}
 
         {/* Time axis labels */}
         {timeLabels.map(({ x, date }, i) => {
           const dayLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: getCurrentTimezone() });
           const yearLabel = date.getFullYear().toString();
+          const yearChanged = i === 0 || timeLabels[i - 1].date.getFullYear().toString() !== yearLabel;
 
           return (
             <g key={`label-${i}`}>
-              <text
-                x={x}
-                y={height - padding.bottom + 18}
-                textAnchor="middle"
-                fill="rgba(255,255,255,0.5)"
-                fontSize="10"
-              >
+              <text className="stats-axis-text" x={x} y={height - padding.bottom + 18} textAnchor="middle">
                 {dayLabel}
               </text>
-              <text
-                x={x}
-                y={height - padding.bottom + 32}
-                textAnchor="middle"
-                fill="rgba(255,255,255,0.35)"
-                fontSize="9"
-              >
-                {yearLabel}
-              </text>
+              {yearChanged && (
+                <text className="stats-axis-text" x={x} y={height - padding.bottom + 34} textAnchor="middle">
+                  {yearLabel}
+                </text>
+              )}
             </g>
           );
         })}
@@ -832,11 +527,10 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
         {[0, 0.5, 1].map((ratio) => (
           <text
             key={ratio}
-            x={padding.left - 5}
+            className="stats-axis-text"
+            x={padding.left - 8}
             y={padding.top + chartHeight * (1 - ratio) + 4}
             textAnchor="end"
-            fill="rgba(255,255,255,0.4)"
-            fontSize="10"
           >
             {Math.round(maxValue * ratio).toLocaleString(locale)}
           </text>
@@ -845,42 +539,11 @@ const TimelineChart = ({ data }: { data: TimelinePoint[] }) => {
 
       {/* Tooltip */}
       {hoveredPoint && tooltipPosition && (
-        <div
-          style={{
-            position: "absolute",
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`,
-            transform: "translate(-50%, calc(-100% - 16px))",
-            background: "linear-gradient(135deg, rgba(18, 21, 38, 0.95), rgba(30, 35, 60, 0.95))",
-            color: "#fff",
-            padding: "0.65rem 0.85rem",
-            borderRadius: "10px",
-            fontSize: "0.8rem",
-            boxShadow: "0 12px 28px rgba(0,0,0,0.35), 0 0 0 1px rgba(92, 132, 255, 0.2)",
-            pointerEvents: "none",
-            whiteSpace: "nowrap",
-            zIndex: 100,
-            backdropFilter: "blur(8px)",
-          }}
-        >
-          <div style={{
-            fontSize: "1.1rem",
-            fontWeight: 700,
-            background: "linear-gradient(90deg, #5c84ff, #66d9e8)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            marginBottom: "0.25rem",
-          }}>
+        <div className="stats-tooltip" style={{ left: tooltipPosition.x, top: tooltipPosition.y }}>
+          <div className="stats-tooltip-value">
             {hoveredPoint.count.toLocaleString(locale)} {t("Vulnerabilities", "Schwachstellen")}
           </div>
-          {hoveredPoint.timestamp && (() => {
-            const { day } = formatDateTime(hoveredPoint.timestamp);
-            return (
-              <div style={{ color: "#adb5bd", fontSize: "0.75rem" }}>
-                {day}
-              </div>
-            );
-          })()}
+          {hoveredPoint.timestamp && <div className="stats-tooltip-meta">{formatDateTime(hoveredPoint.timestamp).day}</div>}
         </div>
       )}
     </div>
@@ -910,13 +573,13 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   }, [data]);
 
   if (!data.length) {
-    return <p className="muted">{t("No timeline data yet.", "Noch keine Zeitreihendaten.")}</p>;
+    return <EmptyState title={t("No timeline data yet.", "Noch keine Zeitreihendaten.")} />;
   }
 
   const width = containerWidth;
-  const height = 220;
+  const height = 240;
   const isMobile = containerWidth < 500;
-  const padding = { top: 25, bottom: 40, left: isMobile ? 40 : 60, right: isMobile ? 10 : 20 };
+  const padding = { top: 12, bottom: 32, left: isMobile ? 60 : 68, right: isMobile ? 16 : 24 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
@@ -939,7 +602,6 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   };
 
   const linePath = createPath();
-  const areaPath = linePath + ` L ${chartPoints[chartPoints.length - 1].x},${height - padding.bottom} L ${chartPoints[0].x},${height - padding.bottom} Z`;
 
   const firstPoint = cumulativeData[0];
   const lastPoint = cumulativeData[cumulativeData.length - 1];
@@ -974,99 +636,76 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
   };
 
   return (
-    <div ref={containerRef} style={{ position: "relative" }}>
+    <div ref={containerRef} className="stats-chart">
       <svg
+        role="img"
+        aria-label={t("Historical overview of published vulnerabilities", "Historischer Überblick von veröffentlichten Schwachstellen")}
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => { setHoveredIndex(null); setTooltipPos(null); }}
-        style={{ cursor: "crosshair" }}
       >
-        <defs>
-          <linearGradient id="summaryAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="rgba(102, 217, 232, 0.3)" />
-            <stop offset="100%" stopColor="rgba(102, 217, 232, 0)" />
-          </linearGradient>
-        </defs>
-
-        <path d={areaPath} fill="url(#summaryAreaGradient)" />
-        <path
-          d={linePath}
-          fill="none"
-          stroke="#66d9e8"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Hover indicator line */}
-        {hoveredPoint && (
+        {/* Grid lines, the baseline first */}
+        {[0, 0.5, 1].map((ratio) => (
           <line
-            x1={hoveredPoint.x}
-            y1={padding.top}
-            x2={hoveredPoint.x}
-            y2={height - padding.bottom}
-            stroke="rgba(102, 217, 232, 0.5)"
-            strokeWidth={1}
-            strokeDasharray="4 4"
+            key={ratio}
+            className="stats-grid-line"
+            x1={padding.left}
+            y1={padding.top + chartHeight * (1 - ratio)}
+            x2={width - padding.right}
+            y2={padding.top + chartHeight * (1 - ratio)}
           />
-        )}
+        ))}
 
-        {/* Hover point */}
+        <path className="stats-line" d={linePath} />
+
+        {/* Hover indicator */}
         {hoveredPoint && (
-          <circle
-            cx={hoveredPoint.x}
-            cy={hoveredPoint.y}
-            r={5}
-            fill="#66d9e8"
-            stroke="#fff"
-            strokeWidth={2}
-          />
+          <>
+            <line
+              className="stats-hover-line"
+              x1={hoveredPoint.x}
+              y1={padding.top}
+              x2={hoveredPoint.x}
+              y2={height - padding.bottom}
+            />
+            <circle className="stats-hover-point" cx={hoveredPoint.x} cy={hoveredPoint.y} r={4} />
+          </>
         )}
 
         {/* Y-axis labels */}
-        <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize="9">
-          {maxValue.toLocaleString(locale)}
-        </text>
-        <text x={padding.left - 8} y={height - padding.bottom} textAnchor="end" fill="rgba(255,255,255,0.4)" fontSize="9">
-          0
-        </text>
+        {[0, 0.5, 1].map((ratio) => (
+          <text
+            key={ratio}
+            className="stats-axis-text"
+            x={padding.left - 8}
+            y={padding.top + chartHeight * (1 - ratio) + 4}
+            textAnchor="end"
+          >
+            {Math.round(maxValue * ratio).toLocaleString(locale)}
+          </text>
+        ))}
 
         {/* Start and end labels */}
-        <text x={padding.left} y={height - 8} textAnchor="start" fill="rgba(255,255,255,0.5)" fontSize="10">
+        <text className="stats-axis-text" x={padding.left} y={height - 8} textAnchor="start">
           {firstPoint.timestamp ? formatMonth(firstPoint.timestamp) : firstPoint.key}
         </text>
-        <text x={width - padding.right} y={height - 8} textAnchor="end" fill="rgba(255,255,255,0.5)" fontSize="10">
+        <text className="stats-axis-text" x={width - padding.right} y={height - 8} textAnchor="end">
           {lastPoint.timestamp ? formatMonth(lastPoint.timestamp) : lastPoint.key}
         </text>
       </svg>
 
       {/* Tooltip */}
       {hoveredPoint && tooltipPos && (
-        <div
-          style={{
-            position: "absolute",
-            left: tooltipPos.x,
-            top: tooltipPos.y,
-            transform: "translate(-50%, calc(-100% - 12px))",
-            background: "rgba(18, 21, 38, 0.95)",
-            padding: "0.5rem 0.75rem",
-            borderRadius: "8px",
-            fontSize: "0.75rem",
-            boxShadow: "0 8px 20px rgba(0,0,0,0.3)",
-            pointerEvents: "none",
-            whiteSpace: "nowrap",
-            zIndex: 100,
-          }}
-        >
-          <div style={{ color: "#66d9e8", fontWeight: 600, fontSize: "0.9rem" }}>
+        <div className="stats-tooltip" style={{ left: tooltipPos.x, top: tooltipPos.y }}>
+          <div className="stats-tooltip-value">
             {hoveredPoint.cumulative.toLocaleString(locale)} {t("total", "gesamt")}
           </div>
-          <div style={{ color: "#adb5bd", fontSize: "0.7rem" }}>
+          <div className="stats-tooltip-meta">
             +{hoveredPoint.count.toLocaleString(locale)} {t("this month", "diesen Monat")}
           </div>
-          <div style={{ color: "#868e96", fontSize: "0.65rem", marginTop: "0.2rem" }}>
+          <div className="stats-tooltip-meta">
             {hoveredPoint.timestamp ? formatMonth(hoveredPoint.timestamp) : hoveredPoint.key}
           </div>
         </div>
@@ -1076,7 +715,6 @@ const TimelineSummaryChart = ({ data }: { data: TimelinePoint[] }) => {
 };
 
 const TopList = ({ data, emptyMessage, limit = 6 }: { data: TermsBucket[]; emptyMessage: string; limit?: number }) => {
-  const { locale } = useI18n();
   const items = useMemo(
     () =>
       data
@@ -1092,43 +730,19 @@ const TopList = ({ data, emptyMessage, limit = 6 }: { data: TermsBucket[]; empty
   );
 
   if (items.length === 0) {
-    return <p className="muted">{emptyMessage}</p>;
+    return <EmptyState title={emptyMessage} />;
   }
 
-  const maxValue = Math.max(...items.map((item) => item.doc_count));
-
   return (
-    <ul style={{ display: "grid", gap: "0.6rem", padding: 0, margin: 0, listStyle: "none" }}>
-      {items.map((item) => {
-        const ratio = maxValue === 0 ? 0 : item.doc_count / maxValue;
-        return (
-          <li key={item.key}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-              <span>{item.key || "–"}</span>
-              <span className="muted" style={{ fontSize: "0.75rem" }}>
-                {item.doc_count.toLocaleString(locale)}
-              </span>
-            </div>
-            <div
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                borderRadius: "6px",
-                overflow: "hidden",
-                height: "6px",
-              }}
-            >
-              <div
-                style={{
-                  width: `${Math.max(ratio * 100, 4)}%`,
-                  height: "100%",
-                  background: "linear-gradient(90deg, #5c84ff, #66d9e8)",
-                }}
-              />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+    <BarList
+      variant="ranking"
+      items={items.map((item) => ({
+        key: item.key,
+        label: item.key || "n/a",
+        value: item.doc_count,
+        title: item.key,
+      }))}
+    />
   );
 };
 
@@ -1139,20 +753,16 @@ const AssetSection = ({
 }) => {
   const { t } = useI18n();
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: "1.25rem",
-        gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-      }}
-    >
-      <ChartCard title={t("Asset Vendors", "Asset-Hersteller")}>
-        <CatalogSampleList items={assets.sampleVendors} emptyMessage={t("No vendors available.", "Keine Vendors verfügbar.")} />
-      </ChartCard>
-      <ChartCard title={t("Asset Products", "Asset-Produkte")}>
-        <CatalogSampleList items={assets.sampleProducts} emptyMessage={t("No products available.", "Keine Produkte verfügbar.")} />
-      </ChartCard>
-    </div>
+    <Section>
+      <div className="stats-columns stats-columns--2">
+        <ChartBlock title={t("Asset vendors", "Asset-Hersteller")}>
+          <CatalogSampleList items={assets.sampleVendors} emptyMessage={t("No vendors available.", "Keine Vendors verfügbar.")} />
+        </ChartBlock>
+        <ChartBlock title={t("Asset products", "Asset-Produkte")}>
+          <CatalogSampleList items={assets.sampleProducts} emptyMessage={t("No products available.", "Keine Produkte verfügbar.")} />
+        </ChartBlock>
+      </div>
+    </Section>
   );
 };
 
@@ -1164,20 +774,18 @@ const truncateList = (values: string[], maxLength: number): string => {
 const CatalogSampleList = ({ items, emptyMessage }: { items: CatalogSample[]; emptyMessage: string }) => {
   const { t } = useI18n();
   if (!items.length) {
-    return <p className="muted">{emptyMessage}</p>;
+    return <EmptyState title={emptyMessage} />;
   }
 
   return (
-    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.75rem" }}>
+    <ul className="stats-sample-list">
       {items.map((item) => (
-        <li key={item.slug} style={{ display: "grid", gap: "0.2rem" }}>
+        <li key={item.slug}>
           <strong>{item.name}</strong>
           {item.aliases.length > 0 ? (
-            <span className="muted" style={{ fontSize: "0.75rem" }}>
-              {truncateList(item.aliases, 60)}
-            </span>
+            <span className="stats-sample-aliases">{truncateList(item.aliases, 60)}</span>
           ) : (
-            <span className="muted" style={{ fontSize: "0.75rem" }}>{t("No additional aliases.", "Keine zusätzlichen Aliase.")}</span>
+            <span className="stats-sample-aliases">{t("No additional aliases.", "Keine zusätzlichen Aliase.")}</span>
           )}
         </li>
       ))}

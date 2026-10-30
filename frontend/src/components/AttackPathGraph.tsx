@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import { Link, useNavigate } from "react-router-dom";
-import { LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
+import { LuArrowDown, LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 
+import "../screens/vulnerability-detail.css";
 import { useI18n, type TranslateFn } from "../i18n/context";
+import { IconButton, severityLevel } from "../ui/primitives";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
 import type {
   AttackPathExploitMaturity,
@@ -16,6 +18,7 @@ import type {
   AIProviderInfo,
 } from "../types";
 import { AILoadingIndicator } from "./AILoadingIndicator";
+import { SkeletonBlock } from "./Skeleton";
 
 interface AttackPathGraphProps {
   graph: AttackPathGraph;
@@ -55,26 +58,60 @@ let _mermaidPromise: Promise<MermaidModule | null> | null = null;
 let _mermaidInitialized = false;
 let _panzoomPromise: Promise<PanzoomModule | null> | null = null;
 
-const SEVERITY_COLORS: Record<string, { fill: string; stroke: string; color: string }> = {
-  critical: { fill: "#7a1f2b", stroke: "#ff6b6b", color: "#ffe7e7" },
-  high: { fill: "#7a3a1f", stroke: "#ff9b5a", color: "#ffe7d6" },
-  medium: { fill: "#7a6a1f", stroke: "#f0c247", color: "#fff5d6" },
-  low: { fill: "#1f4d7a", stroke: "#5c8aff", color: "#dde7ff" },
-  none: { fill: "#2a3349", stroke: "#5c637a", color: "#cfd6e4" },
-  negligible: { fill: "#2a3349", stroke: "#5c637a", color: "#cfd6e4" },
+interface NodeColors {
+  fill: string;
+  stroke: string;
+  color: string;
+}
+
+const readToken = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+/**
+ * Flattens painted layers on a 1x1 canvas and reads the result back as sRGB hex.
+ * The design tokens are oklch, which Mermaid's theme code cannot parse, and a
+ * comma in `rgb()` would split a classDef. Tokens stay the single source of colour.
+ */
+const paintToHex = (layers: Array<{ color: string; alpha?: number }>): string => {
+  const context = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!context) return layers[layers.length - 1].color;
+  context.canvas.width = 1;
+  context.canvas.height = 1;
+  for (const { color, alpha = 1 } of layers) {
+    context.globalAlpha = alpha;
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+  }
+  const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+  return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 };
 
-const NODE_TYPE_COLORS: Record<AttackPathNodeType, { fill: string; stroke: string; color: string }> = {
-  entry: { fill: "#1f3556", stroke: "#5c84ff", color: "#dde7ff" },
-  asset: { fill: "#1f4842", stroke: "#5cc8b1", color: "#cdf3eb" },
-  package: { fill: "#2c3a52", stroke: "#7388ad", color: "#dfe5f1" },
-  cve: { fill: "#5a1d28", stroke: "#ff6b6b", color: "#ffe1e1" },
-  cwe: { fill: "#5a3d1d", stroke: "#f0a647", color: "#fbe4c4" },
-  capec: { fill: "#4a235a", stroke: "#c065ff", color: "#ecd6ff" },
-  exploit: { fill: "#7a1f2b", stroke: "#ff8a8a", color: "#ffe7e7" },
-  impact: { fill: "#5a1f4a", stroke: "#ff7ad9", color: "#ffd8f1" },
-  fix: { fill: "#1f5a30", stroke: "#5acf80", color: "#d6f5df" },
-};
+const tokenHex = (name: string): string => paintToHex([{ color: readToken(name) }]);
+
+/** Severity is the one colour on the graph, and only on the nodes that carry it. */
+const SEVERITY_NODE_TYPES: ReadonlySet<AttackPathNodeType> = new Set<AttackPathNodeType>(["cve", "impact"]);
+const SEVERITY_TINT = 0.2;
+
+/** Matches the canvas `max-height` in vulnerability-detail.css. */
+const GRAPH_MAX_VIEWPORT_SHARE = 0.85;
+
+function escapeForMermaid(text: string): string {
+  return text.replace(/"/g, "&quot;").replace(/\n/g, "<br/>");
+}
+
+function pickNodeColor(node: AttackPathNode): NodeColors {
+  const ink = tokenHex("--color-ink");
+  const level = severityLevel(node.severity);
+  if (level !== "none" && SEVERITY_NODE_TYPES.has(node.type)) {
+    const severity = readToken(`--sev-${level}`);
+    return {
+      fill: paintToHex([{ color: readToken("--color-paper-2") }, { color: severity, alpha: SEVERITY_TINT }]),
+      stroke: paintToHex([{ color: severity }]),
+      color: ink,
+    };
+  }
+  return { fill: tokenHex("--color-paper-3"), stroke: tokenHex("--color-rule-strong"), color: ink };
+}
 
 const LIKELIHOOD_LABEL_KEYS: Record<AttackPathLikelihood, [string, string]> = {
   very_high: ["Very high", "Sehr hoch"],
@@ -132,9 +169,23 @@ async function loadMermaid(): Promise<MermaidModule | null> {
         try {
           mod.default.initialize({
             startOnLoad: false,
-            theme: "dark",
+            theme: "base",
+            themeVariables: {
+              darkMode: true,
+              background: tokenHex("--color-paper-2"),
+              primaryColor: tokenHex("--color-paper-3"),
+              primaryTextColor: tokenHex("--color-ink"),
+              primaryBorderColor: tokenHex("--color-rule-strong"),
+              secondaryColor: tokenHex("--color-paper-3"),
+              tertiaryColor: tokenHex("--color-paper-2"),
+              lineColor: tokenHex("--color-muted"),
+              textColor: tokenHex("--color-ink-2"),
+              edgeLabelBackground: tokenHex("--color-paper-2"),
+              fontFamily: readToken("--font-body"),
+            },
+            themeCSS: `.edgeLabel rect { opacity: 1; } .edgeLabel text { fill: ${tokenHex("--color-muted")}; font-size: 13px; }`,
             securityLevel: "strict",
-            flowchart: { htmlLabels: false, useMaxWidth: true, curve: "basis" },
+            flowchart: { htmlLabels: false, useMaxWidth: true, curve: "basis", rankSpacing: 36, nodeSpacing: 36 },
           });
           _mermaidInitialized = true;
         } catch {
@@ -155,21 +206,9 @@ async function loadPanzoom(): Promise<PanzoomModule | null> {
   return _panzoomPromise;
 }
 
-function escapeForMermaid(text: string): string {
-  return text.replace(/"/g, "&quot;").replace(/\n/g, "<br/>");
-}
-
-function pickNodeColor(node: AttackPathNode): { fill: string; stroke: string; color: string } {
-  if (node.severity) {
-    const sev = node.severity.toLowerCase();
-    if (SEVERITY_COLORS[sev]) return SEVERITY_COLORS[sev];
-  }
-  return NODE_TYPE_COLORS[node.type] ?? NODE_TYPE_COLORS.entry;
-}
-
 function buildMermaidSource(graph: AttackPathGraph): string {
   const lines: string[] = ["flowchart TD"];
-  const classNames = new Map<string, { fill: string; stroke: string; color: string }>();
+  const classNames = new Map<string, NodeColors>();
 
   for (const node of graph.nodes) {
     const colors = pickNodeColor(node);
@@ -195,49 +234,20 @@ function buildMermaidSource(graph: AttackPathGraph): string {
   return lines.join("\n");
 }
 
-const zoomButtonStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "28px",
-  height: "28px",
-  background: "rgba(255, 255, 255, 0.06)",
-  border: "1px solid rgba(255, 255, 255, 0.12)",
-  borderRadius: "0.35rem",
-  color: "rgba(220, 224, 235, 0.9)",
-  cursor: "pointer",
-  padding: 0,
+// CVSS vector letters and impact bands as words; analyst-supplied assumptions pass through as typed.
+const METRIC_VALUE_LABELS: Record<string, [string, string]> = {
+  N: ["None", "Keine"],
+  L: ["Low", "Niedrig"],
+  H: ["High", "Hoch"],
+  R: ["Required", "Erforderlich"],
+  P: ["Passive", "Passiv"],
+  A: ["Active", "Aktiv"],
+  low: ["Low", "Niedrig"],
+  medium: ["Medium", "Mittel"],
+  high: ["High", "Hoch"],
+  critical: ["Critical", "Kritisch"],
+  unknown: ["Unknown", "Unbekannt"],
 };
-
-function chipBackground(tone: "danger" | "warning" | "info" | "muted"): React.CSSProperties {
-  switch (tone) {
-    case "danger":
-      return {
-        background: "rgba(255, 107, 107, 0.16)",
-        border: "1px solid rgba(255, 107, 107, 0.45)",
-        color: "rgba(255, 220, 220, 0.96)",
-      };
-    case "warning":
-      return {
-        background: "rgba(240, 166, 71, 0.18)",
-        border: "1px solid rgba(240, 166, 71, 0.45)",
-        color: "rgba(255, 232, 200, 0.96)",
-      };
-    case "info":
-      return {
-        background: "rgba(92, 132, 255, 0.18)",
-        border: "1px solid rgba(92, 132, 255, 0.45)",
-        color: "rgba(220, 232, 255, 0.96)",
-      };
-    case "muted":
-    default:
-      return {
-        background: "rgba(255, 255, 255, 0.06)",
-        border: "1px solid rgba(255, 255, 255, 0.16)",
-        color: "rgba(220, 224, 235, 0.85)",
-      };
-  }
-}
 
 function LabelChip({
   label,
@@ -248,22 +258,11 @@ function LabelChip({
   value: string;
   tone: "danger" | "warning" | "info" | "muted";
 }) {
-  const style = {
-    ...chipBackground(tone),
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.4rem",
-    padding: "0.25rem 0.6rem",
-    borderRadius: "999px",
-    fontSize: "0.78rem",
-    fontWeight: 500,
-    whiteSpace: "nowrap" as const,
-  };
   return (
-    <span style={style}>
-      <span style={{ opacity: 0.7 }}>{label}:</span>
-      <span>{value}</span>
-    </span>
+    <div className="vulnerability-detail-path-label" data-tone={tone}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -288,43 +287,27 @@ function FallbackChain({ graph }: { graph: AttackPathGraph }) {
   }, [graph.nodes]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.5rem",
-        padding: "0.75rem 0",
-      }}
-    >
+    <ol className="vulnerability-detail-path-chain">
       {orderedNodes.map((node, idx) => {
         const colors = pickNodeColor(node);
         return (
-          <div key={node.id} style={{ display: "flex", flexDirection: "column", alignItems: "stretch" }}>
+          <li key={node.id}>
             <div
-              style={{
-                background: colors.fill,
-                border: `1px solid ${colors.stroke}`,
-                color: colors.color,
-                borderRadius: "0.5rem",
-                padding: "0.5rem 0.75rem",
-                fontSize: "0.9rem",
-                lineHeight: 1.35,
-              }}
+              className="vulnerability-detail-path-chain-node"
+              style={{ background: colors.fill, borderColor: colors.stroke, color: colors.color }}
             >
-              <div style={{ fontWeight: 600 }}>{node.label}</div>
+              <div className="vulnerability-detail-path-chain-label">{node.label}</div>
               {node.description ? (
-                <div style={{ fontSize: "0.78rem", opacity: 0.85, marginTop: "0.25rem" }}>
-                  {node.description}
-                </div>
+                <div className="vulnerability-detail-path-chain-text">{node.description}</div>
               ) : null}
             </div>
             {idx < orderedNodes.length - 1 ? (
-              <div style={{ textAlign: "center", opacity: 0.55, padding: "0.15rem 0" }}>↓</div>
+              <LuArrowDown className="vulnerability-detail-path-chain-arrow" size={14} aria-hidden="true" />
             ) : null}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -352,24 +335,18 @@ function CrossReferences({ nodes, t }: { nodes: AttackPathNode[]; t: TranslateFn
   }
   if (!refs.length) return null;
   return (
-    <div style={{ marginTop: "1rem" }}>
-      <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.4rem" }}>
+    <div className="vulnerability-detail-path-references">
+      <div className="vulnerability-detail-path-subhead">
         {t("Standards reference", "Standards-Referenz")}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+      <div className="link-list">
         {refs.map((ref) => (
           <a
             key={`${ref.kind}-${ref.id}`}
             href={ref.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="chip"
-            style={{
-              fontSize: "0.78rem",
-              textDecoration: "none",
-              color: "rgba(220, 224, 235, 0.88)",
-              border: "1px solid rgba(255, 255, 255, 0.18)",
-            }}
+            className="vulnerability-detail-path-reference"
           >
             {ref.id}
           </a>
@@ -475,6 +452,13 @@ export function AttackPathGraphView({
     // Clear it so the SVG can grow when the user zooms in.
     svgEl.style.maxWidth = "none";
     svgEl.style.height = "auto";
+    // Open with the whole path in frame, never scaled above its native size.
+    const { width: nativeWidth, height: nativeHeight } = (svgEl as SVGSVGElement).viewBox.baseVal;
+    if (nativeWidth > 0 && nativeHeight > 0) {
+      const fit = Math.min(1, container.clientWidth / nativeWidth, (window.innerHeight * GRAPH_MAX_VIEWPORT_SHARE) / nativeHeight);
+      svgEl.style.width = `${nativeWidth * fit}px`;
+    }
+    svgEl.setAttribute("aria-label", t("Attack path graph", "Angriffspfad-Graph"));
     attachedSvgRef.current = svgEl;
 
     let disposed = false;
@@ -510,6 +494,8 @@ export function AttackPathGraphView({
       // genuinely changes. Disposing on every effect re-run is what caused
       // the original "freeze after 1s" bug.
     };
+    // `t` only labels the SVG; a language switch must not re-attach panzoom.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderState, svgMarkup]);
 
   // Final cleanup on unmount — safe because attachedSvgRef + panzoomRef are
@@ -617,6 +603,10 @@ export function AttackPathGraphView({
   };
 
   const labels = graph.labels;
+  const metricWord = (value: string) => {
+    const pair = METRIC_VALUE_LABELS[value];
+    return pair ? t(pair[0], pair[1]) : value;
+  };
   const likelihoodLabelPair = LIKELIHOOD_LABEL_KEYS[labels.likelihood] ?? LIKELIHOOD_LABEL_KEYS.unknown;
   const maturityLabelPair =
     EXPLOIT_MATURITY_LABEL_KEYS[labels.exploitMaturity] ?? EXPLOIT_MATURITY_LABEL_KEYS.unknown;
@@ -631,26 +621,15 @@ export function AttackPathGraphView({
   const canTriggerNarrative = aiEnabled && !!onTriggerNarrative && aiProviders.length > 0;
 
   return (
-    <div className="attack-path">
-      <div
-        style={{
-          padding: "0.75rem 1rem",
-          borderRadius: "0.65rem",
-          background: "rgba(92, 132, 255, 0.08)",
-          border: "1px solid rgba(92, 132, 255, 0.3)",
-          color: "rgba(220, 232, 255, 0.92)",
-          fontSize: "0.85rem",
-          lineHeight: 1.45,
-          marginBottom: "1rem",
-        }}
-      >
-        <strong style={{ display: "block", marginBottom: "0.25rem" }}>
-          {t("Plausible attack path — not proof of exploitability", "Plausibler Angriffspfad — kein Beweis der Ausnutzbarkeit")}
+    <div className="vulnerability-detail-path">
+      <div className="well vulnerability-detail-path-disclaimer">
+        <strong>
+          {t("Plausible attack path, not proof of exploitability", "Plausibler Angriffspfad, kein Beweis der Ausnutzbarkeit")}
         </strong>
         <span>{graph.disclaimer}</span>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+      <dl className="vulnerability-detail-path-labels">
         <LabelChip
           label={t("Likelihood", "Wahrscheinlichkeit")}
           value={t(likelihoodLabelPair[0], likelihoodLabelPair[1])}
@@ -669,51 +648,32 @@ export function AttackPathGraphView({
         {labels.privilegesRequired ? (
           <LabelChip
             label={t("Privileges required", "Erforderliche Rechte")}
-            value={labels.privilegesRequired}
+            value={metricWord(labels.privilegesRequired)}
             tone="muted"
           />
         ) : null}
         {labels.userInteraction ? (
           <LabelChip
             label={t("User interaction", "Benutzerinteraktion")}
-            value={labels.userInteraction}
+            value={metricWord(labels.userInteraction)}
             tone="muted"
           />
         ) : null}
         {labels.businessImpact ? (
           <LabelChip
             label={t("Business impact", "Geschäftliche Auswirkung")}
-            value={labels.businessImpact}
+            value={metricWord(labels.businessImpact)}
             tone={labels.businessImpact === "high" ? "danger" : "muted"}
           />
         ) : null}
-      </div>
+      </dl>
 
-      <div
-        style={{
-          position: "relative",
-          padding: "1rem",
-          borderRadius: "0.65rem",
-          background: "rgba(15, 18, 30, 0.55)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          textAlign: "center",
-        }}
-      >
+      <div className="vulnerability-detail-path-stage">
         {renderState === "ready" && svgMarkup ? (
           <>
             <div
               ref={svgContainerRef}
-              style={{
-                position: "relative",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "flex-start",
-                minHeight: "320px",
-                maxHeight: "70vh",
-                overflow: "hidden",
-                cursor: "grab",
-                touchAction: "none",
-              }}
+              className="vulnerability-detail-path-canvas"
               onMouseDown={(e) => {
                 (e.currentTarget as HTMLDivElement).style.cursor = "grabbing";
               }}
@@ -727,92 +687,56 @@ export function AttackPathGraphView({
               dangerouslySetInnerHTML={{ __html: svgMarkup }}
             />
             <div
-              style={{
-                position: "absolute",
-                top: "0.6rem",
-                right: "0.6rem",
-                display: "flex",
-                gap: "0.25rem",
-                background: "rgba(15, 18, 30, 0.85)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                borderRadius: "0.45rem",
-                padding: "0.2rem",
-              }}
+              className="vulnerability-detail-path-zoom"
               // Stop pointer events from being swallowed by the panzoom drag handler
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
-              <button
-                type="button"
-                title={t("Zoom out", "Verkleinern")}
-                onClick={() => zoomBy(0.8)}
-                style={zoomButtonStyle}
-              >
-                <LuMinus size={14} />
-              </button>
-              <button
-                type="button"
-                title={t("Reset zoom", "Zoom zurücksetzen")}
-                onClick={() => resetZoom()}
-                style={zoomButtonStyle}
-              >
-                <LuMaximize2 size={14} />
-              </button>
-              <button
-                type="button"
-                title={t("Zoom in", "Vergrößern")}
-                onClick={() => zoomBy(1.25)}
-                style={zoomButtonStyle}
-              >
-                <LuPlus size={14} />
-              </button>
+              <IconButton label={t("Zoom out", "Verkleinern")} onClick={() => zoomBy(0.8)}>
+                <LuMinus size={14} aria-hidden="true" />
+              </IconButton>
+              <IconButton label={t("Reset zoom", "Zoom zurücksetzen")} onClick={() => resetZoom()}>
+                <LuMaximize2 size={14} aria-hidden="true" />
+              </IconButton>
+              <IconButton label={t("Zoom in", "Vergrößern")} onClick={() => zoomBy(1.25)}>
+                <LuPlus size={14} aria-hidden="true" />
+              </IconButton>
             </div>
-            <div
-              className="muted"
-              style={{
-                position: "absolute",
-                bottom: "0.5rem",
-                left: "0.75rem",
-                fontSize: "0.7rem",
-                opacity: 0.55,
-                pointerEvents: "none",
-              }}
-            >
+            <div className="vulnerability-detail-path-hint">
               {t(
-                "Drag to pan · scroll to zoom · double-click to reset",
-                "Ziehen zum Verschieben · Scrollen zum Zoomen · Doppelklick zum Zurücksetzen",
+                "Drag to pan, scroll to zoom, double-click to reset",
+                "Ziehen zum Verschieben, Scrollen zum Zoomen, Doppelklick zum Zurücksetzen",
               )}
             </div>
           </>
         ) : renderState === "fallback" ? (
           <FallbackChain graph={graph} />
         ) : (
-          <div className="muted" style={{ padding: "1.5rem", textAlign: "center" }}>
-            {t("Rendering attack path…", "Angriffspfad wird gezeichnet…")}
+          <div role="status">
+            <span className="visually-hidden">{t("Rendering attack path…", "Angriffspfad wird gezeichnet…")}</span>
+            <SkeletonBlock height={320} radius={4} />
           </div>
         )}
       </div>
 
       <CrossReferences nodes={graph.nodes} t={t} />
 
-      <div className="ai-analysis" style={{ marginTop: "1.5rem" }}>
-        <h4 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem 0" }}>
-          {t("Scenario narrative", "Szenario-Beschreibung")}
-        </h4>
+      <div className="vulnerability-detail-path-narrative">
+        <h3>{t("Scenario narrative", "Szenario-Beschreibung")}</h3>
 
         {!aiEnabled ? (
-          <div className="muted" style={{ fontSize: "0.85rem" }}>
+          <p className="vulnerability-detail-path-note">
             {t(
               "Configure an AI provider in System settings to generate prose attack scenarios.",
               "Konfiguriere einen AI-Provider in den Systemeinstellungen, um eine Prosa-Angriffsbeschreibung zu erzeugen.",
             )}
-          </div>
+          </p>
         ) : null}
 
         {aiEnabled && canTriggerNarrative ? (
           <>
-            <div className="ai-analysis__controls">
-              <label htmlFor="attack-path-provider" className="muted" style={{ fontSize: "0.9rem" }}>
+            <div className="vulnerability-detail-ai-controls">
+              <label htmlFor="attack-path-provider">
                 {t("Provider", "Anbieter")}
               </label>
               <select
@@ -829,6 +753,7 @@ export function AttackPathGraphView({
               </select>
               <button
                 type="button"
+                className="btn btn-primary"
                 onClick={() =>
                   void onTriggerNarrative?.(selectedProvider, additionalContext.trim())
                 }
@@ -839,12 +764,8 @@ export function AttackPathGraphView({
                   : t("Generate scenario narrative", "Szenario-Beschreibung erzeugen")}
               </button>
             </div>
-            <div style={{ marginTop: "1rem" }}>
-              <label
-                htmlFor="attack-path-context"
-                className="muted"
-                style={{ fontSize: "0.9rem", display: "block", marginBottom: "0.5rem" }}
-              >
+            <div className="vulnerability-detail-ai-context">
+              <label htmlFor="attack-path-context">
                 {t("Additional information (optional)", "Zusätzliche Informationen (optional)")}
               </label>
               <textarea
@@ -856,29 +777,15 @@ export function AttackPathGraphView({
                   "Enter additional context (e.g., we run this on Kubernetes)...",
                   "Geben Sie zusätzlichen Kontext ein (z. B. wir betreiben dies auf Kubernetes)...",
                 )}
-                style={{
-                  width: "100%",
-                  minHeight: "80px",
-                  padding: "0.6rem 0.75rem",
-                  background: "rgba(15, 18, 30, 0.85)",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  borderRadius: "8px",
-                  color: "#f5f7fa",
-                  fontSize: "0.95rem",
-                  resize: "vertical",
-                  fontFamily: "inherit",
-                  lineHeight: 1.5,
-                  boxSizing: "border-box",
-                }}
               />
             </div>
           </>
         ) : null}
 
         {error ? (
-          <div className="ai-analysis__error">
+          <p className="vulnerability-detail-error" role="alert">
             {error}
-          </div>
+          </p>
         ) : null}
 
         {loading ? (
@@ -886,32 +793,15 @@ export function AttackPathGraphView({
         ) : null}
 
         {narrative ? (
-          <div
-            style={{
-              padding: "0.85rem 1rem",
-              borderRadius: "0.55rem",
-              background: "rgba(255, 255, 255, 0.03)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              marginTop: "0.5rem",
-            }}
-          >
-            <div
-              className="muted"
-              style={{
-                fontSize: "0.78rem",
-                marginBottom: "0.5rem",
-                display: "flex",
-                gap: "0.5rem",
-                flexWrap: "wrap",
-              }}
-            >
+          <div className="well vulnerability-detail-path-narrative-body">
+            <div className="vulnerability-detail-meta-line">
               <span>
                 {t("Provider", "Anbieter")}: {narrative.provider}
               </span>
-              {narrative.triggeredBy ? <span>· {narrative.triggeredBy}</span> : null}
-              <span>· {new Date(narrative.generatedAt).toLocaleString(language === "de" ? "de-DE" : "en-US")}</span>
+              {narrative.triggeredBy ? <span>{narrative.triggeredBy}</span> : null}
+              <span>{new Date(narrative.generatedAt).toLocaleString(language === "de" ? "de-DE" : "en-US")}</span>
             </div>
-            <div className="ai-analysis__text">
+            <div className="vulnerability-detail-prose">
               <Markdown>{narrativeText}</Markdown>
             </div>
           </div>
@@ -933,7 +823,7 @@ export function AttackPathSummaryLink({
   t: TranslateFn;
 }) {
   return (
-    <Link to={`/vulnerability/${encodeURIComponent(vulnId)}`} className="muted" style={{ textDecoration: "underline" }}>
+    <Link to={`/vulnerability/${encodeURIComponent(vulnId)}`} className="vulnerability-detail-path-open">
       {t("Open full attack path", "Vollständigen Angriffspfad öffnen")}
     </Link>
   );

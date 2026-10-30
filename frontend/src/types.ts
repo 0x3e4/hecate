@@ -454,6 +454,28 @@ export type InventoryDeployment = "onprem" | "cloud" | "hybrid";
 /** Free-form environment label. Common values: prod, staging, dev, test, dr. */
 export type InventoryEnvironment = string;
 
+export interface InventoryHistoryChange {
+  field: string;
+  old?: string | number | null;
+  new?: string | number | null;
+}
+
+export interface InventoryHistoryEntry {
+  id: string;
+  itemId: string;
+  itemName: string;
+  action: "created" | "updated" | "deleted";
+  source: "web" | "report" | "mcp" | "restore";
+  actor?: string | null;
+  changes: InventoryHistoryChange[];
+  createdAt: string;
+}
+
+export interface InventoryHistoryResponse {
+  total: number;
+  items: InventoryHistoryEntry[];
+}
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -579,6 +601,7 @@ export interface CatalogVendor {
   slug: string;
   name: string;
   aliases: string[];
+  vulnerabilityCount?: number | null;
 }
 
 export interface CatalogVendorListResponse {
@@ -591,6 +614,7 @@ export interface CatalogProduct {
   name: string;
   vendorSlugs: string[];
   aliases: string[];
+  vulnerabilityCount?: number | null;
 }
 
 export interface CatalogProductListResponse {

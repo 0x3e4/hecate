@@ -3,6 +3,7 @@ import type {
   AffectedVulnerabilitiesResponse,
   InventoryDeployment,
   InventoryEnvironment,
+  InventoryHistoryResponse,
   InventoryItem,
   InventoryItemListResponse,
 } from "../types";
@@ -51,6 +52,23 @@ export async function updateInventoryItem(
 
 export async function deleteInventoryItem(itemId: string): Promise<void> {
   await api.delete(`/v1/inventory/${itemId}`);
+}
+
+export async function fetchInventoryHistory(limit = 20): Promise<InventoryHistoryResponse> {
+  const response = await api.get<InventoryHistoryResponse>("/v1/inventory/history", {
+    params: { limit },
+  });
+  return response.data;
+}
+
+export async function fetchInventoryItemHistory(
+  itemId: string,
+  limit = 50,
+): Promise<InventoryHistoryResponse> {
+  const response = await api.get<InventoryHistoryResponse>(`/v1/inventory/${itemId}/history`, {
+    params: { limit },
+  });
+  return response.data;
 }
 
 export async function fetchInventoryAffectedVulnerabilities(

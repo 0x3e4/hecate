@@ -35,8 +35,8 @@ const buildNavSections = (
     titleEn: "Vulnerabilities", titleDe: "Schwachstellen",
     items: [
       { to: "/vulnerabilities", label: "Vulnerabilities", icon: LuShieldAlert },
-      { to: "/query-builder", label: "Query Builder", icon: LuWrench },
-      ...(aiEnabled ? [{ to: "/ai-analyse", label: "AI Analysis", icon: LuBrain }] : []),
+      { to: "/query-builder", label: "Query builder", icon: LuWrench },
+      ...(aiEnabled ? [{ to: "/ai-analyse", label: "AI analysis", icon: LuBrain }] : []),
       { to: "/changelog", label: "Changelog", icon: LuHistory },
     ],
   },
@@ -44,7 +44,7 @@ const buildNavSections = (
     titleEn: "Security", titleDe: "Sicherheit",
     items: [
       { to: "/scans", label: "SCA", icon: LuScanLine },
-      { to: "/malware-feed", label: "Malware Feed", icon: LuShieldAlert },
+      { to: "/malware-feed", label: "Malware feed", icon: LuShieldAlert },
     ],
   }] : []),
   {
@@ -57,7 +57,7 @@ const buildNavSections = (
     titleEn: "Analysis", titleDe: "Analyse",
     items: [
       { to: "/stats", label: "Statistics", icon: LuFileChartColumnIncreasing },
-      { to: "/audit", label: "Audit Log", icon: LuLogs },
+      { to: "/audit", label: "Audit log", icon: LuLogs },
     ],
   },
   {
@@ -170,6 +170,10 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
 
   return (
     <aside className={`app-sidebar${collapsed ? " collapsed" : ""}${mobileMenuOpen ? " mobile-open" : ""}`}>
+      <Link to="/" className="sidebar-brand" title={t("AI-powered vulnerability analysis", "KI-gestützte Schwachstellenanalyse")} aria-label="Hecate Cyber Defense">
+        <img src="/logo.png" alt="" width={32} height={32} />
+        <span className="sidebar-brand-name">Hecate Cyber Defense</span>
+      </Link>
       <nav className="sidebar-nav">
         {localizedSections.map((section, sectionIdx) => (
           <div key={sectionIdx} className="sidebar-section">
@@ -238,9 +242,10 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                               type="button"
                               className="sidebar-recent-remove"
                               title={t("Remove", "Entfernen")}
+                              aria-label={t("Remove", "Entfernen")}
                               onClick={(e) => { e.stopPropagation(); removeVisit(visit.id); }}
                             >
-                              <LuX />
+                              <LuX aria-hidden="true" />
                             </button>
                           </span>
                         );
@@ -282,19 +287,21 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
           </div>
         ))}
       </nav>
-      <div className="sidebar-version">{collapsed ? `v${version}` : `Hecate v${version}`}</div>
-      <button
-        type="button"
-        className="sidebar-collapse-button"
-        onClick={onToggleCollapse}
-        aria-pressed={collapsed}
-        aria-label={collapsed ? t("Expand sidebar", "Sidebar ausklappen") : t("Collapse sidebar", "Sidebar einklappen")}
-      >
-        <span aria-hidden="true" className="sidebar-collapse-icon">
-          {collapsed ? <LuChevronRight /> : <LuChevronLeft />}
-        </span>
-        <span className="sidebar-collapse-label">{collapsed ? t("Expand", "Ausklappen") : t("Collapse", "Einklappen")}</span>
-      </button>
+      <div className="sidebar-footer">
+        <div className="sidebar-version">{collapsed ? `v${version}` : `Hecate v${version}`}</div>
+        <button
+          type="button"
+          className="sidebar-collapse-button"
+          onClick={onToggleCollapse}
+          aria-pressed={collapsed}
+          aria-label={collapsed ? t("Expand sidebar", "Sidebar ausklappen") : t("Collapse sidebar", "Sidebar einklappen")}
+        >
+          <span aria-hidden="true" className="sidebar-collapse-icon">
+            {collapsed ? <LuChevronRight /> : <LuChevronLeft />}
+          </span>
+          <span className="sidebar-collapse-label">{collapsed ? t("Expand", "Ausklappen") : t("Collapse", "Einklappen")}</span>
+        </button>
+      </div>
     </aside>
   );
 };

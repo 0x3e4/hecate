@@ -53,45 +53,46 @@ export const QueryEditor = ({
   };
 
   return (
-    <div className="query-editor-panel">
-      <div className="query-editor-header">
-        <h3>DQL Query</h3>
-        <span className="character-count">{query.length} {t("characters", "Zeichen")}</span>
+    <div className="query-builder-editor">
+      <div className="query-builder-editor-head">
+        <h2 id="query-builder-editor-title">{t("DQL query", "DQL Query")}</h2>
+        <span className="query-builder-editor-count">{query.length} {t("characters", "Zeichen")}</span>
       </div>
 
       <textarea
         ref={textareaRef}
-        className="query-input"
+        className="query-input query-builder-input"
+        aria-labelledby="query-builder-editor-title"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
         placeholder={t(
-          "Enter DQL query or click fields from the left browser...",
-          "DQL Query eingeben oder Felder aus dem Browser links klicken..."
+          "Enter a DQL query or click a field to add it...",
+          "DQL Query eingeben oder ein Feld anklicken, um es hinzuzufügen..."
         )}
         rows={10}
         spellCheck={false}
       />
 
-      <div className="operator-buttons">
-        <span className="operator-label">{t("Operators:", "Operatoren:")}</span>
-        <button type="button" onClick={() => handleInsertOperator("AND")} title={t("AND operator", "AND Operator")}>
+      <div className="query-builder-operators">
+        <span className="query-builder-operators-label">{t("Operators:", "Operatoren:")}</span>
+        <button type="button" className="btn btn-secondary mono" onClick={() => handleInsertOperator("AND")} title={t("AND operator", "AND Operator")}>
           AND
         </button>
-        <button type="button" onClick={() => handleInsertOperator("OR")} title={t("OR operator", "OR Operator")}>
+        <button type="button" className="btn btn-secondary mono" onClick={() => handleInsertOperator("OR")} title={t("OR operator", "OR Operator")}>
           OR
         </button>
-        <button type="button" onClick={() => handleInsertOperator("NOT")} title={t("NOT operator", "NOT Operator")}>
+        <button type="button" className="btn btn-secondary mono" onClick={() => handleInsertOperator("NOT")} title={t("NOT operator", "NOT Operator")}>
           NOT
         </button>
-        <button type="button" onClick={() => handleInsertOperator("*")} title={t("Wildcard", "Wildcard")}>
+        <button type="button" className="btn btn-secondary mono" onClick={() => handleInsertOperator("*")} title={t("Wildcard", "Wildcard")}>
           *
         </button>
-        <button type="button" onClick={() => handleInsertOperator("?")} title={t("Single character wildcard", "Einzelzeichen-Wildcard")}>
+        <button type="button" className="btn btn-secondary mono" onClick={() => handleInsertOperator("?")} title={t("Single character wildcard", "Einzelzeichen-Wildcard")}>
           ?
         </button>
       </div>
 
-      <div className="query-actions">
+      <div className="query-builder-actions">
         <button
           type="button"
           className="btn btn-secondary"
@@ -99,7 +100,7 @@ export const QueryEditor = ({
           disabled={!query.trim()}
           title={t("Save query", "Query speichern")}
         >
-          <LuSave />
+          <LuSave aria-hidden="true" />
           <span>{t("Save", "Speichern")}</span>
         </button>
 
@@ -110,27 +111,27 @@ export const QueryEditor = ({
           disabled={!query.trim()}
           title={t("Copy URL", "URL kopieren")}
         >
-          <LuCopy />
+          <LuCopy aria-hidden="true" />
           <span>{t("Copy URL", "URL kopieren")}</span>
         </button>
 
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-primary query-builder-execute"
           onClick={onExecute}
           disabled={!query.trim()}
           title={t("Execute query", "Query ausführen")}
         >
-          <LuPlay />
+          <LuPlay aria-hidden="true" />
           <span>{t("Execute query", "Query ausführen")}</span>
         </button>
       </div>
 
-      <div className="query-help">
+      <div className="query-builder-help">
         <p>
-          <strong>{t("Syntax examples:", "Syntax-Beispiele:")}</strong> <code>vuln_id:CVE-2024-*</code>,{" "}
-          <code>cvss.severity:critical</code>,{" "}
-          <code>vendors:microsoft AND exploited:true</code>
+          {t("Syntax examples:", "Syntax-Beispiele:")} <code className="mono">vuln_id:CVE-2024-*</code>,{" "}
+          <code className="mono">cvss.severity:critical</code>,{" "}
+          <code className="mono">vendors:microsoft AND exploited:true</code>
         </p>
         <p>
           {t("More information:", "Mehr Informationen:")}{" "}
@@ -139,7 +140,7 @@ export const QueryEditor = ({
             target="_blank"
             rel="noopener noreferrer"
           >
-            <i>OpenSearch DQL Syntax</i>
+            OpenSearch DQL Syntax
           </a>
         </p>
       </div>

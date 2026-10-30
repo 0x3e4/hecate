@@ -2,17 +2,19 @@ import type { CSSProperties, ReactNode } from "react";
 
 /** Shared tab-button style used by the scan and vulnerability detail pages. */
 export const tabPillStyle = (active: boolean): CSSProperties => ({
-  padding: "0.375rem 0.875rem",
-  borderRadius: "6px",
-  border: active ? "1px solid rgba(255,193,7,0.5)" : "1px solid rgba(255,255,255,0.1)",
-  background: active ? "rgba(255,193,7,0.15)" : "transparent",
-  color: active ? "#ffd43b" : "rgba(255,255,255,0.6)",
+  minHeight: "var(--control-height)",
+  padding: "0 var(--space-sm)",
+  border: 0,
+  borderBottom: `2px solid ${active ? "var(--color-accent)" : "transparent"}`,
+  borderRadius: 0,
+  background: "transparent",
+  color: active ? "var(--color-ink)" : "var(--color-muted)",
   cursor: "pointer",
-  fontSize: "0.8125rem",
-  fontWeight: 500,
+  fontSize: "var(--text-sm)",
+  fontWeight: active ? 600 : 400,
   display: "inline-flex",
   alignItems: "center",
-  gap: "0.4rem",
+  gap: "var(--space-xs)",
 });
 
 /** Small numeric badge that sits next to a tab label. */
@@ -21,14 +23,9 @@ export const TabBadge = ({ count }: { count: number | undefined | null }) => {
   return (
     <span
       style={{
-        fontSize: "0.72rem",
-        padding: "0.1rem 0.4rem",
-        borderRadius: "4px",
-        background: "rgba(255,255,255,0.1)",
-        color: "#ffffff",
-        fontWeight: 600,
-        minWidth: "1.1rem",
-        textAlign: "center",
+        color: "var(--color-muted)",
+        fontSize: "var(--text-xs)",
+        fontVariantNumeric: "tabular-nums",
       }}
     >
       {count}
@@ -51,7 +48,7 @@ export const TabPill = ({ active, onClick, count, accent, children }: TabPillPro
     ? { ...base, ...(active ? accent.active : accent.idle) }
     : base;
   return (
-    <button type="button" onClick={onClick} style={merged}>
+    <button type="button" onClick={onClick} style={merged} aria-current={active ? "true" : undefined}>
       {children}
       <TabBadge count={count ?? undefined} />
     </button>

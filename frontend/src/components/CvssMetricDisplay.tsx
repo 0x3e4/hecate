@@ -1,7 +1,9 @@
 import { useState } from "react";
+import "../screens/vulnerability-detail.css";
 import { ParsedCvssMetric } from "../utils/cvss";
 import { getCvssExplanation } from "../utils/cvssExplanations";
 import { useI18n } from "../i18n/context";
+import { severityLevel } from "../ui/primitives";
 
 interface CvssMetricDisplayProps {
   metric: ParsedCvssMetric | null;
@@ -34,9 +36,13 @@ const formatEnumValue = (value: string | null | undefined): string => {
   return upper;
 };
 
-const formatScore = (value: number | null | undefined): string => {
+/** CVSS enums arrive upper-case; they read as sentence case in the interface. */
+const toSentenceCase = (value: string): string =>
+  value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+
+const formatScore = (value: number | null | undefined, fallback: string): string => {
   if (typeof value !== "number" || Number.isNaN(value)) {
-    return "—";
+    return fallback;
   }
   return value.toFixed(1);
 };
@@ -89,25 +95,27 @@ export const CvssMetricDisplay = ({
 }: CvssMetricDisplayProps) => {
   const { t } = useI18n();
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const noValue = t("n/a", "k. A.");
+  const rootClass = `vulnerability-detail-cvss${compact ? " vulnerability-detail-cvss--compact" : ""}`;
 
   if (!metric) {
     return (
-      <div className={`cvss-card ${compact ? "compact" : ""}`}>
-        <div className="cvss-details">
-          <div className="cvss-empty">{t("No CVSS data available.", "Keine CVSS-Daten verfügbar.")}</div>
+      <div className={rootClass}>
+        <div className="vulnerability-detail-cvss-score">
+          <span className="vulnerability-detail-cvss-figure muted">{noValue}</span>
+          <span className="vulnerability-detail-cvss-word">{t("No Data", "Keine Daten")}</span>
+          <span className="vulnerability-detail-cvss-version">CVSS</span>
         </div>
-        <div className="cvss-score-ring severity-unknown">
-          <span className="cvss-score-value">—</span>
-          <span className="cvss-score-label">{t("No Data", "Keine Daten")}</span>
-          <span className="cvss-score-version">CVSS</span>
+        <div className="vulnerability-detail-cvss-details">
+          <div className="muted">{t("No CVSS data available.", "Keine CVSS-Daten verfügbar.")}</div>
         </div>
       </div>
     );
   }
 
   const severity = metric.baseSeverity ?? "UNKNOWN";
-  const severityClass = severity ? severity.toLowerCase() : "unknown";
-  const severityLabel = formatEnumValue(severity);
+  const severityClass = `sev-${severityLevel(severity)}`;
+  const severityLabel = toSentenceCase(formatEnumValue(severity));
 
   // Build version-aware attribute list
   const isV4 = metric.key === "v40" || metric.version?.startsWith("4");
@@ -177,63 +185,71 @@ export const CvssMetricDisplay = ({
   const hasAnyDetails = visibleAttributes.length > 0 || showSubscores || showVectorInfo;
   const vectorLink = metric ? buildCvssCalculatorUrl(metric) : null;
 
+  const selectedAttribute = visibleItems.find((attribute) => attribute.label === selectedLabel) ?? null;
+  const explanation = selectedAttribute
+    ? getCvssExplanation(selectedAttribute.label, selectedAttribute.displayValue)
+    : null;
+
   return (
-    <div className={`cvss-card ${compact ? "compact" : ""}`}>
-      <div className="cvss-details">
+    <div className={rootClass}>
+      <div className="vulnerability-detail-cvss-score">
+        <span className={`vulnerability-detail-cvss-figure ${severityClass}`}>{formatScore(metric.baseScore, noValue)}</span>
+        <span className={`vulnerability-detail-cvss-word ${severityClass}`}>{severityLabel}</span>
+        <span className="vulnerability-detail-cvss-version">{metric.label}</span>
+      </div>
+
+      <div className="vulnerability-detail-cvss-details">
         {hasAnyDetails ? (
           <>
             {visibleItems.length > 0 && (
-              <div className="cvss-badge-grid">
+              <div className="vulnerability-detail-cvss-grid">
                 {visibleItems.map((attribute) => {
-                  const normalizedValue =
-                    attribute.displayValue.toLowerCase().replace(/\s+/g, "_") || "unknown";
                   const isSelected = selectedLabel === attribute.label;
-                  const explanation = isSelected
-                    ? getCvssExplanation(attribute.label, attribute.displayValue)
-                    : null;
                   return (
-                    <div key={attribute.label}>
-                      <div
-                        className={`cvss-badge-row cvss-badge-row--clickable${isSelected ? " cvss-badge-row--active" : ""}`}
-                        onClick={() => setSelectedLabel(isSelected ? null : attribute.label)}
-                      >
-                        <span className="cvss-badge-label">{attribute.label}</span>
-                        <span className="cvss-badge-value" data-level={normalizedValue}>
-                          {attribute.displayValue}
-                        </span>
-                      </div>
-                      {isSelected && explanation && (
-                        <div className="cvss-explanation">
-                          <div className="cvss-explanation__metric">{explanation.metric}</div>
-                          {explanation.value && (
-                            <div className="cvss-explanation__value">
-                              <strong>{attribute.displayValue}:</strong> {explanation.value}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      key={attribute.label}
+                      type="button"
+                      className="vulnerability-detail-cvss-metric"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedLabel(isSelected ? null : attribute.label)}
+                    >
+                      <span className="vulnerability-detail-cvss-metric-label">{attribute.label}</span>
+                      <span className="vulnerability-detail-cvss-metric-value">
+                        {toSentenceCase(attribute.displayValue)}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
             )}
 
+            {selectedAttribute && explanation && (
+              <div className="well vulnerability-detail-cvss-explanation">
+                <p>{explanation.metric}</p>
+                {explanation.value && (
+                  <p>
+                    <strong>{toSentenceCase(selectedAttribute.displayValue)}:</strong> {explanation.value}
+                  </p>
+                )}
+              </div>
+            )}
+
             {showSubscores && (
-              <div className="cvss-subscores">
+              <div className="vulnerability-detail-meta-line">
                 {metric.exploitabilityScore != null && (
-                  <span className="cvss-subscore">
-                    {t("Exploitability", "Ausnutzbarkeit")}: {formatScore(metric.exploitabilityScore)}
+                  <span>
+                    {t("Exploitability", "Ausnutzbarkeit")}: {formatScore(metric.exploitabilityScore, noValue)}
                   </span>
                 )}
                 {metric.impactScore != null && (
-                  <span className="cvss-subscore">{t("Impact", "Auswirkung")}: {formatScore(metric.impactScore)}</span>
+                  <span>{t("Impact", "Auswirkung")}: {formatScore(metric.impactScore, noValue)}</span>
                 )}
               </div>
             )}
 
             {showVectorInfo && (
-              <div className="cvss-vector">
-                <span className="cvss-badge-label">{t("Vector", "Vektor")}</span>
+              <div className="vulnerability-detail-cvss-vector">
+                <span>{t("Vector", "Vektor")}</span>
                 {vectorLink ? (
                   <a href={vectorLink} target="_blank" rel="noreferrer">
                     <code>{metric.vectorString}</code>
@@ -245,16 +261,10 @@ export const CvssMetricDisplay = ({
             )}
           </>
         ) : (
-          <div className="cvss-empty">
+          <div className="muted">
             {compact ? t("No CVSS details", "Keine CVSS-Details") : t("No detailed data available.", "Keine Detaildaten vorhanden.")}
           </div>
         )}
-      </div>
-
-      <div className={`cvss-score-ring severity-${severityClass}`}>
-        <span className="cvss-score-value">{formatScore(metric.baseScore)}</span>
-        <span className="cvss-score-label">{severityLabel}</span>
-        <span className="cvss-score-version">{metric.label}</span>
       </div>
     </div>
   );

@@ -512,9 +512,9 @@ export const DQL_FIELD_HINTS: DQLFieldHint[] = [
   {
     field: "affectedVersion",
     description:
-      "Version you run (e.g. 7.0.1) – also matches advisories that only cover the version as a range",
+      "Version you run (e.g. 7.0.1), also matches advisories that only cover the version as a range",
     descriptionDe:
-      "Version, die du einsetzt (z.B. 7.0.1) – trifft auch Advisories, die die Version nur als Bereich abdecken",
+      "Version, die du einsetzt (z.B. 7.0.1), trifft auch Advisories, die die Version nur als Bereich abdecken",
     type: "string",
     aggregatable: false,
   },
@@ -556,12 +556,12 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
     fields: ["title", "summary", "cwes", "cpes"]
   },
   {
-    name: "Impact & Scoring",
+    name: "Impact & scoring",
     nameDe: "Auswirkung & Bewertung",
     fields: ["cvss.severity", "cvss.base_score", "epss_score", "exploited", "rejected"]
   },
   {
-    name: "CVSS 4.0 Metrics",
+    name: "CVSS 4.0 metrics",
     nameDe: "CVSS 4.0 Metriken",
     fields: [
       "cvssMetrics.v40.data.baseScore",
@@ -582,7 +582,7 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
     ]
   },
   {
-    name: "CVSS 3.x Metrics",
+    name: "CVSS 3.x metrics",
     nameDe: "CVSS 3.x Metriken",
     fields: [
       "cvssMetrics.v31.data.baseScore",
@@ -603,7 +603,7 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
     ]
   },
   {
-    name: "CVSS 2.0 Metrics",
+    name: "CVSS 2.0 metrics",
     nameDe: "CVSS 2.0 Metriken",
     fields: [
       "cvssMetrics.v20.data.baseScore",
@@ -622,7 +622,7 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
     ]
   },
   {
-    name: "Impacted Products",
+    name: "Impacted products",
     nameDe: "Betroffene Produkte",
     fields: [
       "impactedProducts.vendor.name",
@@ -635,7 +635,7 @@ export const FIELD_CATEGORIES: FieldCategory[] = [
     ]
   },
   {
-    name: "Assets & Products",
+    name: "Assets & products",
     nameDe: "Assets & Produkte",
     fields: [
       "vendors",

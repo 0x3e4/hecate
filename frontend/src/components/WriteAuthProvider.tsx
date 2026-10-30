@@ -59,9 +59,10 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
             className="dialog"
             role="dialog"
             aria-modal="true"
+            aria-labelledby="write-auth-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>{t("Password required", "Passwort erforderlich")}</h3>
+            <h2 id="write-auth-title">{t("Password required", "Passwort erforderlich")}</h2>
             <p>
               {pending.ctx.targetId
                 ? t(
@@ -85,6 +86,7 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={t("Password", "Passwort")}
+                aria-label={t("Password", "Passwort")}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") close(null);
                 }}
