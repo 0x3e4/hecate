@@ -12,12 +12,14 @@ export const ScrollToTop = () => {
       setShowScrollTop(window.scrollY > 100);
     };
 
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // An explicit behaviour outranks the reduced-motion rule in base.css.
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
   };
 
   if (!showScrollTop) {

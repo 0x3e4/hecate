@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LuX } from "react-icons/lu";
+
+import { useI18n } from "../i18n/context";
+import { IconButton } from "../ui/primitives";
 
 // Shared bottom-right toast — the single source of truth for transient
 // success/error notifications across the app. Use `useToast()` for state +
-// auto-dismiss and render `<Toast toast={toast} />` near the page root.
+// auto-dismiss and render `<Toast toast={toast} onDismiss={dismiss} />` near the
+// page root.
 
 export type ToastType = "success" | "error";
 export type ToastMessage = { message: string; type: ToastType };
@@ -41,12 +46,16 @@ export const useToast = (autoDismissMs = 4000) => {
   return { toast, showToast, dismiss };
 };
 
-export const Toast = ({ toast }: { toast: ToastMessage | null }) => {
+export const Toast = ({ toast, onDismiss }: { toast: ToastMessage | null; onDismiss: () => void }) => {
+  const { t } = useI18n();
   if (!toast) return null;
   return (
     <div className="toast-region">
       <div role="status" aria-live="polite" className={`toast toast--${toast.type}`}>
-        {toast.message}
+        <span className="toast-message">{toast.message}</span>
+        <IconButton className="toast-close" label={t("Dismiss", "Schließen")} onClick={onDismiss}>
+          <LuX aria-hidden="true" />
+        </IconButton>
       </div>
     </div>
   );

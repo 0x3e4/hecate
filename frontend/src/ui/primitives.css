@@ -54,12 +54,15 @@
 .row-link.mono { white-space: nowrap; }
 
 /* Toast: pops above the page; the outcome word and colour sit in the text */
-.toast-region { position: fixed; bottom: var(--space-lg); right: var(--space-lg); z-index: var(--z-toast); }
-.toast { min-width: 240px; max-width: min(90vw, 420px); padding: var(--space-xs) var(--space-sm); background: var(--color-paper-3); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-card); box-shadow: var(--shadow-pop); color: var(--color-ink); font-size: var(--text-sm); }
+.toast-region { position: fixed; bottom: calc(var(--space-lg) + var(--scroll-top-size) + var(--space-xs)); right: var(--space-lg); z-index: var(--z-toast); }
+.toast { display: flex; align-items: flex-start; gap: var(--space-xs); min-width: 240px; max-width: min(90vw, 420px); padding: var(--space-3xs) var(--space-3xs) var(--space-3xs) var(--space-sm); background: var(--color-paper-3); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-card); box-shadow: var(--shadow-pop); color: var(--color-ink); font-size: var(--text-sm); }
 .toast--error { color: var(--color-error); }
+.toast-message { flex: 1; min-width: 0; padding-block: calc((var(--control-height) - 1.55em) / 2); overflow-wrap: anywhere; }
 
 @media (max-width: 40rem) {
-  .toast-region { left: var(--space-sm); right: var(--space-sm); bottom: var(--space-sm); }
+  .toast-region { left: var(--space-sm); right: var(--space-sm); bottom: calc(var(--space-md) + var(--scroll-top-size) + var(--space-xs)); }
+  .toast { max-width: none; }
+  .toast-message { padding-block: calc((44px - 1.55em) / 2); }
   .page-header { align-items: flex-start; }
   .icon-button { width: 44px; height: 44px; }
 }

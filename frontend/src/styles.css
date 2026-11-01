@@ -139,8 +139,9 @@ table td { font-variant-numeric: tabular-nums; }
 .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
 .tabs-scroll::-webkit-scrollbar { display: none; }
 
-.scroll-to-top { position: fixed; bottom: var(--space-lg); right: var(--space-lg); z-index: var(--z-sticky); display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; background: var(--color-paper-3); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); color: var(--color-ink); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
+.scroll-to-top { position: fixed; bottom: var(--space-lg); right: var(--space-lg); z-index: var(--z-sticky); display: inline-flex; align-items: center; justify-content: center; width: var(--scroll-top-size); height: var(--scroll-top-size); padding: 0; font-size: var(--text-lg); background: var(--color-paper-3); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); color: var(--color-ink); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
 .scroll-to-top:hover { background: var(--color-paper-2); }
+@media (max-width: 40rem) { .scroll-to-top { right: var(--space-md); bottom: var(--space-md); } }
 
 .query-input { box-sizing: border-box; width: 100%; max-width: 100%; min-height: 150px; margin-bottom: var(--space-md); padding: var(--space-sm); font-family: var(--font-outlier); font-size: var(--text-sm); line-height: 1.5; resize: vertical; }
 

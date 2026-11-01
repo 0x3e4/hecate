@@ -232,7 +232,7 @@ export const ScanTargetDetailPage = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const params = useParams();
-  const { toast, showToast } = useToast();
+  const { toast, showToast, dismiss } = useToast();
   // Splat param, NO extra decodeURIComponent: the router already percent-decodes
   // once, and a second decode mangles ids whose stored form contains literal
   // %-sequences (e.g. ".../ANK%C3%96/..." becomes ".../ANKÖ/..."). The backend
@@ -731,7 +731,7 @@ export const ScanTargetDetailPage = () => {
         ) : null}
       </Section>
 
-      <Toast toast={toast} />
+      <Toast toast={toast} onDismiss={dismiss} />
     </div>
   );
 };

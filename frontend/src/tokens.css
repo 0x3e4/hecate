@@ -18,7 +18,7 @@
   --scrim: oklch(10% 0.01 85 / 0.72);
   --font-display: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; --font-outlier: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --radius-card: 6px; --radius-control: 4px; --radius-pill: 999px; --rule-hair: 1px; --shadow-card: none; --shadow-pop: 0 8px 24px oklch(8% 0.01 85 / 0.5);
-  --sidebar-width: 232px; --sidebar-width-collapsed: 64px; --control-height: 36px;
+  --sidebar-width: 232px; --sidebar-width-collapsed: 64px; --control-height: 36px; --scroll-top-size: 44px;
   --display-weight: 600;
   --tracking-display: -0.01em;
 }

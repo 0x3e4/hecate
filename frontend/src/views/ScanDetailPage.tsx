@@ -2239,7 +2239,7 @@ export const ScanDetailPage = () => {
         <ScannerBreakdownPanel scan={scan} findings={findings} />
       )}
 
-      <Toast toast={toast} />
+      <Toast toast={toast} onDismiss={dismiss} />
     </div>
   );
 };

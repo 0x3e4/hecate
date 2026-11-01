@@ -312,7 +312,7 @@ export const DashboardPage = () => {
       />
       <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />
 
-      <Toast toast={toast} />
+      <Toast toast={toast} onDismiss={dismiss} />
     </div>
   );
 };

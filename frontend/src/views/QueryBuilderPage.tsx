@@ -20,7 +20,7 @@ export const QueryBuilderPage = () => {
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const { toast, showToast } = useToast();
+  const { toast, showToast, dismiss } = useToast();
 
   const { createSavedSearch } = useSavedSearches();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -236,7 +236,7 @@ export const QueryBuilderPage = () => {
         </div>
       )}
 
-      <Toast toast={toast} />
+      <Toast toast={toast} onDismiss={dismiss} />
     </div>
   );
 };

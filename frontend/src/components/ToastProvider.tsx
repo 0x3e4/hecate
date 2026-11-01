@@ -14,7 +14,7 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
-  const { toast, showToast } = useToast();
+  const { toast, showToast, dismiss } = useToast();
 
   // Expose showToast to non-React callers (axios interceptor, etc.).
   useEffect(() => {
@@ -25,7 +25,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <Toast toast={toast} />
+      <Toast toast={toast} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
 };
