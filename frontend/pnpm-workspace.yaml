@@ -11,8 +11,12 @@ minimumReleaseAge: 20160
 # published 8 Jul 2026 — still inside the 14-day maturity window above. Exempt
 # this single well-known package so the security patch can be pulled now; the
 # guard stays in force for everything else.
+# follow-redirects 1.16.2 (GHSA-mrwp-f3q8-3g9p) was published 25 Oct 2026. Pinned to
+# this version: its diff against 1.16.1 is a one-line Array.isArray fix plus a README
+# note, same publisher, no install script. Drop the entry once the window has passed.
 minimumReleaseAgeExclude:
   - brace-expansion
+  - follow-redirects@1.16.2
 
 # Force the transitive brace-expansion 1.x (pulled via minimatch@3.1.5) to the
 # patched 1.1.21, which fixes CVE-2026-13149 and CVE-2026-102276/-102277/-102278
