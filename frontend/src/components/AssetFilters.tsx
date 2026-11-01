@@ -725,7 +725,9 @@ const selectStyles = {
   }),
   dropdownIndicator: (provided: any) => ({
     ...provided,
-    padding: "var(--space-xs)",
+    alignSelf: "stretch",
+    alignItems: "center",
+    padding: "0 var(--space-xs)",
     color: "var(--color-muted)",
     "&:hover": {
       color: "var(--color-ink)",
@@ -733,7 +735,9 @@ const selectStyles = {
   }),
   clearIndicator: (provided: any) => ({
     ...provided,
-    padding: "var(--space-xs)",
+    alignSelf: "stretch",
+    alignItems: "center",
+    padding: "0 var(--space-xs)",
     color: "var(--color-muted)",
     "&:hover": {
       color: "var(--color-ink)",
