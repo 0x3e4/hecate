@@ -11,19 +11,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Frontend design system: `frontend/src/tokens.css` (colour, type, spacing, motion tokens), `frontend/src/base.css`, shared primitives in `frontend/src/ui/primitives.tsx` + `primitives.css`, one stylesheet per screen in `frontend/src/screens/`, and the locked system description in `design.md`. Typeface is IBM Plex Sans, with IBM Plex Mono only for identifiers and code (self-hosted via `@fontsource`).
 - `cleanAdvisoryText()` and `formatEcosystemName()` in `frontend/src/utils/advisoryText.ts`: display-only cleanup of OSV boilerplate and registry-qualified ecosystem names.
+- API tokens with scopes on System → Access Control: `scan:submit` opens `POST /api/v1/scans`, `inventory:report` opens `POST /api/v1/inventory/report`. Each token has a name and an optional expiry, is sent as `X-API-Key`, is shown once and stored only as a hash, and can be revoked without touching the others. Managing tokens needs `SYSTEM_PASSWORD` and answers `403` without it. Creating and revoking appear in the audit log.
+- `SCA_SCANNER_SECRET`: shared secret between the backend and the scanner sidecar, sent as `X-Scanner-Secret`. Once set, every sidecar route except `/health` needs it. It is needed as soon as anything but the backend can reach the sidecar, and on another host it also needs TLS in front. Unset, the sidecar behaves as before and logs a warning at startup.
+- Inventory change history: `GET /api/v1/inventory/history` and `GET /api/v1/inventory/{id}/history` record what changed, from where (web, report, MCP, restore) and who did it, also for deleted items.
+- Inventory version reports: `POST /api/v1/inventory/report` lets a pipeline record the deployed version for up to 200 entries. An entry has to identify exactly one item; `ambiguous` and `not_found` change nothing and do not stop the batch, and reports never create items.
+- Inventory: the latest release of a cycle from endoflife.date is offered as a one-click `Set to`. It is never applied automatically, because a version nobody deployed would clear real CVE matches.
+- Asset catalog: the first 25 hits of a vendor or product search carry `vulnerabilityCount`, so look-alikes such as `wordpress` and `wordpress-foundation` can be told apart. The inventory form can search the product first and then fills in its vendor.
+- New scanner settings: `HECATE_TIMEOUT_SECONDS` (default 600), `HECATE_MAX_PARSED_FILE_BYTES` (default 32 MiB) and `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES` (default 4 GiB).
 
 ### Changed
 
 - **Full redesign of the web UI (all 18 routes).** Routes, API calls and handlers are unchanged; every screen was recomposed. Colour now carries meaning only: gold for the primary action, the current navigation item and focus; a dedicated severity scale for severity; everything else neutral. Card grids became full-width tables where items compare, each page has a single `h1`, and severity is always shown as a word as well as a colour.
 - Dashboard: the page leads with a triage table of today's CVEs that hit your inventory or SCA scans. Only Critical opens by default, up to 12 rows; vendors and products follow as supporting lists; severity DQL links sit on the stat figures.
+- Dashboard on phones: the day arrows sit beside the title, rows use the full width with the identifiers left and the product right, and latest findings show their facts in two columns instead of one labelled line each.
+- Dashboard: vendors and products in the CVE rows and in latest findings link to the vulnerability list filtered on them.
+- Toasts have a close button and no longer cover the scroll-to-top button.
+- Scrollbars: the sidebar has none, the tabs on the vulnerability page wrap on a desktop and swipe on a phone, and the remaining scrollbars are a thin thumb without arrows or track.
 - Vulnerability list: rows are a dense table with a Product column (product, vendor and version each filter in one click) and start collapsed; the title column shows the cleaned advisory text, because `title` usually repeats the ID.
 - Attack path graphs: Mermaid colours come from the design tokens at runtime; only CVE and impact nodes carry severity colour.
 - `styles.css` shrank from about 3,800 to about 160 lines; screen rules moved to `frontend/src/screens/`.
 - Copy: em dashes, glued arrows, middle-dot strings, uppercase labels and flag emoji are gone from the interface in both languages; a few labels were reworded as a result.
 - Info pages: the MCP page now lists all 40 tools (it listed 30), and the batch limit is described as configurable.
+- `POST /api/v1/vulnerabilities/lookup`: the local read stays public, but fetching a miss from upstream now takes `X-System-Password` when `SYSTEM_PASSWORD` is set, so an anonymous lookup with the default `autoSync` answers `401` on a miss. The identifier is limited to 128 characters of a fixed pattern (`422` otherwise).
+- Manual refresh: when upstream has no data, a stored record or an ID that is not a CVE or EUVD ID now answers `skipped` instead of being replaced by a reserved placeholder.
+- Scan targets: repository URLs with credentials are rejected, because the target id is that URL and target ids are public. Use `SCANNER_AUTH`; `ssh://git@host` stays valid. Existing targets with credentials in the URL will fail on their next scan. Image references naming a local source (`dir:`, `file:`, `sbom:`, `oci-dir:`, `docker-archive:` and similar) are rejected too.
+- Uploaded source archives lose their `.git` directory on extraction, so a pipeline has to send `commitSha` itself.
+- Scanner: symlinked manifests and manifests above `HECATE_MAX_PARSED_FILE_BYTES` are skipped. Archives are capped at 200,000 members and `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES`.
+- Scanner sidecar: `entrypoint.sh` unsets `MONGO_*`, `OPENSEARCH_*`, `*PASSWORD*`, `*SECRET*`, `*API_KEY*` and `*_TOKEN` before start, keeping `TRIVY_*`, `GRYPE_*`, `SYFT_*`, `SEMGREP_*`, `SCANNER_AUTH` and `SCA_SCANNER_SECRET`. A custom variable with such a name no longer reaches the scanner.
+- Failure lockout: ten wrong CI keys from one client now lock that route for 5 minutes, like every other secret check. Behind a reverse proxy set `TRUSTED_PROXY_IPS`, or all clients share one lockout; the backend logs `request.forwarded_header_from_untrusted_peer` once when it sees this.
+- MCP audit log: the client IP comes from `get_security_client_ip`, so behind a proxy it shows the proxy until `TRUSTED_PROXY_IPS` is set.
+- TruffleHog findings show only the last four characters of a secret of 20 or more characters, otherwise `***`. Existing findings keep the old form until the next scan.
+- AI reports no longer render images, and every AI system prompt states that advisory and scan text is data.
+- Limits: `POST /api/v1/cwe/bulk` and `POST /api/v1/capec/bulk` take at most 500 IDs, and the SBOM file upload is capped at `SCA_SOURCE_ARCHIVE_MAX_BYTES` (`413` above it).
+- `GET /api/v1/status/scanner-health` probes `/stats` instead of `/health`, so a wrong scanner secret shows as an unreachable scanner.
+- Asset catalog: vendor and product searches rank by relevance (exact name, then prefix, then word start, then substring, shorter names first) instead of alphabetically, which put WordPress itself behind 1,700 plugins.
+- Dependency bumps for advisories: backend certifi 2026.10.23, dnspython 2.9.1 and pyasn1 0.6.5, scanner certifi 2026.10.23, frontend dompurify 3.4.17, follow-redirects 1.16.2, vite 7.3.7, vitest 4.1.12 and zod 4.6.7, docs mkdocs-material 9.7.7. katex stays on 0.16.47 for the reason given under 1.7.1, and minimatch on 10.2.6 because ESLint needs the 10.x line and the fix is in 11.0.1.
 
 ### Fixed
 
+- Security: remote code execution through uploaded archives. A `.git/config` with `core.fsmonitor` in an archive ran a shell command in the scanner when Semgrep called `git ls-files`, and with the compose example the sidecar held the backend's whole `.env`. Without `SYSTEM_PASSWORD` this needed no authentication. `.git` is dropped on extraction, Git config is pinned at command scope, and secrets are removed from the sidecar environment. If a reachable instance ran without a system password, or untrusted parties held a CI key or a target password, rotate the secrets in `.env`.
+- Security: anonymous writes through `POST /api/v1/vulnerabilities/lookup`. A miss synced from upstream without authentication, and an unknown ID could replace a stored record with a reserved placeholder. Lower-case CVE and EUVD IDs now find the stored record.
+- Security: the attack path graph rendered package, product and target names as HTML, because Mermaid treats labels as HTML even with `htmlLabels: false`. Label text is now escaped, and directives can no longer change the render configuration.
+- Security: the failure lockout did not cover target-scoped routes, the scan AI gate, the CI key or the AI read gate, so the admin password could be guessed without limit through any of them. Password hashing now also runs off the event loop.
+- Security: a hostile repository could stall the scanner. A crafted `go.mod` pinned a regex and blocked `/check` and `/stats`, and a symlink to `/dev/zero` exhausted memory. The analyzer now runs as a child process that is killed at `HECATE_TIMEOUT_SECONDS`, and every file read is bounded.
+- Security: a malformed lockfile such as a `composer.lock` containing `[]` switched off all later analysis, so a repository could hide from the malware detector. Each parser and detector now fails alone.
+- Security: an image in an AI report could carry inventory details out on every view, through an instruction injected into advisory text. Web search during AI analysis is unchanged.
+- Security: MCP dynamic client registration kept clients forever without a limit. It is now capped at 60 registrations per minute per client and 5,000 stored clients, with a 30-day idle expiry and size limits.
+- Security: a non-string vulnerability ID in a VEX import reached MongoDB as an operator.
 - API info page: the statement that all other endpoints are unauthenticated was out of date. It now describes the write gate (`X-System-Password`, `X-Target-Password`, `X-AI-Analysis-Password`).
 - MCP info page: tool calls check the `mcp:write` scope on the token; the page claimed the source IP is re-validated at request time.
 - CI/CD info page: `SCA_SCANNER_TIMEOUT_SECONDS` defaults to 2060, not 600.
