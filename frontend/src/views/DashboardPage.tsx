@@ -450,6 +450,61 @@ const severityDql = (severity: string, todayDate: string) => {
   return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
 };
 
+const dqlQuote = (v: string) => `"${v.replace(/\//g, "\\/")}"`;
+
+// A vendor or product a row names, and what the list filters on when it is clicked.
+interface Facet {
+  slug: string;
+  name: string;
+}
+type FacetField = "vendorSlugs" | "productSlugs";
+
+const facetHref = (field: FacetField, slug: string) =>
+  `/vulnerabilities?search=${encodeURIComponent(`${field}:${dqlQuote(slug)}`)}&mode=dql`;
+
+const FACETS_SHOWN = 3;
+
+// Sits above the row's stretched link, so it opens the filtered list and not the CVE.
+const FacetLinks = ({
+  t,
+  field,
+  facets,
+  limit,
+}: {
+  t: TranslateFn;
+  field: FacetField;
+  facets: Facet[];
+  limit?: number;
+}) => {
+  const shown = facets.slice(0, FACETS_SHOWN);
+  const extra = facets.length - shown.length;
+  return (
+    <>
+      {shown.map((facet, index) => (
+        <React.Fragment key={facet.slug}>
+          {index > 0 && ", "}
+          <Link
+            to={facetHref(field, facet.slug)}
+            className="dashboard-facet"
+            title={
+              field === "vendorSlugs"
+                ? t(`Filter by vendor: ${facet.name}`, `Filter nach Vendor: ${facet.name}`)
+                : t(`Filter by product: ${facet.name}`, `Filter nach Produkt: ${facet.name}`)
+            }
+          >
+            {limit ? shortValue(facet.name, limit) : facet.name}
+          </Link>
+        </React.Fragment>
+      ))}
+      {extra > 0 && (
+        <span className="dashboard-cve-extra" title={facets.map((facet) => facet.name).join(", ")}>
+          +{extra}
+        </span>
+      )}
+    </>
+  );
+};
+
 // A today-CVE counts as "in your environment" only when the backend's precise,
 // version-aware matcher (`items_for_vuln`, same logic as the Inventory page and
 // the vulnerability detail page) confirmed at least one inventory item is
@@ -563,14 +618,11 @@ const ChipLinks = ({ chips }: { chips: TodayChip[] }) => {
 // What a today-CVE row shows in its product cell. The summary carries slugs on
 // the CVE and display names on the vendor/product buckets.
 interface CveProductInfo {
-  names: string[];
-  extra: number;
-  vendors: string;
-  all: string;
+  products: Facet[];
+  vendors: Facet[];
 }
 type CveDescriber = (cve: TodayCve) => CveProductInfo;
 
-const CVE_PRODUCTS_SHOWN = 3;
 // Only Critical opens by default, and only while it stays short, so Vendors and
 // Products remain near the first screens on a busy day. Matched rows lead anyway.
 const OPEN_SEVERITIES = new Set(["critical"]);
@@ -579,19 +631,22 @@ const OPEN_GROUP_LIMIT = 12;
 // first and always stay visible.
 const LIST_PREVIEW = 12;
 
-const CveProduct = ({ info }: { info: CveProductInfo }) => {
-  if (info.names.length === 0 && !info.vendors) {
+const CveProduct = ({ t, info }: { t: TranslateFn; info: CveProductInfo }) => {
+  if (info.products.length === 0 && info.vendors.length === 0) {
     return <span className="dashboard-missing">n/a</span>;
   }
   return (
     <>
-      {info.names.length > 0 && (
-        <span className="dashboard-cve-names" title={info.all}>
-          {info.names.join(", ")}
-          {info.extra > 0 && <span className="dashboard-cve-extra">+{info.extra}</span>}
+      {info.products.length > 0 && (
+        <span className="dashboard-cve-names">
+          <FacetLinks t={t} field="productSlugs" facets={info.products} />
         </span>
       )}
-      {info.vendors && <span className="dashboard-cve-vendor">{info.vendors}</span>}
+      {info.vendors.length > 0 && (
+        <span className="dashboard-cve-vendor">
+          <FacetLinks t={t} field="vendorSlugs" facets={info.vendors} />
+        </span>
+      )}
     </>
   );
 };
@@ -718,8 +773,6 @@ const TodayStats = ({
     return d.toISOString().slice(0, 10);
   })();
 
-  const dqlQuote = (v: string) => `"${v.replace(/\//g, "\\/")}"`;
-
   const vendorDql = (vendorSlug: string) => {
     const q = `vendorSlugs:${dqlQuote(vendorSlug)} AND published:>=${todayDate} AND published:<${nextDay}`;
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
@@ -788,18 +841,13 @@ const TodayStats = ({
 
   const productsBySlug = new Map(data.products.map((p) => [p.slug, p.name]));
   const vendorsBySlug = new Map(data.vendors.map((v) => [v.slug, v.name]));
-  const describeCve: CveDescriber = (cve) => {
-    const names = (cve.productSlugs ?? []).map((slug) => productsBySlug.get(slug) ?? slug);
-    const vendors = (cve.vendorSlugs ?? []).map((slug) =>
-      formatEcosystemName(vendorsBySlug.get(slug) ?? slug),
-    );
-    return {
-      names: names.slice(0, CVE_PRODUCTS_SHOWN),
-      extra: Math.max(0, names.length - CVE_PRODUCTS_SHOWN),
-      vendors: vendors.join(", "),
-      all: names.join(", "),
-    };
-  };
+  const describeCve: CveDescriber = (cve) => ({
+    products: (cve.productSlugs ?? []).map((slug) => ({ slug, name: productsBySlug.get(slug) ?? slug })),
+    vendors: (cve.vendorSlugs ?? []).map((slug) => ({
+      slug,
+      name: formatEcosystemName(vendorsBySlug.get(slug) ?? slug),
+    })),
+  });
 
   return (
     <>
@@ -1139,7 +1187,7 @@ const TodayCveItem = ({
         ))}
       </td>
       <td className="dashboard-cve-product">
-        <CveProduct info={product} />
+        <CveProduct t={t} info={product} />
       </td>
       <td className="dashboard-cve-chips">
         <ChipLinks chips={chips} />
@@ -1192,6 +1240,16 @@ const LATEST_VERSION_LIMIT = 20;
 const shortValue = (value: string, limit: number) =>
   value.length > limit ? `${value.slice(0, limit).trimEnd()}…` : value;
 
+// Older documents carry bare names only; the list page derives their slugs the same way.
+const nameFacet = (name: string): Facet => ({
+  slug: name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+  name,
+});
+
+const uniqueFacets = (facets: Facet[]): Facet[] => [
+  ...new Map(facets.filter((facet) => facet.slug).map((facet) => [facet.slug, facet])).values(),
+];
+
 const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListProps) => {
   const hasResults = vulnerabilities.length > 0;
   const showSkeleton = loading && !hasResults;
@@ -1212,10 +1270,16 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
         let vendors: string;
         let products: string;
         let versions: string;
+        let vendorFacets: Facet[];
+        let productFacets: Facet[];
         if (ip.length > 0) {
           const vn = [...new Set(ip.map((p) => p.vendor?.name).filter((name): name is string => Boolean(name)))];
           const pn = [...new Set(ip.map((p) => p.product?.name).filter(Boolean))];
           const vs = [...new Set(ip.flatMap((p) => p.versions ?? []).filter(Boolean))];
+          vendorFacets = uniqueFacets(
+            ip.map((p) => ({ slug: p.vendor?.slug ?? "", name: formatEcosystemName(p.vendor?.name ?? "") })),
+          );
+          productFacets = uniqueFacets(ip.map((p) => ({ slug: p.product?.slug ?? "", name: p.product?.name ?? "" })));
           vendors = vn.length ? vn.map(formatEcosystemName).join(", ") : MISSING_VALUE;
           products = pn.length ? pn.join(", ") : MISSING_VALUE;
           versions = vs.length ? vs.join(", ") : MISSING_VALUE;
@@ -1223,6 +1287,8 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
           vendors = vuln.vendors?.length ? vuln.vendors.map(formatEcosystemName).join(", ") : MISSING_VALUE;
           products = vuln.products?.length ? vuln.products.join(", ") : MISSING_VALUE;
           versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : MISSING_VALUE;
+          vendorFacets = uniqueFacets((vuln.vendors ?? []).map((name) => nameFacet(formatEcosystemName(name))));
+          productFacets = uniqueFacets((vuln.products ?? []).map(nameFacet));
         }
         const cweList = vuln.cwes ?? [];
         const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
@@ -1249,6 +1315,8 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
             vendors={vendors}
             products={products}
             versions={versions}
+            vendorFacets={vendorFacets}
+            productFacets={productFacets}
             published={published}
             isPublishedReserved={isPublishedReserved}
             epss={epss}
@@ -1310,6 +1378,8 @@ const DashboardVulnCard = ({
   vendors,
   products,
   versions,
+  vendorFacets,
+  productFacets,
   published,
   isPublishedReserved,
   epss,
@@ -1328,6 +1398,8 @@ const DashboardVulnCard = ({
   vendors: string;
   products: string;
   versions: string;
+  vendorFacets: Facet[];
+  productFacets: Facet[];
   published: string;
   isPublishedReserved: boolean;
   epss: string;
@@ -1383,18 +1455,30 @@ const DashboardVulnCard = ({
           </h3>
         </td>
         <td className="dashboard-latest-vendor" data-label={t("Vendors", "Hersteller")}>
-          <span className="dashboard-latest-value" title={vendors}>{shortValue(vendors, LATEST_VENDOR_LIMIT)}</span>
+          <span className="dashboard-latest-value">
+            {vendorFacets.length > 0 ? (
+              <FacetLinks t={t} field="vendorSlugs" facets={vendorFacets} limit={LATEST_VENDOR_LIMIT} />
+            ) : (
+              shortValue(vendors, LATEST_VENDOR_LIMIT)
+            )}
+          </span>
         </td>
-        <td data-label={t("Products", "Produkte")}>
-          <span className="dashboard-latest-value" title={products}>{shortValue(products, LATEST_PRODUCT_LIMIT)}</span>
+        <td className="dashboard-latest-product" data-label={t("Products", "Produkte")}>
+          <span className="dashboard-latest-value">
+            {productFacets.length > 0 ? (
+              <FacetLinks t={t} field="productSlugs" facets={productFacets} limit={LATEST_PRODUCT_LIMIT} />
+            ) : (
+              shortValue(products, LATEST_PRODUCT_LIMIT)
+            )}
+          </span>
         </td>
-        <td data-label={t("Versions", "Versionen")}>
+        <td className="dashboard-latest-versions" data-label={t("Versions", "Versionen")}>
           <span className="dashboard-latest-value dashboard-latest-version mono" title={versions}>{shortValue(versions, LATEST_VERSION_LIMIT)}</span>
         </td>
-        <td className="num dashboard-latest-score" data-label="CVSS">
+        <td className="num dashboard-latest-score dashboard-latest-cvss" data-label="CVSS">
           {cvssScore ?? <span className="dashboard-missing">n/a</span>}
         </td>
-        <td className="num dashboard-latest-score" data-label="EPSS">
+        <td className="num dashboard-latest-score dashboard-latest-epss" data-label="EPSS">
           {vuln.epssScore != null ? epss : <span className="dashboard-missing">n/a</span>}
         </td>
         <td className="num dashboard-latest-published" data-label={t("Published", "Veröffentlicht")}>
