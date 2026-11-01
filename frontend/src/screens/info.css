@@ -1,17 +1,16 @@
 /* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
  * Documentation screens: /info/cicd, /info/api, /info/mcp. Tokens only; see design.md. */
 
-/* One readable column; the only structure is whitespace, hairlines and headings */
-.info-doc { max-width: 75ch; }
-.info-doc .page-header-description { max-width: 58ch; color: var(--color-ink-2); font-size: var(--text-md); }
+/* The page runs as wide as every other screen; the only structure is whitespace, hairlines and headings */
+.info-doc .page-header-description { max-width: 75ch; color: var(--color-ink-2); font-size: var(--text-md); }
 
 .info-tags { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-bottom: var(--space-lg); }
 
 /* Vertical rhythm */
 .info-section { color: var(--color-ink-2); }
 .info-section h2, .info-section h3 { color: var(--color-ink); text-wrap: balance; }
-/* Plex Sans sets about 1.3 characters per ch, so 58ch is a true 75 character line. Tables and code keep the full column. */
-.info-section p, .info-list, .info-prompts { max-width: 58ch; }
+/* Plex Sans sets about 1.3 characters per ch, so 75ch is a line of about 95 characters. Tables and code keep the full column. */
+.info-section p, .info-list, .info-prompts { max-width: 75ch; }
 .info-section > * + * { margin-top: var(--space-sm); }
 .info-section > h3 { margin-top: var(--space-lg); }
 .info-section > h3 + * { margin-top: var(--space-xs); }
