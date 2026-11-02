@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.relativedelta import relativedelta
 import structlog
+from pymongo.errors import PyMongoError
 from opensearchpy.exceptions import (
     OpenSearchException,
     RequestError,
@@ -17,12 +18,32 @@ from opensearchpy.exceptions import (
 from app.core.config import settings
 from app.db.opensearch import async_search
 from app.repositories.asset_repository import AssetRepository
+from app.repositories.cert_advisory_repository import CertAdvisoryRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.inventory_matcher import items_for_vuln
 from app.services.inventory_service import get_inventory_service
 
 
 log = structlog.get_logger()
+
+# A busy day publishes several hundred CVEs. The summary matches each one against the
+# inventory and the scans, so a low cap silently hides the matches past it.
+TODAY_MAX_CVES = 2000
+ATTENTION_MAX_KEV = 50
+# Feeds name hundreds of CVEs in a week. Most mentions stand alone, so the cut falls on those.
+ATTENTION_MAX_CERT_MENTIONS = 300
+
+
+def _string_list(source: dict[str, Any], key: str) -> list[str]:
+    raw = source.get(key)
+    return [value for value in raw if isinstance(value, str)] if isinstance(raw, list) else []
+
+
+def _severity_of(source: dict[str, Any]) -> str:
+    cvss = source.get("cvss")
+    if isinstance(cvss, dict):
+        return (cvss.get("severity") or "unknown").lower()
+    return "unknown"
 
 
 class StatsService:
@@ -785,7 +806,7 @@ class StatsService:
         def _build_body(use_keyword_suffix: bool) -> dict[str, Any]:
             suffix = ".keyword" if use_keyword_suffix else ""
             return {
-                "size": 200,
+                "size": TODAY_MAX_CVES,
                 "track_total_hits": True,
                 "query": {
                     "bool": {
@@ -860,18 +881,7 @@ class StatsService:
                 if pslug and isinstance(pslug, str):
                     all_product_slugs.add(pslug)
 
-        # Look up correct display names from asset catalog
-        asset_repo = await AssetRepository.create()
-        vendor_name_map: dict[str, str] = {}
-        product_name_map: dict[str, str] = {}
-        if all_vendor_slugs:
-            vendor_docs = await asset_repo.find_vendors_by_slugs(all_vendor_slugs)
-            for doc in vendor_docs:
-                vendor_name_map[doc["_id"]] = doc.get("displayName") or doc["_id"]
-        if all_product_slugs:
-            product_docs = await asset_repo.find_products_by_slugs(all_product_slugs)
-            for doc in product_docs:
-                product_name_map[doc["_id"]] = doc.get("displayName") or doc["_id"]
+        vendor_name_map, product_name_map = await self._catalog_names(all_vendor_slugs, all_product_slugs)
 
         severities = self._map_terms_aggregation(
             aggregations.get("severity_breakdown"),
@@ -899,47 +909,22 @@ class StatsService:
             vuln_id = source.get("vuln_id")
             if not vuln_id:
                 continue
-            severity = "unknown"
-            cvss = source.get("cvss")
-            if isinstance(cvss, dict):
-                severity = (cvss.get("severity") or "unknown").lower()
             raw_aliases = source.get("aliases")
             aliases = raw_aliases if isinstance(raw_aliases, list) else []
-            raw_vendor_slugs = source.get("vendorSlugs")
-            vendor_slugs = (
-                [s for s in raw_vendor_slugs if isinstance(s, str)]
-                if isinstance(raw_vendor_slugs, list)
-                else []
-            )
-            raw_product_slugs = source.get("productSlugs")
-            product_slugs = (
-                [s for s in raw_product_slugs if isinstance(s, str)]
-                if isinstance(raw_product_slugs, list)
-                else []
-            )
+            vendor_slugs = _string_list(source, "vendorSlugs")
+            product_slugs = _string_list(source, "productSlugs")
 
-            inventory_match_ids: list[str] = []
-            if raw_inventory_items:
-                try:
-                    matches = items_for_vuln(source, raw_inventory_items)
-                except Exception as exc:  # pragma: no cover - defensive
-                    log.debug(
-                        "stats.today_inventory_match_error",
-                        vuln_id=vuln_id,
-                        error=str(exc),
-                    )
-                    matches = []
-                inventory_match_ids = [str(m["_id"]) for m in matches if m.get("_id")]
-                if inventory_match_ids:
-                    for v in vendor_slugs:
-                        matched_vendor_slugs.add(v)
-                        for p in product_slugs:
-                            matched_pairs.add(f"{v}|{p}")
+            inventory_match_ids = self._inventory_match_ids(source, vuln_id, raw_inventory_items)
+            if inventory_match_ids:
+                for v in vendor_slugs:
+                    matched_vendor_slugs.add(v)
+                    for p in product_slugs:
+                        matched_pairs.add(f"{v}|{p}")
 
             cves.append({
                 "vulnId": vuln_id,
                 "title": source.get("title", ""),
-                "severity": severity,
+                "severity": _severity_of(source),
                 "aliases": aliases,
                 "vendorSlugs": vendor_slugs,
                 "productSlugs": product_slugs,
@@ -988,6 +973,145 @@ class StatsService:
             "severities": severities,
             "cves": cves,
         }
+
+    async def get_attention(self, *, days: int = 7, tz: str | None = None) -> dict[str, Any]:
+        """Return what is being exploited or warned about in the last ``days`` days.
+
+        Combines CVEs added to the CISA KEV catalogue with those the CERT feeds
+        named. Neither is keyed on ``published``: most of them are older CVEs.
+        """
+        zone: ZoneInfo | None = None
+        if tz:
+            try:
+                zone = ZoneInfo(tz)
+            except (ZoneInfoNotFoundError, ValueError):
+                zone = None
+        since_at = (datetime.now(zone or UTC) - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        since = since_at.strftime("%Y-%m-%d")
+
+        mentions = await self._cert_mentions(since_at)
+        kev_clause = {"range": {"exploitation.dateAdded": {"gte": since}}}
+        clauses: list[dict[str, Any]] = [kev_clause]
+        if mentions:
+            mentioned = sorted(mentions, key=lambda cve_id: -len(mentions[cve_id]))[:ATTENTION_MAX_CERT_MENTIONS]
+            clauses += [{"terms": {"vuln_id": mentioned}}, {"terms": {"aliases": mentioned}}]
+
+        body = {
+            "size": ATTENTION_MAX_KEV + ATTENTION_MAX_CERT_MENTIONS,
+            "track_total_hits": True,
+            "query": {"bool": {"should": clauses, "minimum_should_match": 1}},
+            "_source": [
+                "vuln_id",
+                "title",
+                "aliases",
+                "cvss.severity",
+                "cvss.base_score",
+                "epssScore",
+                "exploitation.dateAdded",
+                "exploitation.dueDate",
+                "exploitation.knownRansomwareCampaignUse",
+                "vendorSlugs",
+                "productSlugs",
+                "vendors",
+                "products",
+                "impactedProducts",
+                "cpeConfigurations",
+                "cpes",
+            ],
+            "sort": [{"exploitation.dateAdded": {"order": "desc", "missing": "_last", "unmapped_type": "date"}}],
+        }
+        try:
+            response = await async_search(settings.opensearch_index, body, suppress_exceptions=False)
+        except (RequestError, OSConnectionError, OpenSearchException) as exc:
+            log.warning("stats.attention_opensearch_error", error=str(exc))
+            return {"since": since, "days": days, "total": 0, "items": []}
+
+        sources = [
+            hit["_source"]
+            for hit in response.get("hits", {}).get("hits", [])
+            if isinstance(hit.get("_source"), dict) and hit["_source"].get("vuln_id")
+        ]
+        vendor_names, product_names = await self._catalog_names(
+            {slug for source in sources for slug in _string_list(source, "vendorSlugs")},
+            {slug for source in sources for slug in _string_list(source, "productSlugs")},
+        )
+        inventory_service = await get_inventory_service()
+        raw_inventory_items = await inventory_service.list_all_cached()
+
+        items: list[dict[str, Any]] = []
+        for source in sources:
+            vuln_id = source["vuln_id"]
+            cvss = source.get("cvss") if isinstance(source.get("cvss"), dict) else {}
+            exploitation = source.get("exploitation") if isinstance(source.get("exploitation"), dict) else {}
+            vendor_slugs = _string_list(source, "vendorSlugs")
+            product_slugs = _string_list(source, "productSlugs")
+            date_added = exploitation.get("dateAdded")
+            certs: dict[str, dict[str, Any]] = {}
+            for identifier in [vuln_id, *_string_list(source, "aliases")]:
+                for mention in mentions.get(identifier.upper(), []):
+                    certs.setdefault(mention["name"], mention)
+            items.append({
+                "vulnId": vuln_id,
+                "title": source.get("title", ""),
+                "severity": _severity_of(source),
+                "cvssScore": cvss.get("base_score"),
+                "epssScore": source.get("epssScore"),
+                "kevListed": bool(date_added) and str(date_added)[:10] >= since,
+                "certs": list(certs.values()),
+                "dateAdded": date_added,
+                "dueDate": exploitation.get("dueDate"),
+                "ransomware": str(exploitation.get("knownRansomwareCampaignUse") or "").lower() == "known",
+                "aliases": [],
+                "vendorSlugs": vendor_slugs,
+                "productSlugs": product_slugs,
+                "vendors": [{"slug": s, "name": vendor_names.get(s, s)} for s in vendor_slugs],
+                "products": [{"slug": s, "name": product_names.get(s, s)} for s in product_slugs],
+                "inventoryMatchIds": self._inventory_match_ids(source, vuln_id, raw_inventory_items),
+            })
+
+        return {"since": since, "days": days, "total": self._resolve_total(response), "items": items}
+
+    @staticmethod
+    async def _cert_mentions(since: datetime) -> dict[str, list[dict[str, Any]]]:
+        """CVE → the feeds naming it. The panel still works from KEV when this store is unavailable."""
+        try:
+            repository = await CertAdvisoryRepository.create()
+            return await repository.mentions_since(since)
+        except PyMongoError as exc:
+            log.warning("stats.cert_mentions_unavailable", error=str(exc))
+            return {}
+
+    @staticmethod
+    async def _catalog_names(
+        vendor_slugs: set[str],
+        product_slugs: set[str],
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """Display names from the asset catalog, keyed by slug."""
+        asset_repo = await AssetRepository.create()
+        vendor_names: dict[str, str] = {}
+        product_names: dict[str, str] = {}
+        if vendor_slugs:
+            for doc in await asset_repo.find_vendors_by_slugs(vendor_slugs):
+                vendor_names[doc["_id"]] = doc.get("displayName") or doc["_id"]
+        if product_slugs:
+            for doc in await asset_repo.find_products_by_slugs(product_slugs):
+                product_names[doc["_id"]] = doc.get("displayName") or doc["_id"]
+        return vendor_names, product_names
+
+    @staticmethod
+    def _inventory_match_ids(
+        source: dict[str, Any],
+        vuln_id: str,
+        raw_inventory_items: list[dict[str, Any]],
+    ) -> list[str]:
+        if not raw_inventory_items:
+            return []
+        try:
+            matches = items_for_vuln(source, raw_inventory_items)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.debug("stats.inventory_match_error", vuln_id=vuln_id, error=str(exc))
+            return []
+        return [str(m["_id"]) for m in matches if m.get("_id")]
 
     @staticmethod
     def _map_slug_with_name(

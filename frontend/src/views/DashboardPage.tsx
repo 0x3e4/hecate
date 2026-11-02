@@ -7,7 +7,11 @@ import { LuBox, LuCheck, LuChevronLeft, LuChevronRight, LuCopy, LuScanLine, LuSe
 import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types";
 import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
 import {
+  fetchAttention,
   fetchTodaySummary,
+  type AttentionItem,
+  type AttentionResponse,
+  type CertMention,
   type TodaySummaryResponse,
   type TodayCve,
   type SlugBucket,
@@ -20,10 +24,10 @@ import { useI18n, type TranslateFn } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
 import { useSSE } from "../hooks/useSSE";
 import { getPublishedDisplay } from "../utils/published";
-import { CvssMetricDisplay } from "../components/CvssMetricDisplay";
-import { ExploitationSummary } from "../components/ExploitationSummary";
 import { Toast, useToast } from "../components/Toast";
+import { SEVERITY_ORDER, attentionRows, groupCves, productKey, severityRank, type CveGroup } from "../utils/cveGroups";
 import { getPreferredCvssMetric } from "../utils/cvss";
+import { formatDateOnly } from "../utils/dateFormat";
 import { formatEcosystemName } from "../utils/advisoryText";
 import { EmptyState, IconButton, PageHeader, Section, SeverityTag, Stat, severityLevel } from "../ui/primitives";
 
@@ -70,6 +74,22 @@ export const DashboardPage = () => {
     productScan: {},
     scanTargets: {},
   });
+  // Newly KEV-listed CVEs, independent of the selected day (best-effort; none → no panel).
+  const [attention, setAttention] = useState<AttentionResponse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchAttention(getCurrentTimezone())
+      .then((res) => {
+        if (!cancelled) setAttention(res);
+      })
+      .catch(() => {
+        /* the panel is optional context for the dashboard */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sseRefreshKey]);
+
   useEffect(() => {
     let cancelled = false;
     fetchScanCoverage()
@@ -98,7 +118,7 @@ export const DashboardPage = () => {
         setLoading(true);
         const results = await searchVulnerabilities({
           searchTerm: null,
-          limit: 20,
+          limit: LATEST_LIMIT,
         });
         setVulnerabilities(results);
       } catch (error) {
@@ -295,6 +315,17 @@ export const DashboardPage = () => {
         scanProductScan={scanCoverage.productScan}
         scanTargets={scanCoverage.scanTargets}
         refreshKey={sseRefreshKey}
+        attention={
+          attention && attention.items.length > 0 ? (
+            <AttentionPanel
+              t={t}
+              data={attention}
+              scanCveScan={scanCoverage.cveScan}
+              scanProductScan={scanCoverage.productScan}
+              scanTargets={scanCoverage.scanTargets}
+            />
+          ) : null
+        }
         headerActions={
           <SingleVulnQuery
             t={t}
@@ -428,7 +459,6 @@ const SingleVulnQuery = ({
 
 /* ---------- Today's Vulnerability Statistics ---------- */
 
-const SEVERITY_ORDER = ["critical", "high", "medium", "low", "unknown"];
 const SEVERITY_LABELS: Record<string, [string, string]> = {
   critical: ["Critical", "Kritisch"],
   high: ["High", "Hoch"],
@@ -439,10 +469,6 @@ const SEVERITY_LABELS: Record<string, [string, string]> = {
 const severityLabel = (severity: string, t: TranslateFn): string => {
   const label = SEVERITY_LABELS[severity];
   return label ? t(label[0], label[1]) : severity;
-};
-const severityRank = (severity: string): number => {
-  const rank = SEVERITY_ORDER.indexOf(severity || "unknown");
-  return rank === -1 ? SEVERITY_ORDER.length : rank;
 };
 
 const severityDql = (severity: string, todayDate: string) => {
@@ -630,6 +656,7 @@ const OPEN_GROUP_LIMIT = 12;
 // Rows a vendor/product list shows before the rest folds away. Matched rows sort
 // first and always stay visible.
 const LIST_PREVIEW = 12;
+const TRIAGE_PREVIEW = 8;
 
 const CveProduct = ({ t, info }: { t: TranslateFn; info: CveProductInfo }) => {
   if (info.products.length === 0 && info.vendors.length === 0) {
@@ -658,6 +685,7 @@ const TodayStats = ({
   scanProductScan,
   scanTargets,
   refreshKey,
+  attention,
   headerActions,
 }: {
   t: TranslateFn;
@@ -666,6 +694,7 @@ const TodayStats = ({
   scanProductScan: Record<string, string>;
   scanTargets: Record<string, string>;
   refreshKey: number;
+  attention: ReactNode;
   headerActions: ReactNode;
 }) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
@@ -706,7 +735,7 @@ const TodayStats = ({
   const formatDisplayDate = (offset: number) => {
     const d = new Date();
     d.setDate(d.getDate() - offset);
-    return d.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", {
+    return d.toLocaleDateString(locale, {
       weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone: getCurrentTimezone(),
     });
   };
@@ -762,6 +791,7 @@ const TodayStats = ({
       <>
         {header}
         <EmptyState title={t("No vulnerabilities to show for this day.", "Für diesen Tag gibt es keine Schwachstellen anzuzeigen.")} />
+        {attention && <div className="dashboard-triage">{attention}</div>}
       </>
     );
   }
@@ -885,19 +915,24 @@ const TodayStats = ({
         })}
       </dl>
 
-      {hasMatchedCves && (
-        <Section className="dashboard-lead" title={t("In your inventory or scans", "In Inventar oder Scans")}>
-          <TodayLeadTable
-            t={t}
-            cves={data.cves}
-            scanCveScan={scanCveScan}
-            scanProductScan={scanProductScan}
-            scanTargets={scanTargets}
-            invLabel={invLabel}
-            scanFallback={scanFallback}
-            describeCve={describeCve}
-          />
-        </Section>
+      {(attention || hasMatchedCves) && (
+        <div className="dashboard-triage">
+          {attention}
+          {hasMatchedCves && (
+            <Section className="dashboard-triage-panel" title={t("In your inventory or scans", "In Inventar oder Scans")}>
+              <TodayLeadGroups
+                t={t}
+                cves={data.cves}
+                scanCveScan={scanCveScan}
+                scanProductScan={scanProductScan}
+                scanTargets={scanTargets}
+                invLabel={invLabel}
+                scanFallback={scanFallback}
+                describeCve={describeCve}
+              />
+            </Section>
+          )}
+        </div>
       )}
 
       <Section title={t("CVEs by severity", "CVEs nach Schweregrad")}>
@@ -963,19 +998,31 @@ const TodayMiniCard = ({ title, children }: { title: string; children: ReactNode
   <Section title={title}>{children}</Section>
 );
 
-const TodayListPreview = ({ t, rows, matched }: { t: TranslateFn; rows: ReactNode[]; matched: number }) => {
-  const shown = Math.max(LIST_PREVIEW, matched);
+const TodayListPreview = ({
+  t,
+  rows,
+  matched,
+  preview = LIST_PREVIEW,
+  listClassName = "dashboard-list",
+}: {
+  t: TranslateFn;
+  rows: ReactNode[];
+  matched: number;
+  preview?: number;
+  listClassName?: string;
+}) => {
+  const shown = Math.max(preview, matched);
   const rest = rows.slice(shown);
   return (
     <>
-      <ul className="dashboard-list">{rows.slice(0, shown)}</ul>
+      <ul className={listClassName}>{rows.slice(0, shown)}</ul>
       {rest.length > 0 && (
         <details className="dashboard-list-more">
           <summary className="dashboard-disclosure">
             <LuChevronRight className="dashboard-disclosure-icon" aria-hidden="true" />
             {t(`${rest.length} more`, `${rest.length} weitere`)}
           </summary>
-          <ul className="dashboard-list">{rest}</ul>
+          <ul className={listClassName}>{rest}</ul>
         </details>
       )}
     </>
@@ -1023,9 +1070,27 @@ interface TodayCveTableProps {
   describeCve: CveDescriber;
 }
 
-// The day's CVEs that touch the inventory or a scan, worst severity first. An
-// inventory hit went through the version-aware matcher, so it wins a tie.
-const TodayLeadTable = ({
+// Chips of a group: one per place it matched, however many CVEs share it.
+const uniqueChips = (chips: TodayChip[]): TodayChip[] => [
+  ...new Map(chips.map((chip) => [`${chip.href}|${chip.label}`, chip])).values(),
+];
+
+const SeverityTally = ({ t, group }: { t: TranslateFn; group: CveGroup<TodayCve> }) => (
+  <span className="dashboard-tally">
+    {group.tally.map(({ severity, count }) => {
+      const label = severityLabel(severity, t);
+      return (
+        <span key={severity} className={`sev-${severityLevel(severity)}`} title={`${count} ${label}`}>
+          {count} {label[0]}
+        </span>
+      );
+    })}
+  </span>
+);
+
+// The day's CVEs that touch the inventory or a scan, one row per product: a team
+// patches a package once, however many CVEs that closes.
+const TodayLeadGroups = ({
   t,
   cves,
   scanCveScan,
@@ -1036,46 +1101,236 @@ const TodayLeadTable = ({
   describeCve,
 }: TodayCveTableProps) => {
   const chipsByCve = useCveChips(cves, scanCveScan, scanProductScan, scanTargets, invLabel, scanFallback);
-  const matched = useMemo(
+  const groups = useMemo(
     () =>
-      cves
-        .filter((cve) => chipsByCve.has(cve.vulnId))
-        .sort(
-          (a, b) =>
-            severityRank(a.severity) - severityRank(b.severity) ||
-            Number(cveMatchesInventory(b)) - Number(cveMatchesInventory(a)),
-        ),
-    [cves, chipsByCve],
+      groupCves(
+        cves.filter((cve) => chipsByCve.has(cve.vulnId)),
+        (cve) => productKey(cve, cve.productSlugs?.find((slug) => scanProductScan[slug])),
+        cveMatchesInventory,
+      ),
+    [cves, chipsByCve, scanProductScan],
   );
 
   return (
-    <div className="table-scroll">
-      <table className="dashboard-cve-table dashboard-cve-table--lead">
-        <thead>
-          <tr>
-            <th scope="col">{t("Severity", "Schweregrad")}</th>
-            <th scope="col">ID</th>
-            <th scope="col">{t("Aliases", "Aliase")}</th>
-            <th scope="col">{t("Product", "Produkt")}</th>
-            <th scope="col">{t("Matched in", "Treffer in")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {matched.map((cve) => (
-            <TodayCveItem
-              key={cve.vulnId}
-              t={t}
-              cve={cve}
-              chips={chipsByCve.get(cve.vulnId) ?? []}
-              product={describeCve(cve)}
-              showSeverity
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <TodayListPreview
+      t={t}
+      matched={0}
+      preview={TRIAGE_PREVIEW}
+      listClassName="dashboard-triage-list"
+      rows={groups.map((group) => (
+        <LeadGroup
+          key={group.key}
+          t={t}
+          group={group}
+          chips={uniqueChips(group.cves.flatMap((cve) => chipsByCve.get(cve.vulnId) ?? []))}
+          info={describeGroup(group, describeCve)}
+        />
+      ))}
+    />
   );
 };
+
+const describeGroup = (group: CveGroup<TodayCve>, describeCve: CveDescriber): CveProductInfo => {
+  const infos = group.cves.map(describeCve);
+  const products = uniqueFacets(infos.flatMap((info) => info.products));
+  const own = products.filter((product) => product.slug === group.key);
+  return {
+    products: own.length > 0 ? own : products,
+    vendors: uniqueFacets(infos.flatMap((info) => info.vendors)),
+  };
+};
+
+const LeadGroup = ({
+  t,
+  group,
+  chips,
+  info,
+}: {
+  t: TranslateFn;
+  group: CveGroup<TodayCve>;
+  chips: TodayChip[];
+  info: CveProductInfo;
+}) => {
+  const [single] = group.cves;
+  const severity = <SeverityTag severity={group.worst}>{severityLabel(group.worst, t)}</SeverityTag>;
+  const product = (
+    <span className="dashboard-triage-main">
+      <CveProduct t={t} info={info} />
+    </span>
+  );
+  const side = (detail: ReactNode) => (
+    <span className="dashboard-triage-side">
+      <span className="dashboard-triage-chips"><ChipLinks chips={chips} /></span>
+      {detail}
+    </span>
+  );
+
+  if (group.cves.length === 1) {
+    return (
+      <li className="dashboard-triage-row dashboard-triage-row--lead">
+        <span />
+        {severity}
+        {product}
+        {side(
+          <Link to={`/vulnerability/${encodeURIComponent(single.vulnId)}`} className="row-link mono dashboard-cve-link dashboard-triage-id">
+            {single.vulnId}
+          </Link>,
+        )}
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <details>
+        <summary className="dashboard-triage-row dashboard-triage-row--lead">
+          <LuChevronRight className="dashboard-disclosure-icon" aria-hidden="true" />
+          {severity}
+          {product}
+          {side(<SeverityTally t={t} group={group} />)}
+        </summary>
+        <ul className="dashboard-group-cves">
+          {group.cves.map((cve) => (
+            <li key={cve.vulnId} className="dashboard-group-cve">
+              <SeverityTag severity={cve.severity}>{severityLabel(cve.severity || "unknown", t)}</SeverityTag>
+              <Link to={`/vulnerability/${encodeURIComponent(cve.vulnId)}`} className="row-link mono dashboard-cve-link">
+                {cve.vulnId}
+              </Link>
+              {cve.title && cve.title !== cve.vulnId && (
+                <span className="dashboard-group-cve-title" title={cve.title}>{cve.title}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </details>
+    </li>
+  );
+};
+
+// A KEV date has no time, so it is read at noon UTC: midnight would show the day before west of Greenwich.
+const kevDate = (value: string) => formatDateOnly(`${value}T12:00:00Z`);
+
+const attentionHref = (since: string) =>
+  `/vulnerabilities?search=${encodeURIComponent(`exploitation.dateAdded:>=${since}`)}&mode=dql`;
+
+// What is being exploited or warned about, whatever day the page shows. Anything in
+// the user's stack leads; each row says why it is here.
+const AttentionPanel = ({
+  t,
+  data,
+  scanCveScan,
+  scanProductScan,
+  scanTargets,
+}: {
+  t: TranslateFn;
+  data: AttentionResponse;
+  scanCveScan: Record<string, string>;
+  scanProductScan: Record<string, string>;
+  scanTargets: Record<string, string>;
+}) => {
+  const chipsByCve = useCveChips(
+    data.items,
+    scanCveScan,
+    scanProductScan,
+    scanTargets,
+    t("in inventory", "im Inventar"),
+    t("SCA scan", "SCA-Scan"),
+  );
+  const rows = useMemo(
+    () => attentionRows(data.items, (item) => chipsByCve.has(item.vulnId)),
+    [data.items, chipsByCve],
+  );
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Section
+      className="dashboard-triage-panel"
+      title={t("Needs attention", "Handlungsbedarf")}
+      actions={
+        <Link to={attentionHref(data.since)} className="dashboard-section-link">
+          {t("KEV listings", "KEV-Einträge")}
+        </Link>
+      }
+    >
+      <p className="dashboard-triage-note">
+        {t(
+          `Added to CISA's known exploited list or named by several CERTs in the last ${data.days} days.`,
+          `In den letzten ${data.days} Tagen in die CISA-Liste ausgenutzter Schwachstellen aufgenommen oder von mehreren CERTs genannt.`,
+        )}
+      </p>
+      <TodayListPreview
+        t={t}
+        matched={rows.filter((row) => chipsByCve.has(row.vulnId)).length}
+        preview={TRIAGE_PREVIEW}
+        listClassName="dashboard-triage-list"
+        rows={rows.map((item) => (
+          <AttentionRow key={item.vulnId} t={t} item={item} chips={chipsByCve.get(item.vulnId) ?? []} />
+        ))}
+      />
+    </Section>
+  );
+};
+
+const CERTS_SHOWN = 3;
+
+// Links to the advisory itself, above the row's stretched link. The backend only stores http(s) URLs.
+const CertLinks = ({ certs }: { certs: CertMention[] }) => (
+  <span className="dashboard-triage-when">
+    {certs.slice(0, CERTS_SHOWN).map((cert, index) => (
+      <React.Fragment key={cert.name}>
+        {index > 0 && ", "}
+        {cert.url ? (
+          <a href={cert.url} target="_blank" rel="noreferrer" className="dashboard-facet" title={cert.title ?? cert.name}>
+            {cert.name}
+          </a>
+        ) : (
+          cert.name
+        )}
+      </React.Fragment>
+    ))}
+    {certs.length > CERTS_SHOWN && (
+      <span className="dashboard-cve-extra" title={certs.map((cert) => cert.name).join(", ")}>
+        +{certs.length - CERTS_SHOWN}
+      </span>
+    )}
+  </span>
+);
+
+const AttentionRow = ({ t, item, chips }: { t: TranslateFn; item: AttentionItem; chips: TodayChip[] }) => (
+  <li className="dashboard-triage-row">
+    <SeverityTag severity={item.severity}>{severityLabel(item.severity || "unknown", t)}</SeverityTag>
+    <span className="dashboard-triage-main">
+      <Link to={`/vulnerability/${encodeURIComponent(item.vulnId)}`} className="row-link mono dashboard-cve-link dashboard-triage-id">
+        {item.vulnId}
+      </Link>
+      <span className="dashboard-cve-vendor">
+        {item.products.length > 0 ? (
+          <FacetLinks t={t} field="productSlugs" facets={item.products} limit={LATEST_PRODUCT_LIMIT} />
+        ) : (
+          <FacetLinks t={t} field="vendorSlugs" facets={item.vendors} limit={LATEST_VENDOR_LIMIT} />
+        )}
+      </span>
+    </span>
+    <span className="dashboard-triage-side">
+      {item.certs.length > 0 && <CertLinks certs={item.certs} />}
+      {item.kevListed && item.dateAdded && (
+        <span
+          className="dashboard-triage-when"
+          title={item.dueDate ? t(`CISA due date: ${kevDate(item.dueDate)}`, `CISA-Frist: ${kevDate(item.dueDate)}`) : undefined}
+        >
+          KEV {kevDate(item.dateAdded)}
+        </span>
+      )}
+      {(chips.length > 0 || item.ransomware) && (
+        <span className="dashboard-triage-chips">
+          {item.ransomware && <span className="chip dashboard-flag">{t("Ransomware", "Ransomware")}</span>}
+          <ChipLinks chips={chips} />
+        </span>
+      )}
+    </span>
+  </li>
+);
 
 const TodayCveList = ({
   t,
@@ -1156,24 +1411,17 @@ const TodayCveItem = ({
   cve,
   chips = [],
   product,
-  showSeverity = false,
 }: {
   t: TranslateFn;
   cve: TodayCve;
   chips?: TodayChip[];
   product: CveProductInfo;
-  showSeverity?: boolean;
 }) => {
   const aliases = (cve.aliases ?? []).filter(
     (a) => a && a.toUpperCase() !== cve.vulnId.toUpperCase()
   );
   return (
     <tr className="dashboard-cve-row">
-      {showSeverity && (
-        <td className="dashboard-cve-severity">
-          <SeverityTag severity={cve.severity}>{severityLabel(cve.severity || "unknown", t)}</SeverityTag>
-        </td>
-      )}
       <td className="dashboard-cve-id">
         <Link to={`/vulnerability/${encodeURIComponent(cve.vulnId)}`} className="row-link mono dashboard-cve-link">
           {cve.vulnId}
@@ -1231,12 +1479,11 @@ interface VulnerabilityListProps {
 }
 
 const MISSING_VALUE = "n/a";
-const LATEST_COLUMN_COUNT = 9;
-// Vendor/product/version values are cut for the row; the full value stays in the
-// tooltip, in the copied info and on the detail page.
+const LATEST_LIMIT = 10;
+// Vendor/product values are cut for the row; the full value stays in the tooltip,
+// in the copied info and on the detail page.
 const LATEST_VENDOR_LIMIT = 22;
 const LATEST_PRODUCT_LIMIT = 30;
-const LATEST_VERSION_LIMIT = 20;
 const shortValue = (value: string, limit: number) =>
   value.length > limit ? `${value.slice(0, limit).trimEnd()}…` : value;
 
@@ -1250,87 +1497,43 @@ const uniqueFacets = (facets: Facet[]): Facet[] => [
   ...new Map(facets.filter((facet) => facet.slug).map((facet) => [facet.slug, facet])).values(),
 ];
 
+const latestFacets = (vuln: VulnerabilityPreview) => {
+  const ip = vuln.impactedProducts ?? [];
+  if (ip.length > 0) {
+    const vendorNames = [...new Set(ip.map((p) => p.vendor?.name).filter((name): name is string => Boolean(name)))];
+    const productNames = [...new Set(ip.map((p) => p.product?.name).filter(Boolean))];
+    const versionList = [...new Set(ip.flatMap((p) => p.versions ?? []).filter(Boolean))];
+    return {
+      vendors: vendorNames.length ? vendorNames.map(formatEcosystemName).join(", ") : MISSING_VALUE,
+      products: productNames.length ? productNames.join(", ") : MISSING_VALUE,
+      versions: versionList.length ? versionList.join(", ") : MISSING_VALUE,
+      vendorFacets: uniqueFacets(ip.map((p) => ({ slug: p.vendor?.slug ?? "", name: formatEcosystemName(p.vendor?.name ?? "") }))),
+      productFacets: uniqueFacets(ip.map((p) => ({ slug: p.product?.slug ?? "", name: p.product?.name ?? "" }))),
+    };
+  }
+  return {
+    vendors: vuln.vendors?.length ? vuln.vendors.map(formatEcosystemName).join(", ") : MISSING_VALUE,
+    products: vuln.products?.length ? vuln.products.join(", ") : MISSING_VALUE,
+    versions: vuln.productVersions?.length ? vuln.productVersions.join(", ") : MISSING_VALUE,
+    vendorFacets: uniqueFacets((vuln.vendors ?? []).map((name) => nameFacet(formatEcosystemName(name)))),
+    productFacets: uniqueFacets((vuln.products ?? []).map(nameFacet)),
+  };
+};
+
 const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListProps) => {
   const hasResults = vulnerabilities.length > 0;
   const showSkeleton = loading && !hasResults;
 
-  const rows = useMemo(
-    () =>
-      vulnerabilities.map((vuln) => {
-        const hasCve = Boolean(vuln.vulnId && vuln.vulnId.startsWith("CVE-"));
-        const hasSource = Boolean(vuln.sourceId && (!hasCve || vuln.sourceId !== vuln.vulnId));
-        const primaryId = vuln.vulnId || vuln.sourceId || t("Unknown-ID", "Unbekannte-ID");
-        const { text: published, isReserved: isPublishedReserved } = getPublishedDisplay(
-          vuln.published,
-          "datetime"
-        );
-        const epss =
-          vuln.epssScore != null ? `${(vuln.epssScore * 100).toFixed(2)}%` : "n/a";
-        const ip = vuln.impactedProducts ?? [];
-        let vendors: string;
-        let products: string;
-        let versions: string;
-        let vendorFacets: Facet[];
-        let productFacets: Facet[];
-        if (ip.length > 0) {
-          const vn = [...new Set(ip.map((p) => p.vendor?.name).filter((name): name is string => Boolean(name)))];
-          const pn = [...new Set(ip.map((p) => p.product?.name).filter(Boolean))];
-          const vs = [...new Set(ip.flatMap((p) => p.versions ?? []).filter(Boolean))];
-          vendorFacets = uniqueFacets(
-            ip.map((p) => ({ slug: p.vendor?.slug ?? "", name: formatEcosystemName(p.vendor?.name ?? "") })),
-          );
-          productFacets = uniqueFacets(ip.map((p) => ({ slug: p.product?.slug ?? "", name: p.product?.name ?? "" })));
-          vendors = vn.length ? vn.map(formatEcosystemName).join(", ") : MISSING_VALUE;
-          products = pn.length ? pn.join(", ") : MISSING_VALUE;
-          versions = vs.length ? vs.join(", ") : MISSING_VALUE;
-        } else {
-          vendors = vuln.vendors?.length ? vuln.vendors.map(formatEcosystemName).join(", ") : MISSING_VALUE;
-          products = vuln.products?.length ? vuln.products.join(", ") : MISSING_VALUE;
-          versions = vuln.productVersions?.length ? vuln.productVersions.join(", ") : MISSING_VALUE;
-          vendorFacets = uniqueFacets((vuln.vendors ?? []).map((name) => nameFacet(formatEcosystemName(name))));
-          productFacets = uniqueFacets((vuln.products ?? []).map(nameFacet));
-        }
-        const cweList = vuln.cwes ?? [];
-        const aliases = buildAliasList(vuln.aliases, vuln.vulnId, vuln.sourceId);
-        const ghsaAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("GHSA-"));
-        const preferredCvss = getPreferredCvssMetric(vuln.cvssMetrics ?? null);
-        const malAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("MAL-"));
-        const pysecAliases = aliases.filter((alias) => alias.toUpperCase().startsWith("PYSEC-"));
-        const remainingAliases = aliases.filter((alias) => {
-          const upper = alias.toUpperCase();
-          return !upper.startsWith("GHSA-") && !upper.startsWith("MAL-") && !upper.startsWith("PYSEC-");
-        });
-
-        return (
-          <DashboardVulnCard
-            key={primaryId}
-            vuln={vuln}
-            primaryId={primaryId}
-            hasCve={hasCve}
-            hasSource={hasSource}
-            ghsaAliases={ghsaAliases}
-            malAliases={malAliases}
-            pysecAliases={pysecAliases}
-            remainingAliases={remainingAliases}
-            vendors={vendors}
-            products={products}
-            versions={versions}
-            vendorFacets={vendorFacets}
-            productFacets={productFacets}
-            published={published}
-            isPublishedReserved={isPublishedReserved}
-            epss={epss}
-            cweList={cweList}
-            preferredCvss={preferredCvss}
-            t={t}
-          />
-        );
-      }),
-    [vulnerabilities, t]
-  );
-
   return (
-    <Section className="dashboard-latest" title={t("Latest findings", "Neueste Treffer")}>
+    <Section
+      className="dashboard-latest"
+      title={t("Latest findings", "Neueste Treffer")}
+      actions={
+        <Link to="/vulnerabilities" className="dashboard-section-link">
+          {t("All vulnerabilities", "Alle Schwachstellen")}
+        </Link>
+      }
+    >
       {showSkeleton ? (
         <DashboardSkeleton />
       ) : hasResults ? (
@@ -1338,20 +1541,23 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
           <table className="dashboard-latest-table">
             <thead>
               <tr>
-                <th scope="col">{t("Severity", "Schweregrad")}</th>
-                <th scope="col">{t("Vulnerability", "Schwachstelle")}</th>
-                <th scope="col">{t("Vendors", "Hersteller")}</th>
-                <th scope="col">{t("Products", "Produkte")}</th>
-                <th scope="col">{t("Versions", "Versionen")}</th>
-                <th scope="col" className="num">CVSS</th>
-                <th scope="col" className="num">EPSS</th>
-                <th scope="col">{t("Published", "Veröffentlicht")}</th>
-                <th scope="col">
+                <th scope="col" className="dashboard-latest-severity">{t("Severity", "Schweregrad")}</th>
+                <th scope="col" className="dashboard-latest-id">ID</th>
+                <th scope="col">{t("Product", "Produkt")}</th>
+                <th scope="col">{t("Vendor", "Hersteller")}</th>
+                <th scope="col" className="num dashboard-latest-cvss">CVSS</th>
+                <th scope="col" className="num dashboard-latest-epss">EPSS</th>
+                <th scope="col" className="dashboard-latest-published">{t("Published", "Veröffentlicht")}</th>
+                <th scope="col" className="dashboard-latest-action">
                   <span className="visually-hidden">{t("Copy vulnerability info", "Schwachstellen-Info kopieren")}</span>
                 </th>
               </tr>
             </thead>
-            {rows}
+            <tbody>
+              {vulnerabilities.map((vuln) => (
+                <LatestRow key={vuln.vulnId || vuln.sourceId} vuln={vuln} t={t} />
+              ))}
+            </tbody>
           </table>
         </div>
       ) : (
@@ -1366,48 +1572,12 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
   );
 };
 
-const DashboardVulnCard = ({
-  vuln,
-  primaryId,
-  hasCve,
-  hasSource,
-  ghsaAliases,
-  malAliases,
-  pysecAliases,
-  remainingAliases,
-  vendors,
-  products,
-  versions,
-  vendorFacets,
-  productFacets,
-  published,
-  isPublishedReserved,
-  epss,
-  cweList,
-  preferredCvss,
-  t,
-}: {
-  vuln: VulnerabilityPreview;
-  primaryId: string;
-  hasCve: boolean;
-  hasSource: boolean;
-  ghsaAliases: string[];
-  malAliases: string[];
-  pysecAliases: string[];
-  remainingAliases: string[];
-  vendors: string;
-  products: string;
-  versions: string;
-  vendorFacets: Facet[];
-  productFacets: Facet[];
-  published: string;
-  isPublishedReserved: boolean;
-  epss: string;
-  cweList: string[];
-  preferredCvss: ReturnType<typeof getPreferredCvssMetric>;
-  t: TranslateFn;
-}) => {
+const LatestRow = ({ vuln, t }: { vuln: VulnerabilityPreview; t: TranslateFn }) => {
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const { vendors, products, versions, vendorFacets, productFacets } = latestFacets(vuln);
+  const primaryId = vuln.vulnId || vuln.sourceId || t("Unknown-ID", "Unbekannte-ID");
+  const { text: published, isReserved } = getPublishedDisplay(vuln.published, "datetime");
+  const cvssScore = getPreferredCvssMetric(vuln.cvssMetrics ?? null)?.baseScore;
 
   const handleCopyInfo = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1428,282 +1598,55 @@ const DashboardVulnCard = ({
     });
   };
 
-  const cvssScore = preferredCvss?.baseScore != null ? preferredCvss.baseScore.toFixed(1) : null;
-  const titleIsId = vuln.title === primaryId;
-  const ids = [
-    ...(hasCve ? [vuln.vulnId] : []),
-    ...(hasSource && vuln.sourceId ? [vuln.sourceId] : []),
-    ...ghsaAliases,
-    ...malAliases,
-    ...pysecAliases,
-    ...remainingAliases,
-  ].filter((id) => id !== vuln.title);
-
   return (
-    <tbody className={`dashboard-latest-item${vuln.exploited ? " dashboard-latest-item--exploited" : ""}`}>
-      <tr className="dashboard-latest-row">
-        <td className="dashboard-latest-severity">
-          <SeverityTag severity={vuln.severity}>
-            {severityLabel(vuln.severity || "unknown", t)}
-          </SeverityTag>
-        </td>
-        <td className="dashboard-latest-main">
-          <h3 className={titleIsId ? "dashboard-latest-title mono" : "dashboard-latest-title"}>
-            <Link to={`/vulnerability/${primaryId}`} className="row-link">
-              {vuln.title}
-            </Link>
-          </h3>
-        </td>
-        <td className="dashboard-latest-vendor" data-label={t("Vendors", "Hersteller")}>
-          <span className="dashboard-latest-value">
-            {vendorFacets.length > 0 ? (
-              <FacetLinks t={t} field="vendorSlugs" facets={vendorFacets} limit={LATEST_VENDOR_LIMIT} />
-            ) : (
-              shortValue(vendors, LATEST_VENDOR_LIMIT)
-            )}
-          </span>
-        </td>
-        <td className="dashboard-latest-product" data-label={t("Products", "Produkte")}>
-          <span className="dashboard-latest-value">
-            {productFacets.length > 0 ? (
-              <FacetLinks t={t} field="productSlugs" facets={productFacets} limit={LATEST_PRODUCT_LIMIT} />
-            ) : (
-              shortValue(products, LATEST_PRODUCT_LIMIT)
-            )}
-          </span>
-        </td>
-        <td className="dashboard-latest-versions" data-label={t("Versions", "Versionen")}>
-          <span className="dashboard-latest-value dashboard-latest-version mono" title={versions}>{shortValue(versions, LATEST_VERSION_LIMIT)}</span>
-        </td>
-        <td className="num dashboard-latest-score dashboard-latest-cvss" data-label="CVSS">
-          {cvssScore ?? <span className="dashboard-missing">n/a</span>}
-        </td>
-        <td className="num dashboard-latest-score dashboard-latest-epss" data-label="EPSS">
-          {vuln.epssScore != null ? epss : <span className="dashboard-missing">n/a</span>}
-        </td>
-        <td className="num dashboard-latest-published" data-label={t("Published", "Veröffentlicht")}>
-          {isPublishedReserved ? <ReservedBadge /> : published}
-        </td>
-        <td className="dashboard-latest-action" rowSpan={2}>
-          <IconButton
-            className={copyFeedback ? "dashboard-copy dashboard-copy--done" : "dashboard-copy"}
-            label={t("Copy vulnerability info", "Schwachstellen-Info kopieren")}
-            onClick={handleCopyInfo}
-          >
-            {copyFeedback ? <LuCheck aria-hidden="true" /> : <LuCopy aria-hidden="true" />}
-          </IconButton>
-        </td>
-      </tr>
-      <tr className="dashboard-latest-more">
-        <td className="dashboard-latest-more-spacer" />
-        <td colSpan={LATEST_COLUMN_COUNT - 2}>
-          <div className="dashboard-latest-line">
-          {ids.length > 0 && (
-            <div className="dashboard-latest-ids">
-              {ids.map((id) => (
-                <span key={id} className="mono">
-                  {id}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="dashboard-latest-meta">
-            <MetaItem label={t("Source", "Quelle")} value={vuln.source ?? "EUVD"} />
-            {vuln.exploited != null && (
-              <MetaItem
-                label={t("Exploited", "Ausgenutzt")}
-                value={<ExploitationSummary exploited={vuln.exploited} exploitation={vuln.exploitation} />}
-                wide={Boolean(vuln.exploitation)}
-              />
-            )}
-            <MetaItem
-              label={t("Assigner", "Assigner")}
-              value={vuln.assigner ? <span className="mono">{vuln.assigner}</span> : "n/a"}
-            />
-          </div>
-          <div className="link-list">
-            {hasCve && (
-              <>
-                <a
-                  href={`https://www.cve.org/CVERecord?id=${encodeURIComponent(vuln.vulnId)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  CVE
-                </a>
-                <a
-                  href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(vuln.vulnId)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  NVD
-                </a>
-                <a
-                  href={`https://cve.circl.lu/vuln/${encodeURIComponent(vuln.vulnId)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  CIRCL
-                </a>
-                {vuln.published && (Date.now() - new Date(vuln.published).getTime()) >= 7 * 24 * 60 * 60 * 1000 && (
-                  <a
-                    href={`https://cti.wazuh.com/vulnerabilities/cves/${encodeURIComponent(vuln.vulnId)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Wazuh
-                  </a>
-                )}
-              </>
-            )}
-            {(vuln.sourceId?.startsWith("EUVD-") || vuln.vulnId?.startsWith("CVE-")) && (
-              <a
-                href={`https://euvd.enisa.europa.eu/vulnerability/${encodeURIComponent(vuln.sourceId?.startsWith("EUVD-") ? vuln.sourceId : vuln.vulnId)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                EUVD
-              </a>
-            )}
-            {malAliases.map((alias) => (
-              <a
-                key={alias}
-                href={`https://osv.dev/vulnerability/${encodeURIComponent(alias)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                OSV
-              </a>
-            ))}
-            {malAliases.map((alias) => (
-              <a
-                key={`deps-${alias}`}
-                href={`https://deps.dev/advisory/osv/${encodeURIComponent(alias)}`}
-                target="_blank"
-                rel="noreferrer"
-                title="deps.dev advisory"
-              >
-                deps.dev
-              </a>
-            ))}
-            {pysecAliases.map((alias) => (
-              <a
-                key={alias}
-                href={`https://osv.dev/vulnerability/${encodeURIComponent(alias)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                OSV
-              </a>
-            ))}
-            {ghsaAliases.map((alias) => (
-              <a
-                key={alias}
-                href={`https://github.com/advisories/${alias}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                GHSA
-              </a>
-            ))}
-            {ghsaAliases.map((alias) => (
-              <a
-                key={`osv-${alias}`}
-                href={`https://osv.dev/vulnerability/${encodeURIComponent(alias)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                OSV
-              </a>
-            ))}
-          </div>
-          {cweList.length > 0 && (
-            <div className="dashboard-latest-cwes">
-              {cweList.map((cwe) => (
-                <span key={cwe} className="chip mono">
-                  {cwe}
-                </span>
-              ))}
-            </div>
-          )}
-          {(preferredCvss || vuln.summary) && (
-            <details className="dashboard-latest-details">
-              <summary className="dashboard-disclosure">
-                <LuChevronRight className="dashboard-disclosure-icon" aria-hidden="true" />
-                {preferredCvss ? "CVSS" : t("Summary", "Zusammenfassung")}
-              </summary>
-              {preferredCvss ? (
-                <CvssMetricDisplay
-                  metric={preferredCvss}
-                  showVector={false}
-                  showScores={false}
-                />
-              ) : (
-                <p>{vuln.summary}</p>
-              )}
-            </details>
-          )}
-          </div>
-        </td>
-      </tr>
-    </tbody>
+    <tr className={`dashboard-latest-row${vuln.exploited ? " dashboard-latest-row--exploited" : ""}`}>
+      <td className="dashboard-latest-severity">
+        <SeverityTag severity={vuln.severity}>{severityLabel(vuln.severity || "unknown", t)}</SeverityTag>
+      </td>
+      <td className="dashboard-latest-id">
+        <Link to={`/vulnerability/${encodeURIComponent(primaryId)}`} className="row-link mono dashboard-cve-link">
+          {primaryId}
+        </Link>
+        {vuln.exploited && <span className="chip dashboard-flag">{t("Exploited", "Ausgenutzt")}</span>}
+      </td>
+      <td className="dashboard-latest-product" title={products}>
+        {productFacets.length > 0 ? (
+          <FacetLinks t={t} field="productSlugs" facets={productFacets} limit={LATEST_PRODUCT_LIMIT} />
+        ) : (
+          shortValue(products, LATEST_PRODUCT_LIMIT)
+        )}
+      </td>
+      <td className="dashboard-latest-vendor" title={vendors}>
+        {vendorFacets.length > 0 ? (
+          <FacetLinks t={t} field="vendorSlugs" facets={vendorFacets} limit={LATEST_VENDOR_LIMIT} />
+        ) : (
+          shortValue(vendors, LATEST_VENDOR_LIMIT)
+        )}
+      </td>
+      <td className="num dashboard-latest-score" data-label="CVSS">
+        {cvssScore != null ? cvssScore.toFixed(1) : <span className="dashboard-missing">n/a</span>}
+      </td>
+      <td className="num dashboard-latest-score" data-label="EPSS">
+        {vuln.epssScore != null ? `${(vuln.epssScore * 100).toFixed(2)}%` : <span className="dashboard-missing">n/a</span>}
+      </td>
+      <td className="dashboard-latest-published">{isReserved ? <ReservedBadge /> : published}</td>
+      <td className="dashboard-latest-action">
+        <IconButton
+          className={copyFeedback ? "dashboard-copy dashboard-copy--done" : "dashboard-copy"}
+          label={t("Copy vulnerability info", "Schwachstellen-Info kopieren")}
+          onClick={handleCopyInfo}
+        >
+          {copyFeedback ? <LuCheck aria-hidden="true" /> : <LuCopy aria-hidden="true" />}
+        </IconButton>
+      </td>
+    </tr>
   );
 };
 
 const DashboardSkeleton = () => (
   <div className="dashboard-skeleton-rows">
-    {Array.from({ length: 6 }).map((_, index) => (
-      <div key={index} className="dashboard-skeleton-latest">
-        <SkeletonBlock height="1rem" width="64px" />
-        <div className="dashboard-skeleton-rows">
-          <SkeletonBlock height="1.1rem" width="65%" />
-          <SkeletonBlock height="0.9rem" width="40%" />
-        </div>
-        <SkeletonBlock height="1rem" />
-        <SkeletonBlock height="1rem" width="80px" />
-      </div>
+    {Array.from({ length: LATEST_LIMIT }).map((_, index) => (
+      <SkeletonBlock key={index} height="1.75rem" />
     ))}
   </div>
 );
-
-interface MetaItemProps {
-  label: string;
-  value: ReactNode;
-  wide?: boolean;
-}
-
-const MetaItem = ({ label, value, wide = false }: MetaItemProps) => (
-  <div className={wide ? "dashboard-meta dashboard-meta--wide" : "dashboard-meta"}>
-    <span className="dashboard-meta-label">{label}</span>
-    <span className="dashboard-meta-value">{value}</span>
-  </div>
-);
-
-const normalizeId = (value?: string | null) => (value ?? "").trim().toUpperCase();
-
-const buildAliasList = (aliases: string[] | undefined, vulnId?: string | null, sourceId?: string | null) => {
-  const skip = new Set<string>();
-  if (vulnId) skip.add(normalizeId(vulnId));
-  if (sourceId) skip.add(normalizeId(sourceId));
-
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  (aliases ?? []).forEach((alias) => {
-    if (!alias) {
-      return;
-    }
-    const trimmed = alias.trim();
-    if (!trimmed) {
-      return;
-    }
-    const normalized = normalizeId(trimmed);
-    if (skip.has(normalized) || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    result.push(trimmed);
-  });
-
-  return result;
-};

@@ -77,6 +77,41 @@ export interface TodaySummaryResponse {
   cves: TodayCve[];
 }
 
+export interface NamedSlug {
+  slug: string;
+  name: string;
+}
+
+export interface CertMention {
+  name: string;
+  title: string | null;
+  url: string | null;
+}
+
+export interface AttentionItem extends TodayCve {
+  kevListed: boolean;
+  certs: CertMention[];
+  cvssScore: number | null;
+  epssScore: number | null;
+  dateAdded: string | null;
+  dueDate: string | null;
+  ransomware: boolean;
+  vendors: NamedSlug[];
+  products: NamedSlug[];
+}
+
+export interface AttentionResponse {
+  since: string;
+  days: number;
+  total: number;
+  items: AttentionItem[];
+}
+
+export const fetchAttention = async (tz?: string): Promise<AttentionResponse> => {
+  const response = await api.get<AttentionResponse>("/v1/stats/attention", { params: tz ? { tz } : {} });
+  return response.data;
+};
+
 export const fetchTodaySummary = async (date?: string, tz?: string): Promise<TodaySummaryResponse> => {
   const params: Record<string, string> = {};
   if (date) params.date = date;
