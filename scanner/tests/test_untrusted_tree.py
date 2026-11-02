@@ -154,7 +154,7 @@ def test_every_parser_read_goes_through_the_helper() -> None:
     app_dir = Path(scanners.__file__).parent
     offenders = [
         f"{path.name}:{number}"
-        for path in [app_dir / "hecate_analyzer.py", *(app_dir / "malware_detector").glob("*.py")]
+        for path in [app_dir / "hecate_analyzer.py", app_dir / "scanners.py", *(app_dir / "malware_detector").glob("*.py")]
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
         if 'read_text(errors="replace")' in line
     ]

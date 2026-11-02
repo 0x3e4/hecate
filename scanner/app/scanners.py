@@ -49,6 +49,7 @@ for _index, (_key, _value) in enumerate(_GIT_HARDENING.items()):
     os.environ[f"GIT_CONFIG_VALUE_{_index}"] = _value
 
 from app.provenance import check_provenance_batch
+from app.safe_files import read_text_limited
 from app.models import ScannerResult
 
 # host -> (user, token); populated by setup_auth() and consumed by
@@ -245,7 +246,7 @@ async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, in
     logger.info("subprocess.start name=%s timeout=%ds", name, timeout)
     # Full argv at DEBUG so operators can reproduce a scanner invocation
     # locally when troubleshooting; INFO stays terse with just the binary name.
-    logger.debug("subprocess.cmd name=%s argv=%r", name, cmd)
+    logger.debug("subprocess.cmd name=%s argv=%r", name, _redacted(cmd))
     try:
         # start_new_session=True puts the child in its own process group so a
         # timeout can SIGKILL the WHOLE tree. git in particular forks a
@@ -295,6 +296,14 @@ async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, in
     return stdout.decode(errors="replace"), stderr.decode(errors="replace"), rc
 
 
+def _redacted(cmd: list[str]) -> list[str]:
+    """The argv for the log: the git auth header carries a token."""
+    return [
+        "http.extraHeader=Authorization: <redacted>" if arg.startswith("http.extraHeader=Authorization:") else arg
+        for arg in cmd
+    ]
+
+
 def _git_auth_args_for(url: str) -> list[str]:
     """Return ``-c http.extraHeader=...`` args forcing Basic auth for *url*'s host.
 
@@ -302,8 +311,10 @@ def _git_auth_args_for(url: str) -> list[str]:
     to clone anonymously. Embedding the header here sidesteps the credential-
     store helper, which ADO Server's WWW-Authenticate negotiation can defeat.
     """
-    host = urlparse(url).hostname
-    if not host:
+    parsed = urlparse(url)
+    host = parsed.hostname
+    # Basic auth over plain http hands the token to anyone on the path.
+    if not host or parsed.scheme.lower() != "https":
         return []
     entry = _GIT_AUTH_MAP.get(host)
     if not entry:
@@ -627,6 +638,12 @@ _SKIP_DIRS_REQ = frozenset({
 })
 
 
+# The pinning runs in the sidecar process itself, not in the killable analyzer
+# child, and a hostile repository decides how many names it asks PyPI about.
+_MAX_PINNED_PACKAGES = 500
+_PIN_BUDGET_SECONDS = float(os.environ.get("HECATE_PIN_BUDGET_SECONDS", "120"))
+
+
 async def _get_latest_pypi_version(package_name: str) -> str | None:
     """Fetch latest version from PyPI JSON API. Returns None on failure."""
     loop = asyncio.get_event_loop()
@@ -656,6 +673,8 @@ async def _pin_requirements_files(scan_dir: str) -> list[str]:
     root = Path(scan_dir)
     root_resolved = root.resolve()
     modified: list[str] = []
+    lookups_left = _MAX_PINNED_PACKAGES
+    deadline = time.monotonic() + _PIN_BUDGET_SECONDS
 
     for req_path in root.rglob("requirements*.txt"):
         if any(part in _SKIP_DIRS_REQ for part in req_path.parts):
@@ -674,7 +693,7 @@ async def _pin_requirements_files(scan_dir: str) -> list[str]:
             continue
 
         try:
-            content = req_path.read_text(errors="replace")
+            content = read_text_limited(req_path)
         except OSError:
             continue
 
@@ -690,7 +709,8 @@ async def _pin_requirements_files(scan_dir: str) -> list[str]:
                 continue
 
             m = _BARE_PKG_RE.match(stripped)
-            if m:
+            if m and lookups_left > 0 and time.monotonic() < deadline:
+                lookups_left -= 1
                 pkg_name = m.group(1).split("[")[0]  # strip extras like [argon2]
                 latest = await _get_latest_pypi_version(pkg_name)
                 if latest:
@@ -844,14 +864,12 @@ async def _run_dive(target: str, target_type: str) -> ScannerResult:
             error="Dive only supports container image scanning",
         )
 
-    output_file = "/tmp/dive-output.json"
-    archive_file = "/tmp/dive-image.tar"
+    # A directory per run: with fixed paths two concurrent scans removed or read
+    # each other's archive, and one scan could report another image's layers.
+    work_dir = tempfile.mkdtemp(prefix="hecate-dive-")
+    output_file = os.path.join(work_dir, "dive-output.json")
+    archive_file = os.path.join(work_dir, "dive-image.tar")
     try:
-        # Clean up stale files from previous runs
-        for f in (output_file, archive_file):
-            if os.path.exists(f):
-                os.remove(f)
-
         # Step 1: Pull image via skopeo as docker-archive tar
         skopeo_cmd = [
             "skopeo", "--tmpdir", "/tmp", "copy", "--insecure-policy",
@@ -888,9 +906,7 @@ async def _run_dive(target: str, target_type: str) -> ScannerResult:
     except RuntimeError as exc:
         return ScannerResult(scanner="dive", format="dive-json", report={}, error=str(exc))
     finally:
-        for f in (output_file, archive_file):
-            if os.path.exists(f):
-                os.remove(f)
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 async def _run_semgrep(
@@ -957,13 +973,16 @@ async def _run_devskim(
         )
 
     clone_dir: str | None = None
+    # The report never goes into the checkout: the repository could hold a
+    # symlink at that name, and DevSkim would write the report through it.
+    out_dir = tempfile.mkdtemp(prefix="hecate-devskim-")
     try:
         scan_dir = source_dir
         if not scan_dir:
             clone_dir = await _clone_repo(target)
             scan_dir = clone_dir
 
-        out_path = os.path.join(scan_dir, ".devskim-output.sarif")
+        out_path = os.path.join(out_dir, "devskim-output.sarif")
         # DevSkim does pure pattern-matching and walks every byte; trimming
         # vendored / generated noise is the biggest single lever on .NET
         # codebases. Other scanners (trivy/grype/syft) skip these via
@@ -1013,6 +1032,7 @@ async def _run_devskim(
     except RuntimeError as exc:
         return ScannerResult(scanner="devskim", format="devskim-sarif", report={}, error=str(exc))
     finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
 

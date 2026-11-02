@@ -59,3 +59,9 @@ def test_scanners_do_not_inherit_the_secret() -> None:
     code = "import os, app.main; assert 'SCA_SCANNER_SECRET' not in os.environ; assert app.main._SCANNER_SECRET == 'x'"
     env = {**os.environ, "SCA_SCANNER_SECRET": "x"}
     subprocess.run([sys.executable, "-c", code], cwd=SCANNER_ROOT, env=env, check=True, capture_output=True)
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_the_api_description_is_not_served(client: TestClient, path: str) -> None:
+    # These routes sit outside the app-level secret check.
+    assert client.get(path).status_code == 404

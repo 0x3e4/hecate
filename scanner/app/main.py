@@ -118,10 +118,15 @@ async def _require_scanner_secret(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing scanner secret.")
 
 
+# The docs routes are plain Starlette routes outside the app-level dependency,
+# so they would describe the API to anyone without the secret; nothing reads them.
 app = FastAPI(
     title="Hecate Scanner Sidecar",
     version=_VERSION,
     dependencies=[Depends(_require_scanner_secret)],
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
