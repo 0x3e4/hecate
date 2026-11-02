@@ -17,6 +17,7 @@ import {
 import { fetchEolProducts, fetchInventoryEol } from "../api/endoflife";
 import { fetchProducts, fetchVendors } from "../api/assets";
 import { renderCatalogOption } from "../components/CatalogOption";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useServerConfig } from "../server-config/context";
@@ -563,6 +564,7 @@ export const InventoryPage = () => {
 
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<InventoryItem | null>(null);
   const [form, setForm] = useState<InventoryItemCreateInput>(emptyForm());
   const [saving, setSaving] = useState(false);
 
@@ -881,16 +883,10 @@ export const InventoryPage = () => {
   };
 
   const handleDelete = async (itemId: string) => {
-    const confirmed = window.confirm(
-      t(
-        "Delete this inventory item? This cannot be undone.",
-        "Diesen Inventar-Eintrag löschen? Kann nicht rückgängig gemacht werden.",
-      ),
-    );
-    if (!confirmed) return;
     try {
       await deleteInventoryItem(itemId);
       if (editingId === itemId) resetForm();
+      setDeleteCandidate(null);
       await loadItems();
       void loadRecentChanges();
       showToast(t("Inventory item deleted.", "Inventar-Eintrag gelöscht."), "success");
@@ -1315,7 +1311,7 @@ export const InventoryPage = () => {
                           <IconButton
                             label={t("Delete", "Löschen")}
                             className="inventory-delete"
-                            onClick={() => void handleDelete(item.id)}
+                            onClick={() => setDeleteCandidate(item)}
                           >
                             <LuTrash2 aria-hidden="true" />
                           </IconButton>
@@ -1540,6 +1536,24 @@ export const InventoryPage = () => {
       </Section>
 
       {/* Add / edit modal, opened from the page header and the row edit action */}
+      {deleteCandidate && (
+        <ConfirmDialog
+          title={t("Delete inventory item", "Inventar-Eintrag löschen")}
+          message={
+            <>
+              {t("Delete", "Soll")} <strong>{deleteCandidate.name}</strong>{" "}
+              {t(
+                "from the inventory? Its CVE matches and notifications stop; the change log keeps the entry.",
+                "aus dem Inventar gelöscht werden? CVE-Treffer und Benachrichtigungen dafür entfallen, das Änderungsprotokoll behält den Eintrag.",
+              )}
+            </>
+          }
+          confirmLabel={t("Delete", "Löschen")}
+          onConfirm={() => handleDelete(deleteCandidate.id)}
+          onCancel={() => setDeleteCandidate(null)}
+        />
+      )}
+
       {(creating || editingId !== null) && (
         <div className="dialog-overlay" role="presentation" onClick={resetForm}>
           <div

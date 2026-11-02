@@ -25,6 +25,7 @@ import {
 } from "../api/scans";
 import { SeverityBadges } from "../components/SeverityBadges";
 import { SkeletonBlock } from "../components/Skeleton";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
@@ -253,6 +254,7 @@ export const ScanTargetDetailPage = () => {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!targetId) {
@@ -367,9 +369,6 @@ export const ScanTargetDetailPage = () => {
 
   const handleDelete = async () => {
     if (!target) return;
-    if (!window.confirm(t("Delete this target and all its scan data?", "Dieses Ziel und alle Scan-Daten löschen?"))) {
-      return;
-    }
     setBusy("delete");
     try {
       await deleteScanTarget(target.id);
@@ -377,6 +376,7 @@ export const ScanTargetDetailPage = () => {
     } catch {
       showToast(t("Delete failed.", "Löschen fehlgeschlagen."), "error");
       setBusy(null);
+      setDeleteOpen(false);
     }
   };
 
@@ -510,7 +510,7 @@ export const ScanTargetDetailPage = () => {
                 type="button"
                 className="btn-secondary scan-target-delete"
                 disabled={busy === "delete"}
-                onClick={handleDelete}
+                onClick={() => setDeleteOpen(true)}
               >
                 <LuTrash2 aria-hidden="true" />
                 {t("Delete target", "Ziel löschen")}
@@ -740,6 +740,24 @@ export const ScanTargetDetailPage = () => {
           </div>
         ) : null}
       </Section>
+
+      {deleteOpen && target && (
+        <ConfirmDialog
+          title={t("Delete target", "Ziel löschen")}
+          message={
+            <>
+              {t("Delete", "Soll")} <strong>{target.name}</strong>{" "}
+              {t(
+                "and all its scans, findings and SBOMs?",
+                "mit allen Scans, Findings und SBOMs gelöscht werden?",
+              )}
+            </>
+          }
+          confirmLabel={t("Delete", "Löschen")}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteOpen(false)}
+        />
+      )}
 
       {passwordOpen && (
         <TargetPasswordDialog

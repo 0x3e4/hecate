@@ -15,9 +15,13 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+
 ### Changed
 
+- Inventory and the scan target page ask in a dialog before deleting an item or a target, instead of the browser's confirmation prompt.
+
 ### Fixed
+
 
 ## [2.0.0] - 2026-11-02
 

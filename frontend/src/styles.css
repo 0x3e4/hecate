@@ -143,6 +143,7 @@ table td { font-variant-numeric: tabular-nums; }
 .dialog { min-width: min(400px, 100%); max-width: 90vw; padding: var(--space-lg); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-card); }
 .dialog--wide { width: min(760px, 90vw); max-width: 90vw; max-height: 90dvh; overflow-y: auto; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
+.dialog-danger, .dialog-danger:hover { border-color: var(--color-error); color: var(--color-error); }
 .dialog-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: var(--color-muted); cursor: pointer; }
 .dialog-close:hover { background: var(--overlay-2); color: var(--color-ink); }
 @media (max-width: 40rem) { .dialog { min-width: 0; width: 100%; max-width: 100%; padding: var(--space-md); } .dialog-actions { flex-direction: column-reverse; } table th, table td { padding: var(--space-2xs) var(--space-xs); } }

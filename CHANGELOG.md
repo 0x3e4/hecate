@@ -9,9 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+
 ### Changed
 
+- Inventory and the scan target page ask in a dialog before deleting an item or a target, instead of the browser's confirmation prompt.
+
 ### Fixed
+
 
 ## [2.0.0] - 2026-11-02
 
