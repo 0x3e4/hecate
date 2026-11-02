@@ -15,10 +15,20 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [2.0.0] - 2026-11-02
+
+### Added
+
 - Frontend design system: `frontend/src/tokens.css` (colour, type, spacing, motion tokens), `frontend/src/base.css`, shared primitives in `frontend/src/ui/primitives.tsx` + `primitives.css`, one stylesheet per screen in `frontend/src/screens/`, and the locked system description in `design.md`. Typeface is IBM Plex Sans, with IBM Plex Mono only for identifiers and code (self-hosted via `@fontsource`).
 - `cleanAdvisoryText()` and `formatEcosystemName()` in `frontend/src/utils/advisoryText.ts`: display-only cleanup of OSV boilerplate and registry-qualified ecosystem names.
 - API tokens with scopes on System → Access Control: `scan:submit` opens `POST /api/v1/scans`, `inventory:report` opens `POST /api/v1/inventory/report`. Each token has a name and an optional expiry, is sent as `X-API-Key`, is shown once and stored only as a hash, and can be revoked without touching the others. Managing tokens needs `SYSTEM_PASSWORD` and answers `403` without it. Creating and revoking appear in the audit log.
 - `SCA_SCANNER_SECRET`: shared secret between the backend and the scanner sidecar, sent as `X-Scanner-Secret`. Once set, every sidecar route except `/health` needs it. It is needed as soon as anything but the backend can reach the sidecar, and on another host it also needs TLS in front. Unset, the sidecar behaves as before and logs a warning at startup.
+- Dashboard: a **Needs attention** panel shows what was added to CISA KEV or named by at least two CERTs in the last seven days, and what one CERT named if it is in your stack. Your stack comes first, and each row links to the advisories behind it. It does not depend on the selected day. Backed by `GET /api/v1/stats/attention`.
+- CERT advisory feeds: a new job, `cert_feeds_sync`, reads CERT-FR, CERT-EU, NCSC-NL, CCCS and JPCERT/CC every two hours into the `cert_advisories` collection. `CERT_FEEDS_EXTRA` adds your own feeds as `Name|URL` pairs, for example CERT.at. Start it from System → Data, `POST /api/v1/sync/trigger/cert-feeds` or `sync-cert`. An item that names no CVE has its advisory page read once, on the feed's own host. CISA's advisory feed is not included because it refuses Hecate's client; the KEV catalogue is unaffected.
 - Inventory change history: `GET /api/v1/inventory/history` and `GET /api/v1/inventory/{id}/history` record what changed, from where (web, report, MCP, restore) and who did it, also for deleted items.
 - Inventory version reports: `POST /api/v1/inventory/report` lets a pipeline record the deployed version for up to 200 entries. An entry has to identify exactly one item; `ambiguous` and `not_found` change nothing and do not stop the batch, and reports never create items.
 - Inventory: the latest release of a cycle from endoflife.date is offered as a one-click `Set to`. It is never applied automatically, because a version nobody deployed would clear real CVE matches.
@@ -28,8 +38,9 @@ generated from it on every semver tag. The format follows
 ### Changed
 
 - **Full redesign of the web UI (all 18 routes).** Routes, API calls and handlers are unchanged; every screen was recomposed. Colour now carries meaning only: gold for the primary action, the current navigation item and focus; a dedicated severity scale for severity; everything else neutral. Card grids became full-width tables where items compare, each page has a single `h1`, and severity is always shown as a word as well as a colour.
-- Dashboard: the page leads with a triage table of today's CVEs that hit your inventory or SCA scans. Only Critical opens by default, up to 12 rows; vendors and products follow as supporting lists; severity DQL links sit on the stat figures.
-- Dashboard on phones: the day arrows sit beside the title, rows use the full width with the identifiers left and the product right, and latest findings show their facts in two columns instead of one labelled line each.
+- Dashboard: the page leads with what touches your inventory or SCA scans, one row per product with a count per severity, and the CVEs fold open. In the severity list only Critical opens by default, up to 12 rows; vendors and products follow as supporting lists; severity DQL links sit on the stat figures.
+- Dashboard: latest findings are ten one-line rows with a link to the full list. Aliases, CWEs, versions, the assigner and the source links stay on the detail page.
+- Dashboard on phones: the day arrows sit beside the title, and rows use the full width with the identifiers left and the product right.
 - Dashboard: vendors and products in the CVE rows and in latest findings link to the vulnerability list filtered on them.
 - Toasts have a close button and no longer cover the scroll-to-top button.
 - Scrollbars: the sidebar has none, the tabs on the vulnerability page wrap on a desktop and swipe on a phone, and the remaining scrollbars are a thin thumb without arrows or track.
@@ -37,7 +48,7 @@ generated from it on every semver tag. The format follows
 - Attack path graphs: Mermaid colours come from the design tokens at runtime; only CVE and impact nodes carry severity colour.
 - `styles.css` shrank from about 3,800 to about 160 lines; screen rules moved to `frontend/src/screens/`.
 - Copy: em dashes, glued arrows, middle-dot strings, uppercase labels and flag emoji are gone from the interface in both languages; a few labels were reworded as a result.
-- Info pages: the MCP page now lists all 40 tools (it listed 30), and the batch limit is described as configurable.
+- Info pages: the MCP page now lists all 40 tools (it listed 30), the batch limit is described as configurable, and the pages use the full width.
 - `POST /api/v1/vulnerabilities/lookup`: the local read stays public, but fetching a miss from upstream now takes `X-System-Password` when `SYSTEM_PASSWORD` is set, so an anonymous lookup with the default `autoSync` answers `401` on a miss. The identifier is limited to 128 characters of a fixed pattern (`422` otherwise).
 - Manual refresh: when upstream has no data, a stored record or an ID that is not a CVE or EUVD ID now answers `skipped` instead of being replaced by a reserved placeholder.
 - Scan targets: repository URLs with credentials are rejected, because the target id is that URL and target ids are public. Use `SCANNER_AUTH`; `ssh://git@host` stays valid. Existing targets with credentials in the URL will fail on their next scan. Image references naming a local source (`dir:`, `file:`, `sbom:`, `oci-dir:`, `docker-archive:` and similar) are rejected too.
@@ -68,6 +79,8 @@ generated from it on every semver tag. The format follows
 - MCP info page: tool calls check the `mcp:write` scope on the token; the page claimed the source IP is re-validated at request time.
 - CI/CD info page: `SCA_SCANNER_TIMEOUT_SECONDS` defaults to 2060, not 600.
 - Malware feed and vulnerability pages: raw OSV markers (`_-= Per source details...`, `## Source: ...`) no longer appear in descriptions, or in the text that copy and email actions produce.
+- Dashboard: the day summary loaded only the newest 200 CVEs, so on a busy day the severity lists fell short of the figures above them and inventory or scan matches past that point were lost. It now loads up to 2,000.
+- Dashboard: the date in the heading follows the interface language.
 - Dashboard: registry-qualified vendor names such as `Packagist:https://packages.drupal.org/8` are shown as `Packagist (packages.drupal.org)`.
 - Inventory: a CVE or end-of-life cell could stay on its loading placeholder when the item list changed while a lookup was running.
 - Dialogs: focused fields keep the visible focus ring, and the password prompt's field has an accessible name.
