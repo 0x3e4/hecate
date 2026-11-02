@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { AIProviderId, AttackPathResponse } from "../types";
+import type { AIProviderId, AttackPathResponse, AttackPathSubmitResponse } from "../types";
 
 export interface FetchAttackPathOptions {
   scanId?: string;
@@ -38,7 +38,7 @@ export const triggerAttackPathNarrative = async (
   vulnId: string,
   provider: AIProviderId,
   options?: TriggerAttackPathNarrativeOptions,
-): Promise<void> => {
+): Promise<AttackPathSubmitResponse> => {
   const payload: {
     provider: AIProviderId;
     language?: string | null;
@@ -50,9 +50,10 @@ export const triggerAttackPathNarrative = async (
   if (options?.triggeredBy) payload.triggeredBy = options.triggeredBy;
 
   const password = options?.aiAnalysisPassword?.trim();
-  await api.post(
+  const response = await api.post<AttackPathSubmitResponse>(
     `/v1/vulnerabilities/${encodeURIComponent(vulnId)}/attack-path`,
     payload,
     password ? { headers: { "X-AI-Analysis-Password": password } } : undefined,
   );
+  return response.data;
 };

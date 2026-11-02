@@ -128,5 +128,8 @@ class AttackPathRequest(BaseModel):
 class AttackPathSubmitResponse(BaseModel):
     status: str
     vulnerability_id: str = Field(alias="vulnerabilityId", serialization_alias="vulnerabilityId")
+    # Matches the runId on this run's SSE events, so a page waiting for it
+    # ignores the event an earlier run left under the same job name.
+    run_id: str | None = Field(default=None, alias="runId", serialization_alias="runId")
 
     model_config = {"populate_by_name": True}

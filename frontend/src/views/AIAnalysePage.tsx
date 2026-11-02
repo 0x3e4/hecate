@@ -27,6 +27,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useSSE } from "../hooks/useSSE";
+import { eventForRun } from "../utils/aiRun";
 import { useServerConfig } from "../server-config/context";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useToastContext } from "../components/ToastProvider";
@@ -76,6 +77,10 @@ export const AIAnalysePage = () => {
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiProviders, setAiProviders] = useState<AIProviderInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  // The batch run this page waits for; events of any other run are ignored
+  const [batchRunId, setBatchRunId] = useState<string | null>(null);
+  // The ids that run analysed: the result belongs to them, not to a later selection
+  const [analysedVulnIds, setAnalysedVulnIds] = useState<string[]>([]);
   const [loadingStartedAt, setLoadingStartedAt] = useState<number>(0);
   const [response, setResponse] = useState<AIBatchInvestigationResponse | null>(null);
   const { jobs: sseJobs } = useSSE();
@@ -156,10 +161,11 @@ export const AIAnalysePage = () => {
   // Watch for batch AI investigation completion via SSE
   useEffect(() => {
     if (!loading) return;
-    const job = sseJobs.get("ai_batch_investigation");
+    const job = eventForRun(sseJobs, "ai_batch_investigation", batchRunId);
     if (!job) return;
 
     if (job.status === "completed") {
+      setBatchRunId(null);
       const batchId = job.metadata?.batchId as string | undefined;
       if (batchId) {
         getBatchAnalysis(batchId, aiAnalysisPassword)
@@ -178,10 +184,11 @@ export const AIAnalysePage = () => {
         setLoading(false);
       }
     } else if (job.status === "failed") {
+      setBatchRunId(null);
       showToast(job.error ?? t("AI analysis failed.", "AI-Analyse fehlgeschlagen."), "error");
       setLoading(false);
     }
-  }, [sseJobs, loading, aiAnalysisPassword, loadHistory, t, showToast]);
+  }, [sseJobs, loading, batchRunId, aiAnalysisPassword, loadHistory, t, showToast]);
 
   // Typing animation effect
   useEffect(() => {
@@ -239,6 +246,8 @@ export const AIAnalysePage = () => {
     }
 
     setLoading(true);
+    setBatchRunId(null);
+    setAnalysedVulnIds(selectedVulnIds);
     setLoadingStartedAt(Date.now());
     setResponse(null);
     shouldAnimateSummaryRef.current = true;
@@ -248,12 +257,13 @@ export const AIAnalysePage = () => {
       await triggerVulnerabilityRefresh({ vulnIds: selectedVulnIds });
 
       // Submit batch analysis — returns immediately, SSE handles completion
-      await requestBatchAiInvestigation({
+      const submitted = await requestBatchAiInvestigation({
         vulnerabilityIds: selectedVulnIds,
         provider: selectedProvider,
         language: "de",
         additionalContext: additionalContext.trim() || null,
       }, passwordOverride ?? aiAnalysisPassword);
+      setBatchRunId(submitted.runId ?? null);
       // loading stays true — SSE effect will set it to false on completion/failure
     } catch (err: any) {
       console.error("AI analysis failed:", err);
@@ -284,7 +294,8 @@ export const AIAnalysePage = () => {
 
   // Get vulnerability preview objects for display
   // Note: We only have IDs, so we create minimal preview objects
-  const selectedVulnerabilities: VulnerabilityPreview[] = selectedVulnIds.map((id) => ({
+  const displayedVulnIds = loading || response ? analysedVulnIds : selectedVulnIds;
+  const selectedVulnerabilities: VulnerabilityPreview[] = displayedVulnIds.map((id) => ({
     vulnId: id,
     title: "",
     summary: "",

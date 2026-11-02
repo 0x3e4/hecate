@@ -82,11 +82,19 @@ export interface AIInvestigationResponse {
 export interface AIInvestigationSubmitResponse {
   status: string;
   vulnerabilityId: string;
+  runId?: string | null;
 }
 
 export interface AIBatchInvestigationSubmitResponse {
   status: string;
   vulnerabilityIds: string[];
+  runId?: string | null;
+}
+
+export interface AttackPathSubmitResponse {
+  status: string;
+  vulnerabilityId: string;
+  runId?: string | null;
 }
 
 export interface AIAssessment {

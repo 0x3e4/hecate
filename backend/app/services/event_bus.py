@@ -121,6 +121,7 @@ def publish_job_failed(
     started_at: datetime,
     finished_at: datetime,
     error: str,
+    **metadata: Any,
 ) -> None:
     get_event_bus().publish(
         JobEvent(
@@ -131,6 +132,7 @@ def publish_job_failed(
             finished_at=finished_at,
             duration_seconds=(finished_at - started_at).total_seconds(),
             error=error,
+            metadata=metadata,
         )
     )
 

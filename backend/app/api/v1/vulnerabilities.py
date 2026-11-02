@@ -495,10 +495,12 @@ async def create_ai_investigation(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     client_ip = get_client_ip(request)
+    run_id = uuid.uuid4().hex
 
     asyncio.create_task(
         _run_ai_investigation_background(
             identifier=identifier,
+            run_id=run_id,
             vulnerability=vulnerability,
             provider=payload.provider,
             language=payload.language,
@@ -512,12 +514,13 @@ async def create_ai_investigation(
         )
     )
 
-    return AIInvestigationSubmitResponse(status="running", vulnerabilityId=identifier)
+    return AIInvestigationSubmitResponse(status="running", vulnerabilityId=identifier, runId=run_id)
 
 
 async def _run_ai_investigation_background(
     *,
     identifier: str,
+    run_id: str,
     vulnerability: VulnerabilityDetail,
     provider: str,
     language: str | None,
@@ -531,7 +534,7 @@ async def _run_ai_investigation_background(
 ) -> None:
     job_name = f"ai_investigation_{identifier}"
     started_at = datetime.now(tz=UTC)
-    publish_job_started(job_name, started_at, provider=provider, vulnerabilityId=identifier)
+    publish_job_started(job_name, started_at, provider=provider, vulnerabilityId=identifier, runId=run_id)
 
     try:
         result = await ai_client.analyze_vulnerability(
@@ -566,11 +569,13 @@ async def _run_ai_investigation_background(
         )
 
         finished_at = datetime.now(tz=UTC)
-        publish_job_completed(job_name, started_at, finished_at, provider=provider, vulnerabilityId=identifier)
+        publish_job_completed(
+            job_name, started_at, finished_at, provider=provider, vulnerabilityId=identifier, runId=run_id
+        )
     except Exception as exc:
         finished_at = datetime.now(tz=UTC)
         logger.error("Background AI investigation failed", identifier=identifier, error=str(exc))
-        publish_job_failed(job_name, started_at, finished_at, error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc), runId=run_id)
 
 
 @router.post(
@@ -625,9 +630,11 @@ async def create_batch_ai_investigation(
         )
         inventory_map = {}
 
+    run_id = uuid.uuid4().hex
     asyncio.create_task(
         _run_batch_ai_investigation_background(
             vulnerability_ids=payload.vulnerability_ids,
+            run_id=run_id,
             vulnerabilities=vulnerabilities,
             provider=payload.provider,
             language=payload.language,
@@ -642,13 +649,14 @@ async def create_batch_ai_investigation(
     )
 
     return AIBatchInvestigationSubmitResponse(
-        status="running", vulnerabilityIds=payload.vulnerability_ids
+        status="running", vulnerabilityIds=payload.vulnerability_ids, runId=run_id
     )
 
 
 async def _run_batch_ai_investigation_background(
     *,
     vulnerability_ids: list[str],
+    run_id: str,
     vulnerabilities: list[VulnerabilityDetail],
     provider: str,
     language: str | None,
@@ -662,7 +670,7 @@ async def _run_batch_ai_investigation_background(
 ) -> None:
     job_name = "ai_batch_investigation"
     started_at = datetime.now(tz=UTC)
-    publish_job_started(job_name, started_at, provider=provider, vulnerabilityIds=vulnerability_ids)
+    publish_job_started(job_name, started_at, provider=provider, vulnerabilityIds=vulnerability_ids, runId=run_id)
 
     try:
         result = await ai_client.analyze_vulnerabilities_batch(
@@ -710,12 +718,12 @@ async def _run_batch_ai_investigation_background(
         finished_at = datetime.now(tz=UTC)
         publish_job_completed(
             job_name, started_at, finished_at,
-            provider=provider, batchId=batch_id, vulnerabilityIds=vulnerability_ids,
+            provider=provider, batchId=batch_id, vulnerabilityIds=vulnerability_ids, runId=run_id,
         )
     except Exception as exc:
         finished_at = datetime.now(tz=UTC)
         logger.error("Background batch AI investigation failed", error=str(exc))
-        publish_job_failed(job_name, started_at, finished_at, error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc), runId=run_id)
 
 
 @router.get("/ai-investigation/batch", response_model=dict[str, Any])
@@ -878,10 +886,12 @@ async def create_attack_path_analysis(
         )
 
     client_ip = get_client_ip(request)
+    run_id = uuid.uuid4().hex
 
     asyncio.create_task(
         _run_attack_path_background(
             identifier=identifier,
+            run_id=run_id,
             vulnerability=vulnerability,
             provider=payload.provider,
             language=payload.language,
@@ -896,12 +906,13 @@ async def create_attack_path_analysis(
         )
     )
 
-    return AttackPathSubmitResponse(status="running", vulnerabilityId=identifier)
+    return AttackPathSubmitResponse(status="running", vulnerabilityId=identifier, runId=run_id)
 
 
 async def _run_attack_path_background(
     *,
     identifier: str,
+    run_id: str,
     vulnerability: VulnerabilityDetail,
     provider: str,
     language: str | None,
@@ -916,7 +927,7 @@ async def _run_attack_path_background(
 ) -> None:
     job_name = f"attack_path_{identifier}"
     started_at = datetime.now(tz=UTC)
-    publish_job_started(job_name, started_at, provider=provider, vulnerabilityId=identifier)
+    publish_job_started(job_name, started_at, provider=provider, vulnerabilityId=identifier, runId=run_id)
 
     try:
         graph = await attack_path_service.build_graph(
@@ -959,9 +970,9 @@ async def _run_attack_path_background(
 
         finished_at = datetime.now(tz=UTC)
         publish_job_completed(
-            job_name, started_at, finished_at, provider=provider, vulnerabilityId=identifier
+            job_name, started_at, finished_at, provider=provider, vulnerabilityId=identifier, runId=run_id
         )
     except Exception as exc:
         finished_at = datetime.now(tz=UTC)
         logger.error("Background attack-path analysis failed", identifier=identifier, error=str(exc))
-        publish_job_failed(job_name, started_at, finished_at, error=str(exc))
+        publish_job_failed(job_name, started_at, finished_at, error=str(exc), runId=run_id)
