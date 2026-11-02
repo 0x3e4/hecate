@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SCA_SCAN_MAX_RUNTIME_SECONDS` (default `0`): how long a running scan may take before it is cancelled. `0` derives the limit per scan from the resource wait, the clone timeout and the slowest selected scanner's timeout, about 90 minutes with the defaults.
 
 ### Changed
 
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SCA scans that were queued or running when Hecate restarted stayed `running` or `pending` for good, and their target kept showing a scan in progress. They are now cancelled at startup, and a watchdog cancels every five minutes any scan that lost its task or ran past its maximum runtime. The reason is shown as the scan's error.
 
 ## [2.0.0] - 2026-11-02
 

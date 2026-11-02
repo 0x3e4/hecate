@@ -48,6 +48,21 @@ log = structlog.get_logger()
 
 # Module-level dict to track running scan tasks across ScanService instances
 _running_scan_tasks: dict[str, asyncio.Task] = {}
+# Why a tracked scan task was cancelled, written to the scan's error field.
+_cancel_reasons: dict[str, str] = {}
+
+# A scan without a task this long after it was created has lost its task.
+STALE_SCAN_GRACE_SECONDS = 120
+_RESOURCE_WAIT_SECONDS = 600
+_RUNTIME_SLACK_SECONDS = 600
+RESTART_CANCEL_REASON = "Cancelled: Hecate restarted while the scan was queued or running."
+ORPHAN_CANCEL_REASON = "Cancelled: the scan was no longer running in Hecate."
+
+
+def _as_utc(value: Any, fallback: datetime) -> datetime:
+    if not isinstance(value, datetime):
+        return fallback
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 # Module-level set to hold strong references to background target-cleanup tasks
 # (asyncio.create_task's return value must be referenced somewhere to avoid GC).
@@ -449,14 +464,16 @@ class ScanService:
                 finished_at = datetime.now(tz=UTC)
                 publish_job_completed(f"sca_scan_{scan_id}", started_at, finished_at, scan_id=scan_id)
         except asyncio.CancelledError:
-            log.info("scan_service.scan_cancelled", scan_id=scan_id, target=target)
+            reason = _cancel_reasons.pop(scan_id, None)
+            log.info("scan_service.scan_cancelled", scan_id=scan_id, target=target, reason=reason)
             finished_at = datetime.now(tz=UTC)
             await self.scan_repo.update_status(scan_id, "cancelled", finished_at=finished_at,
-                                               duration_seconds=(finished_at - submitted_at).total_seconds())
+                                               duration_seconds=(finished_at - submitted_at).total_seconds(),
+                                               error=reason)
             await self.finding_repo.delete_by_scan(scan_id)
             await self.sbom_repo.delete_by_scan(scan_id)
             await self._clear_running_state(target_id, scan_id)
-            publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error="cancelled")
+            publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=reason or "cancelled")
         except Exception as exc:
             log.exception("scan_service.scan_background_error", scan_id=scan_id, error=str(exc))
             finished_at = datetime.now(tz=UTC)
@@ -2329,18 +2346,80 @@ class ScanService:
         scan = await self.scan_repo.get(scan_id)
         if not scan or scan.get("status") not in ("running", "pending"):
             return False
+        await self._mark_cancelled(scan)
+        return True
+
+    async def _mark_cancelled(self, scan: dict[str, Any], reason: str | None = None) -> None:
+        """Cancel a scan that has no task left to cancel."""
+        from app.services.event_bus import publish_job_failed
+
+        scan_id = str(scan["_id"])
         finished_at = datetime.now(tz=UTC)
-        started = scan.get("started_at") or finished_at
-        if started.tzinfo is None:
-            started = started.replace(tzinfo=UTC)
+        started = _as_utc(scan.get("started_at"), finished_at)
         await self.scan_repo.update_status(scan_id, "cancelled", finished_at=finished_at,
-                                           duration_seconds=(finished_at - started).total_seconds())
+                                           duration_seconds=(finished_at - started).total_seconds(),
+                                           error=reason)
         await self.finding_repo.delete_by_scan(scan_id)
         await self.sbom_repo.delete_by_scan(scan_id)
         target_id = scan.get("target_id")
         if target_id:
             await self._clear_running_state(target_id, scan_id)
-        return True
+        publish_job_failed(f"sca_scan_{scan_id}", started, finished_at, error=reason or "cancelled")
+
+    def _max_runtime_seconds(self, scanners: list[str]) -> int:
+        """How long a running scan may take before the watchdog cancels it.
+
+        Scanners run side by side, so the bound is the slowest one's sidecar
+        timeout, plus the resource wait, the shared clone and some slack.
+        """
+        if settings.sca_scan_max_runtime_seconds > 0:
+            return settings.sca_scan_max_runtime_seconds
+        return (
+            _RESOURCE_WAIT_SECONDS
+            + self._resolve_sidecar_http_timeout(["git-clone"])
+            + self._resolve_sidecar_http_timeout(scanners)
+            + _RUNTIME_SLACK_SECONDS
+        )
+
+    async def cancel_stale_scans(
+        self,
+        *,
+        grace_seconds: int = STALE_SCAN_GRACE_SECONDS,
+        orphan_reason: str = ORPHAN_CANCEL_REASON,
+    ) -> int:
+        """Cancel scans that can no longer finish. Returns how many.
+
+        Scan tasks live only in this process, so a scan still marked running or
+        pending without a task (a restart, a lost task) never ends by itself.
+        A tracked scan running past its maximum runtime is cancelled through
+        its task. Pending scans with a task are only queued and left alone.
+        """
+        now = datetime.now(tz=UTC)
+        cancelled = 0
+        for scan in await self.scan_repo.list_active():
+            scan_id = str(scan["_id"])
+            task = _running_scan_tasks.get(scan_id)
+            if task is None or task.done():
+                created = _as_utc(scan.get("created_at"), _as_utc(scan.get("started_at"), now))
+                if (now - created).total_seconds() < grace_seconds:
+                    continue
+                await self._mark_cancelled(scan, orphan_reason)
+                log.warning("scan_service.stale_scan_cancelled", scan_id=scan_id, reason="orphaned")
+                cancelled += 1
+                continue
+            if scan.get("status") != "running":
+                continue
+            limit = self._max_runtime_seconds(scan.get("scanners") or [])
+            started = _as_utc(scan.get("started_at"), now)
+            if (now - started).total_seconds() > limit:
+                _cancel_reasons[scan_id] = (
+                    f"Cancelled: the scan exceeded its maximum runtime of {limit // 60} minutes."
+                )
+                task.cancel()
+                log.warning("scan_service.stale_scan_cancelled", scan_id=scan_id, reason="max_runtime",
+                            limit_seconds=limit)
+                cancelled += 1
+        return cancelled
 
     async def get_scanner_stats(self) -> dict[str, Any]:
         """Fetch resource stats from the scanner sidecar.
@@ -2872,7 +2951,7 @@ class ScanService:
         """Poll scanner /stats until memory and disk are sufficient, or timeout."""
         min_mem = settings.sca_min_free_memory_mb * 1024 * 1024
         min_disk = settings.sca_min_free_disk_mb * 1024 * 1024
-        max_wait = 600  # 10 minutes
+        max_wait = _RESOURCE_WAIT_SECONDS
         retry_interval = 30
 
         waited = 0

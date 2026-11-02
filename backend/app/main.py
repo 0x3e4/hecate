@@ -103,6 +103,7 @@ def create_app() -> FastAPI:
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
         _warn_on_insecure_default_secrets()
         await cleanup_stale_jobs()
+        await _cancel_scans_left_by_restart()
         await get_scheduler().start()
         # Start MCP session manager if MCP is enabled
         if _mcp_server is not None:
@@ -117,6 +118,19 @@ def create_app() -> FastAPI:
         asyncio.create_task(_backfill_target_summaries_v4())
         asyncio.create_task(_backfill_sbom_component_count_v2())
         asyncio.create_task(_reconcile_orphaned_target_data())
+
+    async def _cancel_scans_left_by_restart() -> None:  # pragma: no cover - crash-recovery sweep
+        """Scans still running or pending from the previous process can never finish."""
+        import structlog
+        log = structlog.get_logger()
+        try:
+            from app.services.scan_service import RESTART_CANCEL_REASON, get_scan_service
+            svc = await get_scan_service()
+            count = await svc.cancel_stale_scans(grace_seconds=0, orphan_reason=RESTART_CANCEL_REASON)
+            if count:
+                log.info("startup.stale_scans_cancelled", count=count)
+        except Exception as e:
+            log.warning("startup.stale_scans_cancel_failed", error=str(e))
 
     async def _warm_stats_cache() -> None:  # pragma: no cover - cache warming
         """Warm up the stats cache on startup to improve first request performance."""

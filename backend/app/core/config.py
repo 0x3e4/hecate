@@ -261,6 +261,9 @@ class Settings(BaseSettings):
     sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
     sca_max_concurrent_scans: int = 2
+    # A running scan older than this is cancelled by the stale-scan watchdog.
+    # 0 derives it per scan: resource wait + clone + sidecar timeout + slack.
+    sca_scan_max_runtime_seconds: int = 0
     sca_min_free_memory_mb: int = 1024
     sca_min_free_disk_mb: int = 2048
 

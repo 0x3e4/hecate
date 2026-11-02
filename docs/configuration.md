@@ -150,6 +150,7 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_AUTO_SCAN_ENABLED` | `false` | Enable the auto-scan scheduler. |
 | `SCA_AUTO_SCAN_INTERVAL_MINUTES` | `1440` | How often auto-scan checks each target for changes. |
 | `SCA_MAX_CONCURRENT_SCANS` | `2` | Concurrent scan slots. |
+| `SCA_SCAN_MAX_RUNTIME_SECONDS` | `0` | A running scan older than this is cancelled. `0` derives the limit per scan from the resource wait, the clone timeout and the slowest selected scanner's timeout. |
 | `SCA_MIN_FREE_MEMORY_MB` | `1024` | Pre-scan resource gate: min free memory. |
 | `SCA_MIN_FREE_DISK_MB` | `2048` | Pre-scan resource gate: min free disk. |
 

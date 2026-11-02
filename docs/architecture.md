@@ -447,6 +447,10 @@ findings without a CVE fall back to `package_name:version`. **Provenance verific
 SBOM component's attestation or signature against the relevant registry API and shows the verdict as a
 column in the UI.
 
+Scan tasks live in the backend process. A scan still `running` or `pending` after a restart can
+never finish, so startup cancels those, and a watchdog does the same every five minutes for a scan
+that lost its task or ran past `SCA_SCAN_MAX_RUNTIME_SECONDS`; the reason lands in the scan's error.
+
 Scan throughput is bounded by `SCA_MAX_CONCURRENT_SCANS` (excess scans wait as `pending`), and a
 pre-scan resource gate checks free memory and disk against the sidecar — insufficient resources cause a
 wait, though a scan proceeds anyway if nothing else is running (fail-open). **Auto-scan** optionally

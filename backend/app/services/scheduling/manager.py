@@ -237,6 +237,15 @@ class SchedulerManager:
                 replace_existing=True,
             )
 
+        # Cancel scans that lost their task or ran past their maximum runtime
+        if settings.sca_enabled:
+            self.scheduler.add_job(
+                _scheduled_stale_scan_watchdog,
+                trigger=IntervalTrigger(minutes=5),
+                id="sca_stale_scan_watchdog",
+                replace_existing=True,
+            )
+
         # NVD weekly full sync
         if settings.scheduler_nvd_full_sync_enabled:
             self.scheduler.add_job(
@@ -859,6 +868,16 @@ async def _delayed_auto_scan_bootstrap() -> None:
     await asyncio.sleep(30)
     log.info("scheduler.auto_scan_bootstrap_start")
     await _scheduled_auto_scans()
+
+
+async def _scheduled_stale_scan_watchdog() -> None:
+    try:
+        scan_service = await get_scan_service()
+        count = await scan_service.cancel_stale_scans()
+        if count:
+            log.info("scheduler.stale_scans_cancelled", count=count)
+    except Exception as exc:  # noqa: BLE001 - the watchdog must not take the scheduler down
+        log.warning("scheduler.stale_scan_watchdog_failed", error=str(exc))
 
 
 async def _scheduled_auto_scans() -> None:
