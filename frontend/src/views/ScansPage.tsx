@@ -35,6 +35,7 @@ import { useI18n } from "../i18n/context";
 import { EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Stat } from "../ui/primitives";
 import { TabPill } from "../ui/TabPill";
 import { formatDateTime } from "../utils/dateFormat";
+import { safeHref } from "../utils/safeHref";
 import {
   TYPE_ALIASES,
   buildDepsDevUrl,
@@ -953,7 +954,7 @@ export const ScansPage = () => {
                                 <span className="muted">{refLabel}:</span>
                                 <span className="mono">{ref}</span>
                                 {refUrl && (
-                                  <a href={refUrl} target="_blank" rel="noopener noreferrer" className="scans-ref-link" title={refUrl} aria-label={refUrl}>
+                                  <a href={safeHref(refUrl)} target="_blank" rel="noopener noreferrer" className="scans-ref-link" title={refUrl} aria-label={refUrl}>
                                     <LuExternalLink aria-hidden="true" />
                                   </a>
                                 )}
@@ -1200,7 +1201,7 @@ export const ScansPage = () => {
                                             let host = url;
                                             try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
                                             return (
-                                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+                                              <a key={i} href={safeHref(url)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
                                                 {host}
                                               </a>
                                             );

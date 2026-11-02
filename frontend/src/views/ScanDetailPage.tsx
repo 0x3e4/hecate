@@ -38,6 +38,7 @@ import { Toast, useToast } from "../components/Toast";
 import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
+import { safeHref } from "../utils/safeHref";
 import { getCurrentTimezone } from "../timezone/storage";
 import {
   TYPE_ALIASES,
@@ -781,7 +782,7 @@ export const ScanDetailPage = () => {
             <span>{scan.targetName || scan.targetId}</span>
             {baseSourceUrl && (
               <a
-                href={baseSourceUrl}
+                href={safeHref(baseSourceUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={t("Open source", "Quelle öffnen")}
@@ -819,7 +820,7 @@ export const ScanDetailPage = () => {
                     <span className="mono">{baseRef}{tag ? `:${tag}` : ""}</span>
                     {sourceUrl && (
                       <a
-                        href={sourceUrl}
+                        href={safeHref(sourceUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
                         title={t("Open source", "Quelle öffnen")}
@@ -844,7 +845,7 @@ export const ScanDetailPage = () => {
           {!scan.imageRef && scan.commitSha && (
             <MetaItem label={t("Commit", "Commit")}>
               {sourceUrl ? (
-                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" title={scan.commitSha} className="scan-detail-link scan-detail-inline">
+                <a href={safeHref(sourceUrl)} target="_blank" rel="noopener noreferrer" title={scan.commitSha} className="scan-detail-link scan-detail-inline">
                   <span className="mono">{scan.commitSha.substring(0, 12)}</span>
                   <LuExternalLink aria-hidden="true" />
                 </a>
@@ -1357,7 +1358,7 @@ export const ScanDetailPage = () => {
                                   <dt>{t("References", "Referenzen")}</dt>
                                   <dd className="link-list">
                                     {f.urls.slice(0, 5).map((url, i) => (
-                                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                      <a key={i} href={safeHref(url)} target="_blank" rel="noopener noreferrer">
                                         {urlDomain(url)}
                                       </a>
                                     ))}
@@ -2096,7 +2097,7 @@ export const ScanDetailPage = () => {
                       {finding.urls && finding.urls.length > 0 && (
                         <div className="link-list scan-detail-item-row">
                           {finding.urls.slice(0, 3).map((url, i) => (
-                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="scan-detail-inline">
+                            <a key={i} href={safeHref(url)} target="_blank" rel="noopener noreferrer" className="scan-detail-inline">
                               <LuExternalLink aria-hidden="true" />
                               {urlDomain(url)}
                             </a>
@@ -2363,7 +2364,7 @@ const PackageLinks = ({ name, version, type, purl, fallback = null }: {
   return (
     <div className="link-list">
       {links.map(link => (
-        <a key={link.title} href={link.url ?? undefined} target="_blank" rel="noopener noreferrer" title={link.title}>
+        <a key={link.title} href={safeHref(link.url)} target="_blank" rel="noopener noreferrer" title={link.title}>
           {link.label}
         </a>
       ))}
@@ -3102,7 +3103,7 @@ const HistoryChangesTable = ({ history, targetId }: { history: ScanHistoryEntry[
                         <span className="mono">{newer.commitSha.slice(0, 7)}</span>
                         {commitUrlBase && (
                           <a
-                            href={`${commitUrlBase}${newer.commitSha}`}
+                            href={safeHref(`${commitUrlBase}${newer.commitSha}`)}
                             target="_blank"
                             rel="noreferrer"
                             className="scan-detail-icon-link"

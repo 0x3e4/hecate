@@ -7,6 +7,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import type { VersionInfo } from "../types";
 import { ErrorState, PageHeader, Section } from "../ui/primitives";
+import { safeHref } from "../utils/safeHref";
 
 type StatusTone = "ok" | "info" | "error" | "muted";
 
@@ -206,7 +207,7 @@ export const SupportPage = () => {
       return (
         <span className="support-screen-value">
           {row.packageUrl ? (
-            <a className="mono" href={row.packageUrl} target="_blank" rel="noopener noreferrer">
+            <a className="mono" href={safeHref(row.packageUrl)} target="_blank" rel="noopener noreferrer">
               {row.latestTag}
             </a>
           ) : (
@@ -248,7 +249,7 @@ export const SupportPage = () => {
           <p className="support-screen-release">
             <a
               className="btn btn-secondary"
-              href={info.semverTag.releaseUrl}
+              href={safeHref(info.semverTag.releaseUrl)}
               target="_blank"
               rel="noopener noreferrer"
             >

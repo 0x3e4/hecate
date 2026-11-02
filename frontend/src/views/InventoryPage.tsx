@@ -36,6 +36,7 @@ import type {
 import { EmptyState, ErrorState, IconButton, PageHeader, Section, SeverityTag, Stat } from "../ui/primitives";
 import { primaryVendorSlug } from "../utils/catalog";
 import { formatDateTime } from "../utils/dateFormat";
+import { safeHref } from "../utils/safeHref";
 const DEPLOYMENTS: InventoryDeployment[] = ["onprem", "cloud", "hybrid"];
 const DEFAULT_ENVIRONMENT_SUGGESTIONS: string[] = ["prod", "staging", "dev", "test", "dr"];
 
@@ -197,7 +198,7 @@ const EolDetailBlock = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
       value: (
         <span className="inventory-eol-latest">
           {status.latestLink ? (
-            <a href={status.latestLink} target="_blank" rel="noreferrer" className="mono">
+            <a href={safeHref(status.latestLink)} target="_blank" rel="noreferrer" className="mono">
               {status.latestVersion}
             </a>
           ) : (
@@ -220,7 +221,7 @@ const EolDetailBlock = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
         {status.productLabel && <span className="inventory-expansion-sub">{status.productLabel}</span>}
         {productHref && (
           <span className="link-list">
-            <a href={productHref} target="_blank" rel="noreferrer" title="endoflife.date">
+            <a href={safeHref(productHref)} target="_blank" rel="noreferrer" title="endoflife.date">
               endoflife.date
             </a>
           </span>

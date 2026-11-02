@@ -38,6 +38,7 @@ import {
   severityVar,
 } from "../ui/primitives";
 import { formatDateTime } from "../utils/dateFormat";
+import { safeHref } from "../utils/safeHref";
 
 const HISTORY_PAGE = 25;
 
@@ -448,7 +449,7 @@ export const ScanTargetDetailPage = () => {
           <span className="scan-target-identity">
             {externalUrl ? (
               <a
-                href={externalUrl}
+                href={safeHref(externalUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="scan-target-url scan-target-link mono"

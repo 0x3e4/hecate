@@ -14,6 +14,7 @@ import { EmptyState, ErrorState, PageHeader, Section, SeverityTag, Stat } from "
 import { filterTopics, roundupHits, sortTopics, topicProducts } from "../utils/certTopics";
 import { SEVERITY_ORDER, severityLabel } from "../utils/cveGroups";
 import { formatDateOnly } from "../utils/dateFormat";
+import { safeHref } from "../utils/safeHref";
 
 const DAY_OPTIONS = [7, 30, 90];
 const PRODUCTS_SHOWN = 3;
@@ -216,7 +217,7 @@ export const CertPage = () => {
 
 const AdvisoryLink = ({ title, url }: { title: string; url: string | null }) =>
   url ? (
-    <a href={url} target="_blank" rel="noreferrer" className="cert-link">{title}</a>
+    <a href={safeHref(url)} target="_blank" rel="noreferrer" className="cert-link">{title}</a>
   ) : (
     <>{title}</>
   );

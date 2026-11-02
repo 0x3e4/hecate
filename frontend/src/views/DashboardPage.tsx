@@ -38,6 +38,7 @@ import { SEVERITY_ORDER, attentionRows, groupCves, productKey, quietFindings, se
 import { getPreferredCvssMetric } from "../utils/cvss";
 import { formatDateOnly } from "../utils/dateFormat";
 import { formatEcosystemName } from "../utils/advisoryText";
+import { safeHref } from "../utils/safeHref";
 import { EmptyState, IconButton, PageHeader, Section, SeverityTag, Stat, severityLevel } from "../ui/primitives";
 
 export const DashboardPage = () => {
@@ -1205,7 +1206,7 @@ const CertLinks = ({ certs }: { certs: CertMention[] }) => (
       <React.Fragment key={cert.name}>
         {index > 0 && ", "}
         {cert.url ? (
-          <a href={cert.url} target="_blank" rel="noreferrer" className="dashboard-facet" title={cert.title ?? cert.name}>
+          <a href={safeHref(cert.url)} target="_blank" rel="noreferrer" className="dashboard-facet" title={cert.title ?? cert.name}>
             {cert.name}
           </a>
         ) : (
