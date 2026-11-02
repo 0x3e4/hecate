@@ -156,9 +156,41 @@ def test_every_parser_read_goes_through_the_helper() -> None:
         f"{path.name}:{number}"
         for path in [app_dir / "hecate_analyzer.py", app_dir / "scanners.py", *(app_dir / "malware_detector").glob("*.py")]
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-        if 'read_text(errors="replace")' in line
+        if 'read_text(errors="replace")' in line or "ET.parse(" in line
     ]
     assert offenders == []
+
+
+POM = """<project><groupId>org.example</groupId><artifactId>demo</artifactId>
+<dependencies><dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>2.0.9</version></dependency></dependencies>
+</project>"""
+
+
+def test_a_pom_is_still_read(tmp_path: Path) -> None:
+    (tmp_path / "pom.xml").write_text(POM)
+    names = [component["name"] for component in run_analysis(str(tmp_path))["components"]]
+    assert any("slf4j-api" in name for name in names)
+
+
+def test_a_manifest_with_a_dtd_is_skipped(tmp_path: Path) -> None:
+    from app.safe_files import parse_xml_limited
+
+    pom = tmp_path / "pom.xml"
+    pom.write_text('<?xml version="1.0"?><?pi x?><!DOCTYPE p [<!ENTITY a "1">]>' + POM)
+    with pytest.raises(OSError, match="DTD"):
+        parse_xml_limited(pom)
+    names = [component["name"] for component in run_analysis(str(tmp_path))["components"]]
+    assert not any("slf4j" in name for name in names)
+
+
+def test_an_oversized_manifest_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import safe_files
+
+    monkeypatch.setattr(safe_files, "MAX_PARSED_FILE_BYTES", 10)
+    pom = tmp_path / "pom.xml"
+    pom.write_text(POM)
+    with pytest.raises(OSError, match="too large"):
+        safe_files.parse_xml_limited(pom)
 
 
 def test_a_malformed_lockfile_costs_one_parser_only(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from xml.parsers import expat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlsplit, urlunsplit
@@ -24,8 +25,6 @@ MAX_TITLE_CHARS = 300
 _HYPHENS = "‐‑‒–—―"
 _CVE_PATTERN = re.compile(rf"CVE[-{_HYPHENS}]\d{{4}}[-{_HYPHENS}]\d{{4,7}}", re.IGNORECASE)
 _HYPHEN_TABLE = str.maketrans(dict.fromkeys(_HYPHENS, "-"))
-# Feeds are remote input: a DTD is how an entity bomb gets in, and no advisory feed needs one.
-_DOCTYPE_PROLOG = re.compile(rb"^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--.*?-->\s*)*<!", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -110,13 +109,30 @@ def _parse_date(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _refuse_dtd(body: bytes) -> None:
+    """
+    Feeds are remote input: a DTD is how an entity bomb gets in, and no advisory
+    feed needs one. The parser itself reports the declaration, so neither the
+    encoding nor what precedes it can hide one, as a pattern over the bytes could.
+    """
+
+    def refuse(*_args: object) -> None:
+        raise ValueError("feed declares a DTD")
+
+    parser = expat.ParserCreate()
+    parser.StartDoctypeDeclHandler = refuse
+    parser.EntityDeclHandler = refuse
+    try:
+        parser.Parse(body, True)
+    except expat.ExpatError as exc:
+        raise ValueError(f"feed is not valid XML: {exc}") from exc
+
+
 def parse_feed(content: bytes) -> list[CertAdvisoryItem]:
     """Parses RSS 2.0, RSS 1.0 (RDF) and Atom. Raises ``ValueError`` on anything else."""
-    body = content.removeprefix(b"\xef\xbb\xbf")
-    if _DOCTYPE_PROLOG.match(body):
-        raise ValueError("feed declares a DTD")
+    _refuse_dtd(content)
     try:
-        root = ET.fromstring(body)
+        root = ET.fromstring(content)
     except ET.ParseError as exc:
         raise ValueError(f"feed is not valid XML: {exc}") from exc
 

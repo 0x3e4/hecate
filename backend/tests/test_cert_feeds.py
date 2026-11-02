@@ -93,6 +93,30 @@ def test_refuses_a_dtd_behind_a_bom_and_a_comment():
         parse_feed(b"\xef\xbb\xbf<?xml version='1.0'?>\n<!-- note --><!DOCTYPE rss><rss/>")
 
 
+def test_refuses_a_dtd_behind_a_second_processing_instruction():
+    feed = (
+        b'<?xml version="1.0"?><?xml-stylesheet href="x"?>'
+        b'<!DOCTYPE r [<!ENTITY a "CVE-2099-0001">]><rss><item><guid>g</guid><title>&a;</title></item></rss>'
+    )
+    with pytest.raises(ValueError, match="DTD"):
+        parse_feed(feed)
+
+
+def test_refuses_a_dtd_in_utf16():
+    feed = (
+        '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY a "CVE-2099-0002">]>'
+        "<rss><item><guid>g</guid><title>&a;</title></item></rss>"
+    ).encode("utf-16")
+    with pytest.raises(ValueError, match="DTD"):
+        parse_feed(feed)
+
+
+def test_a_feed_that_starts_with_a_comment_is_read():
+    feed = b'<?xml version="1.0"?><!-- generated --><rss><channel><item><guid>1</guid><title>CVE-2026-1234</title></item></channel></rss>'
+
+    assert parse_feed(feed)[0].cve_ids == ["CVE-2026-1234"]
+
+
 def test_a_doctype_in_escaped_content_is_not_a_dtd():
     feed = b"<rss><channel><item><guid>1</guid><description>&lt;!DOCTYPE html&gt; CVE-2026-1234</description></item></channel></rss>"
 

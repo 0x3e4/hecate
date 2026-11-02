@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from app.safe_files import read_text_limited
+from app.safe_files import parse_xml_limited, read_text_limited
 
 logger = logging.getLogger(__name__)
 
@@ -1103,7 +1103,7 @@ def parse_pom_xml(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pom_path):
             continue
         try:
-            tree = ET.parse(pom_path)  # noqa: S314
+            tree = parse_xml_limited(pom_path)
         except (OSError, ET.ParseError):
             continue
 
@@ -1334,7 +1334,7 @@ def _collect_central_package_versions(root: Path) -> dict[str, str]:
         if _should_skip(cpm_path):
             continue
         try:
-            tree = ET.parse(cpm_path)  # noqa: S314
+            tree = parse_xml_limited(cpm_path)
         except (OSError, ET.ParseError):
             continue
         for el in tree.iter():
@@ -1359,7 +1359,7 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
             if _should_skip(proj_path):
                 continue
             try:
-                tree = ET.parse(proj_path)  # noqa: S314
+                tree = parse_xml_limited(proj_path)
             except (OSError, ET.ParseError):
                 continue
             rel_path = str(proj_path.relative_to(root))
@@ -1389,7 +1389,7 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
         if _should_skip(pc_path):
             continue
         try:
-            tree = ET.parse(pc_path)  # noqa: S314
+            tree = parse_xml_limited(pc_path)
         except (OSError, ET.ParseError):
             continue
         rel_path = str(pc_path.relative_to(root))
