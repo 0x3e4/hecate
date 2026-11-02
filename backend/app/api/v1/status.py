@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
+from app.core.auth_throttle import SYSTEM_SECRET, AI_SECRET, enforce_auth_throttle, record_auth_result
 from app.core.config import settings
 from app.core.passwords import secret_equals
 from app.services.http.scanner import scanner_client
@@ -70,7 +70,7 @@ async def system_auth_verify(payload: SystemAuthRequest, request: Request) -> Sy
     """Verify the system password (constant-time + per-client throttled)."""
     if not settings.system_password:
         return SystemAuthResponse(required=False, authenticated=True)
-    key = enforce_auth_throttle(request, "system-auth")
+    key = enforce_auth_throttle(request, SYSTEM_SECRET)
     if secret_equals(payload.password, settings.system_password):
         record_auth_result(key, True)
         return SystemAuthResponse(required=True, authenticated=True)
@@ -92,7 +92,7 @@ async def ai_auth_verify(payload: SystemAuthRequest, request: Request) -> System
     """Verify the AI analysis password (constant-time + per-client throttled)."""
     if not settings.ai_analysis_password:
         return SystemAuthResponse(required=False, authenticated=True)
-    key = enforce_auth_throttle(request, "ai-auth")
+    key = enforce_auth_throttle(request, AI_SECRET)
     if secret_equals(payload.password, settings.ai_analysis_password):
         record_auth_result(key, True)
         return SystemAuthResponse(required=True, authenticated=True)

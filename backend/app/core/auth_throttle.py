@@ -3,10 +3,14 @@
 The ``SYSTEM_PASSWORD`` / ``AI_ANALYSIS_PASSWORD`` probe endpoints
 (``POST /status/system-auth``, ``/status/ai-auth``) and the write gates return a
 fast boolean, so a weak secret could otherwise be brute-forced online at full
-request rate. This adds a sliding-window failure counter per (scope, client): N
+request rate. This adds a sliding-window failure counter per (secret, client): N
 failures inside the window trigger a lockout window during which further
 attempts get 429 without ever touching the secret comparison. A success clears
 the counter.
+
+The counter belongs to the secret, not to the route. The system password is
+compared on the unlock endpoint, the write gate and every target route; with a
+counter per route, one client got ten guesses on each.
 
 In-memory and single-process — consistent with the app's other in-memory state
 (EventBus, caches, scheduler). Pair with TLS + network ACLs as documented in
@@ -14,6 +18,7 @@ docs/security-access-control.md; this is defence in depth, not user auth.
 """
 from __future__ import annotations
 
+import ipaddress
 import time
 from collections import defaultdict, deque
 
@@ -26,6 +31,13 @@ from app.utils.request import get_security_client_ip
 _MAX_ATTEMPTS = 10
 _WINDOW_SECONDS = 60.0
 _LOCKOUT_SECONDS = 300.0
+# Every distinct client adds an entry; past this many, entries with no recent
+# failure and no running lockout are dropped.
+_MAX_TRACKED_CLIENTS = 10_000
+
+SYSTEM_SECRET = "secret:system"
+AI_SECRET = "secret:ai"
+API_KEY_SECRET = "secret:api-key"
 
 
 class AuthThrottle:
@@ -35,10 +47,12 @@ class AuthThrottle:
         max_attempts: int = _MAX_ATTEMPTS,
         window_seconds: float = _WINDOW_SECONDS,
         lockout_seconds: float = _LOCKOUT_SECONDS,
+        max_tracked: int = _MAX_TRACKED_CLIENTS,
     ) -> None:
         self._max = max_attempts
         self._window = window_seconds
         self._lockout = lockout_seconds
+        self._max_tracked = max_tracked
         self._fails: dict[str, deque[float]] = defaultdict(deque)
         self._locked_until: dict[str, float] = {}
 
@@ -68,6 +82,16 @@ class AuthThrottle:
         if len(attempts) >= self._max:
             self._locked_until[key] = now + self._lockout
             attempts.clear()
+        if len(self._fails) + len(self._locked_until) > self._max_tracked:
+            self._prune(now)
+
+    def _prune(self, now: float) -> None:
+        """Forget clients whose failures have aged out and who are not locked."""
+        for key in [k for k, until in self._locked_until.items() if until <= now]:
+            self._locked_until.pop(key, None)
+        for key in [k for k, attempts in self._fails.items() if not attempts or now - attempts[-1] > self._window]:
+            if key not in self._locked_until:
+                self._fails.pop(key, None)
 
     def record_success(self, key: str) -> None:
         self._fails.pop(key, None)
@@ -85,7 +109,21 @@ def _client_ip(request: Request) -> str:
     ``X-Forwarded-For``: the forwarded header is only trusted when the direct
     peer is a configured trusted proxy, and then the proxy-observed (right-most)
     hop is used. Falls back to ``"unknown"`` when no peer is available."""
-    return get_security_client_ip(request) or "unknown"
+    return client_key(get_security_client_ip(request) or "unknown")
+
+
+def client_key(ip: str) -> str:
+    """An IPv6 client is its /64: one host usually holds the whole prefix, and
+    counting single addresses let it take a fresh one for every batch of guesses."""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if address.version == 4:
+        return str(address)
+    if address.ipv4_mapped is not None:
+        return str(address.ipv4_mapped)
+    return str(ipaddress.ip_network(f"{address}/64", strict=False))
 
 
 def enforce_auth_throttle(request: Request, scope: str) -> str:

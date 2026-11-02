@@ -28,7 +28,13 @@ import asyncio
 
 from fastapi import Depends, Header, HTTPException, Request
 
-from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
+from app.core.auth_throttle import (
+    AI_SECRET,
+    API_KEY_SECRET,
+    SYSTEM_SECRET,
+    enforce_auth_throttle,
+    record_auth_result,
+)
 from app.core.config import settings
 from app.core.passwords import secret_equals, verify_password
 from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SCAN_SUBMIT
@@ -64,7 +70,7 @@ async def require_admin_write(
         return
     if not settings.system_password:
         return
-    key = enforce_auth_throttle(request, "write:system")
+    key = enforce_auth_throttle(request, SYSTEM_SECRET)
     if _admin_matches(x_system_password):
         record_auth_result(key, True)
         return
@@ -85,9 +91,26 @@ async def require_token_admin(
     Every other list here is public, but this one describes credentials. Unlike
     the admin gate it does not open when no system password is set.
     """
+    _require_configured_admin(request, x_system_password, "manage API tokens")
+
+
+async def require_credential_admin(
+    request: Request,
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> None:
+    """Gate setting or clearing a target's write password.
+
+    Fail-closed like token management: with the admin gate open, anyone could
+    clear a target's password and then write to it, or set one to lock its
+    owners out, so a target password would protect nothing.
+    """
+    _require_configured_admin(request, x_system_password, "manage target passwords")
+
+
+def _require_configured_admin(request: Request, x_system_password: str | None, action: str) -> None:
     if not settings.system_password:
-        raise HTTPException(status_code=403, detail="Set SYSTEM_PASSWORD to manage API tokens.")
-    key = enforce_auth_throttle(request, "write:system")
+        raise HTTPException(status_code=403, detail=f"Set SYSTEM_PASSWORD to {action}.")
+    key = enforce_auth_throttle(request, SYSTEM_SECRET)
     if _admin_matches(x_system_password):
         record_auth_result(key, True)
         return
@@ -95,7 +118,7 @@ async def require_token_admin(
         record_auth_result(key, False)
     raise HTTPException(
         status_code=401,
-        detail="System password required to manage API tokens.",
+        detail=f"System password required to {action}.",
         headers=_WRITE_AUTH_HEADERS,
     )
 
@@ -122,7 +145,7 @@ async def verify_sca_api_key(
     x_api_key: str = Header(..., alias="X-API-Key"),
 ) -> None:
     """Authorize a scan submission: ``SCA_API_KEY`` or a ``scan:submit`` token."""
-    key = enforce_auth_throttle(request, "write:sca")
+    key = enforce_auth_throttle(request, API_KEY_SECRET)
     if secret_equals(x_api_key, settings.sca_api_key):
         record_auth_result(key, True)
         return
@@ -152,7 +175,7 @@ async def require_inventory_report(
     if x_api_key is None:
         await require_admin_write(request, x_system_password=x_system_password)
         return None
-    key = enforce_auth_throttle(request, "write:report")
+    key = enforce_auth_throttle(request, API_KEY_SECRET)
     name = await _authorize_api_token(x_api_key, SCOPE_INVENTORY_REPORT, key)
     if name is None:
         record_auth_result(key, False)
@@ -179,7 +202,7 @@ async def require_ai_write(
     configured, fall back to the global admin gate (the system-password modal).
     """
     if settings.ai_analysis_password:
-        key = enforce_auth_throttle(request, "write:ai")
+        key = enforce_auth_throttle(request, AI_SECRET)
         if not _ai_password_matches(x_ai_analysis_password):
             record_auth_result(key, False)
             raise HTTPException(
@@ -206,7 +229,7 @@ async def require_ai_target_write_scan(
     override or the target's own write password).
     """
     if settings.ai_analysis_password:
-        key = enforce_auth_throttle(request, "write:ai")
+        key = enforce_auth_throttle(request, AI_SECRET)
         if not _ai_password_matches(x_ai_analysis_password):
             if x_ai_analysis_password:
                 record_auth_result(key, False)
@@ -236,7 +259,7 @@ async def _authorize_target(
     """Authorize a write scoped to a single target (admin override OR target pw)."""
     # Checked first: every route below answers 401 or not for a guessed admin
     # password, and the hash comparison below is deliberately slow.
-    key = enforce_auth_throttle(request, "write:target")
+    key = enforce_auth_throttle(request, SYSTEM_SECRET)
 
     target = await service.target_repo.get(target_id) if target_id else None
     target_hash = target.get("write_password_hash") if target else None
@@ -296,7 +319,7 @@ async def _authorize_targets(
             service=service,
         )
         return
-    key = enforce_auth_throttle(request, "write:target")
+    key = enforce_auth_throttle(request, SYSTEM_SECRET)
     if _admin_matches(x_system_password):
         record_auth_result(key, True)
         return

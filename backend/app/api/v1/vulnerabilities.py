@@ -41,7 +41,7 @@ from app.services.inventory_service import InventoryService, get_inventory_servi
 from app.services.scan_service import ScanService, get_scan_service
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
-from app.core.auth_throttle import enforce_auth_throttle, record_auth_result
+from app.core.auth_throttle import AI_SECRET, enforce_auth_throttle, record_auth_result
 from app.core.passwords import secret_equals
 from app.core.write_auth import require_admin_write, require_ai_write
 from app.utils.request import get_client_ip
@@ -58,7 +58,7 @@ async def _require_ai_analysis_password(
     configured_password = settings.ai_analysis_password
     if not configured_password:
         return
-    key = enforce_auth_throttle(request, "read:ai")
+    key = enforce_auth_throttle(request, AI_SECRET)
     if not secret_equals(ai_analysis_password, configured_password):
         if ai_analysis_password:
             record_auth_result(key, False)

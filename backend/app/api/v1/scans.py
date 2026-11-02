@@ -66,6 +66,7 @@ from app.schemas.vex import (
 from app.core.write_auth import (
     require_admin_write,
     require_ai_target_write_scan,
+    require_credential_admin,
     require_target_write_body_finding_ids,
     require_target_write_body_target,
     require_target_write_finding,
@@ -302,7 +303,7 @@ async def get_target_sbom_diff(
 async def set_target_write_password(
     request: TargetWritePasswordRequest,
     target_id: str = Depends(resolve_target_id_path),
-    _auth: None = Depends(require_admin_write),
+    _auth: None = Depends(require_credential_admin),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     """Set (or replace) the per-target write password. Admin-only."""
@@ -317,7 +318,7 @@ async def set_target_write_password(
 @router.delete("/targets/{target_id:path}/write-password", response_model=ScanTargetResponse)
 async def clear_target_write_password(
     target_id: str = Depends(resolve_target_id_path),
-    _auth: None = Depends(require_admin_write),
+    _auth: None = Depends(require_credential_admin),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     """Clear the per-target write password. Admin-only."""
