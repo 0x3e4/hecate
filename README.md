@@ -156,6 +156,7 @@ flowchart TB
 | | |
 | --- | --- |
 | **Needs attention** | Dashboard panel of what CISA KEV listed or several CERTs named this week, with anything in your stack first. Add your own CERT with `CERT_FEEDS_EXTRA`. |
+| **CERT overview** | Advisories from national CERTs merged into topics through shared CVEs, with your stack first and round-ups kept apart. |
 | **10-source ingestion** | EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV, CERT feeds — normalised into a single schema with priority-gated upserts and a 3-tier cache. |
 | **Active SCA scanning** | 10 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, DevSkim) for container images and source repos. |
 | **Supply-chain malware detection** | 35 heuristic rules informed by real attacks (Shai-Hulud, LiteLLM, Trivy v0.69.4, Glassworm, Telnyx, Axios, …) plus a continuous OSV MAL-* watcher that retroactively injects findings into the latest scan of every affected target. |
@@ -268,6 +269,7 @@ scanner/
 | Dashboard | Daily triage: *Needs attention*, the products that hit your inventory or scans, the day's CVEs and the latest findings, with real-time refresh via SSE. |
 | Vulnerability list | Paginated list with full-text, vendor, product, version filters and an advanced filter set (severity, CVSS vector, EPSS, CWE, sources, time range). |
 | Vulnerability detail | Tabs for CWE, CAPEC, references, affected products, **Attack Path** (Mermaid graph + optional AI narrative), AI analysis, change history, raw. |
+| CERT | Advisories from national CERTs merged into topics through shared CVEs, with filters and round-ups kept apart. |
 | Query builder | Interactive DQL editor with field browser and aggregations. |
 | AI analysis | Combined timeline of single, batch, and scan analyses. |
 | Stats | Trend charts, top vendors / products, severity distribution. |

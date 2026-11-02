@@ -40,6 +40,7 @@ src/
 │                                  server-paginated)
 ├── views/                       Page components (17 views)
 │   ├── DashboardPage.tsx        Home page: daily triage and latest findings
+│   ├── CertPage.tsx             CERT advisories merged into topics
 │   ├── VulnerabilityListPage.tsx
 │   │                            Paginated list with filters (incl. advanced filters)
 │   ├── VulnerabilityDetailPage.tsx
@@ -173,6 +174,7 @@ src/
 | Route | Component | Description |
 | --- | --- | --- |
 | `/` | `DashboardPage` | Daily triage: needs attention, products in your inventory or scans, the day's CVEs and latest findings, real-time refresh via SSE |
+| `/cert` | `CertPage` | CERT advisories merged into topics through shared CVEs, with filters and a list of round-ups |
 | `/vulnerabilities` | `VulnerabilityListPage` | Paginated list with full-text, vendor, product, version filters and an advanced filter set (severity, CVSS vector, EPSS, CWE, sources, time range). Three-way search-mode pill above the input: **Keyword** (full-text), **DQL** (existing query syntax), **Regex** (Lucene `regexp` over a curated field set — summary, title, vendors, products, aliases, ID, versions, references, CWEs; keep `REGEX_SEARCH_FIELDS` here in sync with the backend tuple in `vulnerability_service.py`). Saved searches preserve the originating mode via `queryMode` + `regexQuery`. Clicking a version chip on a row appends the vendor and product slugs alongside the version and searches by range coverage (`affectedVersion:`); `representativeVersionInRange` (`utils/versionQuery.ts`) resolves a range-string chip (`>= 7.0.0, < 7.0.2`, `4.7 ≤4.7.30`) to a concrete in-range version first, and only falls back to a literal `product_versions:` term when there is neither a vendor/product to pin nor a usable version. |
 | `/vulnerability/:vulnId` | `VulnerabilityDetailPage` | Detail view with tabs (CWE / CAPEC / references / affected products / **Attack Path** with Mermaid graph + optional AI narrative / AI analysis / change history / raw), refresh dropdown (incl. OSV). Below the summary it renders an **Affected in your environment** callout (inventory matches) and a red **Affected in your scans** callout (`affectedScanTargets` — SCA matches for this CVE/aliases, each row linking to the covering scan; `matchType` is either a confirmed `finding` or an `sbom` hit where the package is in the target's latest SBOM at an affected version but the scan predates the advisory, tagged *in SBOM · rescan to confirm*). The Attack Path tab is lazy-fetched: the backend always serves the deterministic graph; the AI narrative is optional via the *Generate scenario narrative* button (gated by `aiEnabled`). |
 | `/query-builder` | `QueryBuilderPage` | Interactive DQL editor with field browser and aggregations |

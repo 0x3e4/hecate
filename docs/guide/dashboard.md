@@ -51,24 +51,29 @@ Dashboard simply offers it at the point where you discover something is missing.
 
 The *Needs attention* panel shows what is being exploited or warned about right now. A CVE appears
 here when, in the last seven days, it was added to CISA's Known Exploited Vulnerabilities catalogue
-or at least two national CERTs named it. A CVE that only one CERT named appears when it is also in
-your stack. The panel goes by those dates, not by publication: most of these are older CVEs, and a
+or at least two national CERTs named it. A CVE that only one CERT named gets a row when it affects
+your [inventory](inventory.md). The panel goes by those dates, not by publication: most of these are older CVEs, and a
 day view would never show them. It therefore stays the same when you step back through days, and it
 still appears on a day with no new CVEs.
 
-Anything confirmed in your [inventory](inventory.md) or in a package of your latest scans comes
-first and carries the same clickable tag as elsewhere on the page. The rest is ordered by how many
-signals it has, then by the newest listing. Each row shows the severity, the CVE and the product, and
+Anything confirmed in your inventory or found by your latest scans comes first and carries the same
+clickable tag as elsewhere on the page. The rest is ordered by how many signals it has, then by
+severity and the newest listing. The first eight rows show and the rest fold away. Each row shows the severity, the CVE and the product, and
 says why it is there: the CERTs that named it, each linking to its advisory, the day CISA listed it,
 and a **Ransomware** tag where CISA records known ransomware use. Hover the KEV date for CISA's
 remediation due date. **KEV listings** opens the catalogue additions in the
-[Vulnerabilities](vulnerabilities.md) view.
+[Vulnerabilities](vulnerabilities.md) view, and **CERT advisories** opens the
+[full overview](cert.md).
+
+Scan findings that only one CERT named do not get a row: a single round-up can name dozens of kernel
+CVEs that every container image carries, which is routine patching rather than an alarm. They fold
+away at the bottom of the panel, one row per product, and stay in your scan results as usual.
 
 The panel reloads whenever new data is ingested, and it is not shown when nothing qualifies.
 
 ### CERT feeds
 
-Hecate reads the public advisory feeds of CERT-FR, CERT-EU, NCSC-NL, the Canadian Centre for Cyber
+The feeds also power the [CERT](cert.md) page. Hecate reads the public advisory feeds of CERT-FR, CERT-EU, NCSC-NL, the Canadian Centre for Cyber
 Security and JPCERT/CC every two hours. To add your own national CERT, set `CERT_FEEDS_EXTRA` to
 comma-separated `Name|URL` pairs. Any RSS, RDF or Atom feed works:
 

@@ -48,6 +48,7 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `POST` | `/api/v1/vulnerabilities/lookup` | Find one record by ID; fetching a miss from upstream needs `X-System-Password` when it is set |
 | `GET` | `/api/v1/stats` | Aggregated database and severity statistics |
 | `GET` | `/api/v1/stats/attention` | CVEs added to CISA KEV or named by CERT feeds in the last `days` days (default 7, max 30), with inventory matches |
+| `GET` | `/api/v1/stats/cert-advisories` | CERT advisories of the last `days` days (default 30, max 90), merged into topics, plus round-ups |
 | `POST` | `/api/v1/scans` | Submit a scan (the CI/CD entry point, gated by `X-API-Key`) |
 | `GET` | `/api/v1/scans/{scanId}` | Scan status and severity summary |
 | `GET` | `/api/v1/scans/{scanId}/findings` | List the findings of a scan |
