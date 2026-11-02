@@ -148,49 +148,6 @@ def test_right_secrets_still_pass(client: TestClient) -> None:
     assert client.get("/ai-history", headers={"X-AI-Analysis-Password": "ai-password"}).status_code == 200
 
 
-@pytest.mark.parametrize("method", ["PUT", "DELETE"])
-def test_target_passwords_cannot_be_managed_without_a_system_password(
-    monkeypatch: pytest.MonkeyPatch, method: str
-) -> None:
-    # With the admin gate open, anyone could clear a target's password and then
-    # write to it, so these two routes stay closed until SYSTEM_PASSWORD is set.
-    monkeypatch.setattr(settings, "system_password", "")
-    app = FastAPI()
-
-    @app.api_route("/targets/t/write-password", methods=["PUT", "DELETE"], dependencies=[Depends(write_auth.require_credential_admin)])
-    async def manage() -> dict[str, bool]:
-        return {"ok": True}
-
-    assert TestClient(app).request(method, "/targets/t/write-password").status_code == 403
-
-
-def test_target_passwords_are_managed_with_the_system_password(client: TestClient) -> None:
-    app = FastAPI()
-
-    @app.put("/targets/t/write-password", dependencies=[Depends(write_auth.require_credential_admin)])
-    async def manage() -> dict[str, bool]:
-        return {"ok": True}
-
-    test = TestClient(app)
-    assert test.put("/targets/t/write-password").status_code == 401
-    assert test.put("/targets/t/write-password", headers={"X-System-Password": PASSWORD}).status_code == 200
-
-
-def test_the_scan_routes_use_the_closed_gate() -> None:
-    from app.api.v1 import scans
-
-    gates = {
-        (route.path, method): {dep.call for dep in route.dependant.dependencies}
-        for route in scans.router.routes
-        for method in getattr(route, "methods", ())
-        if route.path.endswith("/write-password")
-    }
-    assert gates
-    assert all(write_auth.require_credential_admin in calls for calls in gates.values())
-    assert all(write_auth.require_admin_write not in calls for calls in gates.values())
-
-
-
 def test_one_secret_has_one_counter_across_routes(client: TestClient) -> None:
     # Unlock endpoint, write gate and target routes all compare the system
     # password; a counter per route gave one client ten guesses on each.
@@ -244,3 +201,172 @@ def test_pruning_keeps_a_running_lockout(monkeypatch: pytest.MonkeyPatch) -> Non
     for n in range(10):
         throttle.record_failure(f"noise-{n}")
     assert throttle.remaining_lockout("attacker") is not None
+
+
+class TargetRepo:
+    """Targets by id; ``protected`` holds a write password, ``open`` none."""
+
+    def __init__(self, writes: list[tuple[str, Any]]) -> None:
+        self.docs = {
+            "protected": {"target_id": "protected", "write_password_hash": hash_password(TARGET_PASSWORD, iterations=10)},
+            "open": {"target_id": "open"},
+            "sbom-import-mine": {"target_id": "sbom-import-mine", "write_password_hash": hash_password(TARGET_PASSWORD, iterations=10)},
+        }
+        self.writes = writes
+
+    async def get(self, target_id: str) -> dict[str, Any] | None:
+        return self.docs.get(target_id)
+
+    async def set_write_password(self, target_id: str, value: str | None) -> None:
+        self.writes.append(("password", value is not None))
+
+
+class TargetService:
+    """What the target routes need, recording every write."""
+
+    def __init__(self) -> None:
+        self.writes: list[tuple[str, Any]] = []
+        self.target_repo = TargetRepo(self.writes)
+
+    async def resolve_target_id(self, target_id: str) -> str:
+        return target_id
+
+    async def update_target_auto_scan(self, _target_id: str, value: bool) -> None:
+        self.writes.append(("autoScan", value))
+
+    async def update_target_scanners(self, _target_id: str, value: list[str]) -> None:
+        self.writes.append(("scanners", value))
+
+    async def update_target_group(self, _target_id: str, value: str | None) -> None:
+        self.writes.append(("group", value))
+
+    async def get_target(self, target_id: str) -> dict[str, Any]:
+        now = "2026-11-02T00:00:00+00:00"
+        return {"target_id": target_id, "type": "source_repo", "name": "t", "created_at": now, "updated_at": now}
+
+
+@pytest.fixture
+def targets(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, TargetService]:
+    from app.api.v1 import scans
+
+    monkeypatch.setattr(settings, "system_password", PASSWORD)
+    monkeypatch.setattr(auth_throttle, "_throttle", auth_throttle.AuthThrottle())
+    service = TargetService()
+    app = FastAPI()
+    app.include_router(scans.router, prefix="/scans")
+    app.dependency_overrides[get_scan_service] = lambda: service
+    return TestClient(app), service
+
+
+def test_a_target_password_still_changes_auto_scan_and_group(targets: tuple[TestClient, TargetService]) -> None:
+    client, service = targets
+
+    response = client.patch(
+        "/scans/targets/protected", json={"autoScan": False, "group": "web"}, headers={"X-Target-Password": TARGET_PASSWORD}
+    )
+
+    assert response.status_code == 200
+    assert service.writes == [("autoScan", False), ("group", "web")]
+
+
+def test_the_system_password_changes_the_scanners(targets: tuple[TestClient, TargetService]) -> None:
+    client, service = targets
+
+    response = client.patch("/scans/targets/protected", json={"scanners": ["trivy"]}, headers={"X-System-Password": PASSWORD})
+
+    assert response.status_code == 200
+    assert service.writes == [("scanners", ["trivy"])]
+
+
+def test_a_target_password_changes_the_scanners_too(targets: tuple[TestClient, TargetService]) -> None:
+    client, service = targets
+
+    response = client.patch(
+        "/scans/targets/protected", json={"scanners": ["trivy", "grype"]}, headers={"X-Target-Password": TARGET_PASSWORD}
+    )
+
+    assert response.status_code == 200
+    assert service.writes == [("scanners", ["trivy", "grype"])]
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE"])
+def test_the_owner_manages_the_targets_password(targets: tuple[TestClient, TargetService], method: str) -> None:
+    client, service = targets
+
+    response = client.request(
+        method, "/scans/targets/protected/write-password", json={"password": "new-one"}, headers={"X-Target-Password": TARGET_PASSWORD}
+    )
+
+    assert response.status_code == 200
+    assert service.writes == [("password", method == "PUT")]
+
+
+def test_a_wrong_target_password_manages_nothing(targets: tuple[TestClient, TargetService]) -> None:
+    client, service = targets
+
+    response = client.delete("/scans/targets/protected/write-password", headers={"X-Target-Password": "wrong"})
+
+    assert response.status_code == 401
+    assert response.headers["X-Write-Auth-Required"] == "1"
+    assert service.writes == []
+
+
+def test_the_first_password_needs_the_admin(targets: tuple[TestClient, TargetService]) -> None:
+    client, service = targets
+    body = {"password": "new-one"}
+
+    assert client.put("/scans/targets/open/write-password", json=body, headers={"X-Target-Password": "guess"}).status_code == 401
+    assert client.put("/scans/targets/open/write-password", json=body, headers={"X-System-Password": PASSWORD}).status_code == 200
+    assert service.writes == [("password", True)]
+
+
+def test_without_a_system_password_only_the_owner_manages_a_password(
+    targets: tuple[TestClient, TargetService], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service = targets
+    monkeypatch.setattr(settings, "system_password", "")
+
+    assert client.delete("/scans/targets/protected/write-password").status_code == 401
+    assert client.put("/scans/targets/open/write-password", json={"password": "x"}).status_code == 403
+    headers = {"X-Target-Password": TARGET_PASSWORD}
+    assert client.delete("/scans/targets/protected/write-password", headers=headers).status_code == 200
+    assert service.writes == [("password", False)]
+
+
+@pytest.mark.parametrize(
+    ("dependency", "kwargs"),
+    [
+        ("require_target_write_sbom_import", {"json": {"targetId": "sbom-import-mine"}}),
+        ("require_target_write_sbom_import", {"json": {"targetName": "Mine"}}),
+        ("require_target_write_sbom_upload", {"params": {"targetName": "Mine"}}),
+    ],
+)
+def test_an_sbom_import_into_an_existing_target_takes_its_password(
+    targets: tuple[TestClient, TargetService], dependency: str, kwargs: dict[str, Any]
+) -> None:
+    _, service = targets
+    app = FastAPI()
+    app.dependency_overrides[get_scan_service] = lambda: service
+
+    @app.post("/import", dependencies=[Depends(getattr(write_auth, dependency))])
+    async def imported() -> dict[str, bool]:
+        return {"ok": True}
+
+    client = TestClient(app)
+    assert client.post("/import", headers={"X-Target-Password": TARGET_PASSWORD}, **kwargs).status_code == 200
+    assert client.post("/import", headers={"X-Target-Password": "wrong"}, **kwargs).status_code == 401
+
+
+def test_an_sbom_import_into_a_new_target_needs_the_admin(targets: tuple[TestClient, TargetService]) -> None:
+    _, service = targets
+    app = FastAPI()
+    app.dependency_overrides[get_scan_service] = lambda: service
+
+    @app.post("/import", dependencies=[Depends(write_auth.require_target_write_sbom_import)])
+    async def imported() -> dict[str, bool]:
+        return {"ok": True}
+
+    client = TestClient(app)
+    body = {"targetName": "Somebody else"}
+    assert client.post("/import", json=body, headers={"X-Target-Password": TARGET_PASSWORD}).status_code == 401
+    assert client.post("/import", json=body, headers={"X-System-Password": PASSWORD}).status_code == 200

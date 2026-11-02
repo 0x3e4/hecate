@@ -7,6 +7,7 @@ import {
   requestWritePassword,
   setAdminPassword,
   setTargetPassword,
+  writePromptTarget,
 } from "./writeAuth";
 
 // Callers can declare the owning target of a write so the per-target password
@@ -62,12 +63,12 @@ api.interceptors.response.use(
   async (error) => {
     const config = error?.config;
     const status = error?.response?.status;
-    const needsWriteAuth =
-      String(error?.response?.headers?.["x-write-auth-required"] ?? "") === "1";
-    if (!config || status !== 401 || !needsWriteAuth || config._writeRetried) {
+    const targetId = config
+      ? writePromptTarget(error?.response?.headers?.["x-write-auth-required"], resolveTargetId(config))
+      : undefined;
+    if (!config || status !== 401 || targetId === undefined || config._writeRetried) {
       return Promise.reject(error);
     }
-    const targetId = resolveTargetId(config);
     const password = await requestWritePassword({ targetId });
     if (!password) {
       return Promise.reject(error);

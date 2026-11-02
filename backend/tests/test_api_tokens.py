@@ -181,7 +181,7 @@ def test_without_a_system_password_nobody_can_manage_tokens(
 def test_the_token_list_is_not_public(client: TestClient, headers: dict[str, str]) -> None:
     response = client.get("/api-tokens", headers=headers)
     assert response.status_code == 401
-    assert response.headers["X-Write-Auth-Required"] == "1"
+    assert response.headers["X-Write-Auth-Required"] == "admin"
 
 
 def test_a_token_cannot_manage_tokens(client: TestClient) -> None:

@@ -66,13 +66,15 @@ from app.schemas.vex import (
 from app.core.write_auth import (
     require_admin_write,
     require_ai_target_write_scan,
-    require_credential_admin,
+    require_target_password_change,
     require_target_write_body_finding_ids,
     require_target_write_body_target,
     require_target_write_finding,
     require_target_write_manual_scan,
     require_target_write_path,
     require_target_write_scan,
+    require_target_write_sbom_import,
+    require_target_write_sbom_upload,
     resolve_target_id_path,
     verify_sca_api_key,
 )
@@ -294,7 +296,7 @@ async def get_target_sbom_diff(
     return TargetSbomDiffResponse(**diff)
 
 
-# Write-password management is an ADMIN action (Layer A). Declared before the
+# Write-password management: the admin, or the owner with the current target password. Declared before the
 # bare ``/targets/{target_id:path}`` routes so the greedy path converter on the
 # bare DELETE doesn't swallow ``/write-password`` as part of the target id.
 
@@ -303,10 +305,10 @@ async def get_target_sbom_diff(
 async def set_target_write_password(
     request: TargetWritePasswordRequest,
     target_id: str = Depends(resolve_target_id_path),
-    _auth: None = Depends(require_credential_admin),
+    _auth: None = Depends(require_target_password_change),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Set (or replace) the per-target write password. Admin-only."""
+    """Set or replace the per-target write password: the admin, or the owner with the current one."""
     target = await service.target_repo.get(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -318,10 +320,10 @@ async def set_target_write_password(
 @router.delete("/targets/{target_id:path}/write-password", response_model=ScanTargetResponse)
 async def clear_target_write_password(
     target_id: str = Depends(resolve_target_id_path),
-    _auth: None = Depends(require_credential_admin),
+    _auth: None = Depends(require_target_password_change),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Clear the per-target write password. Admin-only."""
+    """Clear the per-target write password: the admin, or the owner with the current one."""
     target = await service.target_repo.get(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -594,7 +596,7 @@ async def get_dashboard_coverage(
 @router.post("/import-sbom", response_model=SubmitScanResponse, status_code=201)
 async def import_sbom(
     request: ImportSbomRequest,
-    _auth: None = Depends(require_admin_write),
+    _auth: None = Depends(require_target_write_sbom_import),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
     """Import an external SBOM file (CycloneDX or SPDX JSON)."""
@@ -623,7 +625,7 @@ async def import_sbom_upload(
     file: UploadFile = File(...),
     target_name: str | None = Query(default=None, alias="targetName"),
     format: str | None = Query(default=None),
-    _auth: None = Depends(require_admin_write),
+    _auth: None = Depends(require_target_write_sbom_upload),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
     """Import an external SBOM file via multipart file upload."""

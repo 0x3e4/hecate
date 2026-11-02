@@ -62,7 +62,10 @@ You can give an individual SCA target its **own** write password so a target own
 
 A target owner can:
 
-- edit the target's settings, run/cancel/delete its scans, trigger a `/check`
+- switch auto-scan, choose its scanners and set the application group, run/cancel/delete its scans,
+  trigger a `/check`
+- import an SBOM into an existing SBOM-import target (a new one needs the admin)
+- change or remove the target's own password
 - set VEX status and dismiss its findings
 - run scan-scoped AI analysis, unless an AI password is set: then that password decides
 
@@ -70,21 +73,24 @@ A target owner **cannot** touch other targets or admin-only resources (inventory
 policies, sync, backups). Per-target passwords are stored **hashed** (PBKDF2) in MongoDB and are
 never returned by the API — the target only exposes a boolean `writePasswordSet`.
 
-### Managing per-target passwords (admin)
+### Managing per-target passwords
 
-Setting or clearing a target password is always an admin action:
+- **System → Access Control → Target Access** (admin) — a list of all targets with set/clear controls.
+- **Change password** on the target page (`/scans/targets/<id>`, shown on protected targets) — the
+  owner sets a new password or removes the protection, authorized by the current one. Whoever uses
+  the old password needs the new one afterwards.
 
-- **System → Access Control → Target Access** — a list of all targets with set/clear controls.
+The first password on a target always comes from the admin. Without `SYSTEM_PASSWORD` a target that
+has no password answers `403` instead of opening to everyone, since anyone could otherwise set one and
+lock its owners out; a target that already has one can still be changed by its owner.
 
-The per-target detail page (`/scans/targets/<id>`) shows a 🔒 badge when a target is protected, but
-passwords are configured only from System → Access Control.
-
-A 🔒 badge marks protected targets. Managing target passwords requires `SYSTEM_PASSWORD`: like
-API tokens, these two endpoints answer `403` when it is unset rather than opening to everyone, since
-anyone could otherwise clear a target's password and then write to it.
+A 🔒 badge marks protected targets. When a write can only be authorized by the system password, the
+`401` carries `X-Write-Auth-Required: admin` and the UI asks for that password alone; target gates
+answer with `1`, which offers the target password as well.
 
 API: `PUT /api/v1/scans/targets/{id}/write-password` (body `{ "password": "…" }`) and
-`DELETE /api/v1/scans/targets/{id}/write-password`.
+`DELETE /api/v1/scans/targets/{id}/write-password`, each with `X-System-Password` or the current
+`X-Target-Password`.
 
 ## AI is always gated by the AI password
 
@@ -105,7 +111,7 @@ headers to every subsequent write. No per-target passwords are needed.
 
 A **shared instance with delegated ownership** keeps the admin password for yourself and hands each
 target owner a per-target password from **System → Access Control**. Owners can then manage their own
-target — settings, scans, findings, VEX, and scan-scoped AI — without ever holding the admin password,
+target — settings, scanners, scans, findings, VEX, scan-scoped AI and its own password — without ever holding the admin password,
 and they cannot touch other targets or admin-only resources (inventory, notifications, policies, sync,
 backups).
 

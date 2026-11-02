@@ -181,6 +181,10 @@ def _classify_sbom_diff(
     return added, updated, removed
 
 
+def sbom_import_target_id(target_name: str) -> str:
+    """The target an SBOM import lands on when the request names no target id."""
+    return f"sbom-import-{target_name.lower().replace(' ', '-')[:60]}"
+
 class ScanService:
     def __init__(
         self,
@@ -494,7 +498,7 @@ class ScanService:
 
         # Create or reuse target
         if not target_id:
-            target_id = f"sbom-import-{target_name.lower().replace(' ', '-')[:60]}"
+            target_id = sbom_import_target_id(target_name)
 
         existing_target = await self.target_repo.get(target_id)
         if not existing_target:

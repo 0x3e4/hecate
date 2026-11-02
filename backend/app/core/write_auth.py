@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, Query, HTTPException, Request
 
 from app.core.auth_throttle import (
     AI_SECRET,
@@ -39,7 +39,7 @@ from app.core.config import settings
 from app.core.passwords import secret_equals, verify_password
 from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SCAN_SUBMIT
 from app.services.api_token_service import get_api_token_service, looks_like_token
-from app.services.scan_service import ScanService, get_scan_service
+from app.services.scan_service import sbom_import_target_id, ScanService, get_scan_service
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -51,6 +51,8 @@ _AI_HEADER = "X-AI-Analysis-Password"
 # rejection apart from other 401s (e.g. a wrong AI/system password typed into a
 # page-level unlock dialog) and only then show the global write-password prompt.
 _WRITE_AUTH_HEADERS = {"X-Write-Auth-Required": "1"}
+# Only the system password helps here, so the UI must not offer a target password.
+_ADMIN_AUTH_HEADERS = {"X-Write-Auth-Required": "admin"}
 
 
 def _admin_matches(provided: str | None) -> bool:
@@ -78,7 +80,7 @@ async def require_admin_write(
     raise HTTPException(
         status_code=401,
         detail="System password required for write operations.",
-        headers=_WRITE_AUTH_HEADERS,
+        headers=_ADMIN_AUTH_HEADERS,
     )
 
 
@@ -94,19 +96,6 @@ async def require_token_admin(
     _require_configured_admin(request, x_system_password, "manage API tokens")
 
 
-async def require_credential_admin(
-    request: Request,
-    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
-) -> None:
-    """Gate setting or clearing a target's write password.
-
-    Fail-closed like token management: with the admin gate open, anyone could
-    clear a target's password and then write to it, or set one to lock its
-    owners out, so a target password would protect nothing.
-    """
-    _require_configured_admin(request, x_system_password, "manage target passwords")
-
-
 def _require_configured_admin(request: Request, x_system_password: str | None, action: str) -> None:
     if not settings.system_password:
         raise HTTPException(status_code=403, detail=f"Set SYSTEM_PASSWORD to {action}.")
@@ -119,7 +108,7 @@ def _require_configured_admin(request: Request, x_system_password: str | None, a
     raise HTTPException(
         status_code=401,
         detail=f"System password required to {action}.",
-        headers=_WRITE_AUTH_HEADERS,
+        headers=_ADMIN_AUTH_HEADERS,
     )
 
 
@@ -391,6 +380,70 @@ async def require_target_write_scan(
     await _authorize_target(
         request,
         target_id,
+        x_system_password=x_system_password,
+        x_target_password=x_target_password,
+        service=service,
+    )
+
+
+async def require_target_password_change(
+    request: Request,
+    target_id: str = Depends(resolve_target_id_path),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+    x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    service: ScanService = Depends(get_scan_service),
+) -> None:
+    """Set, replace or clear a target's write password.
+
+    The admin can, and so can the target's owner with the current password. The
+    first password needs the admin, and without SYSTEM_PASSWORD there is none:
+    the open admin gate would let anyone clear a password and then write to the
+    target, so that case is refused rather than left open.
+    """
+    target = await service.target_repo.get(target_id)
+    if not settings.system_password and not (target and target.get("write_password_hash")):
+        raise HTTPException(status_code=403, detail="Set SYSTEM_PASSWORD to protect a target with a password.")
+    await _authorize_target(
+        request,
+        target_id,
+        x_system_password=x_system_password,
+        x_target_password=x_target_password,
+        service=service,
+    )
+
+
+async def require_target_write_sbom_import(
+    request: Request,
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+    x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    service: ScanService = Depends(get_scan_service),
+) -> None:
+    """An SBOM import into an existing target takes that target's password; a new target takes the admin's."""
+    body = await _safe_json(request)
+    target_id = body.get("targetId") or body.get("target_id")
+    target_name = body.get("targetName") or body.get("target_name")
+    if not isinstance(target_id, str):
+        target_id = sbom_import_target_id(target_name) if isinstance(target_name, str) and target_name else None
+    await _authorize_target(
+        request,
+        target_id,
+        x_system_password=x_system_password,
+        x_target_password=x_target_password,
+        service=service,
+    )
+
+
+async def require_target_write_sbom_upload(
+    request: Request,
+    target_name: str | None = Query(default=None, alias="targetName"),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+    x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    service: ScanService = Depends(get_scan_service),
+) -> None:
+    """An SBOM upload into an existing target takes that target's password; a new target takes the admin's."""
+    await _authorize_target(
+        request,
+        sbom_import_target_id(target_name) if target_name else None,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
         service=service,

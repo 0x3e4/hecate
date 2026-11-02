@@ -4,6 +4,7 @@ import {
   LuArrowRight,
   LuCopy,
   LuExternalLink,
+  LuKeyRound,
   LuLock,
   LuRefreshCw,
   LuSearchCheck,
@@ -24,6 +25,7 @@ import {
 } from "../api/scans";
 import { SeverityBadges } from "../components/SeverityBadges";
 import { SkeletonBlock } from "../components/Skeleton";
+import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
 import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget, TargetSbomDiff } from "../types";
@@ -250,6 +252,7 @@ export const ScanTargetDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!targetId) {
@@ -497,6 +500,12 @@ export const ScanTargetDetailPage = () => {
                 <LuCopy aria-hidden="true" />
                 {t("Copy badge", "Badge kopieren")}
               </button>
+              {target.writePasswordSet && (
+                <button type="button" className="btn-secondary" onClick={() => setPasswordOpen(true)}>
+                  <LuKeyRound aria-hidden="true" />
+                  {t("Change password", "Passwort ändern")}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-secondary scan-target-delete"
@@ -732,6 +741,17 @@ export const ScanTargetDetailPage = () => {
         ) : null}
       </Section>
 
+      {passwordOpen && (
+        <TargetPasswordDialog
+          target={target}
+          onClose={() => setPasswordOpen(false)}
+          onUpdated={(updated, message) => {
+            setTarget(updated);
+            setPasswordOpen(false);
+            showToast(message, "success");
+          }}
+        />
+      )}
       <Toast toast={toast} onDismiss={dismiss} />
     </div>
   );

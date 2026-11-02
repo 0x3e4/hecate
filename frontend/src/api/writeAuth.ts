@@ -90,6 +90,18 @@ export const extractTargetIdFromUrl = (url: string | undefined): string | null =
 // calls it to obtain a password (or null if the user cancels).
 
 export type WritePromptContext = { targetId: string | null };
+
+/**
+ * Which password a write-gate rejection asks for, from its `X-Write-Auth-Required`
+ * marker: the target's (or the admin's) for "1", only the admin's for "admin".
+ * `undefined` means the 401 did not come from a write gate.
+ */
+export const writePromptTarget = (marker: unknown, targetId: string | null): string | null | undefined => {
+  const value = String(marker ?? "");
+  if (value === "admin") return null;
+  if (value === "1") return targetId;
+  return undefined;
+};
 type WritePrompt = (ctx: WritePromptContext) => Promise<string | null>;
 
 let _prompt: WritePrompt | null = null;
