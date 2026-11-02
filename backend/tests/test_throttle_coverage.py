@@ -95,6 +95,32 @@ def test_a_valid_target_password_does_not_reset_the_counter(client: TestClient) 
     assert client.delete("/scan/1", headers={"X-System-Password": "wrong"}).status_code == 429
 
 
+def test_a_target_password_holder_cannot_probe_the_admin_password(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With a valid target password the request passes whatever admin password is
+    # sent, so that header must not be compared at all: a comparison would answer
+    # through the response time and never count as a failure.
+    compared: list[str | None] = []
+    real = write_auth._admin_matches
+    monkeypatch.setattr(write_auth, "_admin_matches", lambda value: compared.append(value) or real(value))
+
+    for guess in ("guess-1", "guess-2", PASSWORD):
+        headers = {"X-Target-Password": TARGET_PASSWORD, "X-System-Password": guess}
+        assert client.delete("/scan/1", headers=headers).status_code == 200
+
+    assert compared == []
+
+
+def test_admin_guesses_with_a_wrong_target_password_are_counted(client: TestClient) -> None:
+    _lock(client, "DELETE", "/scan/1", {"X-Target-Password": "wrong", "X-System-Password": "guess"})
+
+
+def test_the_admin_password_still_wins_over_a_wrong_target_password(client: TestClient) -> None:
+    headers = {"X-Target-Password": "stale", "X-System-Password": PASSWORD}
+    assert client.delete("/scan/1", headers=headers).status_code == 200
+
+
 def test_guessing_the_ai_password_on_a_scan_route_locks(client: TestClient) -> None:
     _lock(client, "POST", "/scan/1/ai", {"X-AI-Analysis-Password": "wrong"})
 

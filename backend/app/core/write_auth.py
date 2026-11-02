@@ -238,17 +238,25 @@ async def _authorize_target(
     # password, and the hash comparison below is deliberately slow.
     key = enforce_auth_throttle(request, "write:target")
 
-    # Admin override always wins.
-    if _admin_matches(x_system_password):
-        record_auth_result(key, True)
-        return
-
     target = await service.target_repo.get(target_id) if target_id else None
     target_hash = target.get("write_password_hash") if target else None
 
-    # A correct target password does not clear the counter: its holder could
-    # otherwise reset it between guesses at the admin password.
-    if target_hash and await asyncio.to_thread(verify_password, x_target_password or "", target_hash):
+    # A sent target password is checked before the admin password, and when it
+    # holds the admin header is never compared. Checked the other way round, its
+    # holder could send admin guesses that were never counted (the request still
+    # passed) and read the answer from the response time: a right guess skipped
+    # the slow hash. A correct target password does not clear the counter either,
+    # or its holder could reset it between guesses.
+    if (
+        x_target_password
+        and target_hash
+        and await asyncio.to_thread(verify_password, x_target_password, target_hash)
+    ):
+        return
+
+    # Admin override.
+    if _admin_matches(x_system_password):
+        record_auth_result(key, True)
         return
 
     # Fail-open only when neither the global admin password nor this target's
