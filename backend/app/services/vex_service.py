@@ -11,6 +11,13 @@ from app.repositories.scan_repository import ScanRepository
 log = structlog.get_logger()
 
 
+_VEX_TEXT_LIMIT = 2000
+
+
+def _vex_text(value: Any) -> str | None:
+    return value[:_VEX_TEXT_LIMIT] if isinstance(value, str) and value else None
+
+
 class VexService:
     def __init__(
         self,
@@ -117,14 +124,17 @@ class VexService:
             if not isinstance(analysis, dict):
                 continue
 
-            state = analysis.get("state", "")
-            vex_status = state_map.get(state)
+            # Imported JSON is caller-shaped: a list as `state` made the lookup raise,
+            # and a non-string justification was stored and broke every later read
+            # of that target's findings.
+            state = analysis.get("state")
+            vex_status = state_map.get(state) if isinstance(state, str) else None
             if not vex_status:
                 skipped += 1
                 continue
 
-            justification = analysis.get("justification")
-            detail = analysis.get("detail")
+            justification = _vex_text(analysis.get("justification"))
+            detail = _vex_text(analysis.get("detail"))
 
             count = await self.finding_repo.bulk_update_vex_by_vulnerability(
                 target_id=target_id,

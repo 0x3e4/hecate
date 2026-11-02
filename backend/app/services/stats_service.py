@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
@@ -31,6 +32,8 @@ log = structlog.get_logger()
 # inventory and the scans, so a low cap silently hides the matches past it.
 TODAY_MAX_CVES = 2000
 ATTENTION_MAX_KEV = 50
+OVERVIEW_CACHE_SECONDS = 60
+_OVERVIEW_CACHE: dict[str, Any] = {}
 # Feeds name hundreds of CVEs in a week. Most mentions stand alone, so the cut falls on those.
 ATTENTION_MAX_CERT_MENTIONS = 300
 CERT_OVERVIEW_MAX_CVES = 1000
@@ -109,6 +112,15 @@ def _severity_of(source: dict[str, Any]) -> str:
 
 class StatsService:
     async def get_overview(self) -> dict[str, Any]:
+        # Public and up to 30 s of aggregations per call: one result serves everyone for a minute.
+        cached = _OVERVIEW_CACHE.get("value")
+        if cached is not None and time.monotonic() - _OVERVIEW_CACHE["at"] < OVERVIEW_CACHE_SECONDS:
+            return cached
+        result = await self._compute_overview()
+        _OVERVIEW_CACHE.update(value=result, at=time.monotonic())
+        return result
+
+    async def _compute_overview(self) -> dict[str, Any]:
         # Add timeout protection to prevent hanging requests
         try:
             # Run both queries in parallel with 30 second timeout

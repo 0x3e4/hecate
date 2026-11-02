@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any
@@ -81,6 +82,11 @@ class CWEDescription:
         return " | ".join(parts)
 
 
+_CWE_ID = re.compile(r"\d{1,5}")
+MAX_UPSTREAM_PER_CALL = 10
+MISS_TTL = timedelta(hours=6)
+MAX_REMEMBERED_MISSES = 10_000
+
 class CWEService:
     """
     Service for managing CWE (Common Weakness Enumeration) data.
@@ -106,10 +112,18 @@ class CWEService:
         self._cache: dict[str, tuple[datetime, CWEDescription]] = {}
         # Cache CWE data for 7 days (CWE content changes only a few times per year)
         self._cache_ttl = timedelta(days=7)
+        # IDs MITRE did not know. The lookup routes are public, so without this
+        # every request for a made-up ID went upstream again.
+        self._misses: dict[str, datetime] = {}
 
     def _normalize_cwe_id(self, cwe_id: str) -> str:
         """Normalize CWE ID to consistent format (e.g., '79')."""
         return str(cwe_id).upper().replace("CWE-", "").strip()
+
+    @staticmethod
+    def _is_valid_cwe_id(normalized_id: str) -> bool:
+        """CWE IDs are numbers; anything else is never looked up, here or upstream."""
+        return _CWE_ID.fullmatch(normalized_id) is not None
 
     def _is_cache_valid(self, cached_at: datetime) -> bool:
         """Check if cached data is still valid."""
@@ -182,13 +196,24 @@ class CWEService:
         return results
 
     async def get_bulk_cwe_data(self, cwe_ids: list[str]) -> dict[str, CWEDescription]:
-        """Get CWEDescription objects for multiple CWE IDs."""
+        """Get CWEDescription objects for multiple CWE IDs.
+
+        Only the first few IDs missing from the caches go upstream per call: the
+        MITRE client is rate-limited to one request a second and shared by the
+        whole app, so one public request must not queue hundreds.
+        """
         results: dict[str, CWEDescription] = {}
-        for cwe_id in cwe_ids:
-            normalized_id = self._normalize_cwe_id(cwe_id)
+        missing: list[str] = []
+        for cwe_id in dict.fromkeys(self._normalize_cwe_id(c) for c in cwe_ids):
+            data = await self._get_cwe_data(cwe_id, allow_fetch=False)
+            if data:
+                results[cwe_id] = data
+            else:
+                missing.append(cwe_id)
+        for cwe_id in missing[:MAX_UPSTREAM_PER_CALL]:
             data = await self._get_cwe_data(cwe_id)
             if data:
-                results[normalized_id] = data
+                results[cwe_id] = data
         return results
 
     async def _ensure_repository(self) -> CWERepository:
@@ -197,7 +222,7 @@ class CWEService:
             self._repository = await CWERepository.create()
         return self._repository
 
-    async def _get_cwe_data(self, cwe_id: str) -> CWEDescription | None:
+    async def _get_cwe_data(self, cwe_id: str, *, allow_fetch: bool = True) -> CWEDescription | None:
         """
         Internal method to get CWE data with caching.
 
@@ -210,6 +235,8 @@ class CWEService:
             CWEDescription object or None if not found.
         """
         normalized_id = self._normalize_cwe_id(cwe_id)
+        if not self._is_valid_cwe_id(normalized_id):
+            return None
 
         # 1. Check in-memory cache first
         if normalized_id in self._cache:
@@ -239,7 +266,12 @@ class CWEService:
         except Exception as exc:
             log.warning("cwe_service.db_lookup_failed", cwe_id=normalized_id, error=str(exc))
 
-        # 3. Fetch from MITRE API
+        # 3. Fetch from MITRE API, unless it already said it does not know this ID
+        if not allow_fetch:
+            return None
+        missed_at = self._misses.get(normalized_id)
+        if missed_at and datetime.now(UTC) - missed_at < MISS_TTL:
+            return None
         log.debug("cwe_service.fetching_from_api", cwe_id=normalized_id)
         raw_data = await self._client.fetch_weakness(normalized_id)
 
@@ -269,6 +301,9 @@ class CWEService:
             return cwe_desc
 
         log.warning("cwe_service.not_found", cwe_id=normalized_id)
+        if len(self._misses) >= MAX_REMEMBERED_MISSES:
+            self._misses.clear()
+        self._misses[normalized_id] = datetime.now(UTC)
         return None
 
     async def sync_all_cwes(self) -> dict[str, int]:

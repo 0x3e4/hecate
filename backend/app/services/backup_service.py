@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, get_args
 
 import structlog
 from pydantic import ValidationError
@@ -16,6 +16,7 @@ from app.repositories.inventory_history_repository import (
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.saved_search_repository import SavedSearchRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.schemas.inventory import Deployment
 from app.schemas.backup import (
     BackupRestoreSummary,
     InventoryBackupMetadata,
@@ -309,11 +310,23 @@ class BackupService:
         updated = 0
         skipped = 0
 
+        def _text(value: Any) -> str:
+            # A backup file is hand-editable: anything but a string counts as missing.
+            return value.strip() if isinstance(value, str) else ""
+
+        def _optional(value: Any) -> str | None:
+            return _text(value) or None
+
         for item in payload.items:
-            name = (item.get("name") or "").strip()
-            vendor_slug = (item.get("vendor_slug") or "").strip().lower()
-            product_slug = (item.get("product_slug") or "").strip().lower()
-            version = (item.get("version") or "").strip()
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+            name = _text(item.get("name"))
+            vendor_slug = _text(item.get("vendor_slug")).lower()
+            product_slug = _text(item.get("product_slug")).lower()
+            version = _text(item.get("version"))
+
+            deployment = _text(item.get("deployment"))
 
             if not name or not vendor_slug or not product_slug or not version:
                 log.warning(
@@ -334,14 +347,14 @@ class BackupService:
                 "name": name,
                 "vendor_slug": vendor_slug,
                 "product_slug": product_slug,
-                "vendor_name": item.get("vendor_name"),
-                "product_name": item.get("product_name"),
+                "vendor_name": _optional(item.get("vendor_name")),
+                "product_name": _optional(item.get("product_name")),
                 "version": version,
-                "deployment": item.get("deployment") or "onprem",
-                "environment": item.get("environment") or "prod",
+                "deployment": deployment if deployment in get_args(Deployment) else "onprem",
+                "environment": _text(item.get("environment"))[:50] or "prod",
                 "instance_count": _coerce_instance_count(item.get("instance_count")),
-                "owner": item.get("owner"),
-                "notes": item.get("notes"),
+                "owner": _optional(item.get("owner")),
+                "notes": _optional(item.get("notes")),
             }
 
             item_id = (item.get("id") or "").strip() if isinstance(item.get("id"), str) else None

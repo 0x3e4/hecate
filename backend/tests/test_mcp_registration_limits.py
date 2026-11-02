@@ -88,3 +88,67 @@ def test_audit_ip_cannot_be_forged_by_a_direct_client(monkeypatch: pytest.Monkey
     scope = _scope("203.0.113.9", "10.0.0.5")
     assert mcp_auth.MCPAuthMiddleware._get_client_ip(scope, scope["headers"]) == "203.0.113.9"
     assert Request(scope).client.host == "203.0.113.9"
+
+
+CHALLENGE = "a" * 43
+
+
+@pytest.fixture
+def registered(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> str:
+    class Provider:
+        name = "test"
+
+    async def resolve(_state: str, _callback: str) -> str:
+        return "https://idp.example/authorize"
+
+    async def no_audit(**_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(oauth, "_authorize_limiter", RateLimiter(10_000))
+    monkeypatch.setattr(oauth.oauth_providers, "get_provider", lambda: Provider())
+    monkeypatch.setattr(oauth.oauth_providers, "resolve_authorize_url", resolve)
+    monkeypatch.setattr(oauth, "log_oauth_event", no_audit)
+    oauth._pending_auths.clear()
+    return client.post("/mcp/oauth/register", json=REDIRECT).json()["client_id"]
+
+
+def _authorize(client: TestClient, client_id: str, **overrides: str):
+    params = {
+        "client_id": client_id,
+        "redirect_uri": REDIRECT["redirect_uris"][0],
+        "code_challenge": CHALLENGE,
+        "code_challenge_method": "S256",
+        "state": "s",
+        **overrides,
+    }
+    return client.get("/mcp/oauth/authorize", params=params, follow_redirects=False)
+
+
+def test_a_valid_authorize_request_still_redirects(client: TestClient, registered: str) -> None:
+    assert _authorize(client, registered).status_code == 302
+    assert len(oauth._pending_auths) == 1
+
+
+@pytest.mark.parametrize("challenge", ["short", "a" * 44, "a" * 8000, "a" * 42 + "!"])
+def test_a_malformed_code_challenge_is_refused(client: TestClient, registered: str, challenge: str) -> None:
+    assert _authorize(client, registered, code_challenge=challenge).status_code == 400
+    assert not oauth._pending_auths
+
+
+def test_an_oversized_state_is_refused(client: TestClient, registered: str) -> None:
+    assert _authorize(client, registered, state="s" * 8000).status_code == 400
+    assert not oauth._pending_auths
+
+
+def test_pending_sign_ins_have_a_ceiling(client: TestClient, registered: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oauth, "_MAX_PENDING_AUTHS", 3)
+    statuses = [_authorize(client, registered).status_code for _ in range(5)]
+    assert statuses == [302, 302, 302, 503, 503]
+    assert len(oauth._pending_auths) == 3
+
+
+def test_authorize_is_rate_limited_per_client(client: TestClient, registered: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oauth, "_authorize_limiter", RateLimiter(2))
+    statuses = [_authorize(client, registered).status_code for _ in range(4)]
+    assert statuses[:2] == [302, 302]
+    assert statuses[2:] == [429, 429]

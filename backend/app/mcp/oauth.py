@@ -22,6 +22,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -56,6 +57,13 @@ _MAX_REDIRECT_URIS = 10
 _MAX_REDIRECT_URI_LENGTH = 2048
 _MAX_CLIENT_NAME_LENGTH = 200
 _registration_limiter = RateLimiter(60)
+# Authorize is anonymous too, and every call holds a pending entry for ten minutes
+# and writes an audit row, so it gets the same treatment.
+_authorize_limiter = RateLimiter(30)
+_MAX_PENDING_AUTHS = 2000
+_MAX_STATE_LENGTH = 512
+# An S256 challenge is the unpadded base64url of a SHA-256 digest: always 43 characters.
+_S256_CHALLENGE = re.compile(r"[A-Za-z0-9_-]{43}")
 _ACCESS_TOKEN_TTL = 86400
 
 
@@ -293,6 +301,8 @@ async def register_client(request: Request) -> JSONResponse:
 async def authorize(request: Request) -> Any:
     """Stash the MCP client request and redirect the user to the IdP."""
     _cleanup_expired()
+    if not _authorize_limiter.check(_client_ip(request)):
+        return HTMLResponse("<h1>Error: Too many authorization requests</h1>", status_code=429)
     params = request.query_params
     client_id = params.get("client_id", "")
     redirect_uri = params.get("redirect_uri", "")
@@ -324,6 +334,13 @@ async def authorize(request: Request) -> Any:
         return HTMLResponse("<h1>Error: code_challenge required (PKCE S256)</h1>", status_code=400)
     if code_challenge_method and code_challenge_method != "S256":
         return HTMLResponse("<h1>Error: Only S256 code challenge method is supported</h1>", status_code=400)
+    if not _S256_CHALLENGE.fullmatch(code_challenge):
+        return HTMLResponse("<h1>Error: Malformed code_challenge</h1>", status_code=400)
+    if len(state) > _MAX_STATE_LENGTH:
+        return HTMLResponse("<h1>Error: state is too long</h1>", status_code=400)
+    if len(_pending_auths) >= _MAX_PENDING_AUTHS:
+        log.warning("mcp.oauth.pending_store_full", size=len(_pending_auths))
+        return HTMLResponse("<h1>Error: Too many pending sign-ins, try again shortly</h1>", status_code=503)
 
     try:
         provider = oauth_providers.get_provider()

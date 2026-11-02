@@ -7,6 +7,8 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas.ai import (
@@ -340,42 +342,45 @@ async def list_vulnerabilities(
     max_offset = max(0, max_window - limit)
     offset = min(offset, max_offset)
 
-    query = VulnerabilityQuery(
-        searchTerm=search,
-        dqlQuery=dql,
-        regexQuery=regex,
-        vendorFilters=vendorFilters,
-        productFilters=productFilters,
-        vendorSlugs=vendorSlugs,
-        productSlugs=productSlugs,
-        versionFilters=versionFilters,
-        severity=severity,
-        limit=limit,
-        includeRejected=include_rejected,
-        includeReserved=include_reserved,
-        exploitedOnly=exploited_only,
-        aiAnalysedOnly=ai_analysed_only,
-        epssScoreMin=epss_score_min,
-        epssScoreMax=epss_score_max,
-        assigner=assigner,
-        cwes=cwes,
-        sources=sources,
-        cvssVersion=cvss_version,
-        cvssScoreMin=cvss_score_min,
-        cvssScoreMax=cvss_score_max,
-        attackVector=attack_vector,
-        attackComplexity=attack_complexity,
-        attackRequirements=attack_requirements,
-        privilegesRequired=privileges_required,
-        userInteraction=user_interaction,
-        scope=scope,
-        confidentialityImpact=confidentiality_impact,
-        integrityImpact=integrity_impact,
-        availabilityImpact=availability_impact,
-        publishedFrom=published_from,
-        publishedTo=published_to,
-        tz=tz,
-    )
+    try:
+        query = VulnerabilityQuery(
+            searchTerm=search,
+            dqlQuery=dql,
+            regexQuery=regex,
+            vendorFilters=vendorFilters,
+            productFilters=productFilters,
+            vendorSlugs=vendorSlugs,
+            productSlugs=productSlugs,
+            versionFilters=versionFilters,
+            severity=severity,
+            limit=limit,
+            includeRejected=include_rejected,
+            includeReserved=include_reserved,
+            exploitedOnly=exploited_only,
+            aiAnalysedOnly=ai_analysed_only,
+            epssScoreMin=epss_score_min,
+            epssScoreMax=epss_score_max,
+            assigner=assigner,
+            cwes=cwes,
+            sources=sources,
+            cvssVersion=cvss_version,
+            cvssScoreMin=cvss_score_min,
+            cvssScoreMax=cvss_score_max,
+            attackVector=attack_vector,
+            attackComplexity=attack_complexity,
+            attackRequirements=attack_requirements,
+            privilegesRequired=privileges_required,
+            userInteraction=user_interaction,
+            scope=scope,
+            confidentialityImpact=confidentiality_impact,
+            integrityImpact=integrity_impact,
+            availabilityImpact=availability_impact,
+            publishedFrom=published_from,
+            publishedTo=published_to,
+            tz=tz,
+        )
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
     result = await service.search_paginated(query, limit=limit, offset=offset)
     result.max_offset = max_offset
     return result
