@@ -167,6 +167,7 @@ export const ScansPage = () => {
 
   // Scan filter (from target card click or dropdown)
   const [scanFilterTargetId, setScanFilterTargetId] = useState<string | null>(null);
+  const [scanFilterStatus, setScanFilterStatus] = useState<string>("");
   const [scanFilterTargetName, setScanFilterTargetName] = useState<string | null>(null);
 
   // Pagination for scans tab
@@ -267,7 +268,7 @@ export const ScansPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [tab, scanFilterTargetId, scanOffset]);
+  }, [tab, scanFilterTargetId, scanFilterStatus, scanOffset]);
 
   // Load unfiltered badge counts once on mount so tab labels are correct
   // regardless of which tab the user lands on.
@@ -312,7 +313,7 @@ export const ScansPage = () => {
           const tRes = await fetchScanTargets({ limit: 100 });
           setTargets(tRes.items);
         }
-        const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
+        const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined, status: scanFilterStatus || undefined });
         setScans(res.items);
         setScanTotal(res.total);
       } else if (tab === "findings" || tab === "sbom" || tab === "alerts") {
@@ -472,7 +473,7 @@ export const ScansPage = () => {
       pollRef.current = setInterval(async () => {
         try {
           if (tab === "scans") {
-            const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined });
+            const res = await fetchScans({ limit: scanLimit, offset: scanOffset, targetId: scanFilterTargetId || undefined, status: scanFilterStatus || undefined });
             setScans(res.items);
             setScanTotal(res.total);
           } else if (tab === "targets") {
@@ -862,10 +863,23 @@ export const ScansPage = () => {
                 <option key={tgt.id} value={tgt.id}>{tgt.name}</option>
               ))}
             </select>
-            {scanFilterTargetId && (
+            <select
+              className="scans-select"
+              aria-label={t("Filter by status", "Nach Status filtern")}
+              value={scanFilterStatus}
+              onChange={e => { setScanFilterStatus(e.target.value); setScanOffset(0); }}
+            >
+              <option value="">{t("All statuses", "Alle Status")}</option>
+              <option value="pending">{t("Pending", "Wartend")}</option>
+              <option value="running">{t("Running", "Läuft")}</option>
+              <option value="completed">{t("Completed", "Abgeschlossen")}</option>
+              <option value="failed">{t("Failed", "Fehlgeschlagen")}</option>
+              <option value="cancelled">{t("Cancelled", "Abgebrochen")}</option>
+            </select>
+            {(scanFilterTargetId || scanFilterStatus) && (
               <IconButton
                 label={t("Clear filter", "Filter entfernen")}
-                onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); setScanOffset(0); }}
+                onClick={() => { setScanFilterTargetId(null); setScanFilterTargetName(null); setScanFilterStatus(""); setScanOffset(0); }}
               >
                 <LuX aria-hidden="true" />
               </IconButton>

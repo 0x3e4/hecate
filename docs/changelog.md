@@ -15,6 +15,7 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- SCA scans: the Scans tab filters by status (pending, running, completed, failed, cancelled).
 - `SCA_SCAN_MAX_RUNTIME_SECONDS` (default `0`): how long a running scan may take before it is cancelled. `0` derives the limit per scan from the resource wait, the clone timeout and the slowest selected scanner's timeout, about 90 minutes with the defaults.
 
 ### Changed
