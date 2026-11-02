@@ -29,8 +29,11 @@ management, which needs `SYSTEM_PASSWORD`.
 Every secret is compared in **constant time**, and every route that checks one, including the
 password-check endpoints (`POST /api/v1/status/system-auth`, `/status/ai-auth`), the target-scoped
 writes and `POST /api/v1/scans`, carries a **per-client throttle with lockout**:
-after repeated failures from the same client, further attempts are rejected with `HTTP 429` for a
-cooldown window before the secret is even checked. This caps online guessing so a weak password can't
+after ten failures from the same client within a minute, further attempts are rejected with
+`HTTP 429` for five minutes before the secret is even checked. The counter belongs to the secret, not
+to the route, so guesses at the system password share one budget across the unlock dialog, the write
+gate and every target route. An IPv6 client counts by its /64. A request that carries a valid target
+password never compares the admin password at all, so a target owner cannot probe it. This caps online guessing so a weak password can't
 be brute-forced at full request rate. The client is identified from the reverse proxy's forwarded
 address where present (see [Reverse proxy / real client IP](configuration.md)); the throttle is
 in-memory and best-effort — defence in depth, not a substitute for a strong secret, TLS, and network
@@ -76,8 +79,9 @@ Setting or clearing a target password is always an admin action:
 The per-target detail page (`/scans/targets/<id>`) shows a 🔒 badge when a target is protected, but
 passwords are configured only from System → Access Control.
 
-A 🔒 badge marks protected targets. To use per-target passwords meaningfully, set
-`SYSTEM_PASSWORD` so these management endpoints are admin-gated.
+A 🔒 badge marks protected targets. Managing target passwords requires `SYSTEM_PASSWORD`: like
+API tokens, these two endpoints answer `403` when it is unset rather than opening to everyone, since
+anyone could otherwise clear a target's password and then write to it.
 
 API: `PUT /api/v1/scans/targets/{id}/write-password` (body `{ "password": "…" }`) and
 `DELETE /api/v1/scans/targets/{id}/write-password`.

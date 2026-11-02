@@ -163,11 +163,12 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `TRIVY_CACHE_DIR` | `/tmp/.trivy-cache` | Trivy DB cache dir (tmpfs by default; mount a volume to persist). |
 | `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir. The bundled `docker-compose.yml.example` sets it to `/grype-db` on the persistent `grype-db` volume, so the ~3 GB DB survives restarts. Without that volume it sits on tmpfs and is re-downloaded after each restart. |
 | `SEMGREP_RULES` | `p/security-audit` | Semgrep ruleset(s). |
-| `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). |
+| `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). Git credentials are only sent to `https://` repositories. |
 | `HECATE_MALWARE_ALLOWLIST` | (empty) | Comma-separated package names to skip during malware detection. |
 | `HECATE_REGISTRY_CACHE_TTL` | `604800` | Typosquatting registry-lookup cache TTL (seconds; 7 days). |
 | `HECATE_TIMEOUT_SECONDS` | `600` | Time limit of the `hecate` analyzer. It runs as its own process and is killed when the limit is reached. |
 | `HECATE_MAX_PARSED_FILE_BYTES` | `33554432` | Largest manifest or lockfile the analyzer reads (32 MiB). Bigger files and symlinks are skipped. |
+| `HECATE_PIN_BUDGET_SECONDS` | `120` | Time the OSV scan may spend asking PyPI for the latest version of unpinned `requirements.txt` entries, at most 500 per scan. |
 
 ## Ingestion
 
