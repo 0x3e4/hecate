@@ -87,6 +87,15 @@ async def trigger_capec_sync(
     return TriggerSyncResponse(**result)
 
 
+@router.post("/trigger/cert-feeds", response_model=TriggerSyncResponse)
+async def trigger_cert_feeds_sync(
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger the CERT advisory feed sync (no initial_sync support)."""
+    result = await service.trigger_cert_feeds_sync()
+    return TriggerSyncResponse(**result)
+
+
 @router.post("/trigger/circl", response_model=TriggerSyncResponse)
 async def trigger_circl_sync(
     service: SyncService = Depends(get_sync_service),

@@ -11,6 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 from app.db.opensearch import opensearch_bulk_mode
+from app.services.ingestion.cert_feed_pipeline import CertFeedPipeline
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
@@ -188,6 +189,16 @@ class SchedulerManager:
             id="circl_sync",
             replace_existing=True,
         )
+
+        if settings.cert_feeds_enabled:
+            # The dashboard signal needs a few days of history, so the first run does not wait for the interval.
+            self.scheduler.add_job(
+                _scheduled_cert_feeds_sync,
+                trigger=IntervalTrigger(minutes=settings.scheduler_cert_feeds_interval_minutes),
+                id="cert_feeds_sync",
+                next_run_time=datetime.now(tz=UTC) + timedelta(minutes=2),
+                replace_existing=True,
+            )
 
         self.scheduler.add_job(
             _scheduled_ghsa_sync,
@@ -683,6 +694,24 @@ async def _execute_capec_sync(*, initial_sync: bool) -> None:
         await tracker.fail(ctx, error_msg)
         log.exception("scheduler.capec_sync_failed", error=error_msg, initial_sync=initial_sync)
         await _notify_sync_failed("capec_sync", error_msg)
+
+
+async def _scheduled_cert_feeds_sync() -> None:
+    """Scheduled CERT advisory feed sync job."""
+    await _execute_cert_feeds_sync()
+
+
+async def _execute_cert_feeds_sync() -> None:
+    """Execute the CERT advisory feed sync. It writes no vulnerability documents, so watch rules stay out of it."""
+    pipeline = CertFeedPipeline()
+    try:
+        result = await pipeline.sync()
+        log.info("scheduler.cert_feeds_sync_completed", **result)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("scheduler.cert_feeds_sync_failed", error=str(exc))
+        await _notify_sync_failed("cert_feeds_sync", str(exc))
+    finally:
+        await pipeline.close()
 
 
 async def _scheduled_circl_sync() -> None:

@@ -9,6 +9,7 @@ import structlog
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.schemas.sync import SyncState
+from app.services.ingestion.cert_feed_pipeline import CertFeedPipeline
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.euvd_pipeline import run_ingestion
@@ -35,6 +36,7 @@ SYNC_JOBS = [
     ("capec_sync", "CAPEC Cache Refresh"),
     ("capec_initial_sync", "CAPEC Initial Cache Prefetch"),
     ("circl_sync", "CIRCL Enrichment Sync"),
+    ("cert_feeds_sync", "CERT Advisory Sync"),
     ("ghsa_sync", "GHSA Sync"),
     ("ghsa_initial_sync", "GHSA Initial Sync"),
     ("osv_sync", "OSV Sync"),
@@ -253,6 +255,27 @@ class SyncService:
             log.info("sync.kev_completed", initial=initial, **result)
         except Exception as exc:  # noqa: BLE001
             log.exception("sync.kev_failed", initial=initial, error=str(exc))
+
+    async def trigger_cert_feeds_sync(self) -> dict[str, Any]:
+        """Trigger the CERT advisory feed sync (no initial_sync support)."""
+        log.info("sync.trigger_cert_feeds")
+        asyncio.create_task(self._execute_cert_feeds_sync())
+        return {
+            "success": True,
+            "message": "CERT advisory sync triggered",
+            "jobName": "cert_feeds_sync",
+        }
+
+    async def _execute_cert_feeds_sync(self) -> None:
+        """Execute the CERT advisory feed sync in background."""
+        pipeline = CertFeedPipeline()
+        try:
+            result = await pipeline.sync()
+            log.info("sync.cert_feeds_completed", **result)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("sync.cert_feeds_failed", error=str(exc))
+        finally:
+            await pipeline.close()
 
     async def trigger_circl_sync(self) -> dict[str, Any]:
         """Trigger CIRCL enrichment sync (no initial_sync support)."""

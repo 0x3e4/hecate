@@ -25,6 +25,7 @@ const JOB_LABELS: Record<string, string> = {
   capec_sync: "CAPEC Cache Refresh",
   capec_initial_sync: "CAPEC Initial Cache Prefetch",
   circl_sync: "CIRCL Enrichment Sync",
+  cert_feeds_sync: "CERT Advisory Sync",
   ghsa_sync: "GHSA Sync",
   ghsa_initial_sync: "GHSA Initial Sync",
   manual_refresh: "Manual Refresh",
@@ -416,6 +417,7 @@ export const AuditLogPage = () => {
             <option value="capec_sync">CAPEC Cache Refresh</option>
             <option value="capec_initial_sync">CAPEC Initial Cache Prefetch</option>
             <option value="circl_sync">CIRCL Enrichment Sync</option>
+            <option value="cert_feeds_sync">CERT Advisory Sync</option>
             <option value="ghsa_sync">GHSA Sync</option>
             <option value="ghsa_initial_sync">GHSA Initial Sync</option>
             <option value="manual_refresh">{t("Manual Refresh", "Manueller Refresh")}</option>

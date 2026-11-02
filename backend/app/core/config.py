@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     mongo_ingestion_state_collection: str = "ingestion_state"
     mongo_ingestion_log_collection: str = "ingestion_logs"
     mongo_kev_collection: str = "known_exploited_vulnerabilities"
+    mongo_cert_advisories_collection: str = "cert_advisories"
     mongo_cwe_collection: str = "cwe_catalog"
     mongo_capec_collection: str = "capec_catalog"
     mongo_saved_searches_collection: str = "saved_searches"
@@ -120,6 +121,25 @@ class Settings(BaseSettings):
     circl_max_retries: int = 3
     circl_retry_backoff_seconds: float = 3.0
     circl_max_records_per_run: OptionalInt = 1000
+
+    # CERT advisory feeds, comma-separated "Name|URL" pairs (RSS, RDF or Atom).
+    # CERT_FEEDS_EXTRA adds to this list without repeating it; the same name replaces a default.
+    # CISA is absent on purpose: its advisory feed answers 403 to this client, and its KEV catalogue arrives anyway.
+    cert_feeds_enabled: bool = True
+    cert_feeds: str = (
+        "CERT-FR|https://www.cert.cyber.gouv.fr/avis/feed/,"
+        "CERT-EU|https://cert.europa.eu/publications/security-advisories-rss,"
+        "NCSC-NL|https://advisories.ncsc.nl/rss/advisories,"
+        "CCCS|https://www.cyber.gc.ca/api/cccs/atom/v1/get?feed=alerts_advisories&lang=en,"
+        "JPCERT/CC|https://www.jpcert.or.jp/rss/jpcert.rdf"
+    )
+    cert_feeds_extra: str = ""
+    cert_feeds_timeout_seconds: int = 30
+    cert_feeds_rate_limit_seconds: float = 1.0
+    cert_feeds_max_retries: int = 3
+    cert_feeds_retry_backoff_seconds: float = 3.0
+    # Per feed: linked pages read for items that name no CVE themselves.
+    cert_feeds_max_page_fetches_per_run: int = 50
 
     ghsa_base_url: str = "https://api.github.com/advisories"
     ghsa_token: str | None = None
@@ -210,6 +230,7 @@ class Settings(BaseSettings):
     # missed weekly slot without thrashing.
     scheduler_catalog_stale_catchup_multiplier: float = 1.5
     scheduler_circl_interval_minutes: int = 120
+    scheduler_cert_feeds_interval_minutes: int = 120
     scheduler_ghsa_interval_minutes: int = 120
     scheduler_osv_interval_minutes: int = 120
 

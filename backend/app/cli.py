@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.db.opensearch import opensearch_bulk_mode
+from app.services.ingestion.cert_feed_pipeline import CertFeedPipeline
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
 from app.services.ingestion.ghsa_pipeline import GhsaPipeline
@@ -34,8 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch).",
     )
     parser.add_argument(
         "--since",
@@ -125,6 +126,11 @@ def main() -> None:
             parser.error("The --since option is not supported for sync-capec.")
         result = asyncio.run(run_capec_sync_once(initial_sync=args.initial))
         print(f"CAPEC sync finished: {result}")
+    elif args.command == "sync-cert":
+        if args.since or args.initial or args.limit is not None:
+            parser.error("sync-cert takes no options: every run reads all configured feeds.")
+        result = asyncio.run(run_cert_feeds_sync_once())
+        print(f"CERT advisory sync finished: {result}")
     elif args.command == "sync-circl":
         if args.since:
             parser.error("The --since option is not supported for sync-circl.")
@@ -195,6 +201,15 @@ async def run_kev_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
     pipeline = KevPipeline()
     with opensearch_bulk_mode():
         return await pipeline.sync(initial_sync=initial_sync)
+
+
+async def run_cert_feeds_sync_once() -> dict[str, object]:
+    """Run the CERT advisory feed sync once from CLI."""
+    pipeline = CertFeedPipeline()
+    try:
+        return await pipeline.sync()
+    finally:
+        await pipeline.close()
 
 
 async def run_circl_sync_once(limit: int | None = None) -> dict[str, int]:

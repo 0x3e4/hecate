@@ -46,6 +46,7 @@ import {
   triggerCweSync,
   triggerCapecSync,
   triggerCirclSync,
+  triggerCertFeedsSync,
   triggerGhsaSync,
   triggerOsvSync,
   resyncVulnerabilities,
@@ -1095,7 +1096,7 @@ export const SystemPage = () => {
     event.target.value = "";
   };
 
-  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "ghsa" | "osv", initial: boolean) => {
+  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "cert" | "ghsa" | "osv", initial: boolean) => {
     const syncId = `${syncType}_${initial ? "initial" : "normal"}`;
     setSyncTriggeringId(syncId);
     try {
@@ -1121,6 +1122,9 @@ export const SystemPage = () => {
           break;
         case "circl":
           response = await triggerCirclSync();
+          break;
+        case "cert":
+          response = await triggerCertFeedsSync();
           break;
         case "ghsa":
           response = await triggerGhsaSync(initial);
@@ -1187,6 +1191,7 @@ export const SystemPage = () => {
       "capec_sync",
       "capec_initial_sync",
       "circl_sync",
+      "cert_feeds_sync",
       "ghsa_sync",
       "ghsa_initial_sync",
       "osv_sync",
@@ -2065,6 +2070,8 @@ export const SystemPage = () => {
                     ? "capec"
                     : sync.jobName.includes("circl")
                     ? "circl"
+                    : sync.jobName.includes("cert")
+                    ? "cert"
                     : sync.jobName.includes("ghsa")
                     ? "ghsa"
                     : sync.jobName.includes("osv")

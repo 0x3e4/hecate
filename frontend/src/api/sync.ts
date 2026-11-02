@@ -36,6 +36,11 @@ export const triggerCapecSync = async (initial: boolean = false): Promise<Trigge
   return response.data;
 };
 
+export const triggerCertFeedsSync = async (): Promise<TriggerSyncResponse> => {
+  const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/cert-feeds", {});
+  return response.data;
+};
+
 export const triggerCirclSync = async (): Promise<TriggerSyncResponse> => {
   const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/circl", {});
   return response.data;
