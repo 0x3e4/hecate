@@ -20,6 +20,7 @@ from app.db.opensearch import async_search
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.cert_advisory_repository import CertAdvisoryRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.cert_topics import group_advisories
 from app.services.inventory_matcher import items_for_vuln
 from app.services.inventory_service import get_inventory_service
 
@@ -32,11 +33,71 @@ TODAY_MAX_CVES = 2000
 ATTENTION_MAX_KEV = 50
 # Feeds name hundreds of CVEs in a week. Most mentions stand alone, so the cut falls on those.
 ATTENTION_MAX_CERT_MENTIONS = 300
+CERT_OVERVIEW_MAX_CVES = 1000
+
+# What a CVE row needs, including the fields the inventory matcher reads.
+_VULN_ROW_SOURCE = [
+    "vuln_id",
+    "title",
+    "aliases",
+    "exploited",
+    "cvss.severity",
+    "cvss.base_score",
+    "epssScore",
+    "exploitation.dateAdded",
+    "exploitation.dueDate",
+    "exploitation.knownRansomwareCampaignUse",
+    "vendorSlugs",
+    "productSlugs",
+    "vendors",
+    "products",
+    "impactedProducts",
+    "cpeConfigurations",
+    "cpes",
+]
 
 
 def _string_list(source: dict[str, Any], key: str) -> list[str]:
     raw = source.get(key)
     return [value for value in raw if isinstance(value, str)] if isinstance(raw, list) else []
+
+
+def _hit_sources(response: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        hit["_source"]
+        for hit in response.get("hits", {}).get("hits", [])
+        if isinstance(hit.get("_source"), dict) and hit["_source"].get("vuln_id")
+    ]
+
+
+_SEVERITY_ORDER = ("critical", "high", "medium", "low", "unknown")
+
+
+def _severity_rank(severity: str) -> int:
+    return _SEVERITY_ORDER.index(severity) if severity in _SEVERITY_ORDER else len(_SEVERITY_ORDER)
+
+
+def _unknown_row(cve_id: str) -> dict[str, Any]:
+    """A CVE a CERT named before Hecate has a record of it."""
+    return {
+        "vulnId": cve_id,
+        "title": "",
+        "known": False,
+        "severity": "unknown",
+        "cvssScore": None,
+        "epssScore": None,
+        "exploited": False,
+        "kevListed": False,
+        "dateAdded": None,
+        "dueDate": None,
+        "ransomware": False,
+        "aliases": [],
+        "vendorSlugs": [],
+        "productSlugs": [],
+        "vendors": [],
+        "products": [],
+        "inventoryMatchIds": [],
+    }
 
 
 def _severity_of(source: dict[str, Any]) -> str:
@@ -980,13 +1041,7 @@ class StatsService:
         Combines CVEs added to the CISA KEV catalogue with those the CERT feeds
         named. Neither is keyed on ``published``: most of them are older CVEs.
         """
-        zone: ZoneInfo | None = None
-        if tz:
-            try:
-                zone = ZoneInfo(tz)
-            except (ZoneInfoNotFoundError, ValueError):
-                zone = None
-        since_at = (datetime.now(zone or UTC) - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        since_at = self._window_start(days, tz)
         since = since_at.strftime("%Y-%m-%d")
 
         mentions = await self._cert_mentions(since_at)
@@ -1000,24 +1055,7 @@ class StatsService:
             "size": ATTENTION_MAX_KEV + ATTENTION_MAX_CERT_MENTIONS,
             "track_total_hits": True,
             "query": {"bool": {"should": clauses, "minimum_should_match": 1}},
-            "_source": [
-                "vuln_id",
-                "title",
-                "aliases",
-                "cvss.severity",
-                "cvss.base_score",
-                "epssScore",
-                "exploitation.dateAdded",
-                "exploitation.dueDate",
-                "exploitation.knownRansomwareCampaignUse",
-                "vendorSlugs",
-                "productSlugs",
-                "vendors",
-                "products",
-                "impactedProducts",
-                "cpeConfigurations",
-                "cpes",
-            ],
+            "_source": _VULN_ROW_SOURCE,
             "sort": [{"exploitation.dateAdded": {"order": "desc", "missing": "_last", "unmapped_type": "date"}}],
         }
         try:
@@ -1026,11 +1064,105 @@ class StatsService:
             log.warning("stats.attention_opensearch_error", error=str(exc))
             return {"since": since, "days": days, "total": 0, "items": []}
 
-        sources = [
-            hit["_source"]
-            for hit in response.get("hits", {}).get("hits", [])
-            if isinstance(hit.get("_source"), dict) and hit["_source"].get("vuln_id")
-        ]
+        rows = await self._vulnerability_rows(_hit_sources(response), since)
+        items: list[dict[str, Any]] = []
+        for source, row in rows:
+            certs: dict[str, dict[str, Any]] = {}
+            for identifier in [row["vulnId"], *_string_list(source, "aliases")]:
+                for mention in mentions.get(identifier.upper(), []):
+                    certs.setdefault(mention["name"], mention)
+            items.append({**row, "certs": list(certs.values())})
+
+        return {"since": since, "days": days, "total": self._resolve_total(response), "items": items}
+
+    async def get_cert_overview(self, *, days: int = 30, tz: str | None = None) -> dict[str, Any]:
+        """Return the CERT advisories of the window, merged into topics through shared CVEs.
+
+        Round-ups stay apart and are not looked up: they name hundreds of CVEs, and
+        the page only needs their IDs to count what is in the user's scans.
+        """
+        since_at = self._window_start(days, tz)
+        since = since_at.strftime("%Y-%m-%d")
+        empty = {"since": since, "days": days, "topics": [], "roundups": []}
+        try:
+            repository = await CertAdvisoryRepository.create()
+            advisories = await repository.list_since(since_at)
+        except PyMongoError as exc:
+            log.warning("stats.cert_overview_unavailable", error=str(exc))
+            return empty
+
+        topics, roundups = group_advisories(advisories)
+        known = await self._rows_by_id(
+            [cve_id for topic in topics for cve_id in topic["cve_ids"]][:CERT_OVERVIEW_MAX_CVES],
+            since,
+        )
+
+        def advisory_row(advisory: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "feed": advisory["feed"],
+                "title": advisory.get("title"),
+                "url": advisory.get("url"),
+                "published": advisory["published"].isoformat(),
+            }
+
+        def topic_row(topic: dict[str, Any]) -> dict[str, Any]:
+            rows: dict[str, dict[str, Any]] = {}
+            for cve_id in topic["cve_ids"]:
+                row = known.get(cve_id) or _unknown_row(cve_id)
+                rows.setdefault(row["vulnId"], row)
+            published = [advisory["published"] for advisory in topic["advisories"]]
+            severities = [row["severity"] for row in rows.values()]
+            return {
+                "id": topic["id"],
+                "certs": list(dict.fromkeys(advisory["feed"] for advisory in topic["advisories"])),
+                "firstSeen": min(published).isoformat(),
+                "lastSeen": max(published).isoformat(),
+                "worstSeverity": min(severities, key=_severity_rank),
+                "cves": sorted(rows.values(), key=lambda row: _severity_rank(row["severity"])),
+                "advisories": [advisory_row(advisory) for advisory in topic["advisories"]],
+            }
+
+        return {
+            **empty,
+            "topics": [topic_row(topic) for topic in topics],
+            "roundups": [
+                {"id": str(advisory["_id"]), **advisory_row(advisory), "cveIds": advisory["cve_ids"]}
+                for advisory in roundups
+            ],
+        }
+
+    async def _rows_by_id(self, cve_ids: list[str], since: str) -> dict[str, dict[str, Any]]:
+        """CVE rows keyed by every identifier they answer to, so an alias finds its record."""
+        if not cve_ids:
+            return {}
+        body = {
+            "size": len(cve_ids),
+            "query": {
+                "bool": {
+                    "should": [{"terms": {"vuln_id": cve_ids}}, {"terms": {"aliases": cve_ids}}],
+                    "minimum_should_match": 1,
+                }
+            },
+            "_source": _VULN_ROW_SOURCE,
+        }
+        try:
+            response = await async_search(settings.opensearch_index, body, suppress_exceptions=False)
+        except (RequestError, OSConnectionError, OpenSearchException) as exc:
+            log.warning("stats.cert_overview_opensearch_error", error=str(exc))
+            return {}
+
+        by_id: dict[str, dict[str, Any]] = {}
+        for source, row in await self._vulnerability_rows(_hit_sources(response), since):
+            for identifier in [row["vulnId"], *_string_list(source, "aliases")]:
+                by_id.setdefault(identifier.upper(), row)
+        return by_id
+
+    async def _vulnerability_rows(
+        self,
+        sources: list[dict[str, Any]],
+        since: str,
+    ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        """Pairs each document with the row the dashboard and the CERT page show for it."""
         vendor_names, product_names = await self._catalog_names(
             {slug for source in sources for slug in _string_list(source, "vendorSlugs")},
             {slug for source in sources for slug in _string_list(source, "productSlugs")},
@@ -1038,7 +1170,7 @@ class StatsService:
         inventory_service = await get_inventory_service()
         raw_inventory_items = await inventory_service.list_all_cached()
 
-        items: list[dict[str, Any]] = []
+        rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
         for source in sources:
             vuln_id = source["vuln_id"]
             cvss = source.get("cvss") if isinstance(source.get("cvss"), dict) else {}
@@ -1046,18 +1178,15 @@ class StatsService:
             vendor_slugs = _string_list(source, "vendorSlugs")
             product_slugs = _string_list(source, "productSlugs")
             date_added = exploitation.get("dateAdded")
-            certs: dict[str, dict[str, Any]] = {}
-            for identifier in [vuln_id, *_string_list(source, "aliases")]:
-                for mention in mentions.get(identifier.upper(), []):
-                    certs.setdefault(mention["name"], mention)
-            items.append({
+            rows.append((source, {
                 "vulnId": vuln_id,
                 "title": source.get("title", ""),
+                "known": True,
                 "severity": _severity_of(source),
                 "cvssScore": cvss.get("base_score"),
                 "epssScore": source.get("epssScore"),
+                "exploited": bool(source.get("exploited")),
                 "kevListed": bool(date_added) and str(date_added)[:10] >= since,
-                "certs": list(certs.values()),
                 "dateAdded": date_added,
                 "dueDate": exploitation.get("dueDate"),
                 "ransomware": str(exploitation.get("knownRansomwareCampaignUse") or "").lower() == "known",
@@ -1067,9 +1196,20 @@ class StatsService:
                 "vendors": [{"slug": s, "name": vendor_names.get(s, s)} for s in vendor_slugs],
                 "products": [{"slug": s, "name": product_names.get(s, s)} for s in product_slugs],
                 "inventoryMatchIds": self._inventory_match_ids(source, vuln_id, raw_inventory_items),
-            })
+            }))
+        return rows
 
-        return {"since": since, "days": days, "total": self._resolve_total(response), "items": items}
+    @staticmethod
+    def _window_start(days: int, tz: str | None) -> datetime:
+        """Local midnight ``days - 1`` days back, so the window includes today. An invalid zone falls back to UTC."""
+        zone: ZoneInfo | None = None
+        if tz:
+            try:
+                zone = ZoneInfo(tz)
+            except (ZoneInfoNotFoundError, ValueError):
+                zone = None
+        start = datetime.now(zone or UTC) - timedelta(days=days - 1)
+        return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
     @staticmethod
     async def _cert_mentions(since: datetime) -> dict[str, list[dict[str, Any]]]:

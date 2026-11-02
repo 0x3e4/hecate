@@ -86,11 +86,7 @@ summary.dashboard-triage-row .dashboard-disclosure-icon { color: var(--color-mut
 .dashboard-facet:active { color: var(--color-focus); }
 .dashboard-missing { color: var(--color-muted); }
 
-.dashboard-chip { position: relative; z-index: var(--z-base); gap: var(--space-2xs); min-height: 24px; color: var(--color-ink); white-space: nowrap; }
-.dashboard-chip svg { width: 12px; height: 12px; color: var(--color-muted); }
-.dashboard .dashboard-chip:hover { background: var(--overlay-2); color: var(--color-link); }
-.dashboard .dashboard-chip:active { background: var(--overlay-3); }
-.dashboard-cve-chips .dashboard-chip + .dashboard-chip { margin-left: var(--space-2xs); }
+.dashboard-cve-chips .coverage-chip + .coverage-chip { margin-left: var(--space-2xs); }
 
 .dashboard-cve-groups { display: flex; flex-direction: column; }
 .dashboard-cve-group { border-top: var(--rule-hair) solid var(--color-rule); }
@@ -204,7 +200,7 @@ details[open] > summary .dashboard-disclosure-icon { transform: rotate(90deg); }
   .dashboard-cve-table--group .dashboard-cve-chips { margin-top: var(--space-2xs); }
   .dashboard-cve-table .dashboard-cve-chips:empty, .dashboard-cve-table .dashboard-cve-aliases:empty { display: none; }
   .dashboard-cve-aliases .mono { white-space: normal; overflow-wrap: anywhere; }
-  .dashboard-cve-chips .dashboard-chip + .dashboard-chip { margin-left: 0; }
+  .dashboard-cve-chips .coverage-chip + .coverage-chip { margin-left: 0; }
   .dashboard-facet { display: inline-block; padding-block: var(--space-2xs); }
 }
 

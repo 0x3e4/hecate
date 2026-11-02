@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionRows, groupCves, productKey, type GroupableCve } from "./cveGroups";
+import { attentionRows, groupCves, productKey, quietFindings, type GroupableCve } from "./cveGroups";
 
 const cve = (vulnId: string, severity: string, product?: string, vendor?: string): GroupableCve => ({
   vulnId,
@@ -61,41 +61,60 @@ describe("groupCves", () => {
 });
 
 describe("attentionRows", () => {
-  const item = (id: string, certs: number, kevListed = false, dateAdded: string | null = null) => ({
+  const item = (id: string, certs: number, kevListed = false, dateAdded: string | null = null, severity = "high", inventory = false) => ({
     id,
+    severity,
     kevListed,
     dateAdded,
     certs: Array.from({ length: certs }, () => "cert"),
+    inventoryMatchIds: inventory ? ["item-1"] : [],
   });
-  const none = () => false;
+  const none = () => 0;
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
 
   it("drops a CVE only one CERT named", () => {
-    expect(attentionRows([item("lone", 1), item("trending", 2)], none).map((row) => row.id)).toEqual(["trending"]);
-  });
-
-  it("keeps a lone mention that is in the stack", () => {
-    const rows = attentionRows([item("mine", 1)], (row) => row.id === "mine");
-
-    expect(rows.map((row) => row.id)).toEqual(["mine"]);
+    expect(ids(attentionRows([item("lone", 1), item("trending", 2)], none))).toEqual(["trending"]);
   });
 
   it("keeps a KEV listing without any CERT", () => {
-    expect(attentionRows([item("kev", 0, true)], none).map((row) => row.id)).toEqual(["kev"]);
+    expect(ids(attentionRows([item("kev", 0, true)], none))).toEqual(["kev"]);
   });
 
-  it("orders by stack, then signals, then the newest listing", () => {
+  it("keeps a lone mention that hits the inventory", () => {
+    expect(ids(attentionRows([item("mine", 1, false, null, "high", true)], none))).toEqual(["mine"]);
+  });
+
+  it("does not let a scan finding alone earn a row", () => {
+    expect(attentionRows([item("kernel", 1)], () => 2)).toEqual([]);
+  });
+
+  it("orders by stack, then signals, then severity, then the newest listing", () => {
     const rows = attentionRows(
       [
         item("old-kev", 0, true, "2026-10-27"),
         item("new-kev", 0, true, "2026-10-30"),
+        item("critical-kev", 0, true, "2026-10-20", "critical"),
         item("four-certs", 4),
         item("kev-and-cert", 2, true, "2026-10-28"),
-        item("mine", 1),
+        item("in-stack", 2),
       ],
-      (row) => row.id === "mine",
+      (row) => (row.id === "in-stack" ? 2 : 0),
     );
 
-    expect(rows.map((row) => row.id)).toEqual(["mine", "four-certs", "kev-and-cert", "new-kev", "old-kev"]);
+    expect(ids(rows)).toEqual(["in-stack", "four-certs", "kev-and-cert", "critical-kev", "new-kev", "old-kev"]);
+  });
+});
+
+describe("quietFindings", () => {
+  const item = (id: string, certs: number, kevListed = false) => ({ id, severity: "high", kevListed, dateAdded: null, certs: Array.from({ length: certs }, () => "cert") });
+
+  it("takes the scan findings that did not earn a row", () => {
+    const rows = quietFindings(
+      [item("kernel", 1), item("trending", 2), item("listed", 1, true), item("not-scanned", 1)],
+      (row) => row.id !== "not-scanned",
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["kernel"]);
   });
 });
 

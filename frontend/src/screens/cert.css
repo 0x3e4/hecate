@@ -1,0 +1,61 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
+ * CERT: what national CERTs warn about, one row per topic. Tokens only; see design.md. */
+.cert-stats { margin-bottom: var(--space-lg); }
+.cert-skeleton { display: flex; flex-direction: column; gap: var(--space-xs); }
+.cert-toggle { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: var(--control-height); color: var(--color-ink-2); font-size: var(--text-sm); cursor: pointer; }
+.cert-note { margin-bottom: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }
+.cert-extra { margin-left: var(--space-2xs); color: var(--color-muted); font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
+.cert-flag { min-height: 24px; color: var(--color-ink); white-space: nowrap; }
+.cert-link { text-decoration: underline; text-decoration-color: var(--color-rule-strong); overflow-wrap: anywhere; }
+.cert-link:hover { color: var(--color-link); text-decoration-color: currentColor; }
+.cert-link:active { color: var(--color-focus); }
+
+/* Topics: a row folds open for its CVEs and the advisories behind it */
+.cert-topics, .cert-advisories, .cert-roundups { margin: 0; padding: 0; list-style: none; }
+.cert-topics > li + li { border-top: var(--rule-hair) solid var(--color-rule); }
+.cert-topic-row { display: grid; grid-template-columns: 0.875rem 4.75rem minmax(0, 1fr) auto; align-items: center; gap: 0 var(--space-sm); min-height: 52px; padding: var(--space-2xs) var(--space-xs); font-size: var(--text-sm); cursor: pointer; list-style: none; transition: background-color var(--dur-micro) var(--ease-out); }
+.cert-topic-row::-webkit-details-marker { display: none; }
+.cert-topic-row:hover { background: var(--overlay-1); }
+.cert-topic-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.cert-chevron { width: 14px; height: 14px; color: var(--color-muted); transition: transform var(--dur-micro) var(--ease-out); }
+details[open] > summary .cert-chevron { transform: rotate(90deg); }
+.cert-topic-main { display: flex; flex-direction: column; gap: var(--space-3xs); min-width: 0; }
+.cert-topic-title { overflow: hidden; color: var(--color-ink); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.cert-topic-ids { display: flex; flex-wrap: wrap; gap: 0 var(--space-sm); color: var(--color-muted); font-size: var(--text-xs); }
+.cert-topic-side { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-3xs); min-width: 0; }
+.cert-topic-certs { color: var(--color-ink-2); text-align: right; }
+.cert-topic-when { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2xs); color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+
+.cert-topic-body { display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-2xs) var(--space-xs) var(--space-md) calc(var(--space-xs) + 0.875rem + var(--space-sm)); }
+.cert-cves { width: 100%; }
+.cert-cves th, .cert-cves td { padding: var(--space-2xs) var(--space-md) var(--space-2xs) 0; font-size: var(--text-sm); }
+.cert-cves th:last-child, .cert-cves td:last-child { padding-right: 0; }
+.cert-cve-id { white-space: nowrap; }
+.cert-cve-id .cert-flag { margin-left: var(--space-xs); }
+.cert-cve-product { color: var(--color-ink-2); overflow-wrap: anywhere; }
+
+/* An advisory: the CERT, its own title in its own language, the date */
+.cert-advisory { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto auto; align-items: baseline; gap: var(--space-2xs) var(--space-sm); padding-block: var(--space-2xs); font-size: var(--text-sm); }
+.cert-roundups .cert-advisory { border-bottom: var(--rule-hair) solid var(--color-rule); padding-block: var(--space-xs); }
+.cert-roundups .cert-advisory:last-child { border-bottom: 0; }
+.cert-advisories .cert-advisory { grid-template-columns: 6.5rem minmax(0, 1fr) auto; }
+.cert-advisory-feed { color: var(--color-muted); }
+.cert-advisory-title { min-width: 0; color: var(--color-ink-2); }
+.cert-advisory-date, .cert-roundup-count { color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cert-roundup-hits { margin-right: var(--space-sm); color: var(--color-ink); }
+
+@media (max-width: 40rem) {
+  .cert .filter-row select { flex: 1 1 100%; }
+  .cert-topic-row { grid-template-columns: 0.875rem 4.75rem minmax(0, 1fr); padding-block: var(--space-xs); }
+  .cert-topic-side { grid-column: 3; flex-direction: column; align-items: flex-start; padding-top: var(--space-2xs); }
+  .cert-topic-certs { text-align: left; }
+  .cert-topic-when { justify-content: flex-start; }
+  .cert-topic-body { padding-left: var(--space-xs); }
+  .cert-advisory, .cert-advisories .cert-advisory { grid-template-columns: minmax(0, 1fr) auto; }
+  .cert-advisory-title { grid-column: 1 / -1; grid-row: 2; }
+  .cert-roundup-count { grid-column: 1; grid-row: 3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cert-chevron, .cert-topic-row { transition: none; }
+}

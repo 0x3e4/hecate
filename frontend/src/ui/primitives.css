@@ -66,3 +66,9 @@
   .page-header { align-items: flex-start; }
   .icon-button { width: 44px; height: 44px; }
 }
+
+/* Where a CVE touches the user's stack. Sits above a row's stretched link */
+.coverage-chip { position: relative; z-index: var(--z-base); gap: var(--space-2xs); min-height: 24px; color: var(--color-ink); white-space: nowrap; }
+.coverage-chip svg { width: 12px; height: 12px; color: var(--color-muted); }
+.chip-link.coverage-chip:hover { background: var(--overlay-2); color: var(--color-link); }
+.chip-link.coverage-chip:active { background: var(--overlay-3); }

@@ -48,6 +48,14 @@ class CertAdvisoryRepository:
             upsert=True,
         )
 
+    async def list_since(self, since: datetime) -> list[dict[str, Any]]:
+        """Advisories that name at least one CVE, newest first."""
+        cursor = self.collection.find(
+            {"published": {"$gte": since}, "cve_ids": {"$ne": []}},
+            {"feed": 1, "title": 1, "url": 1, "published": 1, "cve_ids": 1},
+        ).sort("published", -1)
+        return [document async for document in cursor]
+
     async def mentions_since(self, since: datetime) -> dict[str, list[dict[str, Any]]]:
         """Maps each CVE to the feeds that named it since ``since``, one entry per feed, newest first."""
         cursor = self.collection.find(

@@ -2,7 +2,7 @@ import "../screens/dashboard.css";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LuBox, LuCheck, LuChevronLeft, LuChevronRight, LuCopy, LuScanLine, LuSearch, LuTriangleAlert, LuX } from "react-icons/lu";
+import { LuCheck, LuChevronLeft, LuChevronRight, LuCopy, LuSearch, LuTriangleAlert, LuX } from "react-icons/lu";
 
 import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types";
 import { searchVulnerabilities, getVulnerability, triggerVulnerabilityRefresh } from "../api/vulnerabilities";
@@ -18,6 +18,15 @@ import {
   type ProductBucket,
 } from "../api/stats";
 import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
+import {
+  ChipLinks,
+  cveMatchesInventory,
+  resolveCveScanId,
+  scanChip,
+  uniqueChips,
+  useCveChips,
+  type CoverageChip,
+} from "../components/CoverageChips";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -25,7 +34,7 @@ import { getCurrentTimezone } from "../timezone/storage";
 import { useSSE } from "../hooks/useSSE";
 import { getPublishedDisplay } from "../utils/published";
 import { Toast, useToast } from "../components/Toast";
-import { SEVERITY_ORDER, attentionRows, groupCves, productKey, severityRank, type CveGroup } from "../utils/cveGroups";
+import { SEVERITY_ORDER, attentionRows, groupCves, productKey, quietFindings, severityLabel, type CveGroup } from "../utils/cveGroups";
 import { getPreferredCvssMetric } from "../utils/cvss";
 import { formatDateOnly } from "../utils/dateFormat";
 import { formatEcosystemName } from "../utils/advisoryText";
@@ -459,18 +468,6 @@ const SingleVulnQuery = ({
 
 /* ---------- Today's Vulnerability Statistics ---------- */
 
-const SEVERITY_LABELS: Record<string, [string, string]> = {
-  critical: ["Critical", "Kritisch"],
-  high: ["High", "Hoch"],
-  medium: ["Medium", "Mittel"],
-  low: ["Low", "Niedrig"],
-  unknown: ["Unknown", "Unbekannt"],
-};
-const severityLabel = (severity: string, t: TranslateFn): string => {
-  const label = SEVERITY_LABELS[severity];
-  return label ? t(label[0], label[1]) : severity;
-};
-
 const severityDql = (severity: string, todayDate: string) => {
   const q = `cvss.severity:${severity} AND published:>=${todayDate}`;
   return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
@@ -527,116 +524,6 @@ const FacetLinks = ({
           +{extra}
         </span>
       )}
-    </>
-  );
-};
-
-// A today-CVE counts as "in your environment" only when the backend's precise,
-// version-aware matcher (`items_for_vuln`, same logic as the Inventory page and
-// the vulnerability detail page) confirmed at least one inventory item is
-// actually affected by this CVE's version range.
-const cveMatchesInventory = (cve: TodayCve): boolean =>
-  (cve.inventoryMatchIds?.length ?? 0) > 0;
-
-// Resolve the most-recent scan covering a today-CVE: a finding hit on the CVE id,
-// else the first SBOM-package hit on one of its product slugs. Undefined = not scanned.
-const resolveCveScanId = (
-  cve: TodayCve,
-  scanCveScan: Record<string, string>,
-  scanProductScan: Record<string, string>,
-): string | undefined => {
-  if (scanCveScan[cve.vulnId]) return scanCveScan[cve.vulnId];
-  for (const p of cve.productSlugs ?? []) {
-    if (scanProductScan[p]) return scanProductScan[p];
-  }
-  return undefined;
-};
-
-// A highlight chip on a Today item. Inventory chips link to /inventory; scan
-// chips link to the covering scan's detail page.
-interface TodayChip {
-  label: string;
-  href: string;
-  title?: string;
-  scan?: boolean;
-}
-
-// An "in scans" chip labelled with the covering scan's target name (truncated),
-// linking to that scan's detail page. Falls back to a generic label.
-const scanChip = (
-  sid: string,
-  scanTargets: Record<string, string>,
-  fallbackLabel: string,
-): TodayChip => {
-  const target = scanTargets[sid];
-  const label = target && target.length > 26 ? `${target.slice(0, 25)}…` : target;
-  return {
-    label: label || fallbackLabel,
-    href: `/scans/${sid}`,
-    scan: true,
-    title: target || fallbackLabel,
-  };
-};
-
-// Per-CVE chips (inventory and/or scan), keyed by vulnId.
-const useCveChips = (
-  cves: TodayCve[],
-  scanCveScan: Record<string, string>,
-  scanProductScan: Record<string, string>,
-  scanTargets: Record<string, string>,
-  invLabel: string,
-  scanFallback: string,
-) =>
-  useMemo(() => {
-    const map = new Map<string, TodayChip[]>();
-    const hasScan =
-      Object.keys(scanCveScan).length > 0 || Object.keys(scanProductScan).length > 0;
-    for (const cve of cves) {
-      const chips: TodayChip[] = [];
-      if (cveMatchesInventory(cve)) {
-        chips.push({ label: invLabel, href: "/inventory" });
-      }
-      if (hasScan) {
-        const sid = resolveCveScanId(cve, scanCveScan, scanProductScan);
-        if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
-      }
-      if (chips.length) map.set(cve.vulnId, chips);
-    }
-    return map;
-  }, [cves, scanCveScan, scanProductScan, scanTargets, invLabel, scanFallback]);
-
-// Chips are navigable spans so they work inside a row that is itself a link:
-// preventDefault on the chip cancels the row navigation so the chip's own link
-// wins (no nested <a>).
-const ChipLinks = ({ chips }: { chips: TodayChip[] }) => {
-  const navigate = useNavigate();
-  if (chips.length === 0) return null;
-  return (
-    <>
-      {chips.map((c, i) => (
-        <span
-          key={`${c.scan ? "s" : "i"}-${i}`}
-          className="chip chip-link dashboard-chip"
-          role="link"
-          tabIndex={0}
-          title={c.title}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            navigate(c.href);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.stopPropagation();
-              navigate(c.href);
-            }
-          }}
-        >
-          {c.scan ? <LuScanLine aria-hidden="true" /> : <LuBox aria-hidden="true" />}
-          {c.label}
-        </span>
-      ))}
     </>
   );
 };
@@ -833,15 +720,15 @@ const TodayStats = ({
 
   const invLabel = t("in inventory", "im Inventar");
   const scanFallback = t("SCA scan", "SCA-Scan");
-  const vendorChips = (v: SlugBucket): TodayChip[] => {
-    const chips: TodayChip[] = [];
+  const vendorChips = (v: SlugBucket): CoverageChip[] => {
+    const chips: CoverageChip[] = [];
     if (v.inventoryMatch) chips.push({ label: invLabel, href: "/inventory" });
     const sid = scanVendorMap.get(v.slug);
     if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
     return chips;
   };
-  const productChips = (p: ProductBucket): TodayChip[] => {
-    const chips: TodayChip[] = [];
+  const productChips = (p: ProductBucket): CoverageChip[] => {
+    const chips: CoverageChip[] = [];
     if (p.inventoryMatch) chips.push({ label: invLabel, href: "/inventory" });
     const sid = scanProductMap.get(p.slug);
     if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
@@ -1040,7 +927,7 @@ const TodayListItem = ({
   label: string;
   sublabel?: string;
   count: number;
-  chips?: TodayChip[];
+  chips?: CoverageChip[];
 }) => {
   const highlighted = chips.length > 0;
   return (
@@ -1069,11 +956,6 @@ interface TodayCveTableProps {
   scanFallback: string;
   describeCve: CveDescriber;
 }
-
-// Chips of a group: one per place it matched, however many CVEs share it.
-const uniqueChips = (chips: TodayChip[]): TodayChip[] => [
-  ...new Map(chips.map((chip) => [`${chip.href}|${chip.label}`, chip])).values(),
-];
 
 const SeverityTally = ({ t, group }: { t: TranslateFn; group: CveGroup<TodayCve> }) => (
   <span className="dashboard-tally">
@@ -1148,7 +1030,7 @@ const LeadGroup = ({
 }: {
   t: TranslateFn;
   group: CveGroup<TodayCve>;
-  chips: TodayChip[];
+  chips: CoverageChip[];
   info: CveProductInfo;
 }) => {
   const [single] = group.cves;
@@ -1236,21 +1118,32 @@ const AttentionPanel = ({
     t("in inventory", "im Inventar"),
     t("SCA scan", "SCA-Scan"),
   );
-  const rows = useMemo(
-    () => attentionRows(data.items, (item) => chipsByCve.has(item.vulnId)),
-    [data.items, chipsByCve],
+  // A confirmed hit outranks a package that merely shares the product's name.
+  const stackRank = useCallback(
+    (item: AttentionItem) => (cveMatchesInventory(item) || scanCveScan[item.vulnId] ? 2 : chipsByCve.has(item.vulnId) ? 1 : 0),
+    [chipsByCve, scanCveScan],
   );
+  const rows = useMemo(() => attentionRows(data.items, stackRank), [data.items, stackRank]);
+  const quiet = useMemo(() => {
+    const findings = quietFindings(data.items, (item) => Boolean(scanCveScan[item.vulnId]));
+    return { total: findings.length, groups: groupCves(findings, (item) => productKey(item)) };
+  }, [data.items, scanCveScan]);
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && quiet.total === 0) return null;
 
   return (
     <Section
       className="dashboard-triage-panel"
       title={t("Needs attention", "Handlungsbedarf")}
       actions={
-        <Link to={attentionHref(data.since)} className="dashboard-section-link">
-          {t("KEV listings", "KEV-Einträge")}
-        </Link>
+        <>
+          <Link to={attentionHref(data.since)} className="dashboard-section-link">
+            {t("KEV listings", "KEV-Einträge")}
+          </Link>
+          <Link to="/cert" className="dashboard-section-link">
+            {t("CERT advisories", "CERT-Meldungen")}
+          </Link>
+        </>
       }
     >
       <p className="dashboard-triage-note">
@@ -1261,15 +1154,46 @@ const AttentionPanel = ({
       </p>
       <TodayListPreview
         t={t}
-        matched={rows.filter((row) => chipsByCve.has(row.vulnId)).length}
+        matched={0}
         preview={TRIAGE_PREVIEW}
         listClassName="dashboard-triage-list"
         rows={rows.map((item) => (
           <AttentionRow key={item.vulnId} t={t} item={item} chips={chipsByCve.get(item.vulnId) ?? []} />
         ))}
       />
+      {quiet.total > 0 && (
+        <details className="dashboard-list-more">
+          <summary className="dashboard-disclosure">
+            <LuChevronRight className="dashboard-disclosure-icon" aria-hidden="true" />
+            {t(
+              `${quiet.total} more in your scans, named by one CERT`,
+              `${quiet.total} weitere in Ihren Scans, von einem CERT genannt`,
+            )}
+          </summary>
+          <ul className="dashboard-triage-list">
+            {quiet.groups.map((group) => (
+              <LeadGroup
+                key={group.key}
+                t={t}
+                group={group}
+                chips={uniqueChips(group.cves.flatMap((cve) => chipsByCve.get(cve.vulnId) ?? []))}
+                info={attentionGroupInfo(group)}
+              />
+            ))}
+          </ul>
+        </details>
+      )}
     </Section>
   );
+};
+
+const attentionGroupInfo = (group: CveGroup<AttentionItem>): CveProductInfo => {
+  const products = uniqueFacets(group.cves.flatMap((cve) => cve.products));
+  const own = products.filter((product) => product.slug === group.key);
+  return {
+    products: own.length > 0 ? own : products,
+    vendors: uniqueFacets(group.cves.flatMap((cve) => cve.vendors)),
+  };
 };
 
 const CERTS_SHOWN = 3;
@@ -1297,7 +1221,7 @@ const CertLinks = ({ certs }: { certs: CertMention[] }) => (
   </span>
 );
 
-const AttentionRow = ({ t, item, chips }: { t: TranslateFn; item: AttentionItem; chips: TodayChip[] }) => (
+const AttentionRow = ({ t, item, chips }: { t: TranslateFn; item: AttentionItem; chips: CoverageChip[] }) => (
   <li className="dashboard-triage-row">
     <SeverityTag severity={item.severity}>{severityLabel(item.severity || "unknown", t)}</SeverityTag>
     <span className="dashboard-triage-main">
@@ -1414,7 +1338,7 @@ const TodayCveItem = ({
 }: {
   t: TranslateFn;
   cve: TodayCve;
-  chips?: TodayChip[];
+  chips?: CoverageChip[];
   product: CveProductInfo;
 }) => {
   const aliases = (cve.aliases ?? []).filter(

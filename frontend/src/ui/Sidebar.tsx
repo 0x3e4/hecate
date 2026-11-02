@@ -1,5 +1,6 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LuLayoutDashboard, LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart } from "react-icons/lu";
+import { LuLayoutDashboard, LuRadioTower,
+  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart } from "react-icons/lu";
 import { useEffect, useMemo, useState } from "react";
 
 import { version } from "../../package.json";
@@ -40,13 +41,16 @@ const buildNavSections = (
       { to: "/changelog", label: "Changelog", icon: LuHistory },
     ],
   },
-  ...(scaEnabled ? [{
+  {
     titleEn: "Security", titleDe: "Sicherheit",
     items: [
-      { to: "/scans", label: "SCA", icon: LuScanLine },
-      { to: "/malware-feed", label: "Malware feed", icon: LuShieldAlert },
+      ...(scaEnabled ? [
+        { to: "/scans", label: "SCA", icon: LuScanLine },
+        { to: "/malware-feed", label: "Malware feed", icon: LuShieldAlert },
+      ] : []),
+      { to: "/cert", label: "CERT", icon: LuRadioTower },
     ],
-  }] : []),
+  },
   {
     titleEn: "Environment", titleDe: "Umgebung",
     items: [
@@ -142,6 +146,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/inventory": "Inventar",
     "/scans": "SCA",
     "/malware-feed": "Malware-Feed",
+    "/cert": "CERT",
     "/system": "System",
     "/info/api": "API",
     "/info/cicd": "CI/CD",

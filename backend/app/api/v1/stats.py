@@ -19,6 +19,15 @@ async def get_today_summary(
     return await service.get_today_summary(date=date, tz=tz)
 
 
+@router.get("/cert-advisories")
+async def get_cert_overview(
+    days: int = Query(default=30, ge=1, le=90),
+    tz: str | None = None,
+    service: StatsService = Depends(get_stats_service),
+) -> dict:
+    return await service.get_cert_overview(days=days, tz=tz)
+
+
 @router.get("/attention")
 async def get_attention(
     days: int = Query(default=7, ge=1, le=30),

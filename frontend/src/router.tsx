@@ -14,6 +14,7 @@ import { InventoryPage } from "./views/InventoryPage";
 import { ScansPage } from "./views/ScansPage";
 import { ScanDetailPage } from "./views/ScanDetailPage";
 import { ScanTargetDetailPage } from "./views/ScanTargetDetailPage";
+import { CertPage } from "./views/CertPage";
 import { MalwareFeedPage } from "./views/MalwareFeedPage";
 import { CiCdInfoPage } from "./views/CiCdInfoPage";
 import { ApiInfoPage } from "./views/ApiInfoPage";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       { path: "scans/targets/*", element: <ScanTargetDetailPage /> },
       { path: "scans/:scanId", element: <ScanDetailPage /> },
       { path: "malware-feed", element: <MalwareFeedPage /> },
+      { path: "cert", element: <CertPage /> },
       { path: "blocklist", element: <Navigate to="/malware-feed" replace /> },
       { path: "audit", element: <AuditLogPage /> },
       { path: "stats", element: <StatsPage /> },
