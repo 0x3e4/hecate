@@ -28,7 +28,7 @@ channel.
 
 ```text
    Feeds ──► Normalise & index ──►  Search / Inventory match / SCA scan  ──► Act
- (9 sources)   (MongoDB + OpenSearch)        (rank by EPSS / KEV / malware)   (alerts, exports, AI)
+(10 sources)   (MongoDB + OpenSearch)        (rank by EPSS / KEV / malware)   (alerts, exports, AI)
 ```
 
 ## The navigation, at a glance

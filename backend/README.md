@@ -164,6 +164,7 @@ services/ingestion/
 ├── kev_pipeline.py + cisa_client.py
 ├── cpe_pipeline.py + cpe_client.py
 ├── circl_pipeline.py + circl_client.py
+├── cert_feed_pipeline.py + cert_feed_client.py
 ├── ghsa_pipeline.py + ghsa_client.py
 ├── osv_pipeline.py + osv_client.py
 ├── cwe_client.py
@@ -207,6 +208,9 @@ services/ingestion/
 | `environment_inventory_history` | (dict) | Append-only change log of inventory items, kept after an item is deleted |
 | `environment_inventory` | `InventoryItemDocument` | User-declared product / version inventory (deployment, environment, instance count, optional `eol_product` endoflife.date link) |
 | `malware_intel` | `MalwareIntelDocument` | Dynamic malware-intel entries; upsert key `(source, ecosystem, package_name, version)`; merged into the `/v1/malware/malware-feed` UI (currently unused, reserved for future threat-intel pipelines) |
+| `cert_advisories` | (dict) | CERT advisories and the CVEs they name; a dated signal, kept apart from the vulnerability documents |
+| `api_tokens` | (dict) | Scoped API tokens, stored as a SHA-256 hash and a display prefix |
+| `app_settings` | (dict) | Runtime-editable settings that override env defaults |
 
 ### OpenSearch index (`hecate-vulnerabilities`)
 
@@ -231,6 +235,7 @@ Full-text index with text fields for search and `.keyword` fields for aggregatio
 | CWE | MITRE REST API | 7 days | Weakness definitions |
 | CAPEC | MITRE XML download | 7 days | Attack patterns |
 | CIRCL | CIRCL REST API | 120 min | Additional enrichment |
+| CERT feeds | RSS / RDF / Atom of national CERTs | 120 min | Which CVEs the CERTs warn about |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
 | OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems; per-run cursor advancement against cap-hit data loss) |
 
@@ -305,6 +310,7 @@ poetry run python -m app.cli sync-kev       [--initial]
 poetry run python -m app.cli sync-cwe       [--initial]
 poetry run python -m app.cli sync-capec     [--initial]
 poetry run python -m app.cli sync-circl     [--limit N]
+poetry run python -m app.cli sync-cert
 poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
 poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
 poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs

@@ -16,7 +16,7 @@ You can search the product first. Hecate then fills in the most likely vendor, a
 
 ## Adding, editing and deleting entries
 
-The page is reached from the sidebar under the **Environment** group. It is laid out as stacked cards: a short summary at the top (with chips showing how many items and total instances you have declared), **Configuration management** — a compact list, one row per entry — and **Flagged CVEs**, a single table rolling up every distinct CVE that affects any of your entries.
+The page is reached from the sidebar under the **Environment** group. It has a short summary at the top (with chips showing how many items and total instances you have declared), **Configuration management** — a compact list, one row per entry — and **Flagged CVEs**, a single table rolling up every distinct CVE that affects any of your entries.
 
 To create an entry, click the **Add** button in the top-right of the **Configuration management** header; a dialog opens with the form. Fill it in and press **Create**. To change an existing entry, click **Edit** on its card; the same dialog re-populates with the current values, and **Save** writes the changes back. Close the dialog with **Cancel**, the **✕** in its corner, the **Escape** key, or by clicking outside it. **Delete** removes an entry (you are asked to confirm first). Because the version is part of the match, the normal way to keep the inventory accurate is simply to edit the version field whenever you upgrade — there is no separate "mark as fixed" step.
 
@@ -38,7 +38,7 @@ The form fields are:
 Picking the vendor and product from the catalogue rather than typing them by hand matters: it ensures the entry uses the same normalised vendor/product identifiers Hecate stores on vulnerability records, which is what lets the matcher line your entry up against the right advisories.
 
 !!! tip
-    Use the search box above the inventory grid to filter the cards by any field — name, vendor, product, version, environment, owner or notes. It is a quick local filter, so it responds as you type.
+    Use the search box above the inventory list to filter the rows by any field — name, vendor, product, version, environment, owner or notes. It is a quick local filter, so it responds as you type.
 
 ## How matching works
 
@@ -70,6 +70,8 @@ A match is only as good as the version it was checked against, so there are thre
 
 Every change is logged with the time, the old and new value, and how it was made: the web interface, an API report (with the name the pipeline gave), MCP (with the identity), or a backup restore. The expanded row shows the history of that item, and **Recent changes** at the bottom of the page shows all items, including deleted ones. Saving a form without changing anything leaves no entry.
 
+The same log is available over the API: `GET /api/v1/inventory/history` returns recent changes across all items and `GET /api/v1/inventory/{id}/history` one item's log, both with `limit` and `offset`.
+
 ## Where matches show up
 
 ### On the inventory row
@@ -78,7 +80,7 @@ Each row names the severity of its worst current match, so a glance down the lis
 
 ### In the Flagged CVEs table
 
-Below the grid, the **Flagged CVEs** table is a single roll-up of every distinct CVE affecting *any* of your entries, sorted by severity then CVSS. Each row links to the vulnerability detail page and shows severity, CVSS, EPSS, the publication date, a **KEV** chip for known-exploited issues, and which inventory items it affects (name and version). It's the fastest way to see your whole exposure at once without expanding each card.
+Below the list, the **Flagged CVEs** table is a single roll-up of every distinct CVE affecting *any* of your entries, sorted by severity then CVSS. Each row links to the vulnerability detail page and shows severity, CVSS, EPSS, the publication date, a **KEV** chip for known-exploited issues, and which inventory items it affects (name and version). It's the fastest way to see your whole exposure at once without expanding each card.
 
 ### On vulnerability detail pages
 

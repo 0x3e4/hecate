@@ -53,7 +53,7 @@ Hecate clones the repository and runs the source-capable scanners, which additio
 analysis (`semgrep`, `devskim`) and secret detection (`trufflehog`). When the repository is private
 or you want to scan local working-tree code that is not yet pushed, attach a base64-encoded ZIP of
 the source as `sourceArchiveBase64` instead of relying on a clone (`.git` is skipped on extraction, so pass `commitSha` yourself); the archive must be a valid ZIP
-and at most 50 MB.
+and at most 50 MB, with up to 200,000 members and 4 GiB once extracted (`SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES`).
 
 A handful of optional metadata fields make the resulting scan traceable back to the build that
 produced it: `commitSha`, `branch`, `pipelineUrl`, and `source` (set this to `ci_cd` so the scan is

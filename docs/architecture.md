@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hecate is a vulnerability management platform that aggregates data from nine external sources,
+Hecate is a vulnerability management platform that aggregates data from ten external sources,
 normalises it into a single schema, and exposes it through a REST API and a React frontend. On top
 of that intelligence layer it actively scans container images and source repositories for
 vulnerabilities, secrets, misconfigurations and malicious packages (SCA).
@@ -17,7 +17,7 @@ orchestrator: it runs the ingestion pipelines, owns persistence, performs AI cal
 to both the web UI and external clients. Persistence is split deliberately — MongoDB holds the
 normalised documents and all job state, while OpenSearch is the performant full-text and DQL query
 index that the search-heavy pages read from. Raw intelligence arrives from EUVD, NVD, CISA KEV, CPE,
-CWE, CAPEC, CIRCL, GHSA and OSV, with optional AI providers (OpenAI, Anthropic, Gemini, or any
+CWE, CAPEC, CIRCL, GHSA, OSV and the CERT advisory feeds, with optional AI providers (OpenAI, Anthropic, Gemini, or any
 OpenAI-compatible endpoint such as Ollama, vLLM, OpenRouter, LocalAI or LM Studio) layered on for
 analysis. A separate scanner sidecar — bundling Trivy, Grype, Syft, OSV Scanner, the in-house Hecate
 Analyzer, Dockle, Dive, Semgrep, TruffleHog and DevSkim — executes the active SCA scans.
@@ -96,7 +96,7 @@ scoped to explicit origins via `CORS_ORIGINS`.
 | `assets` | Asset catalogue (vendors, products, versions). |
 | `stats` | Statistics aggregations. |
 | `backup` | Streaming export / import. |
-| `sync` | Manual sync triggers for all nine data sources. |
+| `sync` | Manual sync triggers for all ten data sources. |
 | `saved_searches` | Saved-search CRUD. |
 | `audit` | Ingestion logs. |
 | `changelog` | Recent changes. |
@@ -208,6 +208,7 @@ inserted findings only, deduplicated by a partial unique index.
 | CWE | MITRE REST API | 7 days | Weakness definitions |
 | CAPEC | MITRE XML download | 7 days | Attack patterns |
 | CIRCL | CIRCL REST API | 120 min | Additional enrichment |
+| CERT feeds | RSS / RDF / Atom of national CERTs | 120 min | Which CVEs the CERTs warn about (`cert_advisories`, for the dashboard signal; never writes vulnerability documents) |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories (hybrid: enriches CVEs + creates GHSA-only entries) |
 | OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems) |
 
@@ -288,7 +289,7 @@ overdue without aborting them.
 
 ### Persistence
 
-#### MongoDB (22 collections)
+#### MongoDB (26 collections)
 
 | Collection | Description |
 | --- | --- |
@@ -296,6 +297,7 @@ overdue without aborting them.
 | `cwe_catalog` | CWE weaknesses (7-day TTL cache) |
 | `capec_catalog` | CAPEC attack patterns (7-day TTL cache) |
 | `known_exploited_vulnerabilities` | CISA KEV entries |
+| `cert_advisories` | CERT advisories and the CVEs they name, for the dashboard signal |
 | `cpe_catalog` | CPE entries (vendor, product, version) |
 | `asset_vendors` | Vendors with slug and product count |
 | `asset_products` | Products with vendor mapping |
@@ -312,6 +314,8 @@ overdue without aborting them.
 | `notification_channels` | Apprise channels (URL + tag) |
 | `notification_templates` | Title / body templates per event type |
 | `license_policies` | License policies (allowed, denied, review-required) |
+| `api_tokens` | Scoped API tokens, stored as a SHA-256 hash and a display prefix |
+| `app_settings` | Runtime-editable settings that override env defaults |
 | `environment_inventory_history` | Append-only change log of inventory items, kept after an item is deleted. |
 | `environment_inventory` | User-declared product / version inventory with deployment / environment / instance count |
 | `malware_intel` | Dynamic malware-intel entries (reserved for future threat-intel pipelines) |
@@ -516,6 +520,7 @@ poetry run python -m app.cli sync-kev       [--initial]
 poetry run python -m app.cli sync-cwe       [--initial]
 poetry run python -m app.cli sync-capec     [--initial]
 poetry run python -m app.cli sync-circl     [--limit N]
+poetry run python -m app.cli sync-cert
 poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
 poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
 poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs

@@ -44,6 +44,10 @@ searches, data sync/resync, backup-restore, manual refresh, and AI writes. Excep
 self-authorize: `POST /api/v1/scans` (CI key) and `POST /api/v1/status/system-auth` (the password
 check itself).
 
+`POST /api/v1/vulnerabilities/lookup` is a read until it would write: finding a stored record stays
+public, but fetching a miss from upstream needs the header. An anonymous lookup with the default
+`autoSync` therefore answers `401` on a miss. Pass `autoSync: false` for a plain read.
+
 The web UI persists the admin password after you unlock the **System** page and automatically
 attaches the header to subsequent writes — so an admin just unlocks once.
 

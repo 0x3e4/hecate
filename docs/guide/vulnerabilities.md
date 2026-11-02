@@ -83,11 +83,12 @@ attack requirements and the v4 user-interaction values.
 
 ### Results, page size and sort
 
-Each result is a card showing its IDs, severity, summary and affected vendors/products, with a
-running **Found entries** count above the table. Exploited entries are flagged with a red accent so
+Each result is a row showing its severity, ID, title, product, scores and source, with a running
+**Found entries** count above the table. In the Product column, the product, vendor and version each
+filter the list in one click, and a row folds open for its details. Exploited entries are marked so
 they stand out. A page-size selector lets you show **25, 50, 100 or 200** entries per page, and
 pagination walks the rest. A copy icon next to the count copies the whole visible page to the
-clipboard as plain text, and each card carries its own copy button for a single entry's details.
+clipboard as plain text, and each row carries its own copy button for a single entry's details.
 
 !!! note "The list refreshes itself"
     When an ingestion publishes new vulnerabilities, the list picks them up over Server-Sent Events

@@ -100,7 +100,9 @@ export sits alongside them, writing your finding annotations out as a CycloneDX 
 These tabs separate the non-CVE findings into purpose-built views. **SAST** collects static-analysis results from
 Semgrep and DevSkim — each card shows the CWE and OWASP classifications, the offending code snippet and reference
 links. **Secrets** lists what TruffleHog found in a source tree, with a badge distinguishing verified secrets
-(a live credential was confirmed) from unverified candidates. **Best Practices** surfaces Dockle's CIS Docker
+(a live credential was confirmed) from unverified candidates. Findings are public, so a secret of 20
+or more characters shows only its last four, anything shorter shows `***`; findings from before 2.0
+keep the old form until the next scan. **Best Practices** surfaces Dockle's CIS Docker
 Benchmark checks for container images. None of these count toward the vulnerability severity total — they are
 reported in their own tabs with their own breakdowns.
 
@@ -151,7 +153,7 @@ reason.
 ![Target overview](../img/hecate-target-detail.png)
 
 Each registered target also has its own overview page at `/scans/targets/<target-url>`, reachable by clicking a target
-card on the SCA Scans page. The page is deep-linkable even with hand-typed URLs: pasting the target's repository or
+row on the SCA Scans page. The page is deep-linkable even with hand-typed URLs: pasting the target's repository or
 image URL after `/scans/targets/` works un-encoded and without the `https://` scheme — the backend resolves such
 variants to the registered target automatically. Where the scan-detail page is about one run, the target page is about the asset over time.
 It shows the target's metadata (type, application group, registry, auto-scan state and the configured scanners), the

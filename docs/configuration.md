@@ -198,6 +198,10 @@ Each source shares the same knobs (`*_BASE_URL`, `*_TIMEOUT_SECONDS`, `*_RATE_LI
 | `CWE_BASE_URL` | `https://cwe-api.mitre.org/api/v1` | MITRE CWE API. |
 | `CAPEC_XML_URL` | MITRE CAPEC XML | MITRE CAPEC download. |
 | `CIRCL_BASE_URL` | `https://vulnerability.circl.lu/api` | CIRCL CVE + EPSS API. |
+| `CERT_FEEDS_ENABLED` | `true` | Read the CERT advisory feeds behind the dashboard's *Needs attention* panel. |
+| `CERT_FEEDS_EXTRA` | (unset) | Feeds on top of the built-in list, as `Name\|URL` pairs separated by commas, e.g. `CERT.at\|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml`. Any RSS, RDF or Atom feed; a built-in name replaces that entry. See [CERT feeds](guide/dashboard.md#cert-feeds). |
+| `CERT_FEEDS` | CERT-FR, CERT-EU, NCSC-NL, CCCS, JPCERT/CC | Replaces the built-in list, same format. |
+| `CERT_FEEDS_MAX_PAGE_FETCHES_PER_RUN` | `50` | Per feed and run: advisory pages read for items that name no CVE in the feed. |
 | `GHSA_TOKEN` 🔑 | (unset) | GitHub PAT (60 → 5000 req/h). |
 | `OSV_BASE_URL` | `https://api.osv.dev/v1` | OSV.dev API. |
 | `OSV_INCREMENTAL_LOOKBACK_HOURS` | `48` | Incremental OSV syncs re-read `modified_id.csv` from this many hours before the cursor, because OSV exports a record hours after its upstream `modified` timestamp. Rows already processed with the same timestamp are skipped. `0` disables. |
@@ -225,7 +229,7 @@ Annotates [Environment Inventory](guide/inventory.md) items with support / end-o
 | --- | --- | --- |
 | `SCHEDULER_ENABLED` | `true` | Master toggle for all periodic ingestion jobs. |
 | `SCHEDULER_TIMEZONE` | `UTC` | IANA timezone for cron expressions. |
-| `SCHEDULER_<SOURCE>_INTERVAL_MINUTES` | EUVD 60, NVD 10, KEV 60, CPE 1440, CIRCL/GHSA/OSV 120 | Incremental sync interval per source. |
+| `SCHEDULER_<SOURCE>_INTERVAL_MINUTES` | EUVD 60, NVD 10, KEV 60, CPE 1440, CIRCL/GHSA/OSV/CERT_FEEDS 120 | Incremental sync interval per source. |
 | `SCHEDULER_<SOURCE>_FULL_SYNC_*` | enabled; Sun/Wed/Fri 02:00 | Weekly full-sync verification for EUVD/NVD/OSV (`*_ENABLED`, `*_CRON_HOUR`, `*_CRON_DAY_OF_WEEK`). |
 | `SCHEDULER_CWE_CRON_*` / `SCHEDULER_CAPEC_CRON_*` | Mon/Tue 03:00 | Wall-clock cron for the CWE / CAPEC catalogs. |
 | `SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` | `1.5` | Startup stale-catalog catch-up threshold (× the interval). |

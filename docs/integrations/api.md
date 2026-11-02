@@ -45,12 +45,20 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `GET` | `/api/v1/vulnerabilities` | Search vulnerabilities with DQL, pagination, and sorting |
 | `POST` | `/api/v1/vulnerabilities` | Search via a JSON body (keyword, DQL, or regex query) |
 | `GET` | `/api/v1/vulnerabilities/{id}` | Full details for a CVE / GHSA / OSV ID |
+| `POST` | `/api/v1/vulnerabilities/lookup` | Find one record by ID; fetching a miss from upstream needs `X-System-Password` when it is set |
 | `GET` | `/api/v1/stats` | Aggregated database and severity statistics |
+| `GET` | `/api/v1/stats/attention` | CVEs added to CISA KEV or named by CERT feeds in the last `days` days (default 7, max 30), with inventory matches |
 | `POST` | `/api/v1/scans` | Submit a scan (the CI/CD entry point, gated by `X-API-Key`) |
 | `GET` | `/api/v1/scans/{scanId}` | Scan status and severity summary |
 | `GET` | `/api/v1/scans/{scanId}/findings` | List the findings of a scan |
 | `GET` | `/api/v1/scans/{scanId}/sbom` | List the SBOM components of a scan |
 | `GET` | `/api/v1/scans/{scanId}/sbom/export` | Export the SBOM as CycloneDX or SPDX |
+| `POST` | `/api/v1/inventory/report` | Report deployed versions (`inventory:report` token or the admin password) |
+| `GET` | `/api/v1/inventory/history` | Recent inventory changes, deleted items included |
+| `GET` | `/api/v1/inventory/{id}/history` | The change log of one inventory item |
+| `GET` | `/api/v1/assets/vendors`, `/api/v1/assets/products` | Catalog search ranked by relevance; the first 25 hits carry `vulnerabilityCount` |
+| `GET` `POST` `DELETE` | `/api/v1/api-tokens` | List, create and revoke API tokens. Always needs `SYSTEM_PASSWORD`, also to read |
+| `POST` | `/api/v1/sync/trigger/{source}` | Start a sync, for example `nvd`, `kev` or `cert-feeds` |
 | `GET` | `/api/v1/changelog` | The vulnerability changelog |
 | `GET` | `/api/v1/audit` | The audit log |
 | `GET` | `/api/v1/events` | A Server-Sent Events stream of live job and scan progress |
@@ -60,6 +68,10 @@ Searching is the one place where the same resource is exposed under two methods.
 A `dqlQuery` may include `affectedVersion:<version>`, which matches advisories whose declared version ranges *cover* that version rather than only those naming it verbatim — the API-side equivalent of "is the release I run affected?". Combine it with `vendorSlugs:` / `productSlugs:` to scope the answer to one product. See [Searching by the version you run](../guide/search.md#searching-by-the-version-you-run).
 
 The `GET /api/v1/events` stream is how the UI stays live without polling. Subscribe to it and you receive events as ingestion runs, scans complete, and AI analyses finish — the same signals that refresh the browser refresh your own integration.
+
+## Limits
+
+`POST /api/v1/cwe/bulk` and `POST /api/v1/capec/bulk` take at most 500 IDs. An SBOM file upload is capped at `SCA_SOURCE_ARCHIVE_MAX_BYTES` and answers `413` above it. A lookup identifier is limited to 128 characters of a fixed pattern and answers `422` otherwise. A version report takes up to 200 entries. After ten failed secrets from one client within a minute, that client's route answers `429` for five minutes.
 
 ## Response format and conventions
 

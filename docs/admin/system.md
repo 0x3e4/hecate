@@ -1,7 +1,7 @@
 # System Settings
 
 The System page (`/system`) is where you administer the instance rather than investigate a single CVE.
-It is one card with five tabs — **General**, **Access Control**, **Notifications**, **Data**, and
+It has five tabs — **General**, **Access Control**, **Notifications**, **Data**, and
 **Policies** — covering everything from the interface language to the health of the nine ingestion
 feeds. If you only ever touch one administrative screen in Hecate, this is it.
 
@@ -24,7 +24,7 @@ linked in the last column.
 | **General** | Set the UI language and display timezone, cap the AI batch size, check service health, send a test notification, and back up / restore data. | this page |
 | **Access Control** | Create and revoke API tokens, and set or clear a per-target write password for each scan target. | [Security & Access Control](../security-access-control.md) |
 | **Notifications** | Manage Apprise channels, notification rules, and message templates. | [Notifications](../integrations/notifications.md) |
-| **Data** | Watch the sync status of all nine sources, trigger syncs by hand, re-sync or delete specific vulnerabilities, and manage saved searches. | this page |
+| **Data** | Watch the sync status of all ten sources, trigger syncs by hand, re-sync or delete specific vulnerabilities, and manage saved searches. | this page |
 | **Policies** | Define SPDX license policies that are evaluated after every scan. | [License Compliance](../sca/licenses.md) |
 
 ## General
@@ -40,7 +40,7 @@ list. Both settings persist locally, so they follow you per browser rather than 
 instance. A "Reset to browser default" button clears an explicit timezone choice.
 
 !!! note
-    Timezone matters for more than cosmetics. The dashboard's "Today" card and the calendar-day
+    Timezone matters for more than cosmetics. The dashboard's day view and the calendar-day
     drill-downs compute their day boundaries against the timezone you set here, so picking the right
     zone keeps "today" aligned with your local midnight rather than UTC.
 
@@ -75,7 +75,7 @@ letting one team manage their own target without handing out the admin password.
 
 ![System page — Access Control tab](../img/hecate-system-access.png)
 
-The full model — how the two layers interact, what the `🔒` badge means on a target card, and the
+The full model — how the two layers interact, what the `🔒` badge means on a target, and the
 environment variables involved — lives in [Security & Access Control](../security-access-control.md).
 
 ## Notifications
@@ -103,7 +103,7 @@ records when something looks wrong.
 ### Sync status
 
 The **Sync Status** table lists every ingestion job — the regular and initial-sync variants of EUVD,
-NVD, CPE, CISA KEV, CWE, CAPEC, CIRCL, GHSA, and OSV — with one row each. For every job you see its
+NVD, CPE, CISA KEV, CWE, CAPEC, CIRCL, CERT feeds, GHSA, and OSV — with one row each. For every job you see its
 status (Idle, Running, Completed, or Failed, colour-coded), when it last started and finished, how
 long it took, and when it is next scheduled to run. Initial syncs show "Only on startup" in the
 *Next Run* column because they have no recurring schedule. The table auto-refreshes every few seconds
