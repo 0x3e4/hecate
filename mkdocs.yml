@@ -1,4 +1,4 @@
-site_name: Hecate
+site_name: Hecate Cyber Defense - Documentation
 site_description: Vulnerability Management & SCA platform — documentation
 docs_dir: docs
 # Where the site is served. navigation.instant only works with it set; the

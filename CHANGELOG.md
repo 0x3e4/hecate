@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Docs: the site is titled "Hecate Cyber Defense - Documentation" and uses the app's colours (warm grey paper, gold accent) instead of Material's blue-grey, and a home or overview card opens its page from anywhere on the card, not only from its link.
 - Inventory and the scan target page ask in a dialog before deleting an item or a target, instead of the browser's confirmation prompt.
 
 ### Fixed

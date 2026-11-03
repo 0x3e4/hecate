@@ -37,82 +37,112 @@
   --md-code-font: "IBM Plex Mono";
 }
 
-/* Hecate docs theme — match the app's gold + near-black/grey palette.
-   App tokens: background #090b10, surfaces #05070d/#080a12, gold accent #ffd43b. */
+/* Hecate docs theme: the app's palette, taken from frontend/src/tokens.css
+   (warm near-black paper, gold accent). Keep the two in step. */
 
 /* Two attributes, like Material's own slate + black rule, which otherwise
    wins and turns links blue. */
 [data-md-color-scheme="slate"][data-md-color-primary="black"],
 [data-md-color-scheme="slate"] {
-  /* Header / primary: dark grey bar with light text (the app header is dark, not gold). */
-  --md-primary-fg-color: #0b0d14;
-  --md-primary-fg-color--light: #14171f;
-  --md-primary-fg-color--dark: #05070d;
-  --md-primary-bg-color: rgba(255, 255, 255, 0.92);
-  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+  /* Slate derives its greys from this HSL hue; 232 is Material's blue, 40 the
+     app's warm grey (oklch hue 85). */
+  --md-hue: 40;
 
-  /* Accent: Hecate gold — used for links on hover, active nav, focus. */
-  --md-accent-fg-color: #ffd43b;
-  --md-accent-fg-color--transparent: rgba(255, 212, 59, 0.1);
+  /* Header bar: the app's raised paper, not gold. */
+  --md-primary-fg-color: oklch(19% 0.01 85);          /* --color-paper-2 */
+  --md-primary-fg-color--light: oklch(23% 0.011 85);  /* --color-paper-3 */
+  --md-primary-fg-color--dark: oklch(15.5% 0.009 85); /* --color-paper */
+  --md-primary-bg-color: oklch(93% 0.01 85);          /* --color-ink */
+  --md-primary-bg-color--light: oklch(81% 0.012 85);  /* --color-ink-2 */
 
-  /* Surfaces. */
-  --md-default-bg-color: #090b10;
-  --md-default-fg-color: rgba(255, 255, 255, 0.9);
-  --md-default-fg-color--light: rgba(255, 255, 255, 0.72);
-  --md-default-fg-color--lighter: rgba(255, 255, 255, 0.45);
-  --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
+  /* Accent: active nav, hover, focus. */
+  --md-accent-fg-color: oklch(75.7% 0.096 88.5);      /* --color-accent */
+  --md-accent-fg-color--transparent: oklch(75.7% 0.096 88.5 / 0.12);
+  --md-accent-bg-color: oklch(19% 0.02 85);           /* --color-accent-ink */
 
-  /* Code blocks. */
-  --md-code-bg-color: #05070d;
-  --md-code-fg-color: rgba(255, 255, 255, 0.85);
+  /* Surfaces and text. */
+  --md-default-bg-color: oklch(15.5% 0.009 85);       /* --color-paper */
+  --md-default-fg-color: oklch(93% 0.01 85);          /* --color-ink */
+  --md-default-fg-color--light: oklch(81% 0.012 85);  /* --color-ink-2 */
+  --md-default-fg-color--lighter: oklch(68% 0.014 85);/* --color-muted */
+  --md-default-fg-color--lightest: oklch(30% 0.012 85);/* --color-rule */
 
-  /* Links: gold. */
-  --md-typeset-a-color: #ffd43b;
+  /* Code. */
+  --md-code-bg-color: oklch(19% 0.01 85);             /* --color-paper-2 */
+  --md-code-fg-color: oklch(81% 0.012 85);
+
+  /* Links. */
+  --md-typeset-a-color: oklch(84% 0.09 90);           /* --color-link */
 
   /* Footer. */
-  --md-footer-bg-color: #05070d;
-  --md-footer-bg-color--dark: #05070d;
+  --md-footer-bg-color: oklch(19% 0.01 85);
+  --md-footer-bg-color--dark: oklch(15.5% 0.009 85);
+  --md-footer-fg-color: oklch(93% 0.01 85);
+  --md-footer-fg-color--light: oklch(81% 0.012 85);
+  --md-footer-fg-color--lighter: oklch(68% 0.014 85);
 }
 
-/* Slightly raised cards/admonitions to echo the app's translucent panels. */
+/* Panels like the app's: paper-2 with a hairline rule. */
 [data-md-color-scheme="slate"] .md-typeset .admonition,
 [data-md-color-scheme="slate"] .md-typeset details {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: oklch(19% 0.01 85);
+  border-color: oklch(30% 0.012 85);
 }
 
-/* Gold underline on the active nav item and table headers, matching the UI tabs. */
 [data-md-color-scheme="slate"] .md-nav__link--active {
-  color: #ffd43b;
+  color: oklch(75.7% 0.096 88.5);
 }
 
 [data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
-  background: rgba(255, 255, 255, 0.03);
+  background: oklch(19% 0.01 85);
 }
 
-/* Screenshots: rounded, bordered, subtle shadow so they sit on the dark bg cleanly. */
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) {
+  border-color: oklch(30% 0.012 85);
+}
+
+/* Screenshots: a hairline border so they sit on the dark page. */
 .md-typeset img.screenshot,
 .md-typeset p > img {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  border: 1px solid oklch(30% 0.012 85);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px oklch(8% 0.01 85 / 0.5);
 }
 
-/* Grid cards (home/overview): translucent panels with a gold hover edge, echoing the app. */
+/* Grid cards (home/overview), like the app's panels. */
 [data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
 [data-md-color-scheme="slate"] .md-typeset .grid > .card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  position: relative;
+  background: oklch(19% 0.01 85);
+  border: 1px solid oklch(30% 0.012 85);
+  border-radius: 6px;
+  transition: border-color 120ms ease, background-color 120ms ease;
 }
 
-[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover {
-  border-color: rgba(255, 212, 59, 0.55);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:focus-within {
+  border-color: oklch(75.7% 0.096 88.5);
+  background: oklch(23% 0.011 85);
 }
 
-/* Card icons inherit the gold accent so they read as part of the brand. */
+/* The whole card opens its link: the card's last link stretches over it. */
+.md-typeset .grid.cards > ul > li a:last-of-type::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* The card shows the focus, so the stretched link does not need its own ring. */
+.md-typeset .grid.cards > ul > li a:last-of-type:focus-visible {
+  outline: none;
+}
+
+.md-typeset .grid.cards > ul > li:has(a:focus-visible) {
+  outline: 2px solid oklch(82% 0.13 90); /* --color-focus */
+  outline-offset: 2px;
+}
+
 [data-md-color-scheme="slate"] .md-typeset .grid.cards .twemoji svg {
-  fill: #ffd43b;
+  fill: oklch(75.7% 0.096 88.5);
 }
