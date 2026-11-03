@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# docker build -f docs/Dockerfile -t hecate-docs .   (from the repo root:
+# mkdocs.yml lives there, since MkDocs refuses a config inside its docs_dir)
+# The documentation site, served by nginx; nothing on it loads from elsewhere.
+# Material for MkDocs reaches its end of life in May 2027; Zensical, its
+# successor, reads the same mkdocs.yml.
+FROM python:3.14-slim AS build
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    NO_MKDOCS_2_WARNING=1
+RUN pip install --no-cache-dir poetry==2.3.3
+WORKDIR /src
+# The same lock as a local `poetry run mkdocs serve` in docs/.
+COPY docs/pyproject.toml docs/poetry.lock ./docs/
+RUN cd docs && poetry install --no-root
+COPY mkdocs.yml ./
+COPY docs ./docs
+# Where the site is served, for navigation.instant and the 404 page under a
+# path. Defaults to https://docs.hecate.pw/ (mkdocs.yml); another one with
+# --build-arg DOCS_SITE_URL=https://docs.example.com/
+ARG DOCS_SITE_URL
+# --strict fails the build on broken links and pages missing from the nav.
+RUN mkdocs build --strict --site-dir /site
+
+FROM nginx:1.30.6-alpine
+COPY docs/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /site /usr/share/nginx/html

@@ -1,9 +1,21 @@
 site_name: Hecate
 site_description: Vulnerability Management & SCA platform — documentation
 docs_dir: docs
+# Where the site is served. navigation.instant only works with it set; the
+# docs image takes another one with --build-arg DOCS_SITE_URL=...
+site_url: !ENV [DOCS_SITE_URL, "https://docs.hecate.pw/"]
+# The docs image's build files live in docs/ too, but are not part of the site.
+exclude_docs: |
+  /Dockerfile
+  /Dockerfile.dockerignore
+  /nginx.conf
+  /pyproject.toml
+  /poetry.lock
 
 theme:
   name: material
+  # No Google Fonts: IBM Plex, the app's typeface, ships in assets/fonts.
+  font: false
   logo: assets/logo.png
   favicon: assets/logo.png
   # Dark-only to match the app (gold + grey). Exact colors come from assets/extra.css;

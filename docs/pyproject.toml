@@ -1,0 +1,13 @@
+# Documentation build dependencies, for `poetry run mkdocs serve` here and for
+# the docs image (docs/Dockerfile installs from the same poetry.lock).
+[tool.poetry]
+name = "hecate-docs"
+version = "2.0.0"
+description = "Documentation site for the Hecate cyber defense platform."
+authors = ["Hecate Team <info@hecate.pw>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.14"
+# pymdown-extensions comes with Material.
+mkdocs-material = "9.8.0"

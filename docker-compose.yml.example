@@ -78,6 +78,33 @@ services:
       - grype-db:/grype-db                                      # persistent grype DB cache
     #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro    # custom CA (optional)
 
+  # Documentation site (optional): docker compose --profile docs up -d docs
+  # Static nginx, nothing on it loads from elsewhere. To build it yourself:
+  # docker build -f docs/Dockerfile --build-arg DOCS_SITE_URL=https://docs.example.com/ -t ghcr.io/0x3e4/hecate-docs:latest .
+  docs:
+    image: ghcr.io/0x3e4/hecate-docs:latest
+    restart: unless-stopped
+    profiles: [docs]
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:            # nginx switches to its own user at start
+      - CHOWN
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+    ports:
+      - "127.0.0.1:8001:80"   # 8000 is the backend
+
   apprise:
     image: caronc/apprise:latest
     restart: unless-stopped

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Self-hosted documentation: `docs/Dockerfile` builds the MkDocs site into an nginx image (`ghcr.io/0x3e4/hecate-docs`, compose profile `docs`, port `127.0.0.1:8001`). IBM Plex, the app's typeface, ships with the site instead of Google Fonts, and a Content-Security-Policy keeps every page on its own host. The build runs `mkdocs build --strict` in CI. `site_url` is `https://docs.hecate.pw/` and can be changed with `--build-arg DOCS_SITE_URL=...`; instant navigation needs it to match the host serving the site. Build dependencies are locked with Poetry (`docs/pyproject.toml`, `docs/poetry.lock`), for the image and for a local `mkdocs serve` alike; `docs/requirements.txt` is gone. Read the Docs is no longer used and `.readthedocs.yaml` is gone.
 - SCA scans: the Scans tab filters by status (pending, running, completed, failed, cancelled).
 - `SCA_SCAN_MAX_RUNTIME_SECONDS` (default `0`): how long a running scan may take before it is cancelled. `0` derives the limit per scan from the resource wait, the clone timeout and the slowest selected scanner's timeout, about 90 minutes with the defaults.
 

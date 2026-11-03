@@ -635,7 +635,7 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 
 ## Further reading
 
-- [Documentation site](https://docs.hecate.pw) (hosted on Read the Docs)
+- [Documentation site](https://docs.hecate.pw), self-hosted: `docs/Dockerfile` builds it into an nginx image (`ghcr.io/0x3e4/hecate-docs`, compose profile `docs`) that loads nothing from other hosts. Locally from the repo root: `poetry -P docs install`, then `poetry -P docs run mkdocs serve`
 - [Backend details](backend/README.md)
 - [Frontend details](frontend/README.md)
 - [Scanner sidecar](scanner/README.md)
