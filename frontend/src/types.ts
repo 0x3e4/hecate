@@ -476,6 +476,7 @@ export interface InventoryHistoryEntry {
   source: "web" | "report" | "mcp" | "restore";
   actor?: string | null;
   changes: InventoryHistoryChange[];
+  note?: string | null;
   createdAt: string;
 }
 

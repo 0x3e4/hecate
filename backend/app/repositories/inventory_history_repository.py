@@ -70,6 +70,7 @@ class InventoryHistoryRepository:
         source: str,
         changes: list[dict[str, Any]] | None = None,
         actor: str | None = None,
+        note: str | None = None,
     ) -> dict[str, Any]:
         entry = {
             "_id": str(uuid4()),
@@ -79,6 +80,7 @@ class InventoryHistoryRepository:
             "source": source,
             "actor": actor,
             "changes": changes or [],
+            "note": note,
             "created_at": datetime.now(tz=UTC),
         }
         await self.collection.insert_one(entry)

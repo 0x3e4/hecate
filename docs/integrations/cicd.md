@@ -166,12 +166,12 @@ curl -sS -X POST "${HECATE_URL}/api/v1/inventory/report" \
   -d '{
     "reportedBy": "deploy-prod",
     "items": [
-      { "productSlug": "nginx", "environment": "prod", "version": "1.30.1" }
+      { "productSlug": "nginx", "environment": "prod", "version": "1.30.1", "note": "deploy #812, web-01" }
     ]
   }'
 ```
 
-Each entry has to identify exactly one existing item, by `itemId` or by any combination of `productSlug`, `vendorSlug`, `environment` and `name`. Up to 200 entries fit in one request, and the response answers per entry:
+Each entry has to identify exactly one existing item, by `itemId` or by any combination of `productSlug`, `vendorSlug`, `environment` and `name`. An optional `note` (up to 500 characters, e.g. the pipeline run or ticket) is stored with the change in the item's history. Up to 200 entries fit in one request, and the response answers per entry:
 
 | Status | Meaning |
 | --- | --- |

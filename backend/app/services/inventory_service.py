@@ -93,6 +93,12 @@ def _map_item(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _clean_note(value: str | None) -> str | None:
+    """A change note as stored: trimmed, and None when blank."""
+    value = (value or "").strip()
+    return value or None
+
+
 def _map_history_entry(doc: dict[str, Any]) -> InventoryHistoryEntry:
     return InventoryHistoryEntry.model_validate(
         {
@@ -103,6 +109,7 @@ def _map_history_entry(doc: dict[str, Any]) -> InventoryHistoryEntry:
             "source": doc.get("source", "web"),
             "actor": doc.get("actor"),
             "changes": doc.get("changes") or [],
+            "note": doc.get("note"),
             "createdAt": doc.get("created_at"),
         }
     )
@@ -235,6 +242,7 @@ class InventoryService:
             source=source,
             actor=actor,
             changes=[{"field": "version", "old": None, "new": data["version"]}],
+            note=_clean_note(payload.change_note),
         )
         return InventoryItemResponse.model_validate(_map_item(doc))
 
@@ -307,6 +315,7 @@ class InventoryService:
                     source=source,
                     actor=actor,
                     changes=changes,
+                    note=_clean_note(payload.change_note),
                 )
 
         doc = await repo.get(item_id)
@@ -369,7 +378,7 @@ class InventoryService:
             if changed:
                 await self.update_item(
                     str(doc["_id"]),
-                    InventoryItemUpdateRequest(version=version),
+                    InventoryItemUpdateRequest(version=version, changeNote=entry.note),
                     source="report",
                     actor=reported_by,
                 )

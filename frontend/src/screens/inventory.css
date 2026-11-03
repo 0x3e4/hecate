@@ -47,6 +47,7 @@
 .inventory-version-form label { color: var(--color-muted); font-size: var(--text-xs); }
 .inventory-version-controls { display: flex; gap: var(--space-xs); width: 100%; }
 .inventory-version-controls input { flex: 1 1 8rem; min-width: 0; }
+.inventory-version-note { width: 100%; min-width: 0; font-size: var(--text-sm); }
 .inventory-version-suggestion { padding: 0; border: 0; background: none; color: var(--color-ink-2); font-size: var(--text-xs); text-decoration: underline; text-decoration-color: var(--color-rule-strong); cursor: pointer; }
 .inventory-version-suggestion:hover { color: var(--color-link); text-decoration-color: currentColor; }
 .inventory-version-suggestion:disabled { color: var(--color-muted); cursor: not-allowed; }
@@ -59,6 +60,7 @@
 .inventory-history-change { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs); min-width: 0; overflow-wrap: anywhere; }
 .inventory-history-change svg { flex-shrink: 0; color: var(--color-muted); }
 .inventory-history-source { color: var(--color-muted); font-size: var(--text-xs); }
+.inventory-history-note { flex-basis: 100%; color: var(--color-ink-2); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .inventory-expansion-side .inventory-history li { grid-template-columns: minmax(0, 1fr) auto; }
 .inventory-expansion-side .inventory-history time { grid-column: 1 / -1; }
 .inventory-expansion-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-xs); margin-bottom: var(--space-xs); }

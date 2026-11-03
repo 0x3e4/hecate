@@ -56,6 +56,15 @@ class InventoryItemCreateRequest(BaseModel):
         serialization_alias="eolProduct",
     )
 
+    # Why the change was made (ticket, server, change request). Kept in the
+    # history entry, not on the item.
+    change_note: str | None = Field(
+        default=None,
+        max_length=500,
+        alias="changeNote",
+        serialization_alias="changeNote",
+    )
+
     model_config = {"populate_by_name": True}
 
 
@@ -98,6 +107,14 @@ class InventoryItemUpdateRequest(BaseModel):
         max_length=200,
         alias="eolProduct",
         serialization_alias="eolProduct",
+    )
+    # Why the change was made (ticket, server, change request). Kept in the
+    # history entry, not on the item.
+    change_note: str | None = Field(
+        default=None,
+        max_length=500,
+        alias="changeNote",
+        serialization_alias="changeNote",
     )
 
     model_config = {"populate_by_name": True}
@@ -290,6 +307,7 @@ class InventoryHistoryEntry(BaseModel):
     source: Literal["web", "report", "mcp", "restore"]
     actor: str | None = None
     changes: list[InventoryHistoryChange] = Field(default_factory=list)
+    note: str | None = None
     created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
 
 
@@ -307,6 +325,11 @@ class InventoryReportEntry(BaseModel):
     product_slug: str | None = Field(default=None, alias="productSlug", serialization_alias="productSlug")
     environment: str | None = Field(default=None, max_length=50)
     version: str = Field(min_length=1, max_length=100)
+    note: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Why it changed, e.g. a ticket or the server. Shown in the item history.",
+    )
 
     @model_validator(mode="after")
     def _names_an_item(self) -> InventoryReportEntry:

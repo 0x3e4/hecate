@@ -18,7 +18,7 @@ You can search the product first. Hecate then fills in the most likely vendor, a
 
 The page is reached from the sidebar under the **Environment** group. It has a short summary at the top (with chips showing how many items and total instances you have declared), **Configuration management** — a compact list, one row per entry — and **Flagged CVEs**, a single table rolling up every distinct CVE that affects any of your entries.
 
-To create an entry, click the **Add** button in the top-right of the **Configuration management** header; a dialog opens with the form. Fill it in and press **Create**. To change an existing entry, click **Edit** on its card; the same dialog re-populates with the current values, and **Save** writes the changes back. Close the dialog with **Cancel**, the **✕** in its corner, the **Escape** key, or by clicking outside it. **Delete** removes an entry (you are asked to confirm first). Because the version is part of the match, the normal way to keep the inventory accurate is simply to edit the version field whenever you upgrade — there is no separate "mark as fixed" step.
+To create an entry, click the **Add** button in the top-right of the **Configuration management** header; a dialog opens with the form. Fill it in and press **Create**. To change an existing entry, click **Edit** on its card; the same dialog re-populates with the current values, and **Save** writes the changes back. Close the dialog with **Cancel**, the **✕** in its corner, the **Escape** key, or by clicking outside it. **Duplicate** opens the same dialog filled with an entry's values, including its endoflife.date link, for a second server or environment of the same product; change what differs and press **Create**. **Delete** removes an entry (a dialog asks first). Because the version is part of the match, the normal way to keep the inventory accurate is simply to edit the version field whenever you upgrade — there is no separate "mark as fixed" step.
 
 The form fields are:
 
@@ -60,15 +60,17 @@ A small number of vendors number releases as an independent build counter per br
 
 A match is only as good as the version it was checked against, so there are three ways to update one, and all of them are recorded in the history below.
 
-**In the row.** Expand an item and change **Running version**. When endoflife.date knows a newer release of the same cycle, **Set to** offers it in one click. Hecate never applies that on its own: the inventory states what actually runs, and a version nobody deployed would quietly clear real CVE matches.
+**In the row.** Expand an item and change **Running version**. The field below it takes an optional note for the history, such as a ticket number, the server or the change request. When endoflife.date knows a newer release of the same cycle, **Set to** offers it in one click. Hecate never applies that on its own: the inventory states what actually runs, and a version nobody deployed would quietly clear real CVE matches.
 
 **From a pipeline.** After a rollout, `POST /api/v1/inventory/report` records the deployed version. See [CI/CD integration](../integrations/cicd.md#reporting-deployed-versions).
 
-**Through an assistant.** The MCP tool `update_inventory_item` changes an item by id.
+**Through an assistant.** The MCP tool `update_inventory_item` changes an item by id; `change_note` adds the note.
+
+The add/edit dialog has the same **Note for the history** field. The note belongs to that one change: it shows next to the entry in the history and is not stored on the item, so the item's own **Notes** stay as they are. One item holds one version; a product that runs in several versions gets one item per version (Duplicate makes that quick).
 
 ## History
 
-Every change is logged with the time, the old and new value, and how it was made: the web interface, an API report (with the name the pipeline gave), MCP (with the identity), or a backup restore. The expanded row shows the history of that item, and **Recent changes** at the bottom of the page shows all items, including deleted ones. Saving a form without changing anything leaves no entry.
+Every change is logged with the time, the old and new value, the note if one was given, and how it was made: the web interface, an API report (with the name the pipeline gave), MCP (with the identity), or a backup restore. The expanded row shows the history of that item, and **Recent changes** at the bottom of the page shows all items, including deleted ones. Saving a form without changing anything leaves no entry.
 
 The same log is available over the API: `GET /api/v1/inventory/history` returns recent changes across all items and `GET /api/v1/inventory/{id}/history` one item's log, both with `limit` and `offset`.
 

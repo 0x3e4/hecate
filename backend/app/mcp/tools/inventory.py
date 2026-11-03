@@ -233,12 +233,14 @@ def register(mcp: FastMCP) -> None:
         owner: str | None = None,
         notes: str | None = None,
         eol_product: str | None = None,
+        change_note: str | None = None,
     ) -> dict[str, Any]:
         """Update an inventory item (partial). Requires write scope.
 
         Only the fields you pass are changed. `eol_product`: omit to keep the
         current link (auto re-matches only if the product changed), set a value
-        to override, or "" to unlink.
+        to override, or "" to unlink. `change_note` (a ticket, the server, why)
+        goes into the history entry of this change, not onto the item.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {"item_id": item_id}
@@ -283,6 +285,8 @@ def register(mcp: FastMCP) -> None:
 
             if not payload:
                 return {"error": "No fields to update."}
+            if change_note:
+                payload["changeNote"] = change_note
 
             service = await get_inventory_service()
             updated = await service.update_item(

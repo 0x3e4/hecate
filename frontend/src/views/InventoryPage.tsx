@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AsyncSelect from "react-select/async";
-import { LuArrowRight, LuChevronRight, LuPencil, LuPlus, LuTrash2, LuX } from "react-icons/lu";
+import { LuArrowRight, LuChevronRight, LuCopy, LuPencil, LuPlus, LuTrash2, LuX } from "react-icons/lu";
 
 import "../screens/inventory.css";
 import {
@@ -252,6 +252,7 @@ const emptyForm = (): InventoryItemCreateInput => ({
   instanceCount: 1,
   owner: "",
   notes: "",
+  changeNote: "",
 });
 
 // --- AsyncSelect option types + styles (mirrors components/AssetFilters.tsx) ---
@@ -379,13 +380,15 @@ const VersionUpdateForm = ({
 }) => {
   const { showToast } = useToastContext();
   const [value, setValue] = useState(item.version);
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   const save = async (version: string) => {
     setSaving(true);
     try {
-      const updated = await updateInventoryItem(item.id, { version });
+      const updated = await updateInventoryItem(item.id, { version, changeNote: note.trim() || null });
       setValue(updated.version);
+      setNote("");
       onSaved(updated);
     } catch (exc: unknown) {
       showToast(exc instanceof Error ? exc.message : String(exc), "error");
@@ -421,6 +424,15 @@ const VersionUpdateForm = ({
           {t("Update", "Aktualisieren")}
         </button>
       </div>
+      <input
+        className="inventory-version-note"
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        maxLength={500}
+        placeholder={t("Note for the history: ticket, server… (optional)", "Notiz für die Historie: Ticket, Server … (optional)")}
+        aria-label={t("Note for the history", "Notiz für die Historie")}
+        autoComplete="off"
+      />
       {suggested && suggested !== item.version ? (
         <button
           type="button"
@@ -542,6 +554,7 @@ const InventoryHistoryList = ({
         <div className="inventory-history-body">
           {showItem && <span className="inventory-history-item">{entry.itemName}</span>}
           <HistoryEntrySummary entry={entry} t={t} />
+          {entry.note && <span className="inventory-history-note">{entry.note}</span>}
         </div>
         <span className="inventory-history-source">
           {historySourceLabel(entry.source, t)}
@@ -797,6 +810,7 @@ export const InventoryPage = () => {
       instanceCount: item.instanceCount,
       owner: item.owner ?? "",
       notes: item.notes ?? "",
+      changeNote: "",
     });
     setSelectedVendor({
       value: item.vendorSlug,
@@ -813,6 +827,16 @@ export const InventoryPage = () => {
     setEolTouched(false);
     setEditingId(item.id);
     setCreating(true);
+  };
+
+  // A second server or environment of the same product: the create dialog with
+  // this item's values, so only what differs needs typing.
+  const startDuplicating = (item: InventoryItem) => {
+    startEditing(item);
+    setForm((prev) => ({ ...prev, name: `${item.name} ${t("(copy)", "(Kopie)")}` }));
+    // Carry the endoflife.date link over instead of auto-matching again.
+    setEolTouched(Boolean(item.eolProduct));
+    setEditingId(null);
   };
 
   const handleSave = async () => {
@@ -838,6 +862,7 @@ export const InventoryPage = () => {
         productName: form.productName?.trim() || null,
         owner: form.owner?.trim() || null,
         notes: form.notes?.trim() || null,
+        changeNote: form.changeNote?.trim() || null,
         instanceCount: Math.max(1, Number(form.instanceCount) || 1),
       };
       // Only send the EOL link when the user touched the picker — otherwise the
@@ -1307,6 +1332,9 @@ export const InventoryPage = () => {
                           </button>
                           <IconButton label={t("Edit", "Bearbeiten")} onClick={() => startEditing(item)}>
                             <LuPencil aria-hidden="true" />
+                          </IconButton>
+                          <IconButton label={t("Duplicate", "Duplizieren")} onClick={() => startDuplicating(item)}>
+                            <LuCopy aria-hidden="true" />
                           </IconButton>
                           <IconButton
                             label={t("Delete", "Löschen")}
@@ -1793,6 +1821,20 @@ export const InventoryPage = () => {
                   value={form.notes ?? ""}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={3}
+                />
+              </div>
+              <div className="inventory-field inventory-field--full">
+                <label className="inventory-label" htmlFor="inventory-change-note">
+                  {t("Note for the history (optional)", "Notiz für die Historie (optional)")}
+                </label>
+                <input
+                  id="inventory-change-note"
+                  className="inventory-input"
+                  value={form.changeNote ?? ""}
+                  onChange={(e) => setForm({ ...form, changeNote: e.target.value })}
+                  maxLength={500}
+                  placeholder={t("Ticket, server or change request", "Ticket, Server oder Change Request")}
+                  autoComplete="off"
                 />
               </div>
             </div>

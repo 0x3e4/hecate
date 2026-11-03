@@ -199,3 +199,33 @@ async def test_unknown_product_is_reported_and_the_batch_continues() -> None:
     assert [result.status for result in results] == ["not_found", "updated"]
     assert len(repo.docs) == 1
     assert repo.docs["id-0"]["version"] == "1.30.1"
+
+
+async def test_a_change_note_lands_in_the_history_not_on_the_item() -> None:
+    service, repo, history = _service(_item())
+    await service.update_item(
+        "id-0", InventoryItemUpdateRequest(version="1.30.1", changeNote="  CHG-4711, web-01  ")
+    )
+    assert history.entries[0]["note"] == "CHG-4711, web-01"
+    assert "change_note" not in repo.docs["id-0"] and "note" not in repo.docs["id-0"]
+
+
+async def test_a_blank_note_is_stored_as_none() -> None:
+    service, _, history = _service(_item())
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.1", changeNote="   "))
+    assert history.entries[0]["note"] is None
+
+
+async def test_a_note_without_a_change_writes_nothing() -> None:
+    service, _, history = _service(_item())
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.0", changeNote="CHG-1"))
+    assert history.entries == []
+
+
+async def test_a_reported_version_carries_its_note() -> None:
+    service, _, history = _service(_item())
+    await service.report_versions(
+        [InventoryReportEntry(productSlug="nginx", version="1.30.2", note="deploy #812")], reported_by="ci"
+    )
+    entry = history.entries[0]
+    assert (entry["source"], entry["actor"], entry["note"]) == ("report", "ci", "deploy #812")

@@ -21,6 +21,8 @@ export interface InventoryItemCreateInput {
   owner?: string | null;
   notes?: string | null;
   eolProduct?: string | null;
+  /** Why it changed (ticket, server); stored in the history entry, not on the item. */
+  changeNote?: string | null;
 }
 
 export type InventoryItemUpdateInput = Partial<InventoryItemCreateInput>;

@@ -163,7 +163,7 @@ flowchart TB
 | **Provenance verification** | npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker — Sigstore, PEP 740, Go sumdb, Cosign. |
 | **Attack-path graph** | Per-CVE deterministic Mermaid graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) with optional AI narrative. |
 | **Cross-CVE attack chain** | Per-scan ATT&CK kill-chain narrative bucketing all findings into Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact. |
-| **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type, with a change history and version reports from your deployment pipeline. |
+| **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type, with a change history (each change can carry a note such as a ticket or server), version reports from your deployment pipeline, and a duplicate action for the next server of the same product. |
 | **API tokens** | Named tokens with scopes (`scan:submit`, `inventory:report`) and an optional expiry, managed on System → Access Control. |
 | **MCP server** | 40 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
 | **Notifications** | Apprise integration with rules, watch queries, message templates, and per-tag channel routing. |
