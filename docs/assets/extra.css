@@ -1,6 +1,9 @@
 /* Hecate docs theme — match the app's gold + near-black/grey palette.
    App tokens: background #090b10, surfaces #05070d/#080a12, gold accent #ffd43b. */
 
+/* Two attributes, like Material's own slate + black rule, which otherwise
+   wins and turns links blue. */
+[data-md-color-scheme="slate"][data-md-color-primary="black"],
 [data-md-color-scheme="slate"] {
   /* Header / primary: dark grey bar with light text (the app header is dark, not gold). */
   --md-primary-fg-color: #0b0d14;
