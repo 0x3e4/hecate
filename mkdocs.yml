@@ -40,6 +40,9 @@ theme:
 extra_css:
   - assets/extra.css
 
+extra_javascript:
+  - assets/zoom.js
+
 markdown_extensions:
   - admonition
   - attr_list

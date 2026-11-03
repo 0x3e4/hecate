@@ -146,3 +146,62 @@
 [data-md-color-scheme="slate"] .md-typeset .grid.cards .twemoji svg {
   fill: oklch(75.7% 0.096 88.5);
 }
+
+/* Screenshots open larger on a click (assets/zoom.js). */
+.md-typeset img[data-zoom] {
+  cursor: zoom-in;
+}
+
+.md-typeset img[data-zoom]:focus-visible {
+  outline: 2px solid oklch(82% 0.13 90); /* --color-focus */
+  outline-offset: 3px;
+}
+
+dialog.zoom {
+  max-width: 96vw;
+  max-height: 96vh;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  cursor: zoom-out;
+}
+
+dialog.zoom::backdrop {
+  background: oklch(10% 0.01 85 / 0.85); /* --scrim, a little darker */
+}
+
+dialog.zoom img {
+  display: block;
+  max-width: 96vw;
+  max-height: 92vh;
+  width: auto;
+  height: auto;
+  border: 1px solid oklch(30% 0.012 85);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px oklch(8% 0.01 85 / 0.5);
+}
+
+.zoom__close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid oklch(42% 0.013 85);
+  border-radius: 4px;
+  background: oklch(19% 0.01 85);
+  color: oklch(93% 0.01 85);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zoom__close:hover {
+  background: oklch(23% 0.011 85);
+}
+
+.zoom__close:focus-visible {
+  outline: 2px solid oklch(82% 0.13 90);
+  outline-offset: 2px;
+}
