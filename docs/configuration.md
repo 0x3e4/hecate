@@ -21,6 +21,7 @@ differ from the code defaults.
 | `DOMAIN` | (unset) | Public hostname label (OAuth callbacks, badge links). **Not** used for CORS — scope browser access with `CORS_ORIGINS`. |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed browser origins. The `*` default serves wildcard reads **without** credentials (Hecate authenticates via headers, not cookies). Set explicit origin(s) — e.g. `https://hecate.example.com` — to scope reads and re-enable credentials. |
 | `SUPPORT_PAGE_ENABLED` | `true` | Show the in-app Support page. |
+| `DOCS_URL` | `https://docs.hecate.pw` | Target of the sidebar's **Documentation** link: the public docs, your own docs image (`docs/Dockerfile`), or empty to hide the link. Only `http(s)` URLs are used. |
 | `HECATE_GHCR_OWNER` | `0x3e4` | GHCR namespace for the three Hecate images (version-check on Support page). |
 | `HECATE_BUILD_SHA` | (build-injected) | Short git SHA of the running build (set at image build). |
 | `VITE_API_BASE_URL` | `/api` | Frontend API base URL, baked into the bundle at build time. |

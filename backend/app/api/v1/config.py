@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -22,7 +24,24 @@ class PublicConfigResponse(BaseModel):
     ai_batch_max_vulns: int = Field(
         alias="aiBatchMaxVulns", serialization_alias="aiBatchMaxVulns"
     )
+    docs_url: str | None = Field(default=None, alias="docsUrl", serialization_alias="docsUrl")
     model_config = {"populate_by_name": True}
+
+
+def public_docs_url(value: str) -> str | None:
+    """The Documentation link the sidebar shows, or None to hide it.
+
+    Only http(s): the frontend renders it as an href, and another scheme such
+    as javascript: would run on a click.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        logger.warning("config.docs_url_ignored", reason="not an http(s) URL")
+        return None
+    return value
 
 
 @router.get("/config")
@@ -54,4 +73,5 @@ async def get_public_config(
         support_page_enabled=settings.support_page_enabled,
         eol_enabled=settings.endoflife_enabled,
         ai_batch_max_vulns=ai_batch_max_vulns,
+        docs_url=public_docs_url(settings.docs_url),
     )

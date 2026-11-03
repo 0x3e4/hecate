@@ -9,6 +9,8 @@ export interface ServerConfig {
   supportPageEnabled: boolean;
   eolEnabled: boolean;
   aiBatchMaxVulns: number;
+  /** Target of the sidebar's Documentation link; null hides it. */
+  docsUrl: string | null;
 }
 
 const PESSIMISTIC_DEFAULTS: ServerConfig = {
@@ -18,6 +20,7 @@ const PESSIMISTIC_DEFAULTS: ServerConfig = {
   supportPageEnabled: false,
   eolEnabled: false,
   aiBatchMaxVulns: 10,
+  docsUrl: null,
 };
 
 const ServerConfigContext = createContext<ServerConfig | null>(null);

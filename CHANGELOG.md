@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DOCS_URL` (default `https://docs.hecate.pw`): where the sidebar's Documentation link points, so an instance can link its own docs image or, with an empty value, show no link. Only `http(s)` URLs are used.
 - Docs: screenshots open larger on a click, or with Enter or Space when focused; Escape, a click or the close button closes them. `assets/zoom.js` is served from the site itself, so nothing new loads from elsewhere.
 - Self-hosted documentation: `docs/Dockerfile` builds the MkDocs site into an nginx image (`ghcr.io/0x3e4/hecate-docs`, compose profile `docs`, port `127.0.0.1:8001`). IBM Plex, the app's typeface, ships with the site instead of Google Fonts, and a Content-Security-Policy keeps every page on its own host. The build runs `mkdocs build --strict` in CI. `site_url` is `https://docs.hecate.pw/` and can be changed with `--build-arg DOCS_SITE_URL=...`; instant navigation needs it to match the host serving the site. Build dependencies are locked with Poetry (`docs/pyproject.toml`, `docs/poetry.lock`), for the image and for a local `mkdocs serve` alike; `docs/requirements.txt` is gone. Read the Docs is no longer used and `.readthedocs.yaml` is gone.
 - SCA scans: the Scans tab filters by status (pending, running, completed, failed, cancelled).

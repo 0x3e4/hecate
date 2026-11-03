@@ -21,12 +21,11 @@ type SidebarProps = {
 type NavItem = { to: string; label: string; icon: typeof LuLayoutDashboard; external?: boolean };
 type NavSection = { titleEn: string; titleDe: string; items: NavItem[] };
 
-const DOCS_URL = "https://docs.hecate.pw";
-
 const buildNavSections = (
   aiEnabled: boolean,
   scaEnabled: boolean,
   supportPageEnabled: boolean,
+  docsUrl: string | null,
 ): NavSection[] => [
   {
     titleEn: "", titleDe: "",
@@ -71,7 +70,7 @@ const buildNavSections = (
   ...(scaEnabled ? [{
     titleEn: "Info", titleDe: "Info",
     items: [
-      { to: DOCS_URL, label: "Documentation", icon: LuBookOpen, external: true },
+      ...(docsUrl ? [{ to: docsUrl, label: "Documentation", icon: LuBookOpen, external: true }] : []),
       { to: "/info/cicd", label: "CI/CD", icon: LuBookOpen },
       { to: "/info/api", label: "API", icon: LuBookOpen },
       { to: "/info/mcp", label: "MCP", icon: LuBookOpen },
@@ -92,10 +91,10 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
   const { jobs } = useSSE();
-  const { aiEnabled, scaEnabled, supportPageEnabled } = useServerConfig();
+  const { aiEnabled, scaEnabled, supportPageEnabled, docsUrl } = useServerConfig();
   const navSections = useMemo(
-    () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled),
-    [aiEnabled, scaEnabled, supportPageEnabled]
+    () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled, docsUrl),
+    [aiEnabled, scaEnabled, supportPageEnabled, docsUrl]
   );
 
   const aiRunning = useMemo(() => {
@@ -152,7 +151,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/info/cicd": "CI/CD",
     "/info/mcp": "MCP",
     "/support": "Unterstützung",
-    [DOCS_URL]: "Dokumentation",
+    ...(docsUrl ? { [docsUrl]: "Dokumentation" } : {}),
   };
 
   const localizedSections = useMemo(

@@ -269,6 +269,9 @@ class Settings(BaseSettings):
 
     # Support page (Ko-fi donate, GitHub star, version-update indicator)
     support_page_enabled: bool = True
+    # Where the sidebar's Documentation link points: the public docs, or an
+    # instance's own docs image (docs/Dockerfile). Empty hides the link.
+    docs_url: str = "https://docs.hecate.pw"
     # Short git SHA of the running build, injected at image build time via
     # the `HECATE_BUILD_SHA` Docker build arg (see backend/Dockerfile and
     # .github/workflows/build-images.yml). Empty in dev/local runs.
