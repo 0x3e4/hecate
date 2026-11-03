@@ -23,7 +23,9 @@
 
 .changelog-cell-toggle { width: 1%; padding-right: 0; }
 .changelog-cell-time { color: var(--color-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.changelog-cell-vuln { min-width: 14rem; }
+.changelog-cell-vuln { min-width: 11rem; }
+/* Below 1200px with the sidebar open the time wraps to two lines instead of widening the table. */
+@media (max-width: 1200px) { .changelog-cell-time { white-space: normal; } }
 .changelog-cell-vuln .row-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-sm); }
 .changelog-title { color: var(--color-ink-2); }
 .changelog-cell-severity { white-space: nowrap; }

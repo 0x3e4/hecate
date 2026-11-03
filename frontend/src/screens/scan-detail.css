@@ -223,7 +223,18 @@
   .scan-detail-toolbar-input { flex-basis: 100%; }
   .scan-detail-icon-link { min-width: 44px; min-height: 44px; }
 
-  /* Long tables stack: every row reads top to bottom with no sideways scroll */
+  .scan-detail-facts, .scan-detail-vex-form { grid-template-columns: minmax(0, 1fr); }
+  .scan-detail-facts dd { margin-bottom: var(--space-2xs); }
+
+  /* Shorter tables keep their columns and pin the naming one */
+  .scan-detail-pin th:first-child, .scan-detail-pin td:first-child { position: sticky; left: 0; z-index: var(--z-base); background: var(--color-paper); }
+}
+
+/* Long tables stack: every row reads top to bottom with no sideways scroll. Measured on the
+   table's own box, not the window, so it switches whenever the columns would not fit, with or
+   without the sidebar open (the findings table needs about 55rem). */
+.table-scroll:has(> .scan-detail-stack) { container-type: inline-size; }
+@container (max-width: 56rem) {
   .scan-detail-stack, .scan-detail-stack tbody { display: block; }
   .scan-detail-stack thead { display: none; }
   .scan-detail-sortbar { display: flex; align-items: center; gap: var(--space-xs); padding-block: var(--space-2xs); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); }
@@ -250,9 +261,4 @@
   .scan-detail-stack .scan-detail-cell-name .scan-detail-link-button { width: 100%; min-height: var(--control-height); white-space: normal; }
   .scan-detail-stack tr.scan-detail-expansion { display: block; padding: 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
   .scan-detail-stack .scan-detail-expansion > td { padding: var(--space-sm); }
-  .scan-detail-facts, .scan-detail-vex-form { grid-template-columns: minmax(0, 1fr); }
-  .scan-detail-facts dd { margin-bottom: var(--space-2xs); }
-
-  /* Shorter tables keep their columns and pin the naming one */
-  .scan-detail-pin th:first-child, .scan-detail-pin td:first-child { position: sticky; left: 0; z-index: var(--z-base); background: var(--color-paper); }
 }

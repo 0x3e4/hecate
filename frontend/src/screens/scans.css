@@ -5,6 +5,8 @@
 .scans-tabs { display: flex; gap: var(--space-2xs); margin-bottom: var(--space-lg); border-bottom: var(--rule-hair) solid var(--color-rule); overflow-x: auto; scrollbar-width: none; }
 .scans-tabs::-webkit-scrollbar { display: none; }
 .scans-tabs > button { flex-shrink: 0; white-space: nowrap; }
+/* Wider than a phone, tabs wrap to a second line rather than hiding the last ones off to the side. */
+@media (min-width: 40.01rem) { .scans-tabs { flex-wrap: wrap; overflow-x: visible; } }
 
 /* Shared text roles */
 .scans-sub { color: var(--color-muted); font-size: var(--text-xs); }
@@ -49,17 +51,35 @@
 .scans-table th.scans-num { text-align: right; }
 .scans-cell-strong { font-weight: 600; overflow-wrap: anywhere; }
 .scans-cell-action { width: 1%; }
-.scans-cell-license { white-space: nowrap; }
-.scans-cell-links { min-width: 12rem; }
-.scans-cell-package { min-width: 11rem; }
-.scans-cell-tools { min-width: 7rem; }
-.scans-cell-rule { min-width: 16rem; max-width: 34rem; }
-.scans-cell-component { min-width: 16rem; max-width: 30rem; }
-.scans-cell-diag-target { min-width: 12rem; max-width: 18rem; }
+/* Minimum widths stay small so the tables fit their box; text wraps instead. Identifiers
+   (package names, versions, paths, hashes) may break anywhere: break-word does not lower a
+   column's minimum width, so one long token would push the whole table wider than its box.
+   Words in other cells keep breaking only between words. */
+.scans-table .mono, .scans-table .scans-cell-strong, .scans-cell-package, .scans-cell-component, .scans-cell-diag-target { overflow-wrap: anywhere; }
+/* n/a is one token, never "n/ a". */
+.scans-table .scans-na { white-space: nowrap; }
+.scans-cell-fix { min-width: 4rem; }
+/* Narrow windows with the sidebar open: tighter cell padding, and the Findings target count
+   (the targets are listed in the expanded row) gives way, instead of a sideways scroll. */
+@media (max-width: 1200px) {
+  .scans-table th, .scans-table td { padding-inline: var(--space-xs); }
+  .scans-table .scans-col-optional { display: none; }
+  /* The fix version keeps its 16ch on wider screens; here it shrinks with its column. */
+  .scans-table .scans-truncate { width: 0; min-width: 100%; }
+}
+.scans-cell-links { min-width: 4.5rem; }
+.scans-cell-package { min-width: 5.5rem; }
+.scans-cell-tools { min-width: 4.5rem; }
+.scans-cell-rule { min-width: 12rem; max-width: 34rem; }
+.scans-cell-component { min-width: 9rem; max-width: 30rem; }
+.scans-cell-diag-target { min-width: 9rem; max-width: 18rem; }
 .scans-cell-diag-target .scans-target-id { max-width: 15rem; }
 .scans-truncate { display: block; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scans-truncate-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scans-purl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A truncated line still counts its full text toward the column's minimum width. Zero width
+   plus min-width 100% takes it out of that sum: it fills the cell and cuts off there. */
+.scans-table .scans-truncate-line, .scans-table .scans-purl, .scans-table .scans-target-id { width: 0; min-width: 100%; }
 .scans-used-by { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); color: var(--color-ink-2); font-size: var(--text-xs); }
 .scans-target-links { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3xs); font-size: var(--text-xs); }
 .scans-ref { display: inline-flex; align-items: center; gap: var(--space-2xs); font-size: var(--text-xs); white-space: nowrap; }

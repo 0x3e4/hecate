@@ -1103,13 +1103,14 @@ export const ScansPage = () => {
                         { key: "package_version", label: t("Version", "Version") },
                         { key: "fix_version", label: t("Fix", "Fix") },
                         { key: null, label: t("Scanners", "Scanner") },
-                        { key: "targets", label: t("Targets", "Ziele"), numeric: true },
-                      ] as { key: string | null; label: string; numeric?: boolean }[]).map(({ key, label, numeric }) => (
+                        { key: "targets", label: t("Targets", "Ziele"), numeric: true, className: "scans-col-optional" },
+                      ] as { key: string | null; label: string; numeric?: boolean; className?: string }[]).map(({ key, label, numeric, className }) => (
                         key ? (
                           <SortableTh
                             key={label}
                             label={label}
                             numeric={numeric}
+                            className={className}
                             active={findingsSortBy === key}
                             dir={findingsSortOrder}
                             onSort={() => {
@@ -1144,7 +1145,7 @@ export const ScansPage = () => {
                             className={`scans-row-toggle${isExpanded ? " is-expanded" : ""}`}
                             onClick={() => setExpandedFindings(prev => { const next = new Set(prev); if (next.has(rowKey)) next.delete(rowKey); else next.add(rowKey); return next; })}
                           >
-                            <td className="scans-cell-strong scans-nowrap">
+                            <td className="scans-cell-strong">
                               {f.vulnerabilityId ? (
                                 <Link to={`/vulnerability/${encodeURIComponent(f.vulnerabilityId)}`} onClick={e => e.stopPropagation()} className="row-link mono">
                                   {f.vulnerabilityId}
@@ -1168,12 +1169,12 @@ export const ScansPage = () => {
                                 {f.packageName || "n/a"}
                               </button>
                             </td>
-                            <td className="mono scans-muted scans-nowrap">{f.packageVersion}</td>
-                            <td className="mono">
+                            <td className="mono scans-muted">{f.packageVersion}</td>
+                            <td className="mono scans-cell-fix">
                               {f.fixVersion ? <span className="scans-truncate" title={f.fixVersion}>{f.fixVersion}</span> : <NotAvailable />}
                             </td>
                             <td className="scans-small scans-muted scans-cell-tools">{f.scanners.join(", ")}</td>
-                            <td className="scans-num">{f.targets.length}</td>
+                            <td className="scans-num scans-col-optional">{f.targets.length}</td>
                             <td className="scans-cell-links" onClick={e => e.stopPropagation()}>
                               <PackageLinks name={f.packageName} version={f.packageVersion} type={pkgType} />
                             </td>
@@ -2122,10 +2123,10 @@ const sumSummary = (items: ScanTarget[]): ScanSummary => {
   return sum;
 };
 
-const SortableTh = ({ label, active, dir, numeric, onSort }: { label: string; active: boolean; dir: "asc" | "desc"; numeric?: boolean; onSort: () => void }) => (
+const SortableTh = ({ label, active, dir, numeric, className, onSort }: { label: string; active: boolean; dir: "asc" | "desc"; numeric?: boolean; className?: string; onSort: () => void }) => (
   <th
     scope="col"
-    className={numeric ? "scans-num" : undefined}
+    className={[numeric ? "scans-num" : "", className ?? ""].filter(Boolean).join(" ") || undefined}
     aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
   >
     <button type="button" className="scans-sort" onClick={onSort}>
@@ -2635,7 +2636,7 @@ const AutoScanDiagnosticsTable = ({
                       <span title={checkError} className="scans-check-error">{checkError}</span>
                     )}
                   </td>
-                  <td className="scans-nowrap scans-small" title={target.lastCheckAt || undefined}>
+                  <td className="scans-small" title={target.lastCheckAt || undefined}>
                     {target.lastCheckAt ? formatDateTime(target.lastCheckAt) : <NotAvailable />}
                   </td>
                   <td>
