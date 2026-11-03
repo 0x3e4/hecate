@@ -25,8 +25,18 @@ Every target also has its own deep-linkable overview page at `/scans/targets/<id
 clicking a target card's title. It gathers the target's metadata, latest severity rollup, auto-scan
 diagnostics, full scan history, top findings and quick actions (rescan, run a check, delete) in one
 place — and because the URL is stable you can bookmark or share a link straight to it. When a target
-is write-protected it shows a 🔒 badge; the password itself is managed from
+is write-protected it shows a 🔒 badge and a **Change password** button: the target's owner can set a
+new password or remove the protection with the current one. The first password is set by the admin on
 **System → Access Control** (see [Security & Access Control](security-access-control.md)).
+
+The **Scans** tab lists every run, newest first, and filters by target and by status (pending,
+running, completed, failed, cancelled), so failed or cancelled runs are one click away.
+
+A scan that can no longer finish is cancelled on its own. Scans run inside the backend process, so
+a scan that was queued or running when Hecate restarted is cancelled at startup, and every five
+minutes a watchdog cancels a scan that lost its task or ran past its maximum runtime
+(`SCA_SCAN_MAX_RUNTIME_SECONDS`; by default derived from the selected scanners' timeouts, about 90
+minutes). The scan's error says why, and the target stops showing a scan in progress.
 
 ## Scanners
 

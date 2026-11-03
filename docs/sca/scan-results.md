@@ -168,9 +168,10 @@ unchanged rescans in a row, the card looks back through its history to the last 
 and says so, rather than reporting "no changes" just because the most recent run happened to match its predecessor.
 A target with only one completed scan shows a baseline line instead. A paginated **Scan history** table lists every
 completed run with a link into each. Quick-action buttons let you trigger a rescan, run a change-detection check on
-demand, copy a shields.io status badge for your README, or delete the target and all its data — deleting removes the
-target from the list immediately, while its scan history is cleaned up in the background. When a target
-is write-protected, a lock badge appears next to its name and the action buttons require the appropriate password —
+demand, copy a shields.io status badge for your README, or delete the target and all its data — a dialog asks first,
+and deleting removes the target from the list immediately, while its scan history is cleaned up in the background.
+When a target is write-protected, a lock badge appears next to its name, the action buttons require the appropriate
+password, and **Change password** lets the owner replace or remove it —
 see [Security & Access Control](../security-access-control.md). SBOM-import targets are read-only and do not show the
 rescan, check or delete actions.
 
