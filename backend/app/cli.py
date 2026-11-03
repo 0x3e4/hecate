@@ -35,8 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch", "compact-history"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch, compact-history).",
     )
     parser.add_argument(
         "--since",
@@ -61,7 +61,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Don't actually delete — just print counts.",
+        help="Don't actually write — just print counts (purge-malware, compact-history).",
+    )
+    parser.add_argument(
+        "--start-after",
+        type=str,
+        help="compact-history: resume after this document id (printed with every progress line).",
+    )
+    parser.add_argument(
+        "--pause",
+        type=float,
+        default=0.0,
+        help="compact-history: seconds to sleep between batches, to leave disk IO for other services.",
     )
     return parser
 
@@ -174,6 +185,18 @@ def main() -> None:
             parser.error("The --since option is not supported for reindex-opensearch.")
         result = asyncio.run(run_opensearch_reindex())
         print(f"OpenSearch reindex finished: {result}")
+    elif args.command == "compact-history":
+        if args.since or args.initial or args.ecosystem:
+            parser.error("compact-history only accepts --limit, --start-after, --pause and --dry-run.")
+        result = asyncio.run(
+            run_compact_history(
+                limit=args.limit,
+                start_after=args.start_after,
+                pause=args.pause,
+                dry_run=args.dry_run,
+            )
+        )
+        print(f"Change-history compaction finished: {result}")
     else:
         parser.error(f"Unsupported command: {args.command}")
 
@@ -483,7 +506,7 @@ async def run_opensearch_reindex() -> dict[str, Any]:
         bulk_batch: list[dict[str, Any]] = []
         bulk_size = 500
 
-        async for doc in repo.collection.find({}).batch_size(bulk_size):
+        async for doc in repo.collection.find({}, {"change_history": 0}).batch_size(bulk_size):
             try:
                 # Remove MongoDB internal fields
                 doc.pop("_id", None)
@@ -550,6 +573,98 @@ async def run_opensearch_reindex() -> dict[str, Any]:
         # Mark job as failed
         await tracker.fail(job_ctx, error=str(exc))
         raise
+
+
+
+
+async def run_compact_history(
+    *,
+    limit: int | None = None,
+    start_after: str | None = None,
+    pause: float = 0.0,
+    dry_run: bool = False,
+    batch_size: int = 200,
+) -> dict[str, Any]:
+    """Rewrite every ``change_history`` in the compact format.
+
+    Drops the full-document ``snapshot`` of legacy entries and the raw upstream
+    payloads from their ``sources`` diffs (see ``_compact_history``). Walks the
+    collection in ``_id`` order so a run can resume with ``--start-after``. The
+    write is guarded on ``last_change_at``, so a document a pipeline changed in
+    the meantime is left alone and shrinks on its next write instead.
+
+    WiredTiger keeps the freed space in the file; run
+    ``db.runCommand({compact: "vulnerabilities"})`` afterwards to return it.
+    """
+    import bson
+    from pymongo import UpdateOne
+
+    from app.repositories.vulnerability_repository import (
+        VulnerabilityRepository,
+        _compact_history,
+    )
+
+    repo = await VulnerabilityRepository.create()
+    collection = repo.collection
+    scanned = 0
+    rewritten = 0
+    bytes_before = 0
+    bytes_after = 0
+    last_id = start_after
+
+    while True:
+        query: dict[str, Any] = {"_id": {"$gt": last_id}} if last_id is not None else {}
+        cursor = (
+            collection.find(query, {"change_history": 1, "last_change_at": 1})
+            .sort("_id", 1)
+            .limit(batch_size)
+        )
+        batch = await cursor.to_list(length=batch_size)
+        if not batch:
+            break
+
+        operations: list[UpdateOne] = []
+        for doc in batch:
+            scanned += 1
+            last_id = doc["_id"]
+            history = doc.get("change_history")
+            if not isinstance(history, list) or not history:
+                continue
+            compact = _compact_history(history)
+            before = len(bson.encode({"h": history}))
+            after = len(bson.encode({"h": compact}))
+            if after >= before:
+                continue
+            bytes_before += before
+            bytes_after += after
+            rewritten += 1
+            operations.append(
+                UpdateOne(
+                    {"_id": doc["_id"], "last_change_at": doc.get("last_change_at")},
+                    {"$set": {"change_history": compact}},
+                )
+            )
+
+        if operations and not dry_run:
+            await collection.bulk_write(operations, ordered=False)
+
+        print(
+            f"scanned={scanned} rewritten={rewritten} "
+            f"saved={(bytes_before - bytes_after) / 1024 / 1024:.0f} MB last_id={last_id}"
+        )
+        if limit is not None and scanned >= limit:
+            break
+        if pause:
+            await asyncio.sleep(pause)
+
+    return {
+        "scanned": scanned,
+        "rewritten": rewritten,
+        "dry_run": dry_run,
+        "history_mb_before": round(bytes_before / 1024 / 1024),
+        "history_mb_after": round(bytes_after / 1024 / 1024),
+        "last_id": last_id,
+    }
 
 
 if __name__ == "__main__":

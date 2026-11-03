@@ -166,8 +166,7 @@ def _build_enrichment_change_entry(
 ) -> dict[str, Any]:
     """Minimal change-history entry attributed to the deps.dev enrichment.
 
-    Unlike ingestion writers we don't snapshot the full document — the change
-    is narrow (one field) and the snapshot field is optional on the UI side.
+    The change is narrow (one field), so the entry carries just that diff.
     `job_name` lets the changelog filter and the audit-log dropdown pick
     these up via the existing 'last_change_job' indexed path.
     """
@@ -183,7 +182,6 @@ def _build_enrichment_change_entry(
                 "current": copy.deepcopy(new_impacted),
             }
         ],
-        "snapshot": {},
         "metadata": {"trigger": "deps_dev", "provider": "deps.dev"},
     }
 
@@ -343,7 +341,8 @@ async def enrich_document(
         {
             "$set": update_set,
             "$unset": {"impacted_products": ""},
-            "$push": {"change_history": change_entry},
+            # Same cap as the ingestion writers (_HISTORY_MAX_ENTRIES).
+            "$push": {"change_history": {"$each": [change_entry], "$slice": -25}},
         },
     )
 

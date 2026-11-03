@@ -530,6 +530,7 @@ poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
 poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs
 poetry run python -m app.cli purge-malware  --ecosystem <eco> [--dry-run] # delete an ecosystem from malware_intel + MAL-* vulnerabilities
 poetry run python -m app.cli reindex-opensearch
+poetry run python -m app.cli compact-history [--dry-run] [--limit N] [--start-after ID] [--pause S]  # shrink legacy change-history entries
 ```
 
 ## Frontend architecture

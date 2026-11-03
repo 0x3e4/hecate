@@ -161,7 +161,7 @@ rather than hiding it.
 | **Affected Products** | Structured affected-product data — CPE version ranges, impacted-product version lists, or the raw CPE list, whichever the record carries. |
 | **Attack Path** | A deterministic Mermaid graph of how the weakness could be abused, with an optional AI narrative (see below). |
 | **AI Analysis** | AI-generated triage for this CVE — only shown when AI providers are configured. |
-| **Change History** | Every recorded change to the record, expandable per entry with old/new field values, the job that made the change, and optional metadata/snapshot. |
+| **Change History** | Every recorded change to the record, expandable per entry with old/new field values, the job that made the change, and optional metadata. Entries show which sources were attached, not their raw data. |
 | **Raw** | The full underlying document as formatted JSON. |
 
 The **CISA Known Exploited Vulnerability** block, when present, sits above the tabs and surfaces the

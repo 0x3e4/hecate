@@ -34,6 +34,15 @@ TODAY_MAX_CVES = 2000
 ATTENTION_MAX_KEV = 50
 OVERVIEW_CACHE_SECONDS = 60
 _OVERVIEW_CACHE: dict[str, Any] = {}
+# Last vulnerability stats OpenSearch answered. Served while OpenSearch is
+# down, because MongoDB cannot compute them without reading the whole
+# collection (tens of GB, minutes of disk IO for every other service).
+_LAST_GOOD_VULN_STATS: dict[str, Any] = {}
+# One retry for the start-up race (OpenSearch answers 503 for a few seconds).
+OPENSEARCH_RETRY_DELAY_SECONDS = 3.0
+# Server-side bound for every MongoDB fallback query. asyncio.wait_for only
+# stops the Python task; without maxTimeMS MongoDB keeps working.
+MONGO_FALLBACK_MAX_TIME_MS = 3000
 # Feeds name hundreds of CVEs in a week. Most mentions stand alone, so the cut falls on those.
 ATTENTION_MAX_CERT_MENTIONS = 300
 CERT_OVERVIEW_MAX_CVES = 1000
@@ -190,7 +199,15 @@ class StatsService:
                 return await self._fetch_vulnerability_stats_from_mongo()
         except (OSConnectionError, OpenSearchException, asyncio.TimeoutError) as exc:
             log.warning("stats.opensearch_unavailable", error=str(exc))
-            return await self._fetch_vulnerability_stats_from_mongo()
+            await asyncio.sleep(OPENSEARCH_RETRY_DELAY_SECONDS)
+            try:
+                response = await self._run_vulnerability_search(
+                    start_30_days=start_30_days,
+                    use_keyword_suffix=False,
+                )
+            except (OSConnectionError, OpenSearchException, asyncio.TimeoutError) as retry_exc:
+                log.warning("stats.opensearch_retry_failed", error=str(retry_exc))
+                return await self._fetch_vulnerability_stats_from_mongo()
 
         aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
 
@@ -243,7 +260,7 @@ class StatsService:
         raw_refs = self._map_terms_aggregation(aggregations.get("reference_domains"), limit=100)
         reference_domains = self._extract_domain_counts(raw_refs)
 
-        return {
+        stats = {
             "total": total,
             "sources": sources,
             "severities": severities,
@@ -257,6 +274,8 @@ class StatsService:
             "exploitedCount": exploited_count,
             "referenceDomains": reference_domains,
         }
+        _LAST_GOOD_VULN_STATS.update(value=stats, at=time.monotonic())
+        return stats
 
     async def _run_vulnerability_search(
         self,
@@ -470,116 +489,64 @@ class StatsService:
         return None
 
     async def _fetch_vulnerability_stats_from_mongo(self) -> dict[str, Any]:
+        """Stats while OpenSearch is unavailable.
+
+        Serves the last OpenSearch result when there is one. Otherwise only
+        index-backed counts run on MongoDB (total, primary source, severity),
+        each bounded server-side by ``maxTimeMS``. The ``$unwind`` / ``$group``
+        / ``$bucket`` aggregations this used to run read the whole collection
+        and kept the disk busy for minutes after the Python timeout had given
+        up on them.
         """
-        Fast MongoDB fallback with minimal aggregations.
-        When OpenSearch fails/times out, we prioritize speed over completeness.
-        """
+        last = _LAST_GOOD_VULN_STATS.get("value")
+        if last is not None:
+            log.info(
+                "stats.serving_last_opensearch_result",
+                age_seconds=round(time.monotonic() - _LAST_GOOD_VULN_STATS["at"]),
+            )
+            return last
+
         repository = await VulnerabilityRepository.create()
         collection = repository.collection
+        max_time = MONGO_FALLBACK_MAX_TIME_MS
 
-        # Only run the fastest queries - skip expensive aggregations
-        # Use sources array if available, fall back to source field
-        sources_pipeline = [
-            {"$unwind": {"path": "$sources", "preserveNullAndEmptyArrays": True}},
-            {
-                "$group": {
-                    "_id": {"$ifNull": ["$sources.source", "$source"]},
-                    "count": {"$sum": 1},
-                }
-            },
-            {"$match": {"_id": {"$ne": None}}},  # Filter out null
-            {"$sort": {"count": -1, "_id": 1}},
-            {"$limit": 5},  # Reduced to 5 for speed
-        ]
+        async def _counts_by(field: str) -> list[dict[str, Any]]:
+            # distinct + count on an indexed field are index-only (DISTINCT_SCAN,
+            # COUNT_SCAN); a $group over the same field is a COLLSCAN.
+            values = await collection.distinct(field, maxTimeMS=max_time)
+            buckets: list[dict[str, Any]] = []
+            for value in values:
+                if not value:
+                    continue
+                count = await collection.count_documents({field: value}, maxTimeMS=max_time)
+                buckets.append({"key": str(value), "doc_count": int(count)})
+            buckets.sort(key=lambda item: (-item["doc_count"], item["key"]))
+            return buckets
 
-        severity_pipeline = [
-            {
-                "$group": {
-                    "_id": {"$ifNull": ["$cvss.severity", "UNKNOWN"]},
-                    "count": {"$sum": 1},
-                }
-            },
-            {"$sort": {"count": -1, "_id": 1}},
-            {"$limit": 5},
-        ]
-
-        cwes_pipeline = [
-            {"$unwind": {"path": "$cwes", "preserveNullAndEmptyArrays": False}},
-            {"$match": {"cwes": {"$nin": ["NVD-CWE-noinfo", "NVD-CWE-Other"]}}},
-            {
-                "$group": {
-                    "_id": "$cwes",
-                    "count": {"$sum": 1},
-                }
-            },
-            {"$sort": {"count": -1, "_id": 1}},
-            {"$limit": 5},
-        ]
-
-        epss_pipeline = [
-            # Filter out documents without EPSS scores
-            {"$match": {"epss_score": {"$exists": True, "$ne": None}}},
-            {
-                "$bucket": {
-                    "groupBy": "$epss_score",
-                    "boundaries": [0.0, 0.1, 0.3, 0.5, 0.7, 1.0],
-                    "default": "other",
-                    "output": {
-                        "count": {"$sum": 1}
-                    }
-                }
-            }
-        ]
-
-        # Run only essential aggregations in parallel with timeout
+        total = 0
+        sources: list[dict[str, Any]] = []
+        severities: list[dict[str, Any]] = []
         try:
-            total, sources_raw, severity_raw, cwes_raw, epss_raw = await asyncio.wait_for(
-                asyncio.gather(
-                    collection.estimated_document_count(),
-                    collection.aggregate(sources_pipeline).to_list(length=5),
-                    collection.aggregate(severity_pipeline).to_list(length=5),
-                    collection.aggregate(cwes_pipeline).to_list(length=5),
-                    collection.aggregate(epss_pipeline).to_list(length=5),
-                ),
-                timeout=5.0,  # 5 second timeout for fallback
-            )
-
-            sources = self._map_group_results(sources_raw)
+            total = await collection.estimated_document_count(maxTimeMS=max_time)
+            sources = (await _counts_by("source"))[:5]
             severities = [
-                {"key": doc.get("_id", "UNKNOWN").upper(), "doc_count": int(doc.get("count", 0))}
-                for doc in severity_raw
-                if doc.get("_id")
+                {"key": item["key"].upper(), "doc_count": item["doc_count"]}
+                for item in await _counts_by("cvss.severity")
             ]
-            cwes = self._map_group_results(cwes_raw)
+        except PyMongoError as exc:
+            log.warning("stats.mongo_fallback_failed", error=str(exc))
 
-            # Map EPSS bucket results to range format
-            epss_ranges = []
-            range_labels = ["0.0-0.1", "0.1-0.3", "0.3-0.5", "0.5-0.7", "0.7-1.0"]
-            for idx, doc in enumerate(epss_raw):
-                if idx < len(range_labels):
-                    epss_ranges.append({
-                        "key": range_labels[idx],
-                        "doc_count": int(doc.get("count", 0))
-                    })
-
-        except asyncio.TimeoutError:
-            log.warning("stats.mongo_fallback_timeout")
-            total = 0
-            sources = []
-            severities = []
-            cwes = []
-            epss_ranges = []
-
-        # Return minimal data - skip expensive vendors/products/timeline
+        # CWEs, EPSS, vendors, timeline: no index serves them, so they stay
+        # empty until OpenSearch is back rather than scanning the collection.
         return {
             "total": total,
             "sources": sources,
             "severities": severities,
-            "topCwes": cwes,
-            "epssRanges": epss_ranges,
-            "topVendors": [],  # Skip expensive aggregation
-            "topProducts": [],  # Skip expensive aggregation
-            "timeline": [],  # Skip expensive aggregation
+            "topCwes": [],
+            "epssRanges": [],
+            "topVendors": [],
+            "topProducts": [],
+            "timeline": [],
             "timelineSummary": [],
             "topAssigners": [],
             "exploitedCount": 0,

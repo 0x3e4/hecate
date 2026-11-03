@@ -400,9 +400,7 @@ class NVDPipeline:
             local_total_after = await repository.count(source="NVD")
 
             # Count how many vulnerabilities have NVD source data (including those with EUVD as primary source)
-            nvd_source_count = await repository.collection.count_documents({
-                "sources.source": "NVD"
-            })
+            nvd_source_count = await repository.count_with_source_data("NVD")
 
             result = {
                 "ingested": ingested,
@@ -422,7 +420,7 @@ class NVDPipeline:
             log.info(
                 "nvd_pipeline.sync_complete",
                 **result,
-                coverage_pct=round((nvd_source_count / remote_total * 100), 2) if remote_total else None,
+                coverage_pct=round((nvd_source_count / remote_total * 100), 2) if remote_total and nvd_source_count is not None else None,
             )
             return result
         except Exception as exc:  # noqa: BLE001

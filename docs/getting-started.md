@@ -77,8 +77,27 @@ is the current example. Records ingested or refreshed after the update get it au
 everything already stored, run once:
 
 ```bash
-docker compose exec backend poetry run python -m app.cli reindex-opensearch
+docker compose exec backend python -m app.cli reindex-opensearch
 ```
 
 It reads from MongoDB, so nothing is lost if you skip or interrupt it — search simply keeps returning
 results from whatever has been indexed so far. Expect it to take a while on a large corpus.
+
+### Shrinking the change history
+
+Before the compact history format, every change-history entry held a full copy of its record and of
+the raw upstream data, which made the `vulnerabilities` collection several times larger than its
+content. Old entries shrink on their own as records change. To shrink them all at once and give the
+space back to the disk:
+
+```bash
+# see what it would save, then run it; --pause 0.5 leaves IO for other services
+docker compose exec backend python -m app.cli compact-history --dry-run --limit 5000
+docker compose exec backend python -m app.cli compact-history --pause 0.5
+
+# afterwards, so WiredTiger returns the freed space
+docker compose exec mongo mongosh hecate --eval 'db.runCommand({compact: "vulnerabilities"})'
+```
+
+The run reads the whole collection once, so start it at a quiet time. It prints the last document id
+with every batch; `--start-after <id>` resumes from there.
