@@ -37,6 +37,8 @@
 .link-list { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); font-size: var(--text-xs); }
 .link-list a { color: var(--color-muted); text-decoration: underline; text-decoration-color: var(--color-rule-strong); }
 .link-list a:hover { color: var(--color-link); text-decoration-color: currentColor; }
+.external-link-icon { display: inline-block; width: 0.85em; height: 0.85em; margin-left: 0.25em; vertical-align: -0.1em; opacity: 0.7; }
+.external-link:hover .external-link-icon { opacity: 1; }
 
 .state-block { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2xs); padding: var(--space-lg) 0; }
 .state-block-title { font-weight: 600; }

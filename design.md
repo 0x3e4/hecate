@@ -55,6 +55,6 @@ The spacing scale, the type scale, the easings and the durations are the scaffol
 
 ## Where it lives
 - `frontend/src/tokens.css`: every colour, size, space and duration. No literal past this file.
-- `frontend/src/styles.css`: shell and primitives. `frontend/src/ui/primitives.tsx` + `primitives.css`: shared components (`PageHeader`, `Section`, `IconButton`, `SeverityTag`, `EmptyState`, `ErrorState`, `Stat`).
+- `frontend/src/styles.css`: shell and primitives. `frontend/src/ui/primitives.tsx` + `primitives.css`: shared components (`PageHeader`, `Section`, `IconButton`, `SeverityTag`, `EmptyState`, `ErrorState`, `Stat`, `ExternalLink`). A link that leaves Hecate goes through `ExternalLink`: new tab, `noopener noreferrer`, trailing external-link icon.
 - `frontend/src/screens/<name>.css`: one file per screen, classes prefixed with the screen name.
 - Missing values: severity reads Unknown, scores read n/a. Headings are in sentence case.

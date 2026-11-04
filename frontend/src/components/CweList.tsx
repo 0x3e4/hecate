@@ -3,7 +3,7 @@ import "../screens/vulnerability-detail.css";
 import type { CWEInfo } from "../api/cwe";
 import { getCweBulk } from "../api/cwe";
 import { useI18n } from "../i18n/context";
-import { EmptyState } from "../ui/primitives";
+import { EmptyState, ExternalLink } from "../ui/primitives";
 import { SkeletonBlock } from "./Skeleton";
 
 interface CweListProps {
@@ -60,15 +60,13 @@ export const CweList = ({ cwes }: CweListProps) => {
     return (
       <div className="link-list">
         {cwes.map((cwe) => (
-          <a
+          <ExternalLink
             key={cwe}
             href={`https://cwe.mitre.org/data/definitions/${cwe.replace(/[^0-9]/g, "")}.html`}
-            target="_blank"
-            rel="noreferrer"
             className="vulnerability-detail-entry-id"
           >
             {cwe}
-          </a>
+          </ExternalLink>
         ))}
       </div>
     );
@@ -82,14 +80,12 @@ export const CweList = ({ cwes }: CweListProps) => {
 
         return (
           <li key={cwe} className="vulnerability-detail-entry">
-            <a
+            <ExternalLink
               href={`https://cwe.mitre.org/data/definitions/${normalized}.html`}
-              target="_blank"
-              rel="noreferrer"
               className="vulnerability-detail-entry-id"
             >
               {cwe}
-            </a>
+            </ExternalLink>
             <div className="vulnerability-detail-entry-body">
               {info ? (
                 <div className="vulnerability-detail-entry-name">{info.name}</div>

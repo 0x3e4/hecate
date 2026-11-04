@@ -3,7 +3,7 @@ import "../screens/vulnerability-detail.css";
 import { ParsedCvssMetric } from "../utils/cvss";
 import { getCvssExplanation } from "../utils/cvssExplanations";
 import { useI18n } from "../i18n/context";
-import { severityLevel } from "../ui/primitives";
+import { ExternalLink, severityLevel } from "../ui/primitives";
 
 interface CvssMetricDisplayProps {
   metric: ParsedCvssMetric | null;
@@ -251,9 +251,9 @@ export const CvssMetricDisplay = ({
               <div className="vulnerability-detail-cvss-vector">
                 <span>{t("Vector", "Vektor")}</span>
                 {vectorLink ? (
-                  <a href={vectorLink} target="_blank" rel="noreferrer">
+                  <ExternalLink href={vectorLink}>
                     <code>{metric.vectorString}</code>
-                  </a>
+                  </ExternalLink>
                 ) : (
                   <code>{metric.vectorString}</code>
                 )}

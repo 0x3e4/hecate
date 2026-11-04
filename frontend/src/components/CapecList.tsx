@@ -3,7 +3,7 @@ import "../screens/vulnerability-detail.css";
 import type { CAPECInfo } from "../api/capec";
 import { getCapecFromCwes } from "../api/capec";
 import { useI18n } from "../i18n/context";
-import { SeverityTag } from "../ui/primitives";
+import { ExternalLink, SeverityTag } from "../ui/primitives";
 import { SkeletonBlock } from "./Skeleton";
 
 const INITIAL_DISPLAY_COUNT = 5;
@@ -83,14 +83,12 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
       <ul className="vulnerability-detail-entries">
         {visibleEntries.map(([capecId, info]) => (
           <li key={capecId} className="vulnerability-detail-entry">
-            <a
+            <ExternalLink
               href={`https://capec.mitre.org/data/definitions/${capecId}.html`}
-              target="_blank"
-              rel="noreferrer"
               className="vulnerability-detail-entry-id"
             >
               {info.id}
-            </a>
+            </ExternalLink>
             <div className="vulnerability-detail-entry-body">
               <div className="vulnerability-detail-entry-head">
                 <span className="vulnerability-detail-entry-name">{info.name}</span>

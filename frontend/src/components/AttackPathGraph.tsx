@@ -6,7 +6,7 @@ import { LuArrowDown, LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 
 import "../screens/vulnerability-detail.css";
 import { useI18n, type TranslateFn } from "../i18n/context";
-import { IconButton, severityLevel } from "../ui/primitives";
+import { ExternalLink, IconButton, severityLevel } from "../ui/primitives";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
 import type {
   AttackPathExploitMaturity,
@@ -343,15 +343,13 @@ function CrossReferences({ nodes, t }: { nodes: AttackPathNode[]; t: TranslateFn
       </div>
       <div className="link-list">
         {refs.map((ref) => (
-          <a
+          <ExternalLink
             key={`${ref.kind}-${ref.id}`}
             href={ref.href}
-            target="_blank"
-            rel="noopener noreferrer"
             className="vulnerability-detail-path-reference"
           >
             {ref.id}
-          </a>
+          </ExternalLink>
         ))}
       </div>
     </div>

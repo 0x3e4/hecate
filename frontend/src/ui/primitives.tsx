@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
+import { LuExternalLink } from "react-icons/lu";
 
 /** Shared building blocks of the 2.0 design system. See design.md at the repo root. */
 
@@ -98,4 +99,16 @@ export const Stat = ({ label, value, tone }: { label: ReactNode; value: ReactNod
     <dt>{label}</dt>
     <dd className={tone ? `sev-${tone}` : undefined}>{value}</dd>
   </div>
+);
+
+/** A link that leaves Hecate: opens in a new tab and says so with a trailing icon. */
+export const ExternalLink = ({
+  children,
+  className,
+  ...rest
+}: Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "target" | "rel">) => (
+  <a target="_blank" rel="noopener noreferrer" className={`external-link${className ? ` ${className}` : ""}`} {...rest}>
+    {children}
+    <LuExternalLink className="external-link-icon" aria-hidden="true" />
+  </a>
 );

@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Vulnerability detail page: every link that leaves Hecate (CVE.org, NVD, CIRCL, Wazuh, EUVD, OSV, deps.dev, GHSA, references, CWE and CAPEC entries, the CVSS vector, the attack path's standards references) carries an external-link icon. They go through the new `ExternalLink` primitive, which opens a new tab with `rel="noopener noreferrer"`.
+
 ### Changed
+
+- Vulnerability detail page: a long description that arrives as one block is split into paragraphs at sentence ends (abbreviations such as `e.g.`, `Inc.` or `U.S.` and version numbers stay intact), and the text measure grows from 70 to 80 characters, so the description no longer looks cut off next to the full-width KEV panel. Blank lines and bullet lists in the source text are kept as before.
 
 ### Fixed
 

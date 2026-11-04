@@ -108,7 +108,9 @@ Opening any entry takes you to its detail page. The header lists every identifie
 by as chips (CVE, EUVD, GHSA, MAL, PYSEC aliases), a severity tag, and — when applicable — a red
 **REJECTED** banner. Below it sit external deep links that adapt to the ID type: CVE entries link out
 to CVE.org, NVD, CIRCL, EUVD and (after a week) Wazuh; GHSA, MAL and PYSEC aliases link to GitHub
-Advisories, OSV and deps.dev.
+Advisories, OSV and deps.dev. Every link that leaves Hecate carries an external-link icon and opens in a
+new tab. A long description that arrives as one block of text is split into paragraphs at sentence
+ends, so it reads like prose instead of a wall of text.
 
 ![The vulnerability detail page with scores, affected products and the tab bar](../img/hecate-vuln-detail.png)
 
