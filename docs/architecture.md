@@ -332,6 +332,11 @@ back full-text search, `.keyword` fields back aggregations, and a nested `source
 per-source provenance. Advanced search uses DQL (a Domain-Specific Query Language). The index is
 provisioned with `max_result_window` at 200 000 and `total_fields.limit` at 2 000.
 
+An index created by an older version may have identifier fields such as `vendorSlugs` mapped as
+analysed text with a `.keyword` sub-field, and a mapping type cannot change in place. The backend reads
+the live mapping at startup and sends DQL clauses and the statistics aggregations to whichever path
+matches exactly on that index, so such an index works without a reindex.
+
 A nested `versionRanges` field makes "which advisories affect the version I run?" answerable in a
 single query. Advisories describe affected versions in three different shapes — curated range strings,
 structured NVD bounds, and plain CPE identifiers — and the denormalised version list only ever holds

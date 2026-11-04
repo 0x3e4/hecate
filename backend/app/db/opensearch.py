@@ -174,13 +174,17 @@ def refresh_exact_field_paths(index_name: str) -> dict[str, str]:
     return resolved
 
 
+def known_exact_field_path(field: str, index_name: str | None = None) -> str | None:
+    """Exact-match path for ``field`` on the live index, ``None`` when the mapping doesn't know it."""
+    cached = _exact_field_paths.get(index_name or settings.opensearch_index)
+    if cached is None:
+        return None
+    return cached.get(field)
+
+
 def exact_field_path(field: str, index_name: str | None = None) -> str:
     """Exact-match path for ``field`` on the live index (``field`` when unknown)."""
-    index = index_name or settings.opensearch_index
-    cached = _exact_field_paths.get(index)
-    if cached is None:
-        return field
-    return cached.get(field, field)
+    return known_exact_field_path(field, index_name) or field
 
 
 def get_client() -> OpenSearch:

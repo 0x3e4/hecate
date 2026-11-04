@@ -17,7 +17,7 @@ from opensearchpy.exceptions import (
 )
 
 from app.core.config import settings
-from app.db.opensearch import async_search
+from app.db.opensearch import async_search, known_exact_field_path, refresh_exact_field_paths
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.cert_advisory_repository import CertAdvisoryRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
@@ -46,6 +46,28 @@ MONGO_FALLBACK_MAX_TIME_MS = 3000
 # Feeds name hundreds of CVEs in a week. Most mentions stand alone, so the cut falls on those.
 ATTENTION_MAX_CERT_MENTIONS = 300
 CERT_OVERVIEW_MAX_CVES = 1000
+
+def _aggregation_field_resolver(use_keyword_suffix: bool) -> Callable[[str], str]:
+    """Field path for terms aggregations, taken from the live index mapping.
+
+    Indices created before the slug fields were declared ``keyword`` map them as
+    analyzed ``text`` with a ``.keyword`` sub-field, and aggregating on the text
+    side answers 400 (fielddata disabled). The mapping read at start-up says
+    which path is aggregatable per field, so the first request is right on a
+    drifted index too. Fields the mapping doesn't know keep the old behaviour:
+    the bare name first, ``.keyword`` on the fielddata retry.
+    """
+
+    def resolve(name: str) -> str:
+        known = known_exact_field_path(name)
+        if known is not None:
+            return known
+        if use_keyword_suffix and not name.endswith(".keyword"):
+            return f"{name}.keyword"
+        return name
+
+    return resolve
+
 
 # What a CVE row needs, including the fields the inventory matcher reads.
 _VULN_ROW_SOURCE = [
@@ -183,6 +205,7 @@ class StatsService:
         except RequestError as exc:
             if self._is_fielddata_error(exc):
                 log.info("stats.retry_keyword_fields")
+                await self._refresh_field_paths()
                 try:
                     response = await self._run_vulnerability_search(
                         start_30_days=start_30_days,
@@ -299,10 +322,7 @@ class StatsService:
         start_30_days: datetime,
         use_keyword_suffix: bool,
     ) -> dict[str, Any]:
-        def field(name: str) -> str:
-            if not use_keyword_suffix or name.endswith(".keyword"):
-                return name
-            return f"{name}.keyword"
+        field = _aggregation_field_resolver(use_keyword_suffix)
 
         body = {
             "size": 0,
@@ -448,6 +468,18 @@ class StatsService:
                 return int(total)
 
         return 0
+
+    @staticmethod
+    async def _refresh_field_paths() -> None:
+        """Re-read the live mapping so the next request picks the exact paths first.
+
+        Only reached when the start-up read missed (OpenSearch was down then):
+        without it every stats request would fail once before its retry.
+        """
+        try:
+            await asyncio.to_thread(refresh_exact_field_paths, settings.opensearch_index)
+        except Exception as exc:  # noqa: BLE001 - best effort, the retry still runs
+            log.debug("stats.refresh_field_paths_failed", error=str(exc))
 
     @staticmethod
     def _is_fielddata_error(error: RequestError) -> bool:
@@ -844,7 +876,7 @@ class StatsService:
             published_range["time_zone"] = tz
 
         def _build_body(use_keyword_suffix: bool) -> dict[str, Any]:
-            suffix = ".keyword" if use_keyword_suffix else ""
+            field = _aggregation_field_resolver(use_keyword_suffix)
             return {
                 "size": TODAY_MAX_CVES,
                 "track_total_hits": True,
@@ -871,16 +903,16 @@ class StatsService:
                 "sort": [{"published": {"order": "desc"}}],
                 "aggs": {
                     "vendors": {
-                        "terms": {"field": f"vendorSlugs{suffix}", "size": 500},
+                        "terms": {"field": field("vendorSlugs"), "size": 500},
                         "aggs": {
-                            "display_name": {"terms": {"field": "vendors", "size": 1}},
+                            "display_name": {"terms": {"field": field("vendors"), "size": 1}},
                             "products": {
-                                "terms": {"field": f"productSlugs{suffix}", "size": 500},
+                                "terms": {"field": field("productSlugs"), "size": 500},
                             },
                         },
                     },
                     "severity_breakdown": {
-                        "terms": {"field": "cvss.severity", "size": 10, "missing": "unknown"},
+                        "terms": {"field": field("cvss.severity"), "size": 10, "missing": "unknown"},
                     },
                 },
             }
@@ -894,6 +926,7 @@ class StatsService:
         except RequestError as exc:
             if self._is_fielddata_error(exc):
                 log.info("stats.today_retry_keyword_fields")
+                await self._refresh_field_paths()
                 response = await async_search(
                     settings.opensearch_index,
                     _build_body(use_keyword_suffix=True),
