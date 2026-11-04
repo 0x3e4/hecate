@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [2.1.0] - 2026-11-04
+
+### Added
+
 - Inventory: **Duplicate** opens the add dialog with an item's values, including its endoflife.date link, for the next server or environment of the same product.
 - Inventory: a version change can carry a note, such as a ticket, the server or the change request. It is stored in the history entry, not on the item, and can be given in the row, in the edit dialog, as `changeNote` on `PUT /api/v1/inventory/{id}`, as `note` per entry of `POST /api/v1/inventory/report`, and as `change_note` on the MCP tool `update_inventory_item`.
 - `DOCS_URL` (default `https://docs.hecate.pw`): where the sidebar's Documentation link points, so an instance can link its own docs image or, with an empty value, show no link. Only `http(s)` URLs are used.
