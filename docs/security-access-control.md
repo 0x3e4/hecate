@@ -64,7 +64,9 @@ A target owner can:
 
 - switch auto-scan, choose its scanners and set the application group, run/cancel/delete its scans,
   trigger a `/check`
-- import an SBOM into an existing SBOM-import target (a new one needs the admin)
+- import an SBOM into an existing SBOM-import target (a new one needs the admin). The target is
+  the one the import writes to: with no `targetName` that is the name inside the SBOM itself, so
+  an SBOM naming another target needs that target's password
 - change or remove the target's own password
 - set VEX status and dismiss its findings
 - run scan-scoped AI analysis, unless an AI password is set: then that password decides

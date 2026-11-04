@@ -132,6 +132,24 @@ app = FastAPI(
 VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
 
 
+def _max_concurrent_scans() -> int:
+    """How many /scan calls may work at once; the rest wait their turn.
+
+    The backend sends one call per scanner of a scan and runs
+    SCA_MAX_CONCURRENT_SCANS (2) scans, so the default 20 never queues its own
+    traffic. It bounds anything else that reaches this port.
+    """
+    raw = os.environ.get("SCANNER_MAX_CONCURRENT_SCANS")
+    try:
+        val = int(raw) if raw else 20
+    except ValueError:
+        return 20
+    return val if val > 0 else 20
+
+
+_scan_slots = asyncio.Semaphore(_max_concurrent_scans())
+
+
 async def _reap_source_checkouts_once() -> int:
     """One reaping pass: remove unreferenced checkouts older than the TTL.
 
@@ -175,7 +193,10 @@ async def _reap_stale_source_checkouts() -> None:
 async def _startup() -> None:
     if not _SCANNER_SECRET:
         logger.warning("scanner.secret_unset: anyone who can reach this port can start scans")
-    auth = os.environ.get("SCANNER_AUTH")
+    # Popped like the secret: every scanner inherits os.environ, and a hostile
+    # tree's scanner can read /proc/self/environ. setup_auth keeps what git needs
+    # in memory and writes the registry auth the image tools read.
+    auth = os.environ.pop("SCANNER_AUTH", None)
     if auth:
         setup_auth(auth)
     asyncio.create_task(_reap_stale_source_checkouts())
@@ -334,7 +355,6 @@ async def cleanup_source(request: CleanupSourceRequest) -> CleanupSourceResponse
 
 @app.post("/scan", response_model=ScanResponse)
 async def scan(request: ScanRequest) -> ScanResponse:
-    global _active_scans
     invalid = set(request.scanners) - VALID_SCANNERS
     if invalid:
         raise HTTPException(
@@ -353,6 +373,13 @@ async def scan(request: ScanRequest) -> ScanResponse:
             validate_scan_target(request.target, request.type)
         except UnsafeScanTarget as exc:
             raise HTTPException(status_code=400, detail=f"Unsafe scan target: {exc}") from exc
+
+    async with _scan_slots:
+        return await _scan(request)
+
+
+async def _scan(request: ScanRequest) -> ScanResponse:
+    global _active_scans
 
     # Two mutually-exclusive ways to get a working tree: an uploaded archive
     # (owned by this /scan call, extracted fresh each time) or a shared checkout
@@ -384,7 +411,7 @@ async def scan(request: ScanRequest) -> ScanResponse:
     metadata = ScanMetadata()
     _active_scans += 1
     try:
-        for scanner_name in request.scanners:
+        for scanner_name in dict.fromkeys(request.scanners):
             result = await run_scanner(scanner_name, request.target, request.type, source_dir=source_dir)
             results.append(result)
 

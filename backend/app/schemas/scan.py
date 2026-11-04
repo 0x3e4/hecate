@@ -2,9 +2,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas._utc import UtcDatetime
+
+VALID_SCANNERS = frozenset(
+    {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
+)
+
+
+def normalize_scanners(scanners: list[str]) -> list[str]:
+    """Known scanner names, each once, in the order given.
+
+    A scan sends one sidecar call per entry, beside the scan semaphore, so a
+    repeated name multiplied the work of one scan.
+    """
+    unique = list(dict.fromkeys(scanners))
+    if not unique:
+        raise ValueError("At least one scanner must be selected")
+    invalid = set(unique) - VALID_SCANNERS
+    if invalid:
+        raise ValueError(f"Invalid scanners: {', '.join(sorted(invalid))}")
+    return unique
 
 
 class ScanSummarySchema(BaseModel):
@@ -60,6 +79,11 @@ class SubmitScanRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+    @field_validator("scanners")
+    @classmethod
+    def _known_unique_scanners(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else normalize_scanners(value)
+
 
 class ImportSbomRequest(BaseModel):
     """Request to import an external SBOM file."""
@@ -79,6 +103,13 @@ class ImportSbomRequest(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("target_name", "target_id")
+    @classmethod
+    def _blank_is_unset(cls, value: str | None) -> str | None:
+        # An empty value means "not given", explicitly: the write gate resolves
+        # the same target (resolve_sbom_import_target) either way.
+        return value if value and value.strip() else None
 
 
 # --- Response schemas ---

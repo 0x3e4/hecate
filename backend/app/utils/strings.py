@@ -2,10 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _TOKEN_RE = re.compile(r"[^a-z0-9]+")
+_URL_USERINFO_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/?#@\s]+@")
+
+
+def mask_url_credentials(value: Any) -> Any:
+    """Mask the ``user:token@`` part of every URL in ``value``, through lists and dicts."""
+    if isinstance(value, str):
+        return _URL_USERINFO_RE.sub(r"\1***@", value)
+    if isinstance(value, list):
+        return [mask_url_credentials(item) for item in value]
+    if isinstance(value, dict):
+        return {key: mask_url_credentials(item) for key, item in value.items()}
+    return value
 
 
 def slugify(value: str, *, max_length: int = 120) -> str:

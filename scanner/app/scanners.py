@@ -12,6 +12,7 @@ import shutil
 import signal
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 import zipfile
@@ -68,11 +69,13 @@ def setup_auth(auth_entries: str) -> None:
     Examples:
       SCANNER_AUTH=ghcr.io:gitea_token
       SCANNER_AUTH=docker.io:myuser:dckr_pat_xxx,github.com:ghp_xxx
-    Sets up ~/.docker/config.json (for Trivy/Grype/Syft/Dockle/Dive/Skopeo) and
-    ~/.git-credentials (for git clone of private repos).
+    Sets up ~/.docker/config.json (for Trivy/Grype/Syft/Dockle/Dive/Skopeo).
+    Git gets its credentials only in memory, through _git_auth_args_for(): every
+    scanner runs as the same user on a hostile tree, so a plaintext
+    ~/.git-credentials is one more file a scanner could be steered into reading,
+    and its store helper also re-sent a rejected token on the anonymous retry.
     """
     docker_auths: dict[str, dict[str, str]] = {}
-    git_credentials: list[str] = []
     _GIT_AUTH_MAP.clear()
 
     for entry in auth_entries.split(","):
@@ -84,7 +87,6 @@ def setup_auth(auth_entries: str) -> None:
             # host:user:token — explicit username (e.g. Docker Hub)
             host, user, token = parts
             encoded = base64.b64encode(f"{user}:{token}".encode()).decode()
-            git_credentials.append(f"https://{user}:{token}@{host}")
             _GIT_AUTH_MAP[host] = (user, token)
         elif len(parts) == 2:
             # host:token — registry accepts token as username (docker side).
@@ -92,9 +94,7 @@ def setup_auth(auth_entries: str) -> None:
             # accepted by ADO Server, Gitea, and GitHub PATs.
             host, token = parts
             encoded = base64.b64encode(f"{token}:".encode()).decode()
-            git_user = "PersonalAccessToken"
-            git_credentials.append(f"https://{git_user}:{token}@{host}")
-            _GIT_AUTH_MAP[host] = (git_user, token)
+            _GIT_AUTH_MAP[host] = ("PersonalAccessToken", token)
         else:
             continue
 
@@ -108,25 +108,35 @@ def setup_auth(auth_entries: str) -> None:
     docker_dir.mkdir(parents=True, exist_ok=True)
     config_path = docker_dir / "config.json"
     config_path.write_text(json.dumps({"auths": docker_auths}, indent=2))
-
-    # Write ~/.git-credentials
-    if git_credentials:
-        cred_path = Path.home() / ".git-credentials"
-        cred_path.write_text("\n".join(git_credentials) + "\n")
-        cred_path.chmod(0o600)
-
-        gitconfig_path = Path.home() / ".gitconfig"
-        gitconfig_content = "[credential]\n\thelper = store\n"
-        if gitconfig_path.exists():
-            existing = gitconfig_path.read_text()
-            if "helper = store" not in existing:
-                gitconfig_path.write_text(existing + "\n" + gitconfig_content)
-        else:
-            gitconfig_path.write_text(gitconfig_content)
+    config_path.chmod(0o600)
 
 
 _MAX_ARCHIVE_MEMBERS = 200_000
 _MAX_EXTRACTED_BYTES = int(os.environ.get("SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES", str(4 * 1024 * 1024 * 1024)))
+
+# Bytes promised to extractions still in progress. The per-archive cap alone let
+# several concurrent extractions fill the shared /tmp tmpfs (RAM) together.
+_extraction_lock = threading.Lock()
+_reserved_extraction_bytes = 0
+
+
+def _reserve_extraction(size: int, directory: str) -> None:
+    """Claim ``size`` bytes of free space in ``directory`` or refuse the archive."""
+    global _reserved_extraction_bytes
+    with _extraction_lock:
+        try:
+            free = shutil.disk_usage(directory).free
+        except OSError:
+            free = None
+        if free is not None and size > free - _reserved_extraction_bytes:
+            raise RuntimeError("Not enough free space in the scanner's /tmp for this archive right now")
+        _reserved_extraction_bytes += size
+
+
+def _release_extraction(size: int) -> None:
+    global _reserved_extraction_bytes
+    with _extraction_lock:
+        _reserved_extraction_bytes = max(0, _reserved_extraction_bytes - size)
 
 
 def extract_source_archive(source_archive_base64: str) -> str:
@@ -144,14 +154,18 @@ def extract_source_archive(source_archive_base64: str) -> str:
     tmp_dir = tempfile.mkdtemp(prefix="hecate-upload-")
     root = Path(tmp_dir).resolve()
     extracted_files = 0
+    reserved = 0
 
     try:
         with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
             members = zf.infolist()
             if len(members) > _MAX_ARCHIVE_MEMBERS:
                 raise RuntimeError("Archive contains too many files")
-            if sum(member.file_size for member in members) > _MAX_EXTRACTED_BYTES:
+            declared = sum(member.file_size for member in members)
+            if declared > _MAX_EXTRACTED_BYTES:
                 raise RuntimeError("Archive is too large once extracted")
+            _reserve_extraction(declared, tmp_dir)
+            reserved = declared
 
             for member in members:
                 member_path = Path(member.filename)
@@ -176,6 +190,9 @@ def extract_source_archive(source_archive_base64: str) -> str:
     except Exception as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise RuntimeError(f"Invalid ZIP archive: {exc}") from exc
+    finally:
+        # Written files now show in the disk usage themselves.
+        _release_extraction(reserved)
 
     if extracted_files == 0:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -345,6 +362,22 @@ def _looks_like_auth_failure(stderr: str) -> bool:
     )
 
 
+def _remove_symlinks(root: str) -> int:
+    """Delete every symlink below ``root`` so no scanner can read through one.
+
+    The scanners are third-party binaries without a symlink policy of their own;
+    Hecate's parsers refuse links through read_text_limited, they don't.
+    """
+    removed = 0
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        for name in dirnames + filenames:
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path):
+                os.unlink(path)
+                removed += 1
+    return removed
+
+
 async def _clone_repo(url: str) -> str:
     """Clone a git repository to a temporary directory. Returns the path.
 
@@ -365,11 +398,18 @@ async def _clone_repo(url: str) -> str:
         # ``--`` ends option parsing so a ``-``-prefixed URL can't be read as a
         # git flag (argument injection); validate_source_repo_target() has
         # already rejected such targets, this is defence in depth.
-        cmd = ["git", *args, "clone", "--depth", "1", "--no-tags", "--single-branch", "--", url, tmp_dir]
+        # core.symlinks=false checks a committed link out as a small file that
+        # holds its target path: DevSkim follows links, and a settings.py ->
+        # /root/.git-credentials put the sidecar's PATs into public findings.
+        cmd = [
+            "git", *args, "-c", "core.symlinks=false",
+            "clone", "--depth", "1", "--no-tags", "--single-branch", "--", url, tmp_dir,
+        ]
         _, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("git_clone", default=300))
         if rc != 0:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return "", stderr, rc
+        _remove_symlinks(tmp_dir)
         return tmp_dir, stderr, rc
 
     tmp_dir, stderr, rc = await _attempt(auth_args)

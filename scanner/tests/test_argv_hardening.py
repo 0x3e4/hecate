@@ -166,6 +166,36 @@ async def test_pinning_skips_an_oversized_requirements_file(tmp_path, monkeypatc
     assert await scanners._pin_requirements_files(str(tmp_path)) == []
 
 
+async def test_a_clone_checks_out_no_symlinks(monkeypatch):
+    # DevSkim follows links: a committed settings.py -> /root/.git-credentials
+    # put the sidecar's PATs into publicly readable findings.
+    seen: list[list[str]] = []
+
+    async def fake_run_command(cmd, timeout=600):
+        seen.append(list(cmd))
+        checkout = cmd[-1]
+        with open(os.path.join(checkout, "creds.txt"), "w", encoding="utf-8") as handle:
+            handle.write("outside")
+        try:
+            os.symlink(os.path.join(checkout, "creds.txt"), os.path.join(checkout, "settings.py"))
+        except OSError:
+            pass  # Windows without the symlink privilege: the argv check still applies
+        return "", "", 0
+
+    monkeypatch.setattr(scanners, "_run_command", fake_run_command)
+
+    checkout = await scanners._clone_repo("https://example.org/r.git")
+    try:
+        cmd = seen[0]
+        assert cmd[cmd.index("core.symlinks=false") - 1] == "-c"
+        assert cmd.index("core.symlinks=false") < cmd.index("clone")
+        assert sorted(os.listdir(checkout)) == ["creds.txt"]
+    finally:
+        import shutil
+
+        shutil.rmtree(checkout, ignore_errors=True)
+
+
 def test_scanner_auth_is_only_sent_over_https(monkeypatch):
     monkeypatch.setattr(scanners, "_GIT_AUTH_MAP", {"git.corp.example": ("ci", "s3cret-token")})
 

@@ -317,6 +317,7 @@ poetry run python -m app.cli enrich-mal     [--limit N]                   # deps
 poetry run python -m app.cli purge-malware  --ecosystem <eco> [--dry-run] # delete an ecosystem from malware_intel + MAL-* vulnerabilities
 poetry run python -m app.cli reindex-opensearch
 poetry run python -m app.cli compact-history [--dry-run] [--limit N] [--start-after ID] [--pause S]  # shrink legacy change-history entries
+poetry run python -m app.cli scrub-audit-credentials [--dry-run]  # mask URL credentials in audit entries written before 2026-11
 ```
 
 ---

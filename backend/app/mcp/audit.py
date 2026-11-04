@@ -12,6 +12,7 @@ from typing import Any
 
 import structlog
 
+from app.utils.strings import mask_url_credentials
 from app.mcp.auth import (
     mcp_client_id,
     mcp_client_ip,
@@ -36,6 +37,7 @@ async def log_tool_invocation(
     started_at: datetime,
 ) -> None:
     """Log an MCP tool invocation to structlog and the web audit log."""
+    error = _scrub_userinfo(error)
     finished_at = datetime.now(tz=UTC)
     duration_ms = round((finished_at - started_at).total_seconds() * 1000, 1)
     identity = mcp_client_id.get()
@@ -163,6 +165,12 @@ async def log_oauth_event(
         log.warning("mcp.oauth_audit_failed", error=str(exc))
 
 
+# Key names say nothing about values: a scan ``target`` is a repository URL, and
+# ``https://user:PAT@host/repo.git`` is rejected by target validation only after
+# the tool has captured its inputs. The audit log is publicly readable.
+_scrub_userinfo = mask_url_credentials
+
+
 def _redact_sensitive(inputs: dict[str, Any]) -> dict[str, Any]:
     """Redact potentially sensitive values from audit log metadata."""
     sensitive_keys = {"password", "api_key", "token", "secret", "client_secret", "code_verifier"}
@@ -170,7 +178,9 @@ def _redact_sensitive(inputs: dict[str, Any]) -> dict[str, Any]:
     for key, value in inputs.items():
         if any(s in key.lower() for s in sensitive_keys):
             redacted[key] = "***"
-        elif isinstance(value, str) and len(value) > 500:
+            continue
+        value = _scrub_userinfo(value)
+        if isinstance(value, str) and len(value) > 500:
             redacted[key] = value[:500] + "..."
         else:
             redacted[key] = value

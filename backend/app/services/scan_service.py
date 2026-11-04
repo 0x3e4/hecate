@@ -42,6 +42,7 @@ from app.services.scan_parser import (
     parse_trivy_json,
     parse_trufflehog_json,
 )
+from app.schemas.scan import VALID_SCANNERS, normalize_scanners
 from app.services.scan_target_validation import validate_scan_target
 
 log = structlog.get_logger()
@@ -200,6 +201,42 @@ def sbom_import_target_id(target_name: str) -> str:
     """The target an SBOM import lands on when the request names no target id."""
     return f"sbom-import-{target_name.lower().replace(' ', '-')[:60]}"
 
+
+def detect_sbom_format(sbom_data: dict[str, Any]) -> str | None:
+    if sbom_data.get("bomFormat") == "CycloneDX":
+        return "cyclonedx-json"
+    if sbom_data.get("spdxVersion"):
+        return "spdx-json"
+    return None
+
+
+def resolve_sbom_import_target(
+    sbom_data: dict[str, Any],
+    format: str | None,
+    target_name: str | None,
+    target_id: str | None,
+) -> tuple[str, str]:
+    """The ``(name, id)`` an SBOM import writes to.
+
+    Without a name the document names itself, so the write gate has to resolve
+    the target through this same function or it authorizes one target while the
+    import writes another.
+    """
+    target_name = target_name if target_name and target_name.strip() else None
+    target_id = target_id if target_id and target_id.strip() else None
+    if not target_name:
+        name: Any = None
+        fmt = format or detect_sbom_format(sbom_data)
+        if fmt == "cyclonedx-json":
+            meta = sbom_data.get("metadata")
+            comp = meta.get("component") if isinstance(meta, dict) else None
+            name = comp.get("name") if isinstance(comp, dict) else None
+        elif fmt == "spdx-json":
+            name = sbom_data.get("name")
+        target_name = name if isinstance(name, str) and name.strip() else "SBOM Import"
+    return target_name, target_id or sbom_import_target_id(target_name)
+
+
 class ScanService:
     def __init__(
         self,
@@ -352,6 +389,11 @@ class ScanService:
 
         if scanners is None:
             scanners = ["trivy", "grype", "syft"]
+        # One sidecar call runs per list entry, beside the scan semaphore, so a
+        # repeated name would multiply the work of a single scan (and is stored
+        # on the target, where auto-scan replays it). Same check as
+        # update_target_scanners, plus order-keeping de-duplication.
+        scanners = normalize_scanners(scanners)
 
         if source_archive_base64 and target_type != "source_repo":
             raise ValueError("source archive is only supported for source_repo scans")
@@ -493,29 +535,12 @@ class ScanService:
         """Import an external SBOM file. Creates target + scan + components + matched findings."""
         from app.services.scan_parser import parse_cyclonedx_sbom, parse_spdx_sbom
 
-        # Auto-detect format
+        format = format or detect_sbom_format(sbom_data)
         if not format:
-            if sbom_data.get("bomFormat") == "CycloneDX":
-                format = "cyclonedx-json"
-            elif sbom_data.get("spdxVersion"):
-                format = "spdx-json"
-            else:
-                raise ValueError("Cannot auto-detect SBOM format. Provide 'format' parameter.")
+            raise ValueError("Cannot auto-detect SBOM format. Provide 'format' parameter.")
 
-        # Derive target name from SBOM metadata if not given
-        if not target_name:
-            if format == "cyclonedx-json":
-                meta = sbom_data.get("metadata", {})
-                comp = meta.get("component", {}) if isinstance(meta, dict) else {}
-                target_name = comp.get("name", "SBOM Import") if isinstance(comp, dict) else "SBOM Import"
-            elif format == "spdx-json":
-                target_name = sbom_data.get("name", "SBOM Import")
-            else:
-                target_name = "SBOM Import"
-
-        # Create or reuse target
-        if not target_id:
-            target_id = sbom_import_target_id(target_name)
+        # Create or reuse target (the write gate resolved the same one)
+        target_name, target_id = resolve_sbom_import_target(sbom_data, format, target_name, target_id)
 
         existing_target = await self.target_repo.get(target_id)
         if not existing_target:
@@ -2285,7 +2310,7 @@ class ScanService:
             "unchanged_count": unchanged_count,
         }
 
-    VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
+    VALID_SCANNERS = VALID_SCANNERS
 
     async def update_target_auto_scan(self, target_id: str, auto_scan: bool) -> bool:
         """Update auto_scan flag on a target."""

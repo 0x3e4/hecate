@@ -25,6 +25,7 @@ a write scoped to one SCA target passes if the global admin password matches
 from __future__ import annotations
 
 import asyncio
+import json
 
 from fastapi import Depends, Header, Query, HTTPException, Request
 
@@ -39,7 +40,7 @@ from app.core.config import settings
 from app.core.passwords import secret_equals, verify_password
 from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SCAN_SUBMIT
 from app.services.api_token_service import get_api_token_service, looks_like_token
-from app.services.scan_service import sbom_import_target_id, ScanService, get_scan_service
+from app.services.scan_service import resolve_sbom_import_target, ScanService, get_scan_service
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -418,12 +419,23 @@ async def require_target_write_sbom_import(
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
-    """An SBOM import into an existing target takes that target's password; a new target takes the admin's."""
+    """An SBOM import into an existing target takes that target's password; a new target takes the admin's.
+
+    The target is resolved the way the handler resolves it: ImportSbomRequest
+    takes the camelCase alias when it is present, even when it is empty, and an
+    empty name falls back to the document's own name. Read as ``a or b`` an
+    empty ``targetName`` next to ``target_name`` authorized one target while
+    the import wrote another.
+    """
     body = await _safe_json(request)
-    target_id = body.get("targetId") or body.get("target_id")
-    target_name = body.get("targetName") or body.get("target_name")
-    if not isinstance(target_id, str):
-        target_id = sbom_import_target_id(target_name) if isinstance(target_name, str) and target_name else None
+    sbom = body.get("sbom")
+    fmt = body.get("format")
+    _, target_id = resolve_sbom_import_target(
+        sbom if isinstance(sbom, dict) else {},
+        fmt if isinstance(fmt, str) else None,
+        _model_field(body, "targetName", "target_name"),
+        _model_field(body, "targetId", "target_id"),
+    )
     await _authorize_target(
         request,
         target_id,
@@ -433,21 +445,56 @@ async def require_target_write_sbom_import(
     )
 
 
+def _model_field(body: dict, alias: str, name: str) -> str | None:
+    """A string field as a ``populate_by_name`` pydantic model reads it: the alias wins."""
+    value = body[alias] if alias in body else body.get(name)
+    return value if isinstance(value, str) else None
+
+
 async def require_target_write_sbom_upload(
     request: Request,
     target_name: str | None = Query(default=None, alias="targetName"),
+    format: str | None = Query(default=None),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
-    """An SBOM upload into an existing target takes that target's password; a new target takes the admin's."""
+    """An SBOM upload into an existing target takes that target's password; a new target takes the admin's.
+
+    Without ``targetName`` the file names the target, so it is read here too.
+    Starlette caches the parsed form, and the handler reads the same upload.
+    """
+    sbom: dict = {}
+    if not target_name:
+        sbom = await _uploaded_sbom(request)
+    _, target_id = resolve_sbom_import_target(sbom, format, target_name, None)
     await _authorize_target(
         request,
-        sbom_import_target_id(target_name) if target_name else None,
+        target_id,
         x_system_password=x_system_password,
         x_target_password=x_target_password,
         service=service,
     )
+
+
+async def _uploaded_sbom(request: Request) -> dict:
+    """The uploaded SBOM as the handler will parse it, or ``{}`` (the handler then rejects it)."""
+    try:
+        upload = (await request.form()).get("file")
+    except Exception:
+        return {}
+    if upload is None or isinstance(upload, str):
+        return {}
+    limit = settings.sca_source_archive_max_bytes
+    content = await upload.read(limit + 1)
+    await upload.seek(0)
+    if len(content) > limit:
+        return {}
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 async def require_target_write_body_target(

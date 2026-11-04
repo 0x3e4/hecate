@@ -379,12 +379,9 @@ Multiple hosts are comma-separated:
 SCANNER_AUTH=ghcr.io:token1,ghcr.io:ghp_abc
 ```
 
-At startup the sidecar configures:
+At startup the sidecar writes `~/.docker/config.json` for container-image pulls (Trivy, Grype, Syft) and then removes `SCANNER_AUTH` from its environment, so the scanners it starts don't inherit it. Git credentials stay in memory only: no `~/.git-credentials` is written, because every scanner runs as the same user on a hostile tree.
 
-- `~/.docker/config.json` — for container-image pulls (Trivy, Grype, Syft)
-- `~/.git-credentials` — fallback for HTTPS clones of private repositories
-
-For `git clone` / `ls-remote`, the scanner additionally injects credentials as `-c http.extraHeader=Authorization: Basic <b64>` directly into the `git` invocation. This sidesteps the WWW-Authenticate negotiation that, especially for **Azure DevOps Server** (URL pattern `/<Collection>/<Project>/_git/<Repo>`), bypasses the credential helper and ends up failing with "Authentication failed". For the two-segment `host:token` form, `PersonalAccessToken` is used as the basic-auth user — compatible with ADO Server, Gitea, and GitHub PATs. If you need a specific user (e.g. Docker Hub), use the three-segment `host:user:token` form.
+For `git clone` / `ls-remote`, the scanner injects credentials as `-c http.extraHeader=Authorization: Basic <b64>` directly into the `git` invocation. This sidesteps the WWW-Authenticate negotiation that, especially for **Azure DevOps Server** (URL pattern `/<Collection>/<Project>/_git/<Repo>`), bypasses the credential helper and ends up failing with "Authentication failed". For the two-segment `host:token` form, `PersonalAccessToken` is used as the basic-auth user — compatible with ADO Server, Gitea, and GitHub PATs. If you need a specific user (e.g. Docker Hub), use the three-segment `host:user:token` form.
 
 > [!IMPORTANT]
 > No Docker-socket mounting. Scanner tools pull container images directly from the registry API.
@@ -433,6 +430,7 @@ deploy:
 | `HECATE_MALWARE_ALLOWLIST` | — | Comma-separated package names ignored by the malware detector |
 | `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` subprocess timeout for source-repo scans (the repo is cloned once per scan via `/prepare-source`). The backend auto-widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)` |
 | `SOURCE_CHECKOUT_TTL_SECONDS` | `7200` | Idle TTL after which the sidecar reaps a leaked shared checkout (crash-leak backstop; a checkout with live scanners is never reaped) |
+| `SCANNER_MAX_CONCURRENT_SCANS` | `20` | How many `/scan` calls run at once; further calls wait. A request's scanner list is de-duplicated, and an uploaded archive is refused while it doesn't fit into the free `/tmp` space left after the extractions already running |
 
 Backend-side configuration of the sidecar:
 

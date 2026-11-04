@@ -74,6 +74,12 @@ into a "Show details" expander so the table stays readable. AI jobs additionally
 and output token counts, and MCP rows expose the originating client IP alongside the full request
 payload, which is useful when you are auditing who triggered a tool.
 
+The audit log is readable without a password, so the payload never holds a secret: fields named like
+a password, key or token show `***`, and the `user:token@` part of every URL is masked, also inside a
+repository URL that a scan rejected. Entries written by versions before this masking existed can be
+cleaned with `docker compose exec backend python -m app.cli scrub-audit-credentials` (add
+`--dry-run` to list them first). Rotate every token it finds.
+
 ## When to use it
 
 In day-to-day operation the audit log answers two recurring questions. The first is *"are the feeds

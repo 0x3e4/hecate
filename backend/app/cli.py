@@ -35,8 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch", "compact-history"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch, compact-history).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch", "compact-history", "scrub-audit-credentials"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch, compact-history, scrub-audit-credentials).",
     )
     parser.add_argument(
         "--since",
@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Don't actually write — just print counts (purge-malware, compact-history).",
+        help="Don't actually write — just print counts (purge-malware, compact-history, scrub-audit-credentials).",
     )
     parser.add_argument(
         "--start-after",
@@ -197,6 +197,11 @@ def main() -> None:
             )
         )
         print(f"Change-history compaction finished: {result}")
+    elif args.command == "scrub-audit-credentials":
+        if args.since or args.initial or args.ecosystem or args.limit is not None:
+            parser.error("scrub-audit-credentials only accepts --dry-run.")
+        result = asyncio.run(run_scrub_audit_credentials(dry_run=args.dry_run))
+        print(f"Audit credential scrub finished: {result}")
     else:
         parser.error(f"Unsupported command: {args.command}")
 
@@ -575,6 +580,42 @@ async def run_opensearch_reindex() -> dict[str, Any]:
         raise
 
 
+
+
+async def run_scrub_audit_credentials(*, dry_run: bool = False, collection: Any = None) -> dict[str, Any]:
+    """Mask URL credentials in audit entries written before the audit writer masked them.
+
+    MCP ``trigger_scan`` logged its raw ``target``, so a repository URL with a
+    token in it reached the publicly readable audit log even though validation
+    rejected the scan. Rewrites ``metadata`` and ``error`` of every ``mcp``
+    entry that holds one. Tokens found this way should be rotated: anyone could
+    read them until now.
+    """
+    from app.mcp.audit import MCP_JOB_NAME
+    from app.utils.strings import mask_url_credentials
+
+    if collection is None:
+        from app.repositories.ingestion_log_repository import IngestionLogRepository
+
+        collection = (await IngestionLogRepository.create()).collection
+
+    scanned = 0
+    scrubbed: list[str] = []
+    cursor = collection.find({"jobName": MCP_JOB_NAME}, {"metadata": 1, "error": 1})
+    async for doc in cursor:
+        scanned += 1
+        update = {
+            field: mask_url_credentials(doc.get(field))
+            for field in ("metadata", "error")
+            if doc.get(field) is not None and mask_url_credentials(doc.get(field)) != doc.get(field)
+        }
+        if not update:
+            continue
+        scrubbed.append(str(doc["_id"]))
+        if not dry_run:
+            await collection.update_one({"_id": doc["_id"]}, {"$set": update})
+
+    return {"scanned": scanned, "scrubbed": len(scrubbed), "entry_ids": scrubbed, "dry_run": dry_run}
 
 
 async def run_compact_history(

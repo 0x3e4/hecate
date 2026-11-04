@@ -147,7 +147,7 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_SCANNER_URL` | `http://scanner:8080` | Scanner sidecar URL. |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP timeout; the actual per-call value auto-derives as `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60)`. |
 | `SCA_SOURCE_ARCHIVE_MAX_BYTES` | `52428800` | Max uploaded source archive size (50 MiB). |
-| `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES` | `4294967296` | Max total size of an archive once extracted, checked by the scanner (4 GiB). |
+| `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES` | `4294967296` | Max total size of an archive once extracted, checked by the scanner (4 GiB). An archive is also refused while it doesn't fit into the free `/tmp` space left after the extractions already running. |
 | `SCA_AUTO_SCAN_ENABLED` | `false` | Enable the auto-scan scheduler. |
 | `SCA_AUTO_SCAN_INTERVAL_MINUTES` | `1440` | How often auto-scan checks each target for changes. |
 | `SCA_MAX_CONCURRENT_SCANS` | `2` | Concurrent scan slots. |
@@ -162,10 +162,11 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `<SCANNER>_TIMEOUT_SECONDS` | grype `1800`, devskim `1500`, trufflehog `300`, others `600` | Per-scanner subprocess timeout. Hyphenated names use underscores (`osv-scanner` → `OSV_SCANNER_TIMEOUT_SECONDS`). The backend's HTTP timeout auto-derives from these. |
 | `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` timeout for source-repo scans. The repo is cloned once per scan (sidecar `/prepare-source`) and shared across all scanners. The backend widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)`. |
 | `SOURCE_CHECKOUT_TTL_SECONDS` | `7200` | Idle TTL after which the sidecar reaps a leaked shared checkout (crash-leak backstop; a checkout with live scanners is never reaped). |
+| `SCANNER_MAX_CONCURRENT_SCANS` | `20` | How many `/scan` calls the sidecar works on at once; further calls wait. The backend sends one per scanner of `SCA_MAX_CONCURRENT_SCANS` scans, so the default never queues its own traffic. |
 | `TRIVY_CACHE_DIR` | `/tmp/.trivy-cache` | Trivy DB cache dir (tmpfs by default; mount a volume to persist). |
 | `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir. The bundled `docker-compose.yml.example` sets it to `/grype-db` on the persistent `grype-db` volume, so the ~3 GB DB survives restarts. Without that volume it sits on tmpfs and is re-downloaded after each restart. |
 | `SEMGREP_RULES` | `p/security-audit` | Semgrep ruleset(s). |
-| `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). Git credentials are only sent to `https://` repositories. |
+| `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). Git credentials are only sent to `https://` repositories, and only in memory: the sidecar writes no `~/.git-credentials` and removes the variable from its environment at startup, so scanners don't inherit it. |
 | `HECATE_MALWARE_ALLOWLIST` | (empty) | Comma-separated package names to skip during malware detection. |
 | `HECATE_REGISTRY_CACHE_TTL` | `604800` | Typosquatting registry-lookup cache TTL (seconds; 7 days). |
 | `HECATE_TIMEOUT_SECONDS` | `600` | Time limit of the `hecate` analyzer. It runs as its own process and is killed when the limit is reached. |
