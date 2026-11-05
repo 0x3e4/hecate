@@ -202,10 +202,11 @@ Each source shares the same knobs (`*_BASE_URL`, `*_TIMEOUT_SECONDS`, `*_RATE_LI
 | `CWE_BASE_URL` | `https://cwe-api.mitre.org/api/v1` | MITRE CWE API. |
 | `CAPEC_XML_URL` | MITRE CAPEC XML | MITRE CAPEC download. |
 | `CIRCL_BASE_URL` | `https://vulnerability.circl.lu/api` | CIRCL CVE + EPSS API. |
-| `CERT_FEEDS_ENABLED` | `true` | Read the CERT advisory feeds behind the dashboard's *Needs attention* panel. |
-| `CERT_FEEDS_EXTRA` | (unset) | Feeds on top of the built-in list, as `Name\|URL` pairs separated by commas, e.g. `CERT.at\|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml`. Any RSS, RDF or Atom feed; a built-in name replaces that entry. See [CERT feeds](guide/dashboard.md#cert-feeds). |
+| `CERT_FEEDS_ENABLED` | `true` | Read the advisory feeds behind the Advisories page and the dashboard's *Needs attention* panel, including those added on System → Data. |
+| `CERT_FEEDS_EXTRA` | (unset) | Feeds on top of the built-in list, as `Name\|URL` or `Name\|URL\|kind` entries separated by commas, e.g. `CERT.at\|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml`. `kind` is `cert` (default), `vendor` or `community`. Any RSS, RDF or Atom feed; a built-in name replaces that entry. Feeds can also be added on System → Data. See [Advisory feeds](guide/dashboard.md#advisory-feeds). |
 | `CERT_FEEDS` | CERT-FR, CERT-EU, NCSC-NL, CCCS, JPCERT/CC | Replaces the built-in list, same format. |
-| `CERT_FEEDS_MAX_PAGE_FETCHES_PER_RUN` | `50` | Per feed and run: advisory pages read for items that name no CVE in the feed. |
+| `CERT_FEEDS_MAX_PAGE_FETCHES_PER_RUN` | `50` | Per feed and run: advisory pages read for items that name no CVE in the feed. Community feeds read none. |
+| `CERT_FEEDS_ALLOW_PRIVATE_HOSTS` | `false` | Let feeds added on System → Data point at private, loopback or link-local addresses. Off, such a feed is refused when saved and skipped before every run. `.env` feeds are not checked. |
 | `GHSA_TOKEN` 🔑 | (unset) | GitHub PAT (60 → 5000 req/h). |
 | `OSV_BASE_URL` | `https://api.osv.dev/v1` | OSV.dev API. |
 | `OSV_INCREMENTAL_LOOKBACK_HOURS` | `48` | Incremental OSV syncs re-read `modified_id.csv` from this many hours before the cursor, because OSV exports a record hours after its upstream `modified` timestamp. Rows already processed with the same timestamp are skipped. `0` disables. |

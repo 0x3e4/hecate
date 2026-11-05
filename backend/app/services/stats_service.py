@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.db.opensearch import async_search, known_exact_field_path, refresh_exact_field_paths
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.cert_advisory_repository import CertAdvisoryRepository
+from app.services.advisory_feed_service import feed_kinds
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.cert_topics import group_advisories
 from app.services.inventory_matcher import items_for_vuln
@@ -139,6 +140,14 @@ def _severity_of(source: dict[str, Any]) -> str:
     if isinstance(cvss, dict):
         return (cvss.get("severity") or "unknown").lower()
     return "unknown"
+
+
+def _topic_sources(advisories: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The distinct feeds of a topic with their kind, the one that wrote last first."""
+    sources: dict[str, dict[str, str]] = {}
+    for advisory in advisories:
+        sources.setdefault(advisory["feed"], {"name": advisory["feed"], "kind": advisory["kind"]})
+    return list(sources.values())
 
 
 class StatsService:
@@ -1050,8 +1059,10 @@ class StatsService:
     async def get_attention(self, *, days: int = 7, tz: str | None = None) -> dict[str, Any]:
         """Return what is being exploited or warned about in the last ``days`` days.
 
-        Combines CVEs added to the CISA KEV catalogue with those the CERT feeds
+        Combines CVEs added to the CISA KEV catalogue with those the advisory feeds
         named. Neither is keyed on ``published``: most of them are older CVEs.
+        Each item lists its ``sources`` with their kind; the frontend decides what
+        trends, and community posts never do on their own.
         """
         since_at = self._window_start(days, tz)
         since = since_at.strftime("%Y-%m-%d")
@@ -1060,7 +1071,12 @@ class StatsService:
         kev_clause = {"range": {"exploitation.dateAdded": {"gte": since}}}
         clauses: list[dict[str, Any]] = [kev_clause]
         if mentions:
-            mentioned = sorted(mentions, key=lambda cve_id: -len(mentions[cve_id]))[:ATTENTION_MAX_CERT_MENTIONS]
+
+            def weight(cve_id: str) -> tuple[int, int]:
+                voices = sum(1 for mention in mentions[cve_id] if mention.get("kind") != "community")
+                return -voices, -len(mentions[cve_id])
+
+            mentioned = sorted(mentions, key=weight)[:ATTENTION_MAX_CERT_MENTIONS]
             clauses += [{"terms": {"vuln_id": mentioned}}, {"terms": {"aliases": mentioned}}]
 
         body = {
@@ -1079,16 +1095,16 @@ class StatsService:
         rows = await self._vulnerability_rows(_hit_sources(response), since)
         items: list[dict[str, Any]] = []
         for source, row in rows:
-            certs: dict[str, dict[str, Any]] = {}
+            sources: dict[str, dict[str, Any]] = {}
             for identifier in [row["vulnId"], *_string_list(source, "aliases")]:
                 for mention in mentions.get(identifier.upper(), []):
-                    certs.setdefault(mention["name"], mention)
-            items.append({**row, "certs": list(certs.values())})
+                    sources.setdefault(mention["name"], mention)
+            items.append({**row, "sources": list(sources.values())})
 
         return {"since": since, "days": days, "total": self._resolve_total(response), "items": items}
 
     async def get_cert_overview(self, *, days: int = 30, tz: str | None = None) -> dict[str, Any]:
-        """Return the CERT advisories of the window, merged into topics through shared CVEs.
+        """Return the feed advisories of the window, merged into topics through shared CVEs.
 
         Round-ups stay apart and are not looked up: they name hundreds of CVEs, and
         the page only needs their IDs to count what is in the user's scans.
@@ -1098,7 +1114,7 @@ class StatsService:
         empty = {"since": since, "days": days, "topics": [], "roundups": []}
         try:
             repository = await CertAdvisoryRepository.create()
-            advisories = await repository.list_since(since_at)
+            advisories = await repository.list_since(since_at, await feed_kinds())
         except PyMongoError as exc:
             log.warning("stats.cert_overview_unavailable", error=str(exc))
             return empty
@@ -1112,6 +1128,7 @@ class StatsService:
         def advisory_row(advisory: dict[str, Any]) -> dict[str, Any]:
             return {
                 "feed": advisory["feed"],
+                "kind": advisory["kind"],
                 "title": advisory.get("title"),
                 "url": advisory.get("url"),
                 "published": advisory["published"].isoformat(),
@@ -1126,7 +1143,7 @@ class StatsService:
             severities = [row["severity"] for row in rows.values()]
             return {
                 "id": topic["id"],
-                "certs": list(dict.fromkeys(advisory["feed"] for advisory in topic["advisories"])),
+                "sources": _topic_sources(topic["advisories"]),
                 "firstSeen": min(published).isoformat(),
                 "lastSeen": max(published).isoformat(),
                 "worstSeverity": min(severities, key=_severity_rank),
@@ -1228,7 +1245,7 @@ class StatsService:
         """CVE → the feeds naming it. The panel still works from KEV when this store is unavailable."""
         try:
             repository = await CertAdvisoryRepository.create()
-            return await repository.mentions_since(since)
+            return await repository.mentions_since(since, await feed_kinds())
         except PyMongoError as exc:
             log.warning("stats.cert_mentions_unavailable", error=str(exc))
             return {}

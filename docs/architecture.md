@@ -208,7 +208,7 @@ inserted findings only, deduplicated by a partial unique index.
 | CWE | MITRE REST API | 7 days | Weakness definitions |
 | CAPEC | MITRE XML download | 7 days | Attack patterns |
 | CIRCL | CIRCL REST API | 120 min | Additional enrichment |
-| CERT feeds | RSS / RDF / Atom of national CERTs | 120 min | Which CVEs the CERTs warn about (`cert_advisories`, for the dashboard signal; never writes vulnerability documents) |
+| Advisory feeds | RSS / RDF / Atom of CERTs, vendors and community accounts (`.env` + System → Data) | 120 min | Which CVEs they warn about (`cert_advisories`, for the Advisories page and the dashboard signal; never writes vulnerability documents) |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories (hybrid: enriches CVEs + creates GHSA-only entries) |
 | OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems) |
 
@@ -297,7 +297,8 @@ overdue without aborting them.
 | `cwe_catalog` | CWE weaknesses (7-day TTL cache) |
 | `capec_catalog` | CAPEC attack patterns (7-day TTL cache) |
 | `known_exploited_vulnerabilities` | CISA KEV entries |
-| `cert_advisories` | CERT advisories and the CVEs they name, for the dashboard signal |
+| `cert_advisories` | Feed advisories, their feed's kind and the CVEs they name, for the Advisories page and the dashboard signal |
+| `advisory_feeds` | Advisory feeds added on System → Data (name, URL, kind, on/off) |
 | `cpe_catalog` | CPE entries (vendor, product, version) |
 | `asset_vendors` | Vendors with slug and product count |
 | `asset_products` | Products with vendor mapping |

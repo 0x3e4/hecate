@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     mongo_ingestion_log_collection: str = "ingestion_logs"
     mongo_kev_collection: str = "known_exploited_vulnerabilities"
     mongo_cert_advisories_collection: str = "cert_advisories"
+    mongo_advisory_feeds_collection: str = "advisory_feeds"
     mongo_cwe_collection: str = "cwe_catalog"
     mongo_capec_collection: str = "capec_catalog"
     mongo_saved_searches_collection: str = "saved_searches"
@@ -122,8 +123,11 @@ class Settings(BaseSettings):
     circl_retry_backoff_seconds: float = 3.0
     circl_max_records_per_run: OptionalInt = 1000
 
-    # CERT advisory feeds, comma-separated "Name|URL" pairs (RSS, RDF or Atom).
+    # Advisory feeds, comma-separated "Name|URL" or "Name|URL|kind" entries (RSS, RDF or Atom).
+    # kind is cert (default), vendor or community: CERTs and vendors count as independent voices,
+    # community feeds (Mastodon accounts, blogs) are shown as context and never make a CVE trend.
     # CERT_FEEDS_EXTRA adds to this list without repeating it; the same name replaces a default.
+    # Feeds added on System -> Data come on top; a name used here wins over a UI feed of that name.
     # CISA is absent on purpose: its advisory feed answers 403 to this client, and its KEV catalogue arrives anyway.
     cert_feeds_enabled: bool = True
     cert_feeds: str = (
@@ -140,6 +144,8 @@ class Settings(BaseSettings):
     cert_feeds_retry_backoff_seconds: float = 3.0
     # Per feed: linked pages read for items that name no CVE themselves.
     cert_feeds_max_page_fetches_per_run: int = 50
+    # Feeds added through the UI may only point at public addresses. Set to true for an intranet feed.
+    cert_feeds_allow_private_hosts: bool = False
 
     ghsa_base_url: str = "https://api.github.com/advisories"
     ghsa_token: str | None = None

@@ -7,12 +7,14 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.services.ingestion import cert_feed_pipeline
+from app.services import advisory_feed_service
+from app.services.ingestion import cert_feed_client, cert_feed_pipeline
 from app.services.ingestion.cert_feed_client import (
     CertAdvisoryItem,
     CertFeed,
     CertFeedClient,
     extract_cve_ids,
+    merge_feeds,
     parse_feed,
     parse_feed_config,
     safe_url,
@@ -162,9 +164,64 @@ def test_feed_config_merges_extras_and_lets_them_replace_a_default():
     }
 
 
-@pytest.mark.parametrize("entry", ["no-separator", "|https://x.example/", "Name|", "Name|ftp://x.example/", ""])
+def test_feed_config_reads_a_kind_and_defaults_to_cert():
+    feeds = parse_feed_config("A|https://a.example/feed,B|https://b.example/feed|Community,C|https://c.example/rss|vendor")
+
+    assert [(feed.name, feed.kind) for feed in feeds] == [("A", "cert"), ("B", "community"), ("C", "vendor")]
+    assert not any(feed.guard_host for feed in feeds)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "no-separator",
+        "|https://x.example/",
+        "Name|",
+        "Name|ftp://x.example/",
+        "",
+        "Name|https://x.example/|blog",
+        "Name|https://x.example/|cert|extra",
+    ],
+)
 def test_feed_config_skips_a_broken_entry(entry):
     assert parse_feed_config(f"{entry},Good|https://good.example/feed") == [CertFeed("Good", "https://good.example/feed")]
+
+
+def test_a_ui_feed_cannot_take_the_name_of_a_configured_one():
+    configured = [CertFeed("CERT-FR", "https://fr.example/feed")]
+    managed = [
+        CertFeed("cert-fr", "https://evil.example/feed", guard_host=True),
+        CertFeed("@analyst", "https://m.example/@analyst.rss", kind="community", guard_host=True),
+    ]
+
+    assert [feed.name for feed in merge_feeds(configured, managed)] == ["CERT-FR", "@analyst"]
+
+
+MASTODON = b"""<rss version="2.0"><channel><title>@analyst</title>
+  <item>
+    <guid isPermaLink="true">https://infosec.example/@analyst/1</guid>
+    <link>https://infosec.example/@analyst/1</link>
+    <pubDate>Tue, 03 Nov 2026 08:00:00 +0000</pubDate>
+    <description>&lt;p&gt;Patch &amp;amp; reboot: CVE-2026-4242 is exploited in the wild, &lt;a href="https://x.example"&gt;details&lt;/a&gt;&lt;/p&gt;</description>
+  </item>
+</channel></rss>"""
+
+
+def test_a_post_without_a_title_is_named_after_its_text():
+    [item] = parse_feed(MASTODON)
+
+    assert item.title == "Patch & reboot: CVE-2026-4242 is exploited in the wild, details"
+    assert item.cve_ids == ["CVE-2026-4242"]
+
+
+def test_a_long_fallback_title_is_cut_at_a_word():
+    words = " ".join(["word"] * 100)
+    feed = f"<rss><channel><item><guid>1</guid><description>{words}</description></item></channel></rss>".encode()
+
+    [item] = parse_feed(feed)
+
+    assert item.title.endswith("word…")
+    assert len(item.title) <= cert_feed_client.FALLBACK_TITLE_CHARS + 1
 
 
 def test_the_default_feeds_parse():
@@ -219,6 +276,25 @@ async def test_page_fetch_does_not_follow_a_redirect():
 
 async def test_a_server_error_on_a_page_means_try_again():
     assert await _client(lambda _: httpx.Response(503)).fetch_page_cves(FEED, "https://cert.example/a") is None
+
+
+async def test_a_ui_feed_on_a_private_host_is_not_fetched(monkeypatch):
+    requested = []
+
+    async def private(_url):
+        return False
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=RSS)
+
+    monkeypatch.setattr(cert_feed_client, "is_public_url", private)
+    monkeypatch.setattr(settings, "cert_feeds_allow_private_hosts", False)
+    client = _client(handler)
+
+    assert await client.fetch_feed(CertFeed("Intranet", "https://10.0.0.5/feed", guard_host=True)) is None
+    assert requested == []
+    assert await client.fetch_feed(CertFeed("From env", "https://10.0.0.5/feed")) is not None
 
 
 async def test_a_broken_feed_is_reported_and_not_raised():
@@ -292,6 +368,18 @@ async def test_known_items_cost_no_request():
     assert client.requested == []
 
 
+async def test_a_community_post_never_reads_its_page():
+    client = _FakeClient()
+    repository = _Repository()
+    account = CertFeed("@analyst", "https://cert.example/@analyst.rss", kind="community")
+
+    items = [_item("1", url="https://cert.example/@analyst/1")]
+    await CertFeedPipeline(client=client)._store_new_items(repository, account, items)
+
+    assert client.requested == []
+    assert repository.saved == {"1": []}
+
+
 async def test_an_old_item_does_not_read_its_page():
     _, repository, client = await _store([_item("1", url="https://cert.example/1", age_days=90)])
 
@@ -346,6 +434,14 @@ async def test_one_broken_feed_does_not_stop_the_others(monkeypatch):
     async def create():
         return _Repository()
 
+    class NoManagedFeeds:
+        async def list_all(self):
+            return []
+
+    async def create_feeds():
+        return NoManagedFeeds()
+
+    monkeypatch.setattr(advisory_feed_service.AdvisoryFeedRepository, "create", staticmethod(create_feeds))
     monkeypatch.setattr(cert_feed_pipeline, "JobTracker", Tracker)
     monkeypatch.setattr(cert_feed_pipeline.CertAdvisoryRepository, "create", staticmethod(create))
     monkeypatch.setattr(cert_feed_pipeline.IngestionStateRepository, "create", staticmethod(create))

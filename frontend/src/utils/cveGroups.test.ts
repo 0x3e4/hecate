@@ -66,7 +66,7 @@ describe("attentionRows", () => {
     severity,
     kevListed,
     dateAdded,
-    certs: Array.from({ length: certs }, () => "cert"),
+    sources: Array.from({ length: certs }, () => ({ kind: "cert" })),
     inventoryMatchIds: inventory ? ["item-1"] : [],
   });
   const none = () => 0;
@@ -74,6 +74,20 @@ describe("attentionRows", () => {
 
   it("drops a CVE only one CERT named", () => {
     expect(ids(attentionRows([item("lone", 1), item("trending", 2)], none))).toEqual(["trending"]);
+  });
+
+  it("does not let community posts make a CVE trend", () => {
+    const chatter = { ...item("chatter", 0), sources: Array.from({ length: 5 }, () => ({ kind: "community" })) };
+    const vendorAndCert = { ...item("vendor-and-cert", 0), sources: [{ kind: "vendor" }, { kind: "cert" }] };
+
+    expect(ids(attentionRows([chatter, vendorAndCert], none))).toEqual(["vendor-and-cert"]);
+  });
+
+  it("uses community posts only to break a tie", () => {
+    const quiet = item("quiet", 2);
+    const discussed = { ...item("discussed", 2), sources: [...item("x", 2).sources, { kind: "community" }] };
+
+    expect(ids(attentionRows([quiet, discussed], none))).toEqual(["discussed", "quiet"]);
   });
 
   it("keeps a KEV listing without any CERT", () => {
@@ -106,7 +120,13 @@ describe("attentionRows", () => {
 });
 
 describe("quietFindings", () => {
-  const item = (id: string, certs: number, kevListed = false) => ({ id, severity: "high", kevListed, dateAdded: null, certs: Array.from({ length: certs }, () => "cert") });
+  const item = (id: string, certs: number, kevListed = false) => ({
+    id,
+    severity: "high",
+    kevListed,
+    dateAdded: null,
+    sources: Array.from({ length: certs }, () => ({ kind: "cert" })),
+  });
 
   it("takes the scan findings that did not earn a row", () => {
     const rows = quietFindings(

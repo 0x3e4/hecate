@@ -54,6 +54,7 @@ import {
 import { fetchScanTargets } from "../api/scans";
 import { setAdminPassword } from "../api/writeAuth";
 import { SkeletonBlock } from "../components/Skeleton";
+import { AdvisoryFeedsPanel } from "../components/AdvisoryFeedsPanel";
 import { ApiTokenPanel } from "../components/ApiTokenPanel";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
 import { useToastContext } from "../components/ToastProvider";
@@ -2184,6 +2185,8 @@ export const SystemPage = () => {
           </div>
         )}
       </Section>
+
+      <AdvisoryFeedsPanel />
 
       <Section title={t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}>
         <p className="system-section-help">

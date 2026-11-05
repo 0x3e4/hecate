@@ -40,40 +40,47 @@ export interface CveGroup<T> {
 const knownSeverity = (severity: string): string =>
   SEVERITY_ORDER.includes(severity) ? severity : "unknown";
 
-// One CERT naming a CVE is routine; several within a week is what makes it trend.
+// One CERT or vendor naming a CVE is routine; several within a week is what makes it trend.
+// Community posts (Mastodon accounts, blogs) never count towards it: two people tooting is not two CERTs.
 export const CERT_TRENDING_MIN = 2;
 
 export interface AttentionCandidate {
   severity: string;
   kevListed: boolean;
-  certs: unknown[];
+  sources: { kind?: string }[];
   dateAdded: string | null;
   inventoryMatchIds?: string[];
 }
 
+/** The CERTs and vendors among an item's sources. */
+export const voiceCount = (item: Pick<AttentionCandidate, "sources">): number =>
+  item.sources.filter((source) => source.kind !== "community").length;
+
 const trending = (item: AttentionCandidate): boolean =>
-  item.kevListed || item.certs.length >= CERT_TRENDING_MIN || (item.inventoryMatchIds?.length ?? 0) > 0;
+  item.kevListed || voiceCount(item) >= CERT_TRENDING_MIN || (item.inventoryMatchIds?.length ?? 0) > 0;
 
 /**
- * What earns a row: a new KEV listing, several CERTs, or a version-confirmed inventory
- * hit. A scan finding alone does not: one CERT round-up names dozens of kernel CVEs
- * that every container image carries, and those are routine patching, not an alarm.
- * `stackRank` orders what is left: the higher the closer to the user's stack.
+ * What earns a row: a new KEV listing, several CERTs or vendors, or a version-confirmed
+ * inventory hit. A scan finding alone does not: one CERT round-up names dozens of kernel
+ * CVEs that every container image carries, and those are routine patching, not an alarm.
+ * `stackRank` orders what is left: the higher the closer to the user's stack; community
+ * posts only break ties.
  */
 export const attentionRows = <T extends AttentionCandidate>(items: T[], stackRank: (item: T) => number): T[] => {
-  const signals = (item: T) => item.certs.length + Number(item.kevListed);
+  const signals = (item: T) => voiceCount(item) + Number(item.kevListed);
   return items
     .filter(trending)
     .sort(
       (a, b) =>
         stackRank(b) - stackRank(a) ||
         signals(b) - signals(a) ||
+        b.sources.length - a.sources.length ||
         severityRank(knownSeverity(a.severity)) - severityRank(knownSeverity(b.severity)) ||
         (b.dateAdded ?? "").localeCompare(a.dateAdded ?? ""),
     );
 };
 
-/** Scan findings a single CERT named: real, but kept out of the rows and folded per product. */
+/** Scan findings only one CERT or vendor (or only the community) named: real, but kept out of the rows and folded per product. */
 export const quietFindings = <T extends AttentionCandidate>(items: T[], isFinding: (item: T) => boolean): T[] =>
   items.filter((item) => isFinding(item) && !trending(item));
 

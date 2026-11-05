@@ -208,7 +208,8 @@ services/ingestion/
 | `environment_inventory_history` | (dict) | Append-only change log of inventory items, kept after an item is deleted |
 | `environment_inventory` | `InventoryItemDocument` | User-declared product / version inventory (deployment, environment, instance count, optional `eol_product` endoflife.date link) |
 | `malware_intel` | `MalwareIntelDocument` | Dynamic malware-intel entries; upsert key `(source, ecosystem, package_name, version)`; merged into the `/v1/malware/malware-feed` UI (currently unused, reserved for future threat-intel pipelines) |
-| `cert_advisories` | (dict) | CERT advisories and the CVEs they name; a dated signal, kept apart from the vulnerability documents |
+| `cert_advisories` | (dict) | Feed advisories, their feed's kind and the CVEs they name; a dated signal, kept apart from the vulnerability documents |
+| `advisory_feeds` | (dict) | Advisory feeds added on System → Data: name, URL, kind (`cert` / `vendor` / `community`), on/off |
 | `api_tokens` | (dict) | Scoped API tokens, stored as a SHA-256 hash and a display prefix |
 | `app_settings` | (dict) | Runtime-editable settings that override env defaults |
 
@@ -235,7 +236,7 @@ Full-text index with text fields for search and `.keyword` fields for aggregatio
 | CWE | MITRE REST API | 7 days | Weakness definitions |
 | CAPEC | MITRE XML download | 7 days | Attack patterns |
 | CIRCL | CIRCL REST API | 120 min | Additional enrichment |
-| CERT feeds | RSS / RDF / Atom of national CERTs | 120 min | Which CVEs the CERTs warn about |
+| Advisory feeds | RSS / RDF / Atom of CERTs, vendors and community accounts | 120 min | Which CVEs they warn about |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
 | OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems; per-run cursor advancement against cap-hit data loss) |
 

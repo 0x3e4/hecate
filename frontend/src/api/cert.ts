@@ -20,8 +20,19 @@ export interface CertCve {
   inventoryMatchIds: string[];
 }
 
+/** `cert` and `vendor` feeds count as independent voices; `community` (Mastodon, blogs) is context only. */
+export type FeedKind = "cert" | "vendor" | "community";
+
+export const FEED_KINDS: FeedKind[] = ["cert", "vendor", "community"];
+
+export interface FeedSource {
+  name: string;
+  kind: FeedKind;
+}
+
 export interface CertAdvisory {
   feed: string;
+  kind: FeedKind;
   title: string | null;
   url: string | null;
   published: string;
@@ -29,7 +40,7 @@ export interface CertAdvisory {
 
 export interface CertTopic {
   id: string;
-  certs: string[];
+  sources: FeedSource[];
   firstSeen: string;
   lastSeen: string;
   worstSeverity: string;

@@ -68,7 +68,7 @@ nav:
       - Dashboard: guide/dashboard.md
       - Vulnerabilities: guide/vulnerabilities.md
       - Search & Query Builder: guide/search.md
-      - CERT Advisories: guide/cert.md
+      - Advisories: guide/cert.md
       - Environment Inventory: guide/inventory.md
       - AI Analysis & Attack Paths: guide/ai-analysis.md
       - Statistics & Changelog: guide/statistics.md

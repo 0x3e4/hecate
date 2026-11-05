@@ -53,10 +53,10 @@ guide that covers it.
     Keyword, DQL and regex modes, affected-version lookup, the visual field browser, and saved searches.
     → [Search & Query Builder](search.md)
 
--   :material-bullhorn-outline: **CERT Advisories**
+-   :material-bullhorn-outline: **Advisories**
 
-    What national CERTs warn about, merged across advisories that share a CVE.
-    → [CERT Advisories](cert.md)
+    What CERTs, vendors and the community warn about, merged across advisories that share a CVE.
+    → [Advisories](cert.md)
 
 -   :material-clipboard-list-outline: **Environment Inventory**
 

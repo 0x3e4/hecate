@@ -1141,16 +1141,16 @@ const AttentionPanel = ({
           <Link to={attentionHref(data.since)} className="dashboard-section-link">
             {t("KEV listings", "KEV-Einträge")}
           </Link>
-          <Link to="/cert" className="dashboard-section-link">
-            {t("CERT advisories", "CERT-Meldungen")}
+          <Link to="/advisories" className="dashboard-section-link">
+            {t("Advisories", "Meldungen")}
           </Link>
         </>
       }
     >
       <p className="dashboard-triage-note">
         {t(
-          `Added to CISA's known exploited list or named by several CERTs in the last ${data.days} days.`,
-          `In den letzten ${data.days} Tagen in die CISA-Liste ausgenutzter Schwachstellen aufgenommen oder von mehreren CERTs genannt.`,
+          `Added to CISA's known exploited list or named by several CERTs or vendors in the last ${data.days} days.`,
+          `In den letzten ${data.days} Tagen in die CISA-Liste ausgenutzter Schwachstellen aufgenommen oder von mehreren CERTs oder Herstellern genannt.`,
         )}
       </p>
       <TodayListPreview
@@ -1167,8 +1167,8 @@ const AttentionPanel = ({
           <summary className="dashboard-disclosure">
             <LuChevronRight className="dashboard-disclosure-icon" aria-hidden="true" />
             {t(
-              `${quiet.total} more in your scans, named by one CERT`,
-              `${quiet.total} weitere in Ihren Scans, von einem CERT genannt`,
+              `${quiet.total} more in your scans, named by one source`,
+              `${quiet.total} weitere in Ihren Scans, von einer Quelle genannt`,
             )}
           </summary>
           <ul className="dashboard-triage-list">
@@ -1200,27 +1200,31 @@ const attentionGroupInfo = (group: CveGroup<AttentionItem>): CveProductInfo => {
 const CERTS_SHOWN = 3;
 
 // Links to the advisory itself, above the row's stretched link. The backend only stores http(s) URLs.
-const CertLinks = ({ certs }: { certs: CertMention[] }) => (
-  <span className="dashboard-triage-when">
-    {certs.slice(0, CERTS_SHOWN).map((cert, index) => (
-      <React.Fragment key={cert.name}>
-        {index > 0 && ", "}
-        {cert.url ? (
-          <a href={safeHref(cert.url)} target="_blank" rel="noreferrer" className="dashboard-facet" title={cert.title ?? cert.name}>
-            {cert.name}
-          </a>
-        ) : (
-          cert.name
-        )}
-      </React.Fragment>
-    ))}
-    {certs.length > CERTS_SHOWN && (
-      <span className="dashboard-cve-extra" title={certs.map((cert) => cert.name).join(", ")}>
-        +{certs.length - CERTS_SHOWN}
-      </span>
-    )}
-  </span>
-);
+// CERTs and vendors first, so a community post never takes the place of one.
+const CertLinks = ({ sources }: { sources: CertMention[] }) => {
+  const certs = [...sources.filter((source) => source.kind !== "community"), ...sources.filter((source) => source.kind === "community")];
+  return (
+    <span className="dashboard-triage-when">
+      {certs.slice(0, CERTS_SHOWN).map((cert, index) => (
+        <React.Fragment key={cert.name}>
+          {index > 0 && ", "}
+          {cert.url ? (
+            <a href={safeHref(cert.url)} target="_blank" rel="noreferrer" className="dashboard-facet" title={cert.title ?? cert.name}>
+              {cert.name}
+            </a>
+          ) : (
+            cert.name
+          )}
+        </React.Fragment>
+      ))}
+      {certs.length > CERTS_SHOWN && (
+        <span className="dashboard-cve-extra" title={certs.map((cert) => cert.name).join(", ")}>
+          +{certs.length - CERTS_SHOWN}
+        </span>
+      )}
+    </span>
+  );
+};
 
 const AttentionRow = ({ t, item, chips }: { t: TranslateFn; item: AttentionItem; chips: CoverageChip[] }) => (
   <li className="dashboard-triage-row">
@@ -1238,7 +1242,7 @@ const AttentionRow = ({ t, item, chips }: { t: TranslateFn; item: AttentionItem;
       </span>
     </span>
     <span className="dashboard-triage-side">
-      {item.certs.length > 0 && <CertLinks certs={item.certs} />}
+      {item.sources.length > 0 && <CertLinks sources={item.sources} />}
       {item.kevListed && item.dateAdded && (
         <span
           className="dashboard-triage-when"

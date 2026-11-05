@@ -47,7 +47,7 @@ const buildNavSections = (
         { to: "/scans", label: "SCA", icon: LuScanLine },
         { to: "/malware-feed", label: "Malware feed", icon: LuShieldAlert },
       ] : []),
-      { to: "/cert", label: "CERT", icon: LuRadioTower },
+      { to: "/advisories", label: "Advisories", icon: LuRadioTower },
     ],
   },
   {
@@ -145,7 +145,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
     "/inventory": "Inventar",
     "/scans": "SCA",
     "/malware-feed": "Malware-Feed",
-    "/cert": "CERT",
+    "/advisories": "Meldungen",
     "/system": "System",
     "/info/api": "API",
     "/info/cicd": "CI/CD",

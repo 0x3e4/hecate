@@ -36,7 +36,7 @@ SYNC_JOBS = [
     ("capec_sync", "CAPEC Cache Refresh"),
     ("capec_initial_sync", "CAPEC Initial Cache Prefetch"),
     ("circl_sync", "CIRCL Enrichment Sync"),
-    ("cert_feeds_sync", "CERT Advisory Sync"),
+    ("cert_feeds_sync", "Advisory Feed Sync"),
     ("ghsa_sync", "GHSA Sync"),
     ("ghsa_initial_sync", "GHSA Initial Sync"),
     ("osv_sync", "OSV Sync"),

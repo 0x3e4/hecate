@@ -8,11 +8,11 @@ import structlog
 from app.core.config import settings
 from app.repositories.cert_advisory_repository import CertAdvisoryRepository, advisory_id
 from app.repositories.ingestion_state_repository import IngestionStateRepository
+from app.services.advisory_feed_service import active_feeds
 from app.services.ingestion.cert_feed_client import (
     CertAdvisoryItem,
     CertFeed,
     CertFeedClient,
-    parse_feed_config,
 )
 from app.services.ingestion.job_tracker import JobTracker
 
@@ -24,9 +24,10 @@ PAGE_FETCH_MAX_AGE = timedelta(days=30)
 
 class CertFeedPipeline:
     """
-    Records which CVEs the CERTs are warning about. Advisories live in their own
-    collection rather than on the vulnerability documents: a mention is a signal
-    with a date, not part of the record, and must not stamp `last_change_at`.
+    Records which CVEs the CERTs, vendors and community feeds are talking about.
+    Advisories live in their own collection rather than on the vulnerability
+    documents: a mention is a signal with a date, not part of the record, and must
+    not stamp `last_change_at`.
     """
 
     def __init__(self, *, client: CertFeedClient | None = None) -> None:
@@ -35,8 +36,8 @@ class CertFeedPipeline:
     async def sync(self) -> dict[str, Any]:
         repository = await CertAdvisoryRepository.create()
         tracker = JobTracker(await IngestionStateRepository.create())
-        feeds = parse_feed_config(settings.cert_feeds, settings.cert_feeds_extra)
-        ctx = await tracker.start("cert_feeds_sync", label="CERT Advisory Sync", feeds=len(feeds))
+        feeds = await active_feeds()
+        ctx = await tracker.start("cert_feeds_sync", label="Advisory Feed Sync", feeds=len(feeds))
 
         inserted = 0
         with_cves = 0
@@ -86,7 +87,8 @@ class CertFeedPipeline:
                 continue
             cve_ids = item.cve_ids
             fresh = item.published is None or now - item.published <= PAGE_FETCH_MAX_AGE
-            if not cve_ids and item.url and fresh:
+            # A post's page holds the same text as the feed, so community feeds never cost a request.
+            if not cve_ids and item.url and fresh and feed.kind != "community":
                 page = item.url.split("#", 1)[0]
                 if page not in read_pages:
                     if pages_left <= 0:
@@ -99,7 +101,7 @@ class CertFeedPipeline:
                         continue
                     read_pages[page] = found
                 cve_ids = read_pages[page]
-            await repository.insert(feed.name, item, cve_ids)
+            await repository.insert(feed, item, cve_ids)
             stats["inserted"] += 1
             stats["with_cves"] += bool(cve_ids)
         return stats

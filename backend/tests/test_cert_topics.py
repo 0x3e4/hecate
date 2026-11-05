@@ -6,21 +6,27 @@ from datetime import UTC, datetime, timedelta
 from pymongo.errors import PyMongoError
 
 from app.services import stats_service
-from app.services.cert_topics import ROUNDUP_MIN_CVES, group_advisories
+from app.repositories.cert_advisory_repository import feed_kind
+from app.services.cert_topics import COMMUNITY_TOPIC_MAX_CVES, ROUNDUP_MIN_CVES, group_advisories
 from app.services.stats_service import StatsService
 
 NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 
 
-def advisory(key: str, feed: str, cves: list[str], *, age: int = 1) -> dict:
+def advisory(key: str, feed: str, cves: list[str], *, age: int = 1, kind: str = "cert") -> dict:
     return {
         "_id": f"{feed}:{key}",
         "feed": feed,
+        "kind": kind,
         "title": f"{feed} {key}",
         "url": f"https://{feed}.example/{key}",
         "published": NOW - timedelta(days=age),
         "cve_ids": cves,
     }
+
+
+def post(key: str, account: str, cves: list[str], *, age: int = 1) -> dict:
+    return advisory(key, account, cves, age=age, kind="community")
 
 
 def roundup(key: str, shared: str | None = None) -> dict:
@@ -91,15 +97,73 @@ def test_a_topics_id_stays_when_a_later_advisory_joins():
     assert first[0]["id"] == second[0]["id"]
 
 
+def test_a_community_post_naming_two_flaws_does_not_merge_them():
+    topics, _ = group_advisories([
+        advisory("a", "CERT-FR", ["CVE-2026-1"]),
+        advisory("b", "CCCS", ["CVE-2026-2"]),
+        post("p", "@analyst", ["CVE-2026-1", "CVE-2026-2"]),
+    ])
+
+    assert len(topics) == 2
+    assert all(any(a["kind"] == "community" for a in t["advisories"]) for t in topics)
+    assert [t["cve_ids"] for t in sorted(topics, key=lambda t: t["cve_ids"])] == [["CVE-2026-1"], ["CVE-2026-2"]]
+
+
+def test_a_post_joining_a_topic_adds_none_of_its_other_cves():
+    topics, _ = group_advisories([
+        advisory("a", "CERT-FR", ["CVE-2026-1"]),
+        post("p", "@analyst", ["CVE-2026-1", "CVE-2026-7"]),
+    ])
+
+    [topic] = topics
+    assert topic["cve_ids"] == ["CVE-2026-1"]
+    assert len(topic["advisories"]) == 2
+
+
+def test_posts_that_touch_no_topic_group_among_themselves():
+    topics, _ = group_advisories([
+        post("p", "@one", ["CVE-2026-5"]),
+        post("q", "@two", ["CVE-2026-5"]),
+        advisory("a", "CERT-FR", ["CVE-2026-1"]),
+    ])
+
+    assert sorted(len(t["advisories"]) for t in topics) == [1, 2]
+
+
+def test_a_post_listing_many_cves_is_a_roundup():
+    cves = [f"CVE-2026-{n}" for n in range(COMMUNITY_TOPIC_MAX_CVES + 1)]
+
+    topics, roundups = group_advisories([advisory("a", "CERT-FR", [cves[0]]), post("p", "@list", cves)])
+
+    assert len(topics) == 1
+    assert len(topics[0]["advisories"]) == 1
+    assert [r["feed"] for r in roundups] == ["@list"]
+
+
+def test_a_post_does_not_change_the_id_of_the_topic_it_joins():
+    alone, _ = group_advisories([advisory("z", "CERT-FR", ["CVE-2026-1"])])
+    joined, _ = group_advisories([advisory("z", "CERT-FR", ["CVE-2026-1"]), post("a", "@first", ["CVE-2026-1"])])
+
+    assert alone[0]["id"] == joined[0]["id"]
+
+
+def test_the_configured_kind_wins_over_the_stored_one():
+    document = {"feed": "Cloudflare", "kind": "cert"}
+
+    assert feed_kind(document, {"Cloudflare": "vendor"}) == "vendor"
+    assert feed_kind(document, {}) == "cert"
+    assert feed_kind({"feed": "Old"}, None) == "cert"
+
+
 class _Repository:
     def __init__(self, advisories=(), error=None):
         self.advisories = list(advisories)
         self.error = error
 
-    async def list_since(self, _since):
+    async def list_since(self, _since, kinds=None):
         if self.error:
             raise self.error
-        return self.advisories
+        return [{**a, "kind": feed_kind(a, kinds)} for a in self.advisories]
 
 
 class _Inventory:
@@ -131,10 +195,14 @@ def _wire(monkeypatch, repository, hits=()):
     async def create_assets():
         return _Assets()
 
+    async def kinds():
+        return {}
+
     monkeypatch.setattr(stats_service, "async_search", search)
     monkeypatch.setattr(stats_service.CertAdvisoryRepository, "create", staticmethod(create_repository))
     monkeypatch.setattr(stats_service, "get_inventory_service", get_inventory)
     monkeypatch.setattr(stats_service.AssetRepository, "create", staticmethod(create_assets))
+    monkeypatch.setattr(stats_service, "feed_kinds", kinds)
     return bodies
 
 
@@ -158,7 +226,8 @@ async def test_overview_describes_a_topic_from_hecates_own_data(monkeypatch):
     result = await StatsService().get_cert_overview(days=30)
 
     [topic] = result["topics"]
-    assert topic["certs"] == ["CERT-FR", "CCCS"]
+    assert topic["sources"] == [{"name": "CERT-FR", "kind": "cert"}, {"name": "CCCS", "kind": "cert"}]
+    assert {a["kind"] for a in topic["advisories"]} == {"cert"}
     assert topic["worstSeverity"] == "high"
     assert topic["firstSeen"] < topic["lastSeen"]
     [row] = topic["cves"]

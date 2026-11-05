@@ -51,41 +51,55 @@ Dashboard simply offers it at the point where you discover something is missing.
 
 The *Needs attention* panel shows what is being exploited or warned about right now. A CVE appears
 here when, in the last seven days, it was added to CISA's Known Exploited Vulnerabilities catalogue
-or at least two national CERTs named it. A CVE that only one CERT named gets a row when it affects
-your [inventory](inventory.md). The panel goes by those dates, not by publication: most of these are older CVEs, and a
+or at least two CERTs or vendors named it. A CVE that only one of them named gets a row when it affects
+your [inventory](inventory.md). Community feeds such as Mastodon accounts never put a CVE here on their
+own: five people posting about it are not five CERTs. The panel goes by those dates, not by publication: most of these are older CVEs, and a
 day view would never show them. It therefore stays the same when you step back through days, and it
 still appears on a day with no new CVEs.
 
 Anything confirmed in your inventory or found by your latest scans comes first and carries the same
-clickable tag as elsewhere on the page. The rest is ordered by how many signals it has, then by
-severity and the newest listing. The first eight rows show and the rest fold away. Each row shows the severity, the CVE and the product, and
-says why it is there: the CERTs that named it, each linking to its advisory, the day CISA listed it,
+clickable tag as elsewhere on the page. The rest is ordered by how many signals it has (CERTs, vendors
+and a KEV listing), then by the number of community posts, severity and the newest listing. The first eight rows show and the rest fold away. Each row shows the severity, the CVE and the product, and
+says why it is there: the sources that named it, CERTs and vendors first, each linking to its advisory, the day CISA listed it,
 and a **Ransomware** tag where CISA records known ransomware use. Hover the KEV date for CISA's
 remediation due date. **KEV listings** opens the catalogue additions in the
-[Vulnerabilities](vulnerabilities.md) view, and **CERT advisories** opens the
+[Vulnerabilities](vulnerabilities.md) view, and **Advisories** opens the
 [full overview](cert.md).
 
-Scan findings that only one CERT named do not get a row: a single round-up can name dozens of kernel
+Scan findings that only one source named do not get a row: a single round-up can name dozens of kernel
 CVEs that every container image carries, which is routine patching rather than an alarm. They fold
 away at the bottom of the panel, one row per product, and stay in your scan results as usual.
 
 The panel reloads whenever new data is ingested, and it is not shown when nothing qualifies.
 
-### CERT feeds
+### Advisory feeds
 
-The feeds also power the [CERT](cert.md) page. Hecate reads the public advisory feeds of CERT-FR, CERT-EU, NCSC-NL, the Canadian Centre for Cyber
-Security and JPCERT/CC every two hours. To add your own national CERT, set `CERT_FEEDS_EXTRA` to
-comma-separated `Name|URL` pairs. Any RSS, RDF or Atom feed works:
+The feeds also power the [Advisories](cert.md) page. Hecate reads the public advisory feeds of CERT-FR, CERT-EU, NCSC-NL, the Canadian Centre for Cyber
+Security and JPCERT/CC every two hours. Any RSS, RDF or Atom feed can be added, as one of three
+[kinds](cert.md#kinds-of-source): `cert`, `vendor` or `community`.
+
+**On the System page.** **System → Data → Advisory feeds** lists every feed, adds new ones with a name,
+URL and kind, switches them on and off, and starts a run with **Read now**. Changes need the system
+password. A Mastodon account has its feed at `https://<instance>/@<user>.rss`. A feed added here must
+point at a public address: the backend fetches it, and what it reads is shown on a public page, so a
+host that resolves to a private, loopback or link-local address is refused, both when it is saved and
+before every run. Set `CERT_FEEDS_ALLOW_PRIVATE_HOSTS=true` to read a feed on your internal network.
+
+**In `.env`.** `CERT_FEEDS_EXTRA` takes comma-separated `Name|URL` or `Name|URL|kind` entries; without a
+kind a feed counts as a CERT:
 
 ```bash
-CERT_FEEDS_EXTRA=CERT.at|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml
+CERT_FEEDS_EXTRA=CERT.at|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml,Cloudflare|https://blog.cloudflare.com/rss/|vendor
 ```
 
-Use the feed's final URL, because redirects are not followed. `CERT_FEEDS` replaces the built-in list,
-`CERT_FEEDS_ENABLED=false` turns the job off, and **System → Data** shows the last run, including any
-feed that failed.
+These feeds appear on the System page too, read-only, and a name used in `.env` cannot be taken by a
+feed added in the UI. `CERT_FEEDS` replaces the built-in list, `CERT_FEEDS_ENABLED=false` turns the job
+off for every feed, and **System → Data** shows the last run, including any feed that failed. The feed
+list on the System page is public like the other lists, so a key or password in a feed URL is shown
+as `***`.
 
-If a feed item names no CVE, Hecate reads the advisory's page once, on the feed's own host. A feed
+Use the feed's final URL, because redirects are not followed. If a CERT or vendor item names no CVE,
+Hecate reads the advisory's page once, on the feed's own host; community posts never cost that request. A feed
 that publishes neither is stored without CVEs and adds nothing: BSI's CERT-Bund feed is one of these,
 which is why it is not in the list. CISA's advisory feed is absent because it refuses Hecate's client;
 its KEV catalogue arrives as usual.

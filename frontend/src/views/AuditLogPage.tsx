@@ -25,7 +25,10 @@ const JOB_LABELS: Record<string, string> = {
   capec_sync: "CAPEC Cache Refresh",
   capec_initial_sync: "CAPEC Initial Cache Prefetch",
   circl_sync: "CIRCL Enrichment Sync",
-  cert_feeds_sync: "CERT Advisory Sync",
+  cert_feeds_sync: "Advisory Feed Sync",
+  advisory_feed_added: "Advisory feed added",
+  advisory_feed_updated: "Advisory feed updated",
+  advisory_feed_removed: "Advisory feed removed",
   ghsa_sync: "GHSA Sync",
   ghsa_initial_sync: "GHSA Initial Sync",
   manual_refresh: "Manual Refresh",
@@ -121,6 +124,12 @@ export const AuditLogPage = () => {
         return t("API token created", "API-Token erstellt");
       case "api_token_revoked":
         return t("API token revoked", "API-Token widerrufen");
+      case "advisory_feed_added":
+        return t("Advisory feed added", "Meldungs-Feed hinzugefügt");
+      case "advisory_feed_updated":
+        return t("Advisory feed updated", "Meldungs-Feed geändert");
+      case "advisory_feed_removed":
+        return t("Advisory feed removed", "Meldungs-Feed entfernt");
       case "attack_path_analysis":
         return t("Attack Path narrative", "Attack-Path-Szenario");
       case "ai_investigation":
@@ -417,7 +426,7 @@ export const AuditLogPage = () => {
             <option value="capec_sync">CAPEC Cache Refresh</option>
             <option value="capec_initial_sync">CAPEC Initial Cache Prefetch</option>
             <option value="circl_sync">CIRCL Enrichment Sync</option>
-            <option value="cert_feeds_sync">CERT Advisory Sync</option>
+            <option value="cert_feeds_sync">Advisory Feed Sync</option>
             <option value="ghsa_sync">GHSA Sync</option>
             <option value="ghsa_initial_sync">GHSA Initial Sync</option>
             <option value="manual_refresh">{t("Manual Refresh", "Manueller Refresh")}</option>
@@ -425,6 +434,9 @@ export const AuditLogPage = () => {
             <option value="saved_search_deleted">{t("Saved search deleted", "Gespeicherte Suche gelöscht")}</option>
             <option value="api_token_created">{t("API token created", "API-Token erstellt")}</option>
             <option value="api_token_revoked">{t("API token revoked", "API-Token widerrufen")}</option>
+            <option value="advisory_feed_added">{t("Advisory feed added", "Meldungs-Feed hinzugefügt")}</option>
+            <option value="advisory_feed_updated">{t("Advisory feed updated", "Meldungs-Feed geändert")}</option>
+            <option value="advisory_feed_removed">{t("Advisory feed removed", "Meldungs-Feed entfernt")}</option>
             <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
             <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
             <option value="sca-scan">SCA Scan</option>

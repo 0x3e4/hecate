@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { FeedKind } from "./cert";
 
 export interface TermsBucket {
   key: string;
@@ -84,13 +85,14 @@ export interface NamedSlug {
 
 export interface CertMention {
   name: string;
+  kind: FeedKind;
   title: string | null;
   url: string | null;
 }
 
 export interface AttentionItem extends TodayCve {
   kevListed: boolean;
-  certs: CertMention[];
+  sources: CertMention[];
   cvssScore: number | null;
   epssScore: number | null;
   dateAdded: string | null;

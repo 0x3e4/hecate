@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.write_auth import require_admin_write, require_token_admin
 from app.api.v1 import (
+    advisory_feeds,
     api_tokens,
     app_settings,
     assets,
@@ -56,6 +57,9 @@ api_router.include_router(stats.router, prefix="/stats", tags=["stats"])
 api_router.include_router(changelog.router, prefix="/changelog", tags=["changelog"])
 api_router.include_router(backup.router, prefix="/backup", tags=["backup"], dependencies=_admin_write)
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"], dependencies=_admin_write)
+api_router.include_router(
+    advisory_feeds.router, prefix="/advisory-feeds", tags=["advisory-feeds"], dependencies=_admin_write
+)
 api_router.include_router(scans.router, prefix="/scans", tags=["scans"])
 api_router.include_router(
     notifications.router, prefix="/notifications", tags=["notifications"], dependencies=_admin_write

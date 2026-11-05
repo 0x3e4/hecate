@@ -143,6 +143,17 @@ async def test_attention_cuts_lone_mentions_first(monkeypatch):
     assert asked[0] == "CVE-2026-9999"
 
 
+async def test_attention_ranks_community_chatter_behind_a_cert(monkeypatch):
+    chatter = {"CVE-2026-1": [{"name": f"@user{n}", "kind": "community"} for n in range(5)]}
+    cert = {"CVE-2026-2": [{"name": "CERT-FR", "kind": "cert"}]}
+    bodies = _wire(monkeypatch, certs={**chatter, **cert})
+
+    await StatsService().get_attention()
+
+    asked = bodies[0]["query"]["bool"]["should"][1]["terms"]["vuln_id"]
+    assert asked == ["CVE-2026-2", "CVE-2026-1"]
+
+
 async def test_attention_attaches_cert_mentions_also_through_an_alias(monkeypatch):
     doc = {**KEV_DOC, "vuln_id": "MAL-2026-1", "aliases": ["cve-2026-1000"], "exploitation": None}
     certs = {
@@ -156,7 +167,7 @@ async def test_attention_attaches_cert_mentions_also_through_an_alias(monkeypatc
     result = await StatsService().get_attention()
 
     item = result["items"][0]
-    assert [cert["name"] for cert in item["certs"]] == ["CISA", "CERT-FR"]
+    assert [source["name"] for source in item["sources"]] == ["CISA", "CERT-FR"]
     assert item["kevListed"] is False
 
 

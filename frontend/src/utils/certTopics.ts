@@ -1,13 +1,62 @@
-import type { CertRoundup, CertTopic } from "../api/cert";
+import type { CertAdvisory, CertRoundup, CertTopic, FeedKind, FeedSource } from "../api/cert";
+import type { TranslateFn } from "../i18n/context";
 
 import { severityRank } from "./cveGroups";
 
 export interface TopicFilter {
   search: string;
-  cert: string;
+  source: string;
   severity: string;
   stackOnly: boolean;
 }
+
+export const feedKindLabel = (kind: FeedKind, t: TranslateFn): string =>
+  kind === "vendor" ? t("Vendor", "Hersteller") : kind === "community" ? t("Community", "Community") : "CERT";
+
+/** CERTs and vendors speak for themselves; a community post is context and never counts as agreement. */
+export const isVoice = (source: { kind?: FeedKind | string }): boolean => source.kind !== "community";
+
+export const voices = (topic: CertTopic): number => topic.sources.filter(isVoice).length;
+
+const sourcesOf = (advisories: CertAdvisory[]): FeedSource[] => {
+  const byName = new Map<string, FeedSource>();
+  for (const advisory of advisories) {
+    if (!byName.has(advisory.feed)) byName.set(advisory.feed, { name: advisory.feed, kind: advisory.kind });
+  }
+  return [...byName.values()];
+};
+
+/**
+ * Keeps only the advisories of the shown kinds. A topic's CVEs come from its CERT and
+ * vendor advisories (community posts join without adding any), so hiding the posts
+ * leaves them as they are; a topic with nothing left is dropped.
+ */
+export const applyKinds = (topics: CertTopic[], kinds: FeedKind[]): CertTopic[] =>
+  topics.flatMap((topic) => {
+    const advisories = topic.advisories.filter((advisory) => kinds.includes(advisory.kind));
+    if (advisories.length === 0) return [];
+    if (advisories.length === topic.advisories.length) return [topic];
+    const published = advisories.map((advisory) => advisory.published).sort();
+    return [
+      {
+        ...topic,
+        advisories,
+        sources: sourcesOf(advisories),
+        firstSeen: published[0],
+        lastSeen: published[published.length - 1],
+      },
+    ];
+  });
+
+/** How many topics and round-ups each kind contributes, for the counts on the filter. */
+export const kindCounts = (topics: CertTopic[], roundups: CertRoundup[]): Record<FeedKind, number> => {
+  const counts: Record<FeedKind, number> = { cert: 0, vendor: 0, community: 0 };
+  for (const topic of topics) {
+    for (const kind of new Set(topic.advisories.map((advisory) => advisory.kind))) counts[kind] += 1;
+  }
+  for (const roundup of roundups) counts[roundup.kind] += 1;
+  return counts;
+};
 
 /** Product names across a topic's CVEs. The feeds' own titles are in five languages, so the row reads from Hecate's data. */
 export const topicProducts = (topic: CertTopic): string[] => {
@@ -31,19 +80,20 @@ export const filterTopics = (topics: CertTopic[], filter: TopicFilter, inStack: 
   const needle = filter.search.trim().toLowerCase();
   return topics.filter(
     (topic) =>
-      (!filter.cert || topic.certs.includes(filter.cert)) &&
+      (!filter.source || topic.sources.some((source) => source.name === filter.source)) &&
       (!filter.severity || topic.worstSeverity === filter.severity) &&
       (!filter.stackOnly || inStack(topic)) &&
       (!needle || haystack(topic).includes(needle)),
   );
 };
 
-/** What touches the user's stack first, then what most CERTs agree on, then severity and recency. */
+/** What touches the user's stack first, then what most CERTs and vendors agree on, then community interest, severity and recency. */
 export const sortTopics = (topics: CertTopic[], inStack: (topic: CertTopic) => boolean): CertTopic[] =>
   [...topics].sort(
     (a, b) =>
       Number(inStack(b)) - Number(inStack(a)) ||
-      b.certs.length - a.certs.length ||
+      voices(b) - voices(a) ||
+      b.sources.length - a.sources.length ||
       severityRank(a.worstSeverity) - severityRank(b.worstSeverity) ||
       b.lastSeen.localeCompare(a.lastSeen),
   );

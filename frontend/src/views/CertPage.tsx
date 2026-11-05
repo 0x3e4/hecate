@@ -3,7 +3,16 @@ import { Link } from "react-router-dom";
 import { LuChevronRight } from "react-icons/lu";
 
 import "../screens/cert.css";
-import { fetchCertOverview, type CertCve, type CertOverview, type CertRoundup, type CertTopic } from "../api/cert";
+import {
+  FEED_KINDS,
+  fetchCertOverview,
+  type CertCve,
+  type CertOverview,
+  type CertRoundup,
+  type CertTopic,
+  type FeedKind,
+  type FeedSource,
+} from "../api/cert";
 import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
 import { ChipLinks, cveMatchesInventory, uniqueChips, useCveChips, type CoverageChip } from "../components/CoverageChips";
 import { SkeletonBlock } from "../components/Skeleton";
@@ -11,7 +20,17 @@ import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
 import { EmptyState, ErrorState, PageHeader, Section, SeverityTag, Stat } from "../ui/primitives";
-import { filterTopics, roundupHits, sortTopics, topicProducts } from "../utils/certTopics";
+import {
+  applyKinds,
+  feedKindLabel,
+  filterTopics,
+  isVoice,
+  kindCounts,
+  roundupHits,
+  sortTopics,
+  topicProducts,
+  voices,
+} from "../utils/certTopics";
 import { SEVERITY_ORDER, severityLabel } from "../utils/cveGroups";
 import { formatDateOnly } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
@@ -19,6 +38,8 @@ import { safeHref } from "../utils/safeHref";
 const DAY_OPTIONS = [7, 30, 90];
 const PRODUCTS_SHOWN = 3;
 const IDS_SHOWN = 2;
+// Community posts are context: shown when asked for, so they do not crowd out what the CERTs say.
+const DEFAULT_KINDS: FeedKind[] = ["cert", "vendor"];
 
 export const CertPage = () => {
   const { t, locale } = useI18n();
@@ -27,13 +48,14 @@ export const CertPage = () => {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState("");
-  const [cert, setCert] = useState("");
+  const [source, setSource] = useState("");
+  const [kinds, setKinds] = usePersistentState<FeedKind[]>("hecate.advisories.kinds", DEFAULT_KINDS);
   const [severity, setSeverity] = useState("");
   const [stackOnly, setStackOnly] = useState(false);
   const [coverage, setCoverage] = useState<ScanCoverage>({ cveScan: {}, productScan: {}, scanTargets: {} });
 
   useEffect(() => {
-    document.title = "Hecate Cyber Defense - CERT";
+    document.title = "Hecate Cyber Defense - Advisories";
     return () => {
       document.title = "Hecate Cyber Defense";
     };
@@ -73,8 +95,15 @@ export const CertPage = () => {
     };
   }, [days]);
 
-  const topics = useMemo(() => data?.topics ?? [], [data]);
-  const roundups = useMemo(() => data?.roundups ?? [], [data]);
+  const allTopics = useMemo(() => data?.topics ?? [], [data]);
+  const allRoundups = useMemo(() => data?.roundups ?? [], [data]);
+  const counts = useMemo(() => kindCounts(allTopics, allRoundups), [allTopics, allRoundups]);
+  // A stored value from an older version or a hand-edited one is not trusted to be a list.
+  const shownKinds = useMemo(() => FEED_KINDS.filter((kind) => (Array.isArray(kinds) ? kinds : DEFAULT_KINDS).includes(kind)), [kinds]);
+  const topics = useMemo(() => applyKinds(allTopics, shownKinds), [allTopics, shownKinds]);
+  const roundups = useMemo(() => allRoundups.filter((roundup) => shownKinds.includes(roundup.kind)), [allRoundups, shownKinds]);
+  const toggleKind = (kind: FeedKind) =>
+    setKinds(shownKinds.includes(kind) ? shownKinds.filter((item) => item !== kind) : [...shownKinds, kind]);
   const allCves = useMemo(() => topics.flatMap((topic) => topic.cves), [topics]);
   const chipsByCve = useCveChips(
     allCves,
@@ -91,47 +120,51 @@ export const CertPage = () => {
     [coverage.cveScan],
   );
 
-  const certs = useMemo(
-    () => [...new Set([...topics.flatMap((topic) => topic.certs), ...roundups.map((roundup) => roundup.feed)])].sort(),
-    [topics, roundups],
-  );
+  const sources = useMemo(() => {
+    const byName = new Map<string, FeedSource>();
+    for (const item of [...topics.flatMap((topic) => topic.sources), ...roundups.map((roundup) => ({ name: roundup.feed, kind: roundup.kind }))]) {
+      byName.set(item.name, item);
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [topics, roundups]);
   const visible = useMemo(
-    () => sortTopics(filterTopics(topics, { search, cert, severity, stackOnly }, inStack), inStack),
-    [topics, search, cert, severity, stackOnly, inStack],
+    () => sortTopics(filterTopics(topics, { search, source, severity, stackOnly }, inStack), inStack),
+    [topics, search, source, severity, stackOnly, inStack],
   );
   const visibleRoundups = useMemo(
     () =>
       roundups
-        .filter((roundup) => !cert || roundup.feed === cert)
+        .filter((roundup) => !source || roundup.feed === source)
         .sort((a, b) => roundupHits(b, coverage.cveScan) - roundupHits(a, coverage.cveScan) || b.published.localeCompare(a.published)),
-    [roundups, cert, coverage.cveScan],
+    [roundups, source, coverage.cveScan],
   );
 
   const advisoryCount = topics.reduce((sum, topic) => sum + topic.advisories.length, 0) + roundups.length;
+  const totalCount = allTopics.reduce((sum, topic) => sum + topic.advisories.length, 0) + allRoundups.length;
 
   return (
     <div className="page cert">
       <PageHeader
-        title="CERT"
+        title={t("Advisories", "Meldungen")}
         description={t(
-          "What national CERTs are warning about. Advisories that share a CVE are merged into one topic.",
-          "Wovor nationale CERTs warnen. Meldungen, die sich eine CVE teilen, sind zu einem Thema zusammengeführt.",
+          "What CERTs, vendors and the community are warning about. Advisories that share a CVE are merged into one topic; community posts join a topic but never merge two.",
+          "Wovor CERTs, Hersteller und die Community warnen. Meldungen, die sich eine CVE teilen, sind zu einem Thema zusammengeführt; Community-Beiträge hängen sich an ein Thema an, verbinden aber nie zwei.",
         )}
       />
 
       {failed ? (
-        <ErrorState title={t("CERT advisories could not be loaded.", "CERT-Meldungen konnten nicht geladen werden.")} />
+        <ErrorState title={t("Advisories could not be loaded.", "Meldungen konnten nicht geladen werden.")} />
       ) : loading && !data ? (
         <div className="cert-skeleton">
           {Array.from({ length: 8 }).map((_, index) => (
             <SkeletonBlock key={index} height="3rem" />
           ))}
         </div>
-      ) : advisoryCount === 0 ? (
-        <EmptyState title={t("No CERT advisories in this period.", "Keine CERT-Meldungen in diesem Zeitraum.")}>
+      ) : totalCount === 0 ? (
+        <EmptyState title={t("No advisories in this period.", "Keine Meldungen in diesem Zeitraum.")}>
           {t(
-            "Feeds are read every two hours. System → Data shows the last run.",
-            "Die Feeds werden alle zwei Stunden gelesen. System → Daten zeigt den letzten Lauf.",
+            "Feeds are read every two hours. System → Data lists the feeds and shows the last run.",
+            "Die Feeds werden alle zwei Stunden gelesen. System → Daten listet die Feeds und zeigt den letzten Lauf.",
           )}
         </EmptyState>
       ) : (
@@ -139,12 +172,23 @@ export const CertPage = () => {
           <dl className="stat-row cert-stats">
             <Stat label={t("Topics", "Themen")} value={topics.length.toLocaleString(locale)} />
             <Stat
-              label={t("Named by several CERTs", "Von mehreren CERTs genannt")}
-              value={topics.filter((topic) => topic.certs.length > 1).length.toLocaleString(locale)}
+              label={t("Named by several CERTs or vendors", "Von mehreren CERTs oder Herstellern genannt")}
+              value={topics.filter((topic) => voices(topic) > 1).length.toLocaleString(locale)}
             />
             <Stat label={t("In your stack", "In Ihrem Stack")} value={topics.filter(inStack).length.toLocaleString(locale)} />
             <Stat label={t("Advisories", "Meldungen")} value={advisoryCount.toLocaleString(locale)} />
           </dl>
+
+          <fieldset className="cert-kinds">
+            <legend className="visually-hidden">{t("Kinds of source", "Arten von Quellen")}</legend>
+            {FEED_KINDS.map((kind) => (
+              <label key={kind} className="cert-toggle">
+                <input type="checkbox" checked={shownKinds.includes(kind)} onChange={() => toggleKind(kind)} />
+                {feedKindLabel(kind, t)}
+                <span className="cert-extra">{counts[kind].toLocaleString(locale)}</span>
+              </label>
+            ))}
+          </fieldset>
 
           <div className="filter-row">
             <input
@@ -154,11 +198,18 @@ export const CertPage = () => {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <select aria-label="CERT" value={cert} onChange={(event) => setCert(event.target.value)}>
-              <option value="">{t("All CERTs", "Alle CERTs")}</option>
-              {certs.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
+            <select aria-label={t("Source", "Quelle")} value={source} onChange={(event) => setSource(event.target.value)}>
+              <option value="">{t("All sources", "Alle Quellen")}</option>
+              {shownKinds.map((kind) => {
+                const names = sources.filter((item) => item.kind === kind);
+                return names.length === 0 ? null : (
+                  <optgroup key={kind} label={feedKindLabel(kind, t)}>
+                    {names.map((item) => (
+                      <option key={item.name} value={item.name}>{item.name}</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
             <select aria-label={t("Severity", "Schweregrad")} value={severity} onChange={(event) => setSeverity(event.target.value)}>
               <option value="">{t("All severities", "Alle Schweregrade")}</option>
@@ -198,8 +249,8 @@ export const CertPage = () => {
             <Section title={t("Round-ups", "Sammelmeldungen")}>
               <p className="cert-note">
                 {t(
-                  "Batches of 20 or more CVEs, such as a kernel update. They stay apart so unrelated topics do not merge through them.",
-                  "Sammlungen ab 20 CVEs, etwa ein Kernel-Update. Sie bleiben getrennt, damit fremde Themen nicht über sie zusammenfallen.",
+                  "Batches of 20 or more CVEs, such as a kernel update, and community posts listing more than three. They stay apart so unrelated topics do not merge through them.",
+                  "Sammlungen ab 20 CVEs, etwa ein Kernel-Update, und Community-Beiträge mit mehr als drei. Sie bleiben getrennt, damit fremde Themen nicht über sie zusammenfallen.",
                 )}
               </p>
               <ul className="cert-roundups">
@@ -221,6 +272,30 @@ const AdvisoryLink = ({ title, url }: { title: string; url: string | null }) =>
   ) : (
     <>{title}</>
   );
+
+// CERTs and vendors by name; community posts as a count, since they are context.
+const TopicSources = ({ t, sources }: { t: TranslateFn; sources: FeedSource[] }) => {
+  const named = sources.filter(isVoice);
+  const community = sources.length - named.length;
+  return (
+    <span className="cert-topic-certs">
+      {named.map((source) => source.name).join(", ")}
+      {community > 0 && (
+        <span className="cert-topic-community" title={sources.filter((source) => !isVoice(source)).map((source) => source.name).join(", ")}>
+          {named.length > 0 ? " · " : ""}
+          {t(`${community} community`, `${community} Community`)}
+        </span>
+      )}
+    </span>
+  );
+};
+
+const AdvisoryFeed = ({ t, feed, kind }: { t: TranslateFn; feed: string; kind: FeedKind }) => (
+  <span className="cert-advisory-feed" title={feed}>
+    {feed}
+    {kind !== "cert" && <span className={`chip advisory-kind advisory-kind--${kind}`}>{feedKindLabel(kind, t)}</span>}
+  </span>
+);
 
 const TopicRow = ({ t, topic, chips }: { t: TranslateFn; topic: CertTopic; chips: CoverageChip[] }) => {
   const products = topicProducts(topic);
@@ -245,7 +320,7 @@ const TopicRow = ({ t, topic, chips }: { t: TranslateFn; topic: CertTopic; chips
             </span>
           </span>
           <span className="cert-topic-side">
-            <span className="cert-topic-certs">{topic.certs.join(", ")}</span>
+            <TopicSources t={t} sources={topic.sources} />
             <span className="cert-topic-when">
               {exploited && <span className="chip cert-flag">{t("Exploited", "Ausgenutzt")}</span>}
               <ChipLinks chips={chips} />
@@ -275,7 +350,7 @@ const TopicRow = ({ t, topic, chips }: { t: TranslateFn; topic: CertTopic; chips
           <ul className="cert-advisories">
             {topic.advisories.map((advisory) => (
               <li key={`${advisory.feed}|${advisory.url ?? advisory.title}`} className="cert-advisory">
-                <span className="cert-advisory-feed">{advisory.feed}</span>
+                <AdvisoryFeed t={t} feed={advisory.feed} kind={advisory.kind} />
                 <span className="cert-advisory-title">
                   <AdvisoryLink title={advisory.title || advisory.feed} url={advisory.url} />
                 </span>
@@ -310,7 +385,7 @@ const CveRow = ({ t, cve }: { t: TranslateFn; cve: CertCve }) => (
 
 const RoundupRow = ({ t, roundup, hits }: { t: TranslateFn; roundup: CertRoundup; hits: number }) => (
   <li className="cert-advisory">
-    <span className="cert-advisory-feed">{roundup.feed}</span>
+    <AdvisoryFeed t={t} feed={roundup.feed} kind={roundup.kind} />
     <span className="cert-advisory-title">
       <AdvisoryLink title={roundup.title || roundup.feed} url={roundup.url} />
     </span>

@@ -47,8 +47,11 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `GET` | `/api/v1/vulnerabilities/{id}` | Full details for a CVE / GHSA / OSV ID |
 | `POST` | `/api/v1/vulnerabilities/lookup` | Find one record by ID; fetching a miss from upstream needs `X-System-Password` when it is set |
 | `GET` | `/api/v1/stats` | Aggregated database and severity statistics |
-| `GET` | `/api/v1/stats/attention` | CVEs added to CISA KEV or named by CERT feeds in the last `days` days (default 7, max 30), with inventory matches |
-| `GET` | `/api/v1/stats/cert-advisories` | CERT advisories of the last `days` days (default 30, max 90), merged into topics, plus round-ups |
+| `GET` | `/api/v1/stats/attention` | CVEs added to CISA KEV or named by advisory feeds in the last `days` days (default 7, max 30), with inventory matches; each item lists its `sources` with their `kind` |
+| `GET` | `/api/v1/stats/cert-advisories` | Feed advisories of the last `days` days (default 30, max 90), merged into topics (each with its `sources` and their `kind`), plus round-ups |
+| `GET` | `/api/v1/advisory-feeds` | Advisory feeds from `.env` (`origin: env`, read-only) and from System → Data (`origin: ui`); credentials in URLs masked |
+| `POST` | `/api/v1/advisory-feeds` | Add a feed: `{name, url, kind, enabled}`, `kind` = `cert`, `vendor` or `community`. System password; 409 on a taken name, 400 on a private host |
+| `PUT` / `DELETE` | `/api/v1/advisory-feeds/{id}` | Change (partial) or remove a feed added in the UI. System password |
 | `POST` | `/api/v1/scans` | Submit a scan (the CI/CD entry point, gated by `X-API-Key`) |
 | `GET` | `/api/v1/scans/{scanId}` | Scan status and severity summary |
 | `GET` | `/api/v1/scans/{scanId}/findings` | List the findings of a scan |
