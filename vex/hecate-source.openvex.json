@@ -1,0 +1,53 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-source.openvex.json",
+  "author": "Hecate maintainers",
+  "role": "Document Creator",
+  "timestamp": "2026-11-05T18:02:10Z",
+  "version": 1,
+  "tooling": "vex/tools/generate.py",
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-103923",
+        "aliases": [
+          "GHSA-238p-pmpm-9mq7"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:github/0x3e4/hecate",
+          "subcomponents": [
+            {
+              "@id": "pkg:npm/katex@0.16.47"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "KaTeX comes with mermaid 11 into the lazily loaded diagram chunk. The flaw lets an already existing prototype pollution switch on KaTeX's `trust` option; mermaid renders with `trust` off and the frontend has no known prototype-pollution flaw, so there is nothing to build on. KaTeX 0.18.2 arrives with mermaid 12."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-118764",
+        "aliases": [
+          "GHSA-g3hv-75wg-m249"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:github/0x3e4/hecate",
+          "subcomponents": [
+            {
+              "@id": "pkg:npm/minimatch@10.2.6"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "minimatch 10 is only a dependency of the ESLint toolchain (frontend devDependencies). It runs on the maintainers' and CI's own lint configuration and never ships: the frontend image contains only the built static files."
+    }
+  ]
+}

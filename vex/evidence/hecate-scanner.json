@@ -1,0 +1,127 @@
+{
+  "image": "hecate-scanner@sha256:749a4e8ed560d03561cc4bd7cc2f65c635ab0d657ee2618ae2b3ad551ee5ec32",
+  "collectedWith": "vex/tools/collect.sh",
+  "loadedPackages": [
+    "coreutils",
+    "dash",
+    "git",
+    "libacl1",
+    "libbrotli1",
+    "libbz2-1.0",
+    "libc6",
+    "libcom-err2",
+    "libcurl3t64-gnutls",
+    "libffi8",
+    "libgcc-s1",
+    "libgmp10",
+    "libgnutls30t64",
+    "libgssapi-krb5-2",
+    "libhogweed6t64",
+    "libidn2-0",
+    "libk5crypto3",
+    "libkeyutils1",
+    "libkrb5-3",
+    "libkrb5support0",
+    "libldap2",
+    "liblzma5",
+    "libnettle8t64",
+    "libnghttp2-14",
+    "libnghttp3-9",
+    "libngtcp2-16",
+    "libngtcp2-crypto-gnutls8",
+    "libp11-kit0",
+    "libpcre2-8-0",
+    "libpsl5t64",
+    "librtmp1",
+    "libsasl2-2",
+    "libselinux1",
+    "libsqlite3-0",
+    "libssh2-1t64",
+    "libssl3t64",
+    "libstdc++6",
+    "libtasn1-6",
+    "libunistring5",
+    "libuuid1",
+    "libzstd1",
+    "sed",
+    "zlib1g"
+  ],
+  "govulncheck": {
+    "dive": {
+      "vulnerableFunctionsPresent": [
+        "GO-2026-4883",
+        "GO-2026-4887",
+        "GO-2026-5617",
+        "GO-2026-5668",
+        "GO-2026-5746"
+      ],
+      "moduleOnly": []
+    },
+    "dockle": {
+      "vulnerableFunctionsPresent": [
+        "GO-2022-0635",
+        "GO-2022-0646",
+        "GO-2026-4883",
+        "GO-2026-4887",
+        "GO-2026-5617",
+        "GO-2026-5668",
+        "GO-2026-5746"
+      ],
+      "moduleOnly": [
+        "GO-2025-4098"
+      ]
+    },
+    "grype": {
+      "vulnerableFunctionsPresent": [
+        "GO-2026-4883",
+        "GO-2026-4887",
+        "GO-2026-5617",
+        "GO-2026-5668",
+        "GO-2026-5746",
+        "GO-2026-5932",
+        "GO-2026-6860",
+        "GO-2026-6866"
+      ],
+      "moduleOnly": []
+    },
+    "osv-scanner": {
+      "vulnerableFunctionsPresent": [
+        "GO-2026-5932"
+      ],
+      "moduleOnly": []
+    },
+    "skopeo": {
+      "vulnerableFunctionsPresent": [
+        "GO-2026-5932"
+      ],
+      "moduleOnly": []
+    },
+    "syft": {
+      "vulnerableFunctionsPresent": [
+        "GO-2026-5932",
+        "GO-2026-6860",
+        "GO-2026-6866"
+      ],
+      "moduleOnly": []
+    },
+    "trivy": {
+      "vulnerableFunctionsPresent": [
+        "GO-2026-5932",
+        "GO-2026-6860",
+        "GO-2026-6866"
+      ],
+      "moduleOnly": [
+        "GO-2026-4919"
+      ]
+    },
+    "trufflehog": {
+      "error": "govulncheck: unrecognized binary format"
+    }
+  },
+  "statementBasis": {
+    "assessment": 67,
+    "default": 4,
+    "govulncheck": 8,
+    "runtime-evidence": 249
+  }
+}

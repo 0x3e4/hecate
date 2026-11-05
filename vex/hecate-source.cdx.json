@@ -1,0 +1,89 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:3fdf9515-6e76-5c97-9c91-e18ff46b42ed",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-05T18:02:10Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "vex/tools/generate.py",
+          "externalReferences": [
+            {
+              "type": "vcs",
+              "url": "https://github.com/0x3e4/hecate"
+            }
+          ]
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:github/0x3e4/hecate",
+      "name": "hecate",
+      "purl": "pkg:github/0x3e4/hecate"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/katex@0.16.47",
+      "name": "katex",
+      "version": "0.16.47",
+      "purl": "pkg:npm/katex@0.16.47"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/minimatch@10.2.6",
+      "name": "minimatch",
+      "version": "10.2.6",
+      "purl": "pkg:npm/minimatch@10.2.6"
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-103923",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "requires_environment",
+        "detail": "KaTeX comes with mermaid 11 into the lazily loaded diagram chunk. The flaw lets an already existing prototype pollution switch on KaTeX's `trust` option; mermaid renders with `trust` off and the frontend has no known prototype-pollution flaw, so there is nothing to build on. KaTeX 0.18.2 arrives with mermaid 12."
+      },
+      "affects": [
+        {
+          "ref": "pkg:npm/katex@0.16.47"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-238p-pmpm-9mq7",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-118764",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "minimatch 10 is only a dependency of the ESLint toolchain (frontend devDependencies). It runs on the maintainers' and CI's own lint configuration and never ships: the frontend image contains only the built static files."
+      },
+      "affects": [
+        {
+          "ref": "pkg:npm/minimatch@10.2.6"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-g3hv-75wg-m249",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    }
+  ]
+}

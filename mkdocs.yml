@@ -86,6 +86,7 @@ nav:
   - Administration:
       - System Settings: admin/system.md
       - Security & Access Control: security-access-control.md
+      - VEX for Hecate's Images: admin/vex.md
       - Audit & Observability: admin/audit.md
   - Reference:
       - Configuration: configuration.md

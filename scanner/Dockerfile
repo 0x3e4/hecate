@@ -37,16 +37,32 @@ RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${OSV_SCANNER_
     && go mod tidy \
     && go build -ldflags "-s -w -X github.com/google/osv-scanner/v2/internal/version.OSVVersion=${OSV_SCANNER_VERSION}" \
         -o /out/osv-scanner ./cmd/osv-scanner
+# Debian's skopeo 1.18 is built with Go 1.24.4: govulncheck found 60 vulnerable
+# stdlib functions in it, in the binary that talks to user-named registries. A
+# static build needs no cgo: signatures go through the pure-Go OpenPGP backend
+# and the btrfs / devicemapper graph drivers (unused, skopeo only copies to
+# docker-archive) are left out. It also drops gpgme, gnupg and the CNI plugins
+# that Debian's package pulled in.
+ARG SKOPEO_VERSION=1.24.1
+ARG SKOPEO_COMMIT=77f3d92f861271c7cb9175afcf876017bcae9202
+RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${SKOPEO_VERSION} https://github.com/containers/skopeo.git skopeo \
+    && cd skopeo && test "$(git rev-parse HEAD)" = "${SKOPEO_COMMIT}" \
+    && go get github.com/go-jose/go-jose/v4@v4.1.6 golang.org/x/crypto@v0.58.0 golang.org/x/net@v0.62.0 \
+        golang.org/x/text@v0.43.0 golang.org/x/sys@v0.49.0 google.golang.org/grpc@v1.83.2 \
+    && go mod tidy && go mod vendor \
+    && go build -tags "containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper" \
+        -ldflags "-s -w" -o /out/skopeo ./cmd/skopeo
 
 # .NET 10 (LTS) has no GA Debian image; only /usr/share/dotnet (a portable,
 # distro-agnostic linux-x64 build) is copied, so the Ubuntu-based tag is fine.
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS dotnet
 FROM python:3.14-slim
 
-# Install git for source repo cloning and skopeo for image fetching, plus the
-# Debian security fixes that landed after the python image was built
+# Install git for source repo cloning, plus the Debian security fixes that
+# landed after the python image was built. curl and unzip only serve the
+# downloads below and are purged after them.
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends git ca-certificates curl skopeo unzip \
+    && apt-get install -y --no-install-recommends git ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy scanner binaries from official images
@@ -54,8 +70,12 @@ COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 COPY --from=grype /grype /usr/local/bin/grype
 COPY --from=syft /syft /usr/local/bin/syft
 
-# Dockle, osv-scanner and Dive (Docker image layer analysis), built above
-COPY --from=gotools /out/dockle /out/osv-scanner /out/dive /usr/local/bin/
+# Dockle, osv-scanner, Dive (Docker image layer analysis) and skopeo (image
+# fetching for Dive and digests), built above. skopeo refuses to run without a
+# signature policy; this is the default Debian's containers-common ships.
+COPY --from=gotools /out/dockle /out/osv-scanner /out/dive /out/skopeo /usr/local/bin/
+RUN mkdir -p /etc/containers \
+    && printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > /etc/containers/policy.json
 
 # Install Semgrep (SAST scanner) into its own venv. Semgrep pins its deps tightly
 # (opentelemetry-api ~=1.37, click ~=8.1); installed into the system
@@ -101,7 +121,9 @@ RUN curl -fsSL "https://api.nuget.org/v3-flatcontainer/microsoft.cst.devskim.cli
     && find /usr/local/lib/devskim/runtimes -mindepth 1 -maxdepth 1 ! -name linux-x64 -exec rm -rf {} + \
     && printf '#!/bin/sh\nexec /usr/share/dotnet/dotnet /usr/local/lib/devskim/devskim.dll "$@"\n' > /usr/local/bin/devskim \
     && chmod +x /usr/local/bin/devskim \
-    && rm -rf /tmp/devskim.nupkg /tmp/devskim-extract
+    && rm -rf /tmp/devskim.nupkg /tmp/devskim-extract \
+    && apt-get purge -y -q curl unzip && apt-get autoremove -y -q --purge \
+    && rm -rf /var/lib/apt/lists/*
 
 # Enable all Syft catalogers including binary detection
 ENV SYFT_DEFAULT_CATALOGERS=all

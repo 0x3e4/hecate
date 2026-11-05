@@ -1,0 +1,3274 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:b3ca3cd3-ad03-5ee5-8a00-dff8e70215f0",
+  "version": 6,
+  "metadata": {
+    "timestamp": "2026-11-05T18:19:17Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "vex/tools/generate.py",
+          "externalReferences": [
+            {
+              "type": "vcs",
+              "url": "https://github.com/0x3e4/hecate"
+            }
+          ]
+        }
+      ]
+    },
+    "component": {
+      "type": "container",
+      "bom-ref": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+      "name": "ghcr.io/0x3e4/hecate-scanner"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/apt@3.0.4",
+      "name": "apt",
+      "version": "3.0.4",
+      "purl": "pkg:deb/debian/apt@3.0.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/bash@5.2.37-2+b10",
+      "name": "bash",
+      "version": "5.2.37-2+b10",
+      "purl": "pkg:deb/debian/bash@5.2.37-2+b10"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1",
+      "name": "bsdutils",
+      "version": "1:2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/coreutils@9.7-3",
+      "name": "coreutils",
+      "version": "9.7-3",
+      "purl": "pkg:deb/debian/coreutils@9.7-3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/dash@0.5.12-12",
+      "name": "dash",
+      "version": "0.5.12-12",
+      "purl": "pkg:deb/debian/dash@0.5.12-12"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/diffutils@3.10-4",
+      "name": "diffutils",
+      "version": "1:3.10-4",
+      "purl": "pkg:deb/debian/diffutils@3.10-4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/gcc-14-base@14.2.0-19",
+      "name": "gcc-14-base",
+      "version": "14.2.0-19",
+      "purl": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/git-man@2.47.3-0+deb13u1",
+      "name": "git-man",
+      "version": "1:2.47.3-0+deb13u1",
+      "purl": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/git@2.47.3-0+deb13u1",
+      "name": "git",
+      "version": "1:2.47.3-0+deb13u1",
+      "purl": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libacl1@2.3.2-2+b1",
+      "name": "libacl1",
+      "version": "2.3.2-2+b1",
+      "purl": "pkg:deb/debian/libacl1@2.3.2-2+b1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libapt-pkg7.0@3.0.4",
+      "name": "libapt-pkg7.0",
+      "version": "3.0.4",
+      "purl": "pkg:deb/debian/libapt-pkg7.0@3.0.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libattr1@2.5.2-3",
+      "name": "libattr1",
+      "version": "1:2.5.2-3",
+      "purl": "pkg:deb/debian/libattr1@2.5.2-3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1",
+      "name": "libblkid1",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libbz2-1.0@1.0.8-6",
+      "name": "libbz2-1.0",
+      "version": "1.0.8-6",
+      "purl": "pkg:deb/debian/libbz2-1.0@1.0.8-6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4",
+      "name": "libc-bin",
+      "version": "2.41-12+deb13u4",
+      "purl": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libc6@2.41-12+deb13u4",
+      "name": "libc6",
+      "version": "2.41-12+deb13u4",
+      "purl": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7",
+      "name": "libcurl3t64-gnutls",
+      "version": "8.14.1-2+deb13u7",
+      "purl": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1",
+      "name": "libexpat1",
+      "version": "2.9.0-1~deb13u1",
+      "purl": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libgcc-s1@14.2.0-19",
+      "name": "libgcc-s1",
+      "version": "14.2.0-19",
+      "purl": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4",
+      "name": "libgnutls30t64",
+      "version": "3.8.9-3+deb13u4",
+      "purl": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1",
+      "name": "libgssapi-krb5-2",
+      "version": "1.21.3-5+deb13u1",
+      "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1",
+      "name": "libk5crypto3",
+      "version": "1.21.3-5+deb13u1",
+      "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1",
+      "name": "libkrb5-3",
+      "version": "1.21.3-5+deb13u1",
+      "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1",
+      "name": "libkrb5support0",
+      "version": "1.21.3-5+deb13u1",
+      "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1",
+      "name": "liblastlog2-2",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libldap2@2.6.10+dfsg-1",
+      "name": "libldap2",
+      "version": "2.6.10+dfsg-1",
+      "purl": "pkg:deb/debian/libldap2@2.6.10+dfsg-1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1",
+      "name": "libmount1",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libncursesw6@6.5+20250216-2",
+      "name": "libncursesw6",
+      "version": "6.5+20250216-2",
+      "purl": "pkg:deb/debian/libncursesw6@6.5+20250216-2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libnghttp2-14@1.64.0-1.1+deb13u1",
+      "name": "libnghttp2-14",
+      "version": "1.64.0-1.1+deb13u1",
+      "purl": "pkg:deb/debian/libnghttp2-14@1.64.0-1.1+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libp11-kit0@0.25.5-3",
+      "name": "libp11-kit0",
+      "version": "0.25.5-3",
+      "purl": "pkg:deb/debian/libp11-kit0@0.25.5-3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libpam-modules-bin@1.7.0-5",
+      "name": "libpam-modules-bin",
+      "version": "1.7.0-5",
+      "purl": "pkg:deb/debian/libpam-modules-bin@1.7.0-5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libpam-modules@1.7.0-5",
+      "name": "libpam-modules",
+      "version": "1.7.0-5",
+      "purl": "pkg:deb/debian/libpam-modules@1.7.0-5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libpam-runtime@1.7.0-5",
+      "name": "libpam-runtime",
+      "version": "1.7.0-5",
+      "purl": "pkg:deb/debian/libpam-runtime@1.7.0-5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libpam0g@1.7.0-5",
+      "name": "libpam0g",
+      "version": "1.7.0-5",
+      "purl": "pkg:deb/debian/libpam0g@1.7.0-5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1",
+      "name": "libperl5.40",
+      "version": "5.40.1-6+deb13u1",
+      "purl": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libsasl2-2@2.1.28+dfsg1-9",
+      "name": "libsasl2-2",
+      "version": "2.1.28+dfsg1-9",
+      "purl": "pkg:deb/debian/libsasl2-2@2.1.28+dfsg1-9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libsasl2-modules-db@2.1.28+dfsg1-9",
+      "name": "libsasl2-modules-db",
+      "version": "2.1.28+dfsg1-9",
+      "purl": "pkg:deb/debian/libsasl2-modules-db@2.1.28+dfsg1-9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1",
+      "name": "libsmartcols1",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2",
+      "name": "libsqlite3-0",
+      "version": "3.46.1-7+deb13u2",
+      "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19",
+      "name": "libstdc++6",
+      "version": "14.2.0-19",
+      "purl": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1",
+      "name": "libsystemd0",
+      "version": "257.13-1~deb13u1",
+      "purl": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libtinfo6@6.5+20250216-2",
+      "name": "libtinfo6",
+      "version": "6.5+20250216-2",
+      "purl": "pkg:deb/debian/libtinfo6@6.5+20250216-2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1",
+      "name": "libudev1",
+      "version": "257.13-1~deb13u1",
+      "purl": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1",
+      "name": "libuuid1",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/login.defs@4.17.4-2",
+      "name": "login.defs",
+      "version": "1:4.17.4-2",
+      "purl": "pkg:deb/debian/login.defs@4.17.4-2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1",
+      "name": "login",
+      "version": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1",
+      "name": "mount",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/ncurses-base@6.5+20250216-2",
+      "name": "ncurses-base",
+      "version": "6.5+20250216-2",
+      "purl": "pkg:deb/debian/ncurses-base@6.5+20250216-2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/ncurses-bin@6.5+20250216-2",
+      "name": "ncurses-bin",
+      "version": "6.5+20250216-2",
+      "purl": "pkg:deb/debian/ncurses-bin@6.5+20250216-2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/passwd@4.17.4-2",
+      "name": "passwd",
+      "version": "1:4.17.4-2",
+      "purl": "pkg:deb/debian/passwd@4.17.4-2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1",
+      "name": "perl-base",
+      "version": "5.40.1-6+deb13u1",
+      "purl": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1",
+      "name": "perl-modules-5.40",
+      "version": "5.40.1-6+deb13u1",
+      "purl": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/perl@5.40.1-6+deb13u1",
+      "name": "perl",
+      "version": "5.40.1-6+deb13u1",
+      "purl": "pkg:deb/debian/perl@5.40.1-6+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/sysvinit-utils@3.14-4",
+      "name": "sysvinit-utils",
+      "version": "3.14-4",
+      "purl": "pkg:deb/debian/sysvinit-utils@3.14-4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/tar@1.35+dfsg-3.1",
+      "name": "tar",
+      "version": "1.35+dfsg-3.1",
+      "purl": "pkg:deb/debian/tar@1.35+dfsg-3.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1",
+      "name": "util-linux",
+      "version": "2.41.5-0+deb13u1",
+      "purl": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1",
+      "name": "zlib1g",
+      "version": "1:1.3.dfsg+really1.3.1-1+b1",
+      "purl": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:generic/python@3.14.10",
+      "name": "python",
+      "version": "3.14.10",
+      "purl": "pkg:generic/python@3.14.10"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/github.com/docker/distribution@v2.8.3+incompatible",
+      "name": "github.com/docker/distribution",
+      "version": "v2.8.3+incompatible",
+      "purl": "pkg:golang/github.com/docker/distribution@v2.8.3+incompatible"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible",
+      "name": "github.com/docker/docker",
+      "version": "v27.3.1+incompatible",
+      "purl": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible",
+      "name": "github.com/docker/docker",
+      "version": "v28.5.2+incompatible",
+      "purl": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/github.com/go-jose/go-jose/v4@v4.1.5",
+      "name": "github.com/go-jose/go-jose/v4",
+      "version": "v4.1.5",
+      "purl": "pkg:golang/github.com/go-jose/go-jose/v4@v4.1.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/github.com/opencontainers/selinux@v1.11.1",
+      "name": "github.com/opencontainers/selinux",
+      "version": "v1.11.1",
+      "purl": "pkg:golang/github.com/opencontainers/selinux@v1.11.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/golang.org/x/crypto@v0.57.0",
+      "name": "golang.org/x/crypto",
+      "version": "v0.57.0",
+      "purl": "pkg:golang/golang.org/x/crypto@v0.57.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/golang.org/x/crypto@v0.58.0",
+      "name": "golang.org/x/crypto",
+      "version": "v0.58.0",
+      "purl": "pkg:golang/golang.org/x/crypto@v0.58.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/golang.org/x/net@v0.60.0",
+      "name": "golang.org/x/net",
+      "version": "v0.60.0",
+      "purl": "pkg:golang/golang.org/x/net@v0.60.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:golang/golang.org/x/net@v0.61.0",
+      "name": "golang.org/x/net",
+      "version": "v0.61.0",
+      "purl": "pkg:golang/golang.org/x/net@v0.61.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:nuget/SharpCompress@0.40.0",
+      "name": "SharpCompress",
+      "version": "0.40.0",
+      "purl": "pkg:nuget/SharpCompress@0.40.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/mcp@1.29.0",
+      "name": "mcp",
+      "version": "1.29.0",
+      "purl": "pkg:pypi/mcp@1.29.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/opentelemetry-api@1.37.0",
+      "name": "opentelemetry-api",
+      "version": "1.37.0",
+      "purl": "pkg:pypi/opentelemetry-api@1.37.0"
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "id": "CVE-2005-2541",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "tar is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/tar@1.35+dfsg-3.1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2007-5686",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "login.defs is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). passwd is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+        },
+        {
+          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2010-4756",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2011-3374",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "apt is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libapt-pkg7.0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/apt@3.0.4"
+        },
+        {
+          "ref": "pkg:deb/debian/libapt-pkg7.0@3.0.4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2011-3389",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2011-4116",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libperl5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-modules-5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl@5.40.1-6+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2013-4392",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2015-3276",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openldap is in use: the scanner sidecar and the scanners it runs loads or runs libldap2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libldap2@2.6.10+dfsg-1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2017-14159",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openldap is in use: the scanner sidecar and the scanners it runs loads or runs libldap2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libldap2@2.6.10+dfsg-1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2017-17740",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openldap is in use: the scanner sidecar and the scanners it runs loads or runs libldap2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libldap2@2.6.10+dfsg-1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2017-18018",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "coreutils is in use: the scanner sidecar and the scanners it runs loads or runs coreutils (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/coreutils@9.7-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2018-1000021",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2018-20796",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2018-5709",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2019-1010022",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2019-1010023",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2019-1010024",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2019-1010025",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2019-9192",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2020-15719",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openldap is in use: the scanner sidecar and the scanners it runs loads or runs libldap2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libldap2@2.6.10+dfsg-1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2021-45346",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2022-0563",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2022-24975",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2023-31437",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2023-31438",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2023-31439",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2024-26458",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2024-26461",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2024-52005",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2024-56433",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "login.defs is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). passwd is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+        },
+        {
+          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-10966",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in libcurl's wolfSSL, wolfSSH or OpenSSL 3 provider code. The image's libcurl (libcurl3t64-gnutls, used by git) is built against GnuTLS and libssh2, so that code is not in it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-14017",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-15079",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-15224",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-15367",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in a stdlib API the services do not call: html.parser, ftplib, imaplib, poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, or writing multi-line values with configparser."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-5278",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "coreutils is in use: the scanner sidecar and the scanners it runs loads or runs coreutils (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/coreutils@9.7-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-52881",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "govulncheck -mode=binary: /usr/local/bin/dockle contains github.com/opencontainers/selinux v1.11.1, but none of the vulnerable functions of GO-2025-4098."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/opencontainers/selinux@v1.11.1"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-cgrx-mc8f-2prm",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-54410",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "The Go vulnerability database (GO-2025-3829) does not list github.com/docker/docker v27.3.1+incompatible as affected; the scanner match comes from a broader advisory range. Fixed upstream in 25.0.13, 28.0.0."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-4vq8-7jfc-9cvp",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-6141",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libncursesw6 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libtinfo6 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). ncurses-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). ncurses-bin is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libncursesw6@6.5+20250216-2"
+        },
+        {
+          "ref": "pkg:deb/debian/libtinfo6@6.5+20250216-2"
+        },
+        {
+          "ref": "pkg:deb/debian/ncurses-base@6.5+20250216-2"
+        },
+        {
+          "ref": "pkg:deb/debian/ncurses-bin@6.5+20250216-2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-66382",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-69720",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libncursesw6 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libtinfo6 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). ncurses-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). ncurses-bin is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libncursesw6@6.5+20250216-2"
+        },
+        {
+          "ref": "pkg:deb/debian/libtinfo6@6.5+20250216-2"
+        },
+        {
+          "ref": "pkg:deb/debian/ncurses-base@6.5+20250216-2"
+        },
+        {
+          "ref": "pkg:deb/debian/ncurses-bin@6.5+20250216-2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2025-70873",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-102010",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-102473",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "dash is in use: the scanner sidecar and the scanners it runs loads or runs dash (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/dash@0.5.12-12"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-102474",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "dash is in use: the scanner sidecar and the scanners it runs loads or runs dash (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/dash@0.5.12-12"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-103995",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "Not analysed yet. Fixed upstream in 3.16.0."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-10536",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107161",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "cyrus-sasl2 is in use: the scanner sidecar and the scanners it runs loads or runs libsasl2-2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsasl2-2@2.1.28+dfsg1-9"
+        },
+        {
+          "ref": "pkg:deb/debian/libsasl2-modules-db@2.1.28+dfsg1-9"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107708",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107778",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107928",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107929",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-113351",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-114603",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in parsing W3C tracestate headers. Semgrep only traces with --trace, which the sidecar does not pass (metrics are off via SEMGREP_SEND_METRICS=off), and it receives no incoming trace context."
+      },
+      "affects": [
+        {
+          "ref": "pkg:pypi/opentelemetry-api@1.37.0"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-xcq7-p3pf-p88h",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-114690",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-114691",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-115455",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-115506",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-116566",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "requires_environment",
+        "detail": "Host names that Python itself resolves come from configuration (feed and API base URLs, notification and AI endpoints) set by the administrator. User-supplied scan targets are resolved by git, skopeo and the Go scanners, not by Python's getaddrinfo, after validate_scan_target has checked them."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-116587",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "Not in the Go vulnerability database; not analysed yet. Fixed upstream in 4.1.6."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/go-jose/go-jose/v4@v4.1.5"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-mgcc-cww5-fp2q",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-116684",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "mcp is a dependency of Semgrep's MCP server (`semgrep mcp`). The sidecar only runs `semgrep scan` (scanner/app/scanners.py), which does not start the MCP client or server code."
+      },
+      "affects": [
+        {
+          "ref": "pkg:pypi/mcp@1.29.0"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-w4fh-qvv9-3v23",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-116685",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "mcp is a dependency of Semgrep's MCP server (`semgrep mcp`). The sidecar only runs `semgrep scan` (scanner/app/scanners.py), which does not start the MCP client or server code."
+      },
+      "affects": [
+        {
+          "ref": "pkg:pypi/mcp@1.29.0"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-5h93-6whr-6q8j",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-116686",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "mcp is a dependency of Semgrep's MCP server (`semgrep mcp`). The sidecar only runs `semgrep scan` (scanner/app/scanners.py), which does not start the MCP client or server code."
+      },
+      "affects": [
+        {
+          "ref": "pkg:pypi/mcp@1.29.0"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-rwrf-2pqf-9j8j",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-117610",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-118370",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-11850",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-11856",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119371",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119372",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119373",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119374",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119375",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119376",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119377",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119378",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119379",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119591",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-12064",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in the curl command-line tool, which is purged from the scanner image after the build downloads (scanner/Dockerfile). Only libcurl remains, as a dependency of git."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-13608",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-13757",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "p11-kit is in use: the scanner sidecar and the scanners it runs loads or runs libp11-kit0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libp11-kit0@0.25.5-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-15059",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-15534",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libperl5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-modules-5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl@5.40.1-6+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-16742",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-18374",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-18477",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "tar is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/tar@1.35+dfsg-3.1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-18508",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "tar is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/tar@1.35+dfsg-3.1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-18924",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-18938",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "p11-kit is in use: the scanner sidecar and the scanners it runs loads or runs libp11-kit0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libp11-kit0@0.25.5-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-19499",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-19542",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-19931",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-22185",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openldap is in use: the scanner sidecar and the scanners it runs loads or runs libldap2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libldap2@2.6.10+dfsg-1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-27171",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "zlib is in use: the scanner sidecar and the scanners it runs loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-3184",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-33997",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "govulncheck finds the vulnerable functions in dive, dockle and grype, but they are methods of the Docker daemon's own `daemon.Daemon` (docker cp, plugin privileges, container filesystem), which only dockerd creates. The three tools use Docker's client and image types; the sidecar runs no Docker daemon and has no Docker socket."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-pxq6-2prw-chj9",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-34040",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "govulncheck finds the vulnerable functions in dive, dockle and grype, but they are methods of the Docker daemon's own `daemon.Daemon` (docker cp, plugin privileges, container filesystem), which only dockerd creates. The three tools use Docker's client and image types; the sidecar runs no Docker daemon and has no Docker socket."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-x744-4wpc-v9h2",
+          "source": {
+            "name": "alias"
+          }
+        },
+        {
+          "id": "GO-2026-4887",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-40228",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-41567",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "govulncheck finds the vulnerable functions in dive, dockle and grype, but they are methods of the Docker daemon's own `daemon.Daemon` (docker cp, plugin privileges, container filesystem), which only dockerd creates. The three tools use Docker's client and image types; the sidecar runs no Docker daemon and has no Docker socket."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-41568",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "govulncheck finds the vulnerable functions in dive, dockle and grype, but they are methods of the Docker daemon's own `daemon.Daemon` (docker cp, plugin privileges, container filesystem), which only dockerd creates. The three tools use Docker's client and image types; the sidecar runs no Docker daemon and has no Docker socket."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-42250",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "bzip2 is in use: the scanner sidecar and the scanners it runs loads or runs libbz2-1.0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libbz2-1.0@1.0.8-6"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-42306",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "govulncheck finds the vulnerable functions in dive, dockle and grype, but they are methods of the Docker daemon's own `daemon.Daemon` (docker cp, plugin privileges, container filesystem), which only dockerd creates. The three tools use Docker's client and image types; the sidecar runs no Docker daemon and has no Docker socket."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v27.3.1+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/docker@v28.5.2+incompatible"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-44788",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "SharpCompress is only used when DevSkim extracts archives (--crawl-archives). The sidecar runs `devskim analyze` without that option (scanner/app/scanners.py), so DevSkim never extracts an archive."
+      },
+      "affects": [
+        {
+          "ref": "pkg:nuget/SharpCompress@0.40.0"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-6c8g-7p36-r338",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-50812",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-50813",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "sqlite3 is in use: the scanner sidecar and the scanners it runs loads or runs libsqlite3-0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-53910",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "diffutils is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/diffutils@3.10-4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-5435",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-54369",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "acl is in use: the scanner sidecar and the scanners it runs loads or runs libacl1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libacl1@2.3.2-2+b1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-54370",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "acl is in use: the scanner sidecar and the scanners it runs loads or runs libacl1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libacl1@2.3.2-2+b1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-54371",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libattr1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libattr1@2.5.2-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-54411",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libpam-modules is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libpam-modules-bin is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libpam-runtime is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libpam0g is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libpam-modules-bin@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam-modules@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam-runtime@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam0g@1.7.0-5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-56391",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "coreutils is in use: the scanner sidecar and the scanners it runs loads or runs coreutils (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/coreutils@9.7-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-56392",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "coreutils is in use: the scanner sidecar and the scanners it runs loads or runs coreutils (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/coreutils@9.7-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-5704",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "tar is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/tar@1.35+dfsg-3.1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-58055",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "nghttp2 is in use: the scanner sidecar and the scanners it runs loads or runs libnghttp2-14 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libnghttp2-14@1.64.0-1.1+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-59951",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "mcp is a dependency of Semgrep's MCP server (`semgrep mcp`). The sidecar only runs `semgrep scan` (scanner/app/scanners.py), which does not start the MCP client or server code."
+      },
+      "affects": [
+        {
+          "ref": "pkg:pypi/mcp@1.29.0"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-84m7-p3x7-pcfv",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-6238",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-6368",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-67693",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-6791",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-76642",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-76844",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "zlib is in use: the scanner sidecar and the scanners it runs loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-77117",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-78408",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-78409",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-78410",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bsdutils@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libblkid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/liblastlog2-2@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libmount1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/libuuid1@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/login@4.16.0-2+really2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/mount@2.41.5-0+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-78661",
+      "analysis": {
+        "state": "exploitable",
+        "response": [
+          "update"
+        ],
+        "detail": "golang.org/x/net v0.61.0 in /usr/local/bin/grype: govulncheck finds the vulnerable code of GO-2026-6860 in the binary (Parse, ParseFragment, ParseFragmentWithOptions, ParseWithOptions). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it. golang.org/x/net v0.61.0 in /usr/local/bin/syft: govulncheck finds the vulnerable code of GO-2026-6860 in the binary (Parse, ParseFragment, ParseFragmentWithOptions, ParseWithOptions). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it. golang.org/x/net v0.60.0 in /usr/local/bin/trivy: govulncheck finds the vulnerable code of GO-2026-6860 in the binary (Parse, ParseFragment, ParseFragmentWithOptions, ParseWithOptions). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/golang.org/x/net@v0.60.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/net@v0.61.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/net@v0.61.0"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-80229",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in libcurl's wolfSSL, wolfSSH or OpenSSL 3 provider code. The image's libcurl (libcurl3t64-gnutls, used by git) is built against GnuTLS and libssh2, so that code is not in it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-80230",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-80255",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-80489",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-82208",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in libcurl's wolfSSL, wolfSSH or OpenSSL 3 provider code. The image's libcurl (libcurl3t64-gnutls, used by git) is built against GnuTLS and libssh2, so that code is not in it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-82209",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-82560",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libperl5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-modules-5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl@5.40.1-6+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-84243",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-8458",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-85091",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "zlib is in use: the scanner sidecar and the scanners it runs loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-85747",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "Not in the Go vulnerability database; not analysed yet. No fix available: no fixed package has been released yet."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/github.com/docker/distribution@v2.8.3+incompatible"
+        },
+        {
+          "ref": "pkg:golang/github.com/docker/distribution@v2.8.3+incompatible"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-685w-q87j-wqw3",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-86409",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-86410",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in the curl command-line tool, which is purged from the scanner image after the build downloads (scanner/Dockerfile). Only libcurl remains, as a dependency of git."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-86414",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "Both flaws need an HTTP proxy: one leaks libcurl-held origin credentials to the proxy, the other keeps cleared proxy credentials. Hecate configures no proxy, and git hands libcurl no origin credentials (a SCANNER_AUTH token is an http.extraHeader, which libcurl does not send in the CONNECT request). If you route the scanner through an authenticating proxy via HTTPS_PROXY, re-check CVE-2026-9079 for your setup."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-8674",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-86805",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-87862",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-87863",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-87864",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-87865",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-87866",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in libcurl's wolfSSL, wolfSSH or OpenSSL 3 provider code. The image's libcurl (libcurl3t64-gnutls, used by git) is built against GnuTLS and libssh2, so that code is not in it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-88647",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-88648",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-89092",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-8926",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-8932",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-9079",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "Both flaws need an HTTP proxy: one leaks libcurl-held origin credentials to the proxy, the other keeps cleared proxy credentials. Hecate configures no proxy, and git hands libcurl no origin credentials (a SCANNER_AUTH token is an http.extraHeader, which libcurl does not send in the CONNECT request). If you route the scanner through an authenticating proxy via HTTPS_PROXY, re-check CVE-2026-9079 for your setup."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-9080",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-92386",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-92387",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-92388",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-92389",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-92390",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_present",
+        "detail": "The flaw is in the curl command-line tool, which is purged from the scanner image after the build downloads (scanner/Dockerfile). Only libcurl remains, as a dependency of git."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-92391",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-94266",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-95184",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-95210",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-9538",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libperl5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). perl-modules-5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/perl@5.40.1-6+deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-9545",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-9547",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libcurl3t64-gnutls@8.14.1-2+deb13u7"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-95619",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-95818",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-97045",
+      "analysis": {
+        "state": "exploitable",
+        "response": [
+          "update"
+        ],
+        "detail": "golang.org/x/net v0.61.0 in /usr/local/bin/grype: govulncheck finds the vulnerable code of GO-2026-6866 in the binary (Render). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it. golang.org/x/net v0.61.0 in /usr/local/bin/syft: govulncheck finds the vulnerable code of GO-2026-6866 in the binary (Render). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it. golang.org/x/net v0.60.0 in /usr/local/bin/trivy: govulncheck finds the vulnerable code of GO-2026-6866 in the binary (Render). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/golang.org/x/net@v0.60.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/net@v0.61.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/net@v0.61.0"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-97399",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5932",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library. GO-2026-5932 marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. skopeo is built with containers_image_openpgp (scanner/Dockerfile), so the package serves signature verification only, and that never runs: the signature policy is insecureAcceptAnything and the sidecar never asks skopeo to sign or verify (only `inspect` and `copy`)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:golang/golang.org/x/crypto@v0.57.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/crypto@v0.58.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/crypto@v0.58.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/crypto@v0.58.0"
+        },
+        {
+          "ref": "pkg:golang/golang.org/x/crypto@v0.58.0"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0290435-0B57B5",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "tar is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/tar@1.35+dfsg-3.1"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0517018-A83CE6",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "sysvinit-utils is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/sysvinit-utils@3.14-4"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0628843-DBAD28",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "login.defs is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). passwd is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+        },
+        {
+          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0841856-B18BAF",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "bash is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/bash@5.2.37-2+b10"
+        }
+      ]
+    }
+  ]
+}

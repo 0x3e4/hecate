@@ -1,0 +1,266 @@
+# Hand-written VEX assessments. vex/tools/generate.py applies the first
+# statement that matches a finding; everything else is classified from the
+# runtime evidence and govulncheck (see README.md). Keys:
+#
+#   images           backend | frontend | docs | scanner | source, or "*"
+#   packages         package or source-package names, or "*"
+#   vulnerabilities  ids or aliases (CVE / GHSA / GO), or "*"
+#   locations        optional: path suffixes (a binary or venv) the finding must sit in
+#   status           not_affected | affected | under_investigation | fixed
+#   justification    for not_affected (OpenVEX): component_not_present,
+#                    vulnerable_code_not_present, vulnerable_code_not_in_execute_path,
+#                    vulnerable_code_cannot_be_controlled_by_adversary,
+#                    inline_mitigations_already_exist
+#   impact           why not_affected holds        action   what happens for affected
+#   notes            free text for under_investigation
+#   reviewed         date of the last review; re-check when the code it relies on changes
+#
+# A statement here is a claim about Hecate's own use of a component. When the
+# code it names changes, re-check it.
+
+# ------------------------------------------------------------------ scanner: libcurl (git)
+# git is the only user of libcurl in the scanner (git-remote-http/https, for
+# cloning user-supplied repositories). scanner/app/scanners.py pins
+# GIT_ALLOW_PROTOCOL=http:https:git:ssh (so libcurl is handed HTTP(S) only),
+# GIT_TERMINAL_PROMPT=0, writes no ~/.netrc or credential store, and passes a
+# SCANNER_AUTH token only as `http.extraHeader`, never as libcurl credentials.
+# The curl command-line tool is not in the image (purged after the build).
+
+[[statement]]
+images = ["scanner"]
+packages = ["curl"]
+vulnerabilities = [
+  "CVE-2026-92388", "CVE-2026-92387", "CVE-2026-87864", "CVE-2026-92389", "CVE-2026-13608",
+  "CVE-2025-14017", "CVE-2025-15079", "CVE-2025-15224", "CVE-2026-9547", "CVE-2026-87865",
+  "CVE-2026-107928",
+]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in libcurl's FTP, TFTP, IMAP/POP3/SMTP, LDAP, SCP/SFTP or WebSocket code. libcurl's only user in the image is git, and the sidecar restricts git to http, https, git and ssh (GIT_ALLOW_PROTOCOL in scanner/app/scanners.py), so libcurl only ever runs HTTP(S) transfers."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["curl"]
+vulnerabilities = ["CVE-2026-87866", "CVE-2026-82208", "CVE-2026-80229", "CVE-2025-10966"]
+status = "not_affected"
+justification = "vulnerable_code_not_present"
+impact = "The flaw is in libcurl's wolfSSL, wolfSSH or OpenSSL 3 provider code. The image's libcurl (libcurl3t64-gnutls, used by git) is built against GnuTLS and libssh2, so that code is not in it."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["curl"]
+vulnerabilities = ["CVE-2026-86410", "CVE-2026-12064", "CVE-2026-92390"]
+status = "not_affected"
+justification = "component_not_present"
+impact = "The flaw is in the curl command-line tool, which is purged from the scanner image after the build downloads (scanner/Dockerfile). Only libcurl remains, as a dependency of git."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["curl"]
+vulnerabilities = [
+  "CVE-2026-87862", "CVE-2026-87863", "CVE-2026-80255", "CVE-2026-82209", "CVE-2026-92386",
+  "CVE-2026-92391", "CVE-2026-86409", "CVE-2026-107929", "CVE-2026-10536", "CVE-2026-18924",
+  "CVE-2026-9080", "CVE-2026-9545", "CVE-2026-80230", "CVE-2026-8932",
+]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["curl"]
+vulnerabilities = ["CVE-2026-19931", "CVE-2026-8458", "CVE-2026-11856", "CVE-2026-94266", "CVE-2026-8926"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["curl"]
+vulnerabilities = ["CVE-2026-86414", "CVE-2026-9079"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "Both flaws need an HTTP proxy: one leaks libcurl-held origin credentials to the proxy, the other keeps cleared proxy credentials. Hecate configures no proxy, and git hands libcurl no origin credentials (a SCANNER_AUTH token is an http.extraHeader, which libcurl does not send in the CONNECT request). If you route the scanner through an authenticating proxy via HTTPS_PROXY, re-check CVE-2026-9079 for your setup."
+reviewed = 2026-11-05
+
+# ------------------------------------------------------------------ CPython 3.14.10 (backend, scanner)
+# No 3.14 patch release with these fixes exists yet (python:3.14-slim is on
+# 3.14.10); the next one arrives with the next image build.
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = [
+  "CVE-2026-11940", "CVE-2026-11972", "CVE-2026-7774", "CVE-2026-87910", "CVE-2026-19672",
+  "CVE-2026-4360", "CVE-2026-114583",
+]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in the tarfile module. Neither service extracts tar archives: the sidecar unpacks uploaded sources with zipfile and its own path checks (extract_source_archive in scanner/app/scanners.py), the backend reads OSV exports with zipfile."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = [
+  "CVE-2026-15308", "CVE-2026-8328", "CVE-2025-15366", "CVE-2025-15367", "CVE-2026-12345",
+  "CVE-2026-15806", "CVE-2026-9669", "CVE-2026-18503", "CVE-2026-0864",
+]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in a stdlib API the services do not call: html.parser, ftplib, imaplib, poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, or writing multi-line values with configparser."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-6879"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The quadratic case needs XPath index predicates ([1], [last()]) in Element.findall / iterfind. The services' XML lookups (capec_client.py, hecate_analyzer.py) use plain paths only."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-19445", "CVE-2026-19553"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw needs a Python TLS server with an sni_callback, or SSLContext.wrap_bio without server_hostname. Neither service terminates TLS in Python (uvicorn serves plain HTTP behind the reverse proxy), and their TLS clients go through httpx / asyncio, which always pass the server hostname."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-12003"]
+status = "not_affected"
+justification = "vulnerable_code_not_present"
+impact = "Only affects a Python run from its build tree (VPATH). The image runs the installed python:3.14-slim build."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-15310"]
+status = "not_affected"
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "The backend opens zip files only for OSV's ecosystem exports from storage.googleapis.com/osv-vulnerabilities over TLS; their members are not attacker-chosen."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-15310"]
+status = "affected"
+action = "A crafted uploaded source archive with bzip2, LZMA or Zstandard members can make zipfile pre-allocate a large buffer and exhaust the sidecar's memory (denial of service, no code execution). Uploads need the CI API key or a scan:submit token, and the container has a memory limit. Fixed with the next CPython 3.14 release, which the image picks up on rebuild."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-7210"]
+status = "affected"
+action = "expat's hash-flooding protection uses too little entropy, so a crafted XML document can cost the parser a lot of CPU (denial of service). The backend parses the configured CERT feeds and MITRE's CAPEC XML; the sidecar parses pom.xml / .csproj files of scanned repositories inside the Hecate Analyzer child process, which runs under HECATE_TIMEOUT_SECONDS. Fixed with the next CPython 3.14 release, which the images pick up on rebuild."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-116566"]
+status = "not_affected"
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "Host names that Python itself resolves come from configuration (feed and API base URLs, notification and AI endpoints) set by the administrator. User-supplied scan targets are resolved by git, skopeo and the Go scanners, not by Python's getaddrinfo, after validate_scan_target has checked them."
+reviewed = 2026-11-05
+
+# ------------------------------------------------------------------ scanner: Semgrep venv, DevSkim
+
+[[statement]]
+images = ["scanner"]
+packages = ["mcp"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "mcp is a dependency of Semgrep's MCP server (`semgrep mcp`). The sidecar only runs `semgrep scan` (scanner/app/scanners.py), which does not start the MCP client or server code."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["opentelemetry-api"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in parsing W3C tracestate headers. Semgrep only traces with --trace, which the sidecar does not pass (metrics are off via SEMGREP_SEND_METRICS=off), and it receives no incoming trace context."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["SharpCompress", "sharpcompress"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "SharpCompress is only used when DevSkim extracts archives (--crawl-archives). The sidecar runs `devskim analyze` without that option (scanner/app/scanners.py), so DevSkim never extracts an archive."
+reviewed = 2026-11-05
+
+# ------------------------------------------------------------------ frontend, docs: busybox
+
+[[statement]]
+images = ["frontend", "docs"]
+packages = ["busybox"]
+vulnerabilities = ["CVE-2025-60876"]
+status = "not_affected"
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "The flaw is in busybox wget's request line. Nothing in the image calls wget with outside input; the only call is the compose health check of the docs service, a fixed http://127.0.0.1/."
+reviewed = 2026-11-05
+
+# ------------------------------------------------------------------ source repository
+
+[[statement]]
+images = ["source"]
+packages = ["minimatch"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "minimatch 10 is only a dependency of the ESLint toolchain (frontend devDependencies). It runs on the maintainers' and CI's own lint configuration and never ships: the frontend image contains only the built static files."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["source"]
+packages = ["katex"]
+vulnerabilities = ["GHSA-238p-pmpm-9mq7"]
+status = "not_affected"
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "KaTeX comes with mermaid 11 into the lazily loaded diagram chunk. The flaw lets an already existing prototype pollution switch on KaTeX's `trust` option; mermaid renders with `trust` off and the frontend has no known prototype-pollution flaw, so there is nothing to build on. KaTeX 0.18.2 arrives with mermaid 12."
+reviewed = 2026-11-05
+
+# ------------------------------------------------------------------ scanner: Go modules
+
+[[statement]]
+images = ["scanner"]
+packages = ["github.com/docker/docker"]
+vulnerabilities = [
+  "CVE-2026-33997", "CVE-2026-34040", "CVE-2026-41567", "CVE-2026-41568", "CVE-2026-42306",
+  "GO-2026-4883", "GO-2026-4887", "GO-2026-5617", "GO-2026-5668", "GO-2026-5746",
+]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "govulncheck finds the vulnerable functions in dive, dockle and grype, but they are methods of the Docker daemon's own `daemon.Daemon` (docker cp, plugin privileges, container filesystem), which only dockerd creates. The three tools use Docker's client and image types; the sidecar runs no Docker daemon and has no Docker socket."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["golang.org/x/crypto"]
+vulnerabilities = ["GO-2026-5932"]
+locations = ["/usr/local/bin/skopeo"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "GO-2026-5932 marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. skopeo is built with containers_image_openpgp (scanner/Dockerfile), so the package serves signature verification only, and that never runs: the signature policy is insecureAcceptAnything and the sidecar never asks skopeo to sign or verify (only `inspect` and `copy`)."
+reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["golang.org/x/crypto"]
+vulnerabilities = ["GO-2026-5932"]
+status = "under_investigation"
+notes = "GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library."
+reviewed = 2026-11-05

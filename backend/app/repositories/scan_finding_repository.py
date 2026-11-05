@@ -631,8 +631,13 @@ class ScanFindingRepository:
         vex_status: str,
         vex_justification: str | None = None,
         vex_updated_by: str = "user",
+        vex_detail: str | None = None,
     ) -> int:
-        """Apply VEX status to all findings matching vulnerability+target across scans."""
+        """Apply VEX status to all findings matching vulnerability+target across scans.
+
+        ``vex_detail`` is only written when given, so a bulk update without one
+        keeps the detail a finding already has.
+        """
         try:
             update: dict[str, Any] = {
                 "vex_status": vex_status,
@@ -640,6 +645,8 @@ class ScanFindingRepository:
                 "vex_updated_at": datetime.now(tz=UTC),
                 "vex_updated_by": vex_updated_by,
             }
+            if vex_detail is not None:
+                update["vex_detail"] = vex_detail
             result = await self.collection.update_many(
                 {"target_id": target_id, "vulnerability_id": vulnerability_id},
                 {"$set": update},

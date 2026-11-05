@@ -1,0 +1,9 @@
+{
+  "image": "e15f9d1ed3465e21c19808b33190df5c1862a23d",
+  "collectedWith": "vex/tools/collect.sh",
+  "loadedPackages": [],
+  "govulncheck": {},
+  "statementBasis": {
+    "assessment": 2
+  }
+}

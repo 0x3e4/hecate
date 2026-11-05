@@ -1,0 +1,22 @@
+{
+  "image": "hecate-backend@sha256:631e516a9cc72261eda4d10006499b23b72bb4757e4cd12efd524ea7a30231cc",
+  "collectedWith": "vex/tools/collect.sh",
+  "loadedPackages": [
+    "coreutils",
+    "dash",
+    "libbz2-1.0",
+    "libc6",
+    "libgcc-s1",
+    "liblzma5",
+    "libssl3t64",
+    "libuuid1",
+    "libzstd1",
+    "zlib1g"
+  ],
+  "govulncheck": {},
+  "statementBasis": {
+    "assessment": 2,
+    "default": 1,
+    "runtime-evidence": 186
+  }
+}

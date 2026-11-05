@@ -73,6 +73,15 @@ Out of scope:
 - Issues that require an already-privileged operator account — Hecate trusts
   its configured operator by design
 
+## Known vulnerabilities in the images
+
+Every published image contains packages with known CVEs, mostly from its Debian or Alpine base.
+[`vex/`](vex/) holds a VEX document per image that says for each of them whether it affects
+Hecate and why (OpenVEX for `trivy --vex` / `grype --vex`, CycloneDX for Hecate's own VEX
+import), with the current state in [`vex/STATUS.md`](vex/STATUS.md). A finding listed there as
+`not_affected` is not a vulnerability report; one we have missed, or a statement you think is
+wrong, is.
+
 ## Safe Harbor
 
 Good-faith security research conducted under this policy is authorized. We

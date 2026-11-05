@@ -37,12 +37,21 @@ class VexService:
         if not vex_findings:
             return {}
 
-        # Map VEX status to CycloneDX analysis.state
+        # Map VEX status to CycloneDX analysis.state. CycloneDX has no
+        # "affected"; its counterpart (as in CISA's OpenVEX mapping) is
+        # "exploitable", which the import maps back to "affected".
         status_map = {
             "not_affected": "not_affected",
-            "affected": "affected",
+            "affected": "exploitable",
             "fixed": "resolved",
             "under_investigation": "in_triage",
+        }
+        # affects[].versions[].status has an enum of its own.
+        version_status_map = {
+            "not_affected": "unaffected",
+            "affected": "affected",
+            "fixed": "unaffected",
+            "under_investigation": "unknown",
         }
 
         vulnerabilities: list[dict[str, Any]] = []
@@ -59,7 +68,7 @@ class VexService:
                     "ref": finding.get("package_name", ""),
                     "versions": [{
                         "version": finding.get("package_version", ""),
-                        "status": status_map.get(vex_status, vex_status),
+                        "status": version_status_map.get(vex_status, "unknown"),
                     }] if finding.get("package_version") else [],
                 }],
             }
@@ -136,12 +145,16 @@ class VexService:
             justification = _vex_text(analysis.get("justification"))
             detail = _vex_text(analysis.get("detail"))
 
+            # The justification is the short reason the findings table shows;
+            # without one the detail stands in for it. The detail itself goes
+            # to vex_detail, where the VEX editor shows it in full.
             count = await self.finding_repo.bulk_update_vex_by_vulnerability(
                 target_id=target_id,
                 vulnerability_id=vuln_id,
                 vex_status=vex_status,
                 vex_justification=justification or detail,
                 vex_updated_by="vex-import",
+                vex_detail=detail,
             )
             if count > 0:
                 applied += count

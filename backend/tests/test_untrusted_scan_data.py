@@ -84,6 +84,45 @@ async def test_vex_import_caps_a_long_justification() -> None:
     assert len(repo.calls[0][1]["vex_justification"]) == 2000
 
 
+async def test_vex_import_keeps_the_detail_next_to_the_justification() -> None:
+    repo = FakeFindingRepo()
+    service = VexService(repo, None)  # type: ignore[arg-type]
+    analysis = {"state": "not_affected", "justification": "code_not_reachable", "detail": "Only git uses libcurl."}
+    document = {"vulnerabilities": [{"id": "CVE-2026-1", "analysis": analysis}]}
+
+    await service.import_cyclonedx_vex(document, target_id="t")
+
+    kwargs = repo.calls[0][1]
+    assert kwargs["vex_justification"] == "code_not_reachable"
+    assert kwargs["vex_detail"] == "Only git uses libcurl."
+
+
+class FakeVexScanRepo:
+    async def get(self, _scan_id: str) -> dict[str, Any]:
+        return {"target_name": "t"}
+
+
+class FakeVexFindingRepo:
+    async def get_vex_findings_by_scan(self, _scan_id: str) -> list[dict[str, Any]]:
+        return [
+            {"vulnerability_id": "CVE-2026-1", "vex_status": "affected", "package_name": "a", "package_version": "1"},
+            {"vulnerability_id": "CVE-2026-2", "vex_status": "under_investigation", "package_name": "b", "package_version": "2"},
+        ]
+
+
+async def test_vex_export_uses_cyclonedx_states() -> None:
+    service = VexService(FakeVexFindingRepo(), FakeVexScanRepo())  # type: ignore[arg-type]
+
+    document = await service.export_cyclonedx_vex("s")
+
+    affected, triage = document["vulnerabilities"]
+    # CycloneDX knows "exploitable", not "affected"; version statuses have their own enum.
+    assert affected["analysis"]["state"] == "exploitable"
+    assert affected["affects"][0]["versions"][0]["status"] == "affected"
+    assert triage["analysis"]["state"] == "in_triage"
+    assert triage["affects"][0]["versions"][0]["status"] == "unknown"
+
+
 class FakeInventoryRepo:
     def __init__(self) -> None:
         self.inserted: list[dict[str, Any]] = []

@@ -1,0 +1,35 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-frontend.openvex.json",
+  "author": "Hecate maintainers",
+  "role": "Document Creator",
+  "timestamp": "2026-11-05T17:57:26Z",
+  "version": 1,
+  "tooling": "vex/tools/generate.py",
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2025-60876"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/busybox-binsh@1.37.0-r31"
+            },
+            {
+              "@id": "pkg:apk/alpine/busybox@1.37.0-r31"
+            },
+            {
+              "@id": "pkg:apk/alpine/ssl_client@1.37.0-r31"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "The flaw is in busybox wget's request line. Nothing in the image calls wget with outside input; the only call is the compose health check of the docs service, a fixed http://127.0.0.1/."
+    }
+  ]
+}

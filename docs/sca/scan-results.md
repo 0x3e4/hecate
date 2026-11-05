@@ -135,6 +135,14 @@ You can also bring annotations in and out as files. **Import VEX** in the Findin
 document and applies its statuses to matching findings, and the VEX export on the SBOM tab writes your current
 annotations back out in the same format — so a VEX statement made once can travel across tools and teams.
 
+The import matches by vulnerability ID across all scans of the target. It stores `analysis.justification` as the
+short reason the findings table shows and `analysis.detail` in full in the editor's detail field. The export uses
+CycloneDX's own vocabulary: **Affected** becomes `exploitable`, **Investigating** becomes `in_triage`, and each
+affected version carries `affected`, `unaffected` or `unknown`.
+
+Hecate publishes VEX documents for its own images in the same format, so you can try the import on a scan of
+`ghcr.io/0x3e4/hecate-backend`. See [VEX for Hecate's images](../admin/vex.md).
+
 ## Dismissing findings
 
 Dismissal is separate from VEX. Where VEX is a published, exportable statement about exploitability, **dismissal is a

@@ -1,0 +1,17 @@
+{
+  "image": "hecate-frontend@sha256:db93d3943a7c9e52ff6fbb46f0cf126f78b9b019806d337726fbd01f47cc8bbd",
+  "collectedWith": "vex/tools/collect.sh",
+  "loadedPackages": [
+    "busybox",
+    "libcrypto3",
+    "libssl3",
+    "musl",
+    "nginx",
+    "pcre2",
+    "zlib"
+  ],
+  "govulncheck": {},
+  "statementBasis": {
+    "assessment": 3
+  }
+}
