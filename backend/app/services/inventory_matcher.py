@@ -952,16 +952,23 @@ async def vulns_for_item(
             {"$or": [{"product_slugs": product}, {"products": product}]},
         ],
     }
+    # ``limit`` caps the *hits*, never the cursor: the pre-filter only knows
+    # vendor/product, so a popular product (WordPress: hundreds of core CVEs)
+    # puts far more candidates through it than affect any one version. A
+    # cursor limit checked only the first N in natural order — the oldest —
+    # and reported "no known vulnerabilities" for a current release that the
+    # detail page (``items_for_vuln``) correctly flagged.
     cursor = vuln_repo.collection.find(query, projection=projection)
-    if limit:
-        cursor = cursor.limit(limit)
 
     hits: list[dict[str, Any]] = []
     async for doc in cursor:
         cpe_configurations = _coerce_cpe_configurations(doc.get("cpe_configurations"))
         flat_cpes = _coerce_string_list(doc.get("cpes"))
+        # camelCase first, like the read path (``_get_impacted_products_or_build``)
+        # and therefore ``items_for_vuln`` on the detail page: the writers only
+        # maintain ``impactedProducts``, a lingering snake_case key is stale.
         impacted_products = _coerce_impacted_products(
-            doc.get("impacted_products") or doc.get("impactedProducts")
+            doc.get("impactedProducts") or doc.get("impacted_products")
         )
         if match_in_configuration(
             item,
@@ -970,6 +977,8 @@ async def vulns_for_item(
             impacted_products=impacted_products,
         ):
             hits.append(doc)
+            if limit and len(hits) >= limit:
+                break
     return hits
 
 

@@ -1051,20 +1051,21 @@ export const InventoryPage = () => {
   // (same logic that drives the "Show CVEs" list) to resolve the exact set
   // of affecting vuln IDs, then hand them to the list page as a `vuln_id:`
   // disjunction. That's the only way the list page can mirror the matcher
-  // output — a naive `productVersions:"8.0.25"` query only hits records
-  // that literally contain that version string and misses range matches
-  // like `>= 8.0.0, < 8.0.26`, which the Python-side range parser
-  // recognises but OpenSearch DQL cannot.
+  // output exactly. When the matcher finds nothing, the fallback below asks
+  // the index directly through `affectedVersion:`.
   const buildVendorProductFallbackDql = (item: InventoryItem): string => {
     const parts: string[] = [];
     if (item.vendorSlug) parts.push(`vendorSlugs:${item.vendorSlug}`);
     if (item.productSlug) parts.push(`productSlugs:${item.productSlug}`);
-    // Include the declared version so the list is scoped to it. Exact versions
-    // are quoted; wildcards (e.g. `8.0.*`) pass through as a Lucene wildcard.
+    // Include the declared version so the list is scoped to it. An exact
+    // version goes through `affectedVersion:`, which checks the indexed
+    // version ranges: `productVersions` only holds the bounds an advisory
+    // names, so "4.7 through 7.1.3" never contains 7.1.3 itself. Wildcards
+    // (e.g. `8.0.*`) have no range form and stay a Lucene wildcard.
     const version = item.version?.trim();
     if (version) {
       parts.push(
-        version.includes("*") ? `productVersions:${version}` : `productVersions:"${version}"`,
+        version.includes("*") ? `productVersions:${version}` : `affectedVersion:"${version}"`,
       );
     }
     return parts.join(" AND ");

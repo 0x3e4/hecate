@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Inventory: an item of a product with many CVEs, such as WordPress, showed "No known vulnerabilities" and a CVE count of 0 although the vulnerability detail page listed it under *Affected in your environment*. The lookup cut the candidate list at 200 before checking versions, so only the oldest CVEs of the product were ever compared; the limit now counts matches. It also reads `impactedProducts` before a stale `impacted_products`, like the detail page.
+- Inventory: when no CVE matches, the **DQL** button now asks with `affectedVersion:"<version>"` instead of `productVersions:"<version>"`, which only finds advisories that name the version literally and missed every range such as "4.7 through 7.1.3".
+
 ## [2.1.0] - 2026-11-04
 
 ### Added

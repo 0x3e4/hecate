@@ -202,3 +202,90 @@ def test_branch_scoped_fully_qualified_end_bound(version, expected):
     item = _netscaler_item(version)
     impacted = _netscaler_impacted([">= 14.1, < 14.1.56.73"])
     assert match_in_configuration(item, [], [], impacted_products=impacted) is expected
+
+
+# --- vulns_for_item: the limit caps hits, not candidates ---
+
+
+class _FakeCursor:
+    def __init__(self, docs: list[dict]):
+        self._docs = docs
+
+    def limit(self, n: int) -> "_FakeCursor":  # a cursor limit would hide the hit
+        return _FakeCursor(self._docs[:n])
+
+    def __aiter__(self):
+        self._iter = iter(self._docs)
+        return self
+
+    async def __anext__(self) -> dict:
+        try:
+            return next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class _FakeRepo:
+    def __init__(self, docs: list[dict]):
+        self.collection = self
+        self._docs = docs
+
+    def find(self, query, projection=None) -> _FakeCursor:
+        return _FakeCursor(self._docs)
+
+
+def _wp_doc(vuln_id: str, versions: list[str], *, key: str = "impactedProducts") -> dict:
+    return {
+        "_id": vuln_id,
+        "vendor_slugs": ["wordpress"],
+        "product_slugs": ["wordpress"],
+        key: [
+            {
+                "vendor": {"name": "WordPress", "slug": "wordpress"},
+                "product": {"name": "WordPress", "slug": "wordpress"},
+                "versions": versions,
+            }
+        ],
+    }
+
+
+async def test_vulns_for_item_finds_hit_past_the_limit():
+    """WordPress 7.1.3: hundreds of old core CVEs come first in natural order.
+
+    The detail page flagged CVE-2026-119977 (4.7 through 7.1.3) while the
+    inventory page said "no known vulnerabilities", because the cursor was
+    cut at ``limit`` before a single matching candidate was reached.
+    """
+    from app.services.inventory_matcher import vulns_for_item
+
+    docs = [_wp_doc(f"CVE-2010-{i:04d}", ["< 3.0"]) for i in range(300)]
+    docs.append(_wp_doc("CVE-2026-119977", [">= 7.1, < 7.1.4"]))
+    item = InventoryKey(vendor_slug="wordpress", product_slug="wordpress", version="7.1.3")
+
+    hits = await vulns_for_item(_FakeRepo(docs), item, limit=200)
+
+    assert [h["_id"] for h in hits] == ["CVE-2026-119977"]
+
+
+async def test_vulns_for_item_stops_at_limit_hits():
+    from app.services.inventory_matcher import vulns_for_item
+
+    docs = [_wp_doc(f"CVE-2026-{i:04d}", ["< 8.0"]) for i in range(10)]
+    item = InventoryKey(vendor_slug="wordpress", product_slug="wordpress", version="7.1.3")
+
+    hits = await vulns_for_item(_FakeRepo(docs), item, limit=3)
+
+    assert len(hits) == 3
+
+
+async def test_vulns_for_item_prefers_camel_case_impacted_products():
+    """A stale snake_case key must not shadow what the writers maintain."""
+    from app.services.inventory_matcher import vulns_for_item
+
+    doc = _wp_doc("CVE-2026-119977", [">= 7.1, < 7.1.4"])
+    doc["impacted_products"] = _wp_doc("x", ["< 3.0"])["impactedProducts"]
+    item = InventoryKey(vendor_slug="wordpress", product_slug="wordpress", version="7.1.3")
+
+    hits = await vulns_for_item(_FakeRepo([doc]), item)
+
+    assert [h["_id"] for h in hits] == ["CVE-2026-119977"]
