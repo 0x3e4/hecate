@@ -94,6 +94,14 @@ API: `PUT /api/v1/scans/targets/{id}/write-password` (body `{ "password": "…" 
 `DELETE /api/v1/scans/targets/{id}/write-password`, each with `X-System-Password` or the current
 `X-Target-Password`.
 
+A target's **VEX sources** (`PUT /api/v1/scans/targets/{id}/vex-sources`,
+`POST …/vex-sources/apply`) are a target write like any other, so the target password opens them.
+Because the backend then fetches a URL a target owner chose, the fetch is held to public hosts: https
+only, no credentials in the URL, every address the host resolves to must be public (the same check as
+the advisory feeds; `SCA_VEX_SOURCES_ALLOW_PRIVATE_HOSTS=true` lifts it for an intranet host), no
+redirects, at most `SCA_VEX_SOURCE_MAX_BYTES`, and a failure is reported only as a short category,
+since targets are public.
+
 ## AI is always gated by the AI password
 
 When `AI_ANALYSIS_PASSWORD` is set, that password **alone** authorizes triggering AI, and the write

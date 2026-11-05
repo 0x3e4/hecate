@@ -245,7 +245,7 @@ scanner/
 - **Auto-scan** of registered targets with the scanner set chosen at first scan, change-detection via image digest / commit SHA, and a per-target diagnostics view (`POST /v1/scans/targets/{id}/check`).
 - **Target grouping** lets you combine repos and images of one application into a single roll-up section in the UI.
 - **SBOM generation** (CycloneDX 1.5 + SPDX 2.3 export) and **SBOM import** for EU CRA compliance.
-- **VEX support** (CycloneDX) — inline editor, multi-select bulk updates, automatic carry-forward across scans.
+- **VEX support** (CycloneDX, OpenVEX) — inline editor, multi-select bulk updates, automatic carry-forward across scans, and **VEX sources**: URLs of a vendor's VEX documents per target, applied after every scan without overriding your own statuses.
 - **License compliance** with policy-based allow/deny/review evaluation after every scan.
 - **Provenance verification** across 8 ecosystems.
 - **Best-practice + layer analysis** for container images (Dockle + Dive, opt-in).
@@ -451,6 +451,8 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `POST /api/v1/scans/vex/import` — import a CycloneDX VEX document
 - `GET  /api/v1/scans/{scanId}/vex/export` — export a CycloneDX VEX document
 - `GET  /api/v1/scans/{scanId}/findings?includeDismissed=true` — include dismissed findings
+- `PUT  /api/v1/scans/targets/{id}/vex-sources` — set a target's VEX source URLs (`{"urls": [...]}`, https, up to 5, CycloneDX VEX or OpenVEX) and apply them; they are fetched again after every scan
+- `POST /api/v1/scans/targets/{id}/vex-sources/apply` — fetch and apply them now
 </details>
 
 <details>

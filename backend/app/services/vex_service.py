@@ -14,6 +14,19 @@ log = structlog.get_logger()
 _VEX_TEXT_LIMIT = 2000
 
 
+# CycloneDX analysis.state -> Hecate's VEX status. "affected" is not a
+# CycloneDX state but older Hecate exports wrote it, so it is still read.
+CYCLONEDX_STATE_TO_VEX = {
+    "not_affected": "not_affected",
+    "affected": "affected",
+    "resolved": "fixed",
+    "resolved_with_pedigree": "fixed",
+    "in_triage": "under_investigation",
+    "exploitable": "affected",
+    "false_positive": "not_affected",
+}
+
+
 def _vex_text(value: Any) -> str | None:
     return value[:_VEX_TEXT_LIMIT] if isinstance(value, str) and value else None
 
@@ -103,16 +116,7 @@ class VexService:
         target_id: str,
     ) -> dict[str, int]:
         """Import CycloneDX VEX document and apply to matching findings."""
-        # Reverse map from CycloneDX state to our VEX status
-        state_map = {
-            "not_affected": "not_affected",
-            "affected": "affected",
-            "resolved": "fixed",
-            "resolved_with_pedigree": "fixed",
-            "in_triage": "under_investigation",
-            "exploitable": "affected",
-            "false_positive": "not_affected",
-        }
+        state_map = CYCLONEDX_STATE_TO_VEX
 
         vulnerabilities = vex_data.get("vulnerabilities", [])
         if not isinstance(vulnerabilities, list):

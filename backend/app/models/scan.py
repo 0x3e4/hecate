@@ -34,6 +34,13 @@ class ScanTargetDocument(BaseModel):
     # alternative to the global SYSTEM_PASSWORD admin override. Never serialised
     # to the API — ScanTargetResponse only exposes the boolean ``writePasswordSet``.
     write_password_hash: str | None = Field(default=None, description="Hashed per-target write password")
+    # VEX documents (CycloneDX or OpenVEX) published for this target, e.g. by
+    # the vendor of an image, applied to its findings after every scan. See
+    # app/services/vex_source_service.py.
+    vex_sources: list[str] = Field(default_factory=list, description="https URLs of VEX documents for this target")
+    vex_source_status: dict[str, Any] | None = Field(
+        default=None, description="Outcome of the last fetch: counts plus one entry per source"
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_scan_at: datetime | None = None

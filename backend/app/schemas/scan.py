@@ -115,6 +115,38 @@ class ImportSbomRequest(BaseModel):
 # --- Response schemas ---
 
 
+class VexSourceResultSchema(BaseModel):
+    """One VEX source of a target as the last fetch found it."""
+
+    url: str
+    ok: bool
+    format: str | None = Field(default=None, description="cyclonedx or openvex")
+    statements: int | None = None
+    error_kind: str | None = Field(
+        default=None,
+        alias="errorKind",
+        serialization_alias="errorKind",
+        description="not_public, http_status, too_large, network, invalid_json or unknown_format",
+    )
+    error: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class VexSourceStatusSchema(BaseModel):
+    """Outcome of the last time a target's VEX sources were fetched and applied."""
+
+    checked_at: UtcDatetime = Field(alias="checkedAt", serialization_alias="checkedAt")
+    applied: int = Field(default=0, description="Findings whose VEX status was set")
+    skipped: int = Field(
+        default=0, description="Statements left out: the vulnerability has conflicting statuses and no package"
+    )
+    cleared: int = Field(default=0, description="Source statuses removed because no source mentions them any more")
+    sources: list[VexSourceResultSchema] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
 class ScanTargetResponse(BaseModel):
     """Scan target detail."""
 
@@ -181,8 +213,23 @@ class ScanTargetResponse(BaseModel):
         serialization_alias="writePasswordSet",
         description="True when a per-target write password is configured (the hash itself is never returned)",
     )
+    vex_sources: list[str] = Field(
+        default_factory=list,
+        alias="vexSources",
+        serialization_alias="vexSources",
+        description="https URLs of VEX documents applied to this target's findings after every scan",
+    )
+    vex_source_status: VexSourceStatusSchema | None = Field(
+        default=None, alias="vexSourceStatus", serialization_alias="vexSourceStatus"
+    )
 
     model_config = {"populate_by_name": True}
+
+
+class TargetVexSourcesRequest(BaseModel):
+    """The VEX source URLs of a target; an empty list removes them."""
+
+    urls: list[str] = Field(default_factory=list, max_length=20)
 
 
 class TargetWritePasswordRequest(BaseModel):

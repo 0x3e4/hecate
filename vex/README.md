@@ -51,9 +51,11 @@ version.
 
 **Hecate**
 
-On the scan target of the image, open the latest scan, then **Findings → Import VEX** and choose
-the `.cdx.json` file. Hecate applies the state, justification and reasoning to every finding of
-that vulnerability on the target, and carries them forward to later scans.
+On the scan target of the image, **VEX sources → Add source** with the raw URL of the document,
+e.g. `https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json`.
+Hecate applies it at once and again after every scan, so updated documents reach your findings by
+themselves; statuses you set yourself are left alone. A one-off **Findings → Import VEX** with the
+`.cdx.json` file works as well.
 
 ## How the statements come about
 

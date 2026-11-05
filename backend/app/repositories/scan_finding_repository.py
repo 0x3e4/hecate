@@ -15,6 +15,10 @@ from app.utils.strings import contains_regex
 
 log = structlog.get_logger()
 
+# vex_updated_by of a status applied from a target's VEX source. Such statuses
+# are the source's to change; every other one belongs to whoever set it.
+VEX_SOURCE_ACTOR = "vex-source"
+
 
 class ScanFindingRepository:
     def __init__(self, collection: AsyncIOMotorCollection) -> None:
@@ -817,11 +821,73 @@ class ScanFindingRepository:
                         "vex_detail": old_finding.get("vex_detail"),
                         "vex_response": old_finding.get("vex_response"),
                         "vex_updated_at": old_finding.get("vex_updated_at"),
-                        "vex_updated_by": "carry-forward",
+                        # A status from a VEX source stays one, so the next
+                        # fetch of that source may still update or remove it.
+                        "vex_updated_by": (
+                            VEX_SOURCE_ACTOR
+                            if old_finding.get("vex_updated_by") == VEX_SOURCE_ACTOR
+                            else "carry-forward"
+                        ),
                     }},
                 )
                 carried += result.modified_count
             return carried
         except PyMongoError as exc:
             log.warning("scan_finding_repository.carry_forward_vex_failed", error=str(exc))
+            return 0
+
+    async def apply_vex_from_source(
+        self,
+        target_id: str,
+        vulnerability_ids: list[str],
+        vex_status: str,
+        *,
+        package_names: list[str] | None = None,
+        vex_justification: str | None = None,
+        vex_detail: str | None = None,
+    ) -> int:
+        """Apply a statement from a target's VEX source to its findings.
+
+        Only findings without a VEX status, or with one that came from a VEX
+        source, are touched: a status someone set by hand or imported stays.
+        ``package_names`` narrows the statement to those packages.
+        """
+        query: dict[str, Any] = {
+            "target_id": target_id,
+            "vulnerability_id": {"$in": vulnerability_ids},
+            "$or": [{"vex_status": None}, {"vex_updated_by": VEX_SOURCE_ACTOR}],
+        }
+        if package_names:
+            query["package_name"] = {"$in": package_names}
+        update = {
+            "vex_status": vex_status,
+            "vex_justification": vex_justification,
+            "vex_detail": vex_detail,
+            "vex_updated_at": datetime.now(tz=UTC),
+            "vex_updated_by": VEX_SOURCE_ACTOR,
+        }
+        try:
+            result = await self.collection.update_many(query, {"$set": update})
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.apply_vex_from_source_failed", target_id=target_id, error=str(exc))
+            return 0
+
+    async def clear_vex_source_statuses(self, target_id: str, keep_ids: list[str]) -> int:
+        """Remove VEX-source statuses whose vulnerability no source mentions any more."""
+        try:
+            result = await self.collection.update_many(
+                {"target_id": target_id, "vex_updated_by": VEX_SOURCE_ACTOR, "vulnerability_id": {"$nin": keep_ids}},
+                {"$set": {
+                    "vex_status": None,
+                    "vex_justification": None,
+                    "vex_detail": None,
+                    "vex_response": None,
+                    "vex_updated_at": datetime.now(tz=UTC),
+                    "vex_updated_by": None,
+                }},
+            )
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.clear_vex_source_statuses_failed", target_id=target_id, error=str(exc))
             return 0

@@ -264,6 +264,11 @@ class Settings(BaseSettings):
     # subprocess budget doesn't require also bumping this in lock-step.
     sca_scanner_timeout_seconds: int = 2060
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
+    # VEX sources: URLs a target owner attaches to a scan target, fetched and
+    # applied after every scan. Public https hosts only unless allowed here.
+    sca_vex_source_timeout_seconds: int = 20
+    sca_vex_source_max_bytes: int = 10 * 1024 * 1024
+    sca_vex_sources_allow_private_hosts: bool = False
     sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
     sca_max_concurrent_scans: int = 2

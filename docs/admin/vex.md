@@ -45,13 +45,19 @@ statements rest on.
 
 === "Hecate"
 
-    Add the image as a scan target and scan it. On the scan, open **Findings → Import VEX** and
-    choose the matching `.cdx.json` file. The statuses, justifications and reasoning apply to
-    every scan of that target and carry over to later ones.
+    Add the image as a scan target. On the target page, **VEX sources → Add source** takes the
+    raw URL of the matching document, for example
+    `https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json`.
+    Hecate applies it right away and again after every scan, so a new release of the documents
+    reaches your findings without anything to do; a status you set yourself stays. See
+    [VEX sources](../sca/scan-results.md#vex-sources). A one-off import of the `.cdx.json` file
+    through **Findings → Import VEX** works too.
 
-Scan the image under its `ghcr.io/0x3e4/…` name; a local tag does not match. Statements are
-bound to exact package versions, so a package that has changed since the documents were
-generated shows up again until the documents catch up.
+Trivy and Grype match a statement by the image name and the exact package version: scan the
+image under its `ghcr.io/0x3e4/…` name (a local tag does not match), and expect a package that
+changed since the documents were generated to show up again until they catch up. Hecate matches
+by vulnerability and package name, so it applies a statement to a newer version of the package
+too.
 
 ## How the statements are made
 

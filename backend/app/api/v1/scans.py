@@ -51,6 +51,7 @@ from app.schemas.scan import (
     SubmitScanRequest,
     SubmitScanResponse,
     TargetSbomDiffResponse,
+    TargetVexSourcesRequest,
     TargetWritePasswordRequest,
 )
 from app.schemas.vex import (
@@ -330,6 +331,46 @@ async def clear_target_write_password(
     await service.target_repo.set_write_password(target_id, None)
     refreshed = await service.get_target(target_id)
     return _map_target(refreshed)
+
+
+@router.put("/targets/{target_id:path}/vex-sources", response_model=ScanTargetResponse)
+async def set_target_vex_sources(
+    request: TargetVexSourcesRequest,
+    target_id: str = Depends(resolve_target_id_path),
+    _auth: None = Depends(require_target_write_path),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanTargetResponse:
+    """Set the target's VEX source URLs and apply them to its findings right away."""
+    from app.services.vex_source_service import normalize_vex_source_urls
+
+    try:
+        urls = normalize_vex_source_urls(request.urls)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not await service.target_repo.set_vex_sources(target_id, urls):
+        raise HTTPException(status_code=404, detail="Scan target not found")
+    if urls:
+        await service.apply_vex_sources(target_id)
+    else:
+        # Without sources, the statuses they set have no owner any more.
+        await service.finding_repo.clear_vex_source_statuses(target_id, [])
+    return _map_target(await service.get_target(target_id))
+
+
+@router.post("/targets/{target_id:path}/vex-sources/apply", response_model=ScanTargetResponse)
+async def apply_target_vex_sources(
+    target_id: str = Depends(resolve_target_id_path),
+    _auth: None = Depends(require_target_write_path),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanTargetResponse:
+    """Fetch the target's VEX sources again and apply them now."""
+    target = await service.get_target(target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Scan target not found")
+    if not target.get("vex_sources"):
+        raise HTTPException(status_code=400, detail="This target has no VEX sources")
+    await service.apply_vex_sources(target_id)
+    return _map_target(await service.get_target(target_id))
 
 
 @router.get("/targets/{target_id:path}", response_model=ScanTargetResponse)
@@ -1290,6 +1331,8 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         last_image_digest=doc.get("last_image_digest"),
         last_commit_sha=doc.get("last_commit_sha"),
         write_password_set=bool(doc.get("write_password_hash")),
+        vex_sources=doc.get("vex_sources") or [],
+        vex_source_status=doc.get("vex_source_status") or None,
     )
 
 

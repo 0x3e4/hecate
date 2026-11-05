@@ -69,6 +69,10 @@ class ScanTargetRepository:
             # otherwise wipe the operator-set password on every scan.
             if existing.get("write_password_hash") and not payload.get("write_password_hash"):
                 payload["write_password_hash"] = existing["write_password_hash"]
+            # Same for the VEX sources the owner attached and their last outcome.
+            for field in ("vex_sources", "vex_source_status"):
+                if existing.get(field) and not payload.get(field):
+                    payload[field] = existing[field]
 
         try:
             result = await self.collection.replace_one(
@@ -208,6 +212,24 @@ class ScanTargetRepository:
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_scanners_failed", target_id=target_id, error=str(exc))
             return False
+
+    async def set_vex_sources(self, target_id: str, urls: list[str]) -> bool:
+        """Replace the target's VEX source URLs; the last outcome goes with them."""
+        try:
+            result = await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {"vex_sources": urls, "vex_source_status": None, "updated_at": datetime.now(tz=UTC)}},
+            )
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.set_vex_sources_failed", target_id=target_id, error=str(exc))
+            return False
+
+    async def set_vex_source_status(self, target_id: str, status: dict[str, Any]) -> None:
+        try:
+            await self.collection.update_one({"_id": target_id}, {"$set": {"vex_source_status": status}})
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.set_vex_source_status_failed", target_id=target_id, error=str(exc))
 
     async def set_write_password(self, target_id: str, password_hash: str | None) -> bool:
         """Set or clear the per-target write password hash. ``None`` clears it."""

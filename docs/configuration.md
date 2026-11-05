@@ -147,6 +147,9 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_SCANNER_URL` | `http://scanner:8080` | Scanner sidecar URL. |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP timeout; the actual per-call value auto-derives as `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60)`. |
 | `SCA_SOURCE_ARCHIVE_MAX_BYTES` | `52428800` | Max uploaded source archive size (50 MiB). |
+| `SCA_VEX_SOURCE_TIMEOUT_SECONDS` | `20` | Timeout for fetching one VEX source of a scan target. |
+| `SCA_VEX_SOURCE_MAX_BYTES` | `10485760` | Largest VEX source document read (10 MiB). |
+| `SCA_VEX_SOURCES_ALLOW_PRIVATE_HOSTS` | `false` | Let VEX source URLs point at private or internal addresses. Off, a host that resolves to one is refused. |
 | `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES` | `4294967296` | Max total size of an archive once extracted, checked by the scanner (4 GiB). An archive is also refused while it doesn't fit into the free `/tmp` space left after the extractions already running. |
 | `SCA_AUTO_SCAN_ENABLED` | `false` | Enable the auto-scan scheduler. |
 | `SCA_AUTO_SCAN_INTERVAL_MINUTES` | `1440` | How often auto-scan checks each target for changes. |

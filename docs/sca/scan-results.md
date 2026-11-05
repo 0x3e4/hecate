@@ -140,8 +140,29 @@ short reason the findings table shows and `analysis.detail` in full in the edito
 CycloneDX's own vocabulary: **Affected** becomes `exploitable`, **Investigating** becomes `in_triage`, and each
 affected version carries `affected`, `unaffected` or `unknown`.
 
-Hecate publishes VEX documents for its own images in the same format, so you can try the import on a scan of
-`ghcr.io/0x3e4/hecate-backend`. See [VEX for Hecate's images](../admin/vex.md).
+### VEX sources
+
+When the vendor of an image publishes a VEX document for it, you don't have to import it after every scan. On the
+target page, **VEX sources → Add source** takes up to five https URLs of CycloneDX VEX or OpenVEX documents. Hecate
+fetches them right away and again after every scan and SBOM import, and sets the status of the matching findings
+on all scans of the target. **Apply now** fetches them again on demand.
+
+- Your own word stays on top: a source only sets findings that have no VEX status yet or one that came from a
+  source. A status you set by hand or imported is never overwritten, and it survives later scans.
+- When a source stops mentioning a vulnerability, the status it set is removed again, but only if every source
+  could be read; a failed fetch never removes anything.
+- If the documents give one vulnerability different statuses for different packages, each statement only reaches
+  the packages it names.
+- Like the manual import, a statement is matched by vulnerability and package name, not by package version, so it
+  still applies after the package was updated. Keep sources the vendor maintains, not frozen copies.
+- The card shows per source what the last fetch found (format and number of statements, or why it failed) and
+  how many findings were set or removed.
+- A `github.com/…/blob/…` link is turned into its raw file. URLs with credentials, plain http and hosts that
+  resolve to private addresses are refused (see [Security & Access Control](../security-access-control.md)).
+
+Hecate publishes VEX documents for its own images, so a scan of `ghcr.io/0x3e4/hecate-backend` with
+`https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json` as its source shows how it
+works. See [VEX for Hecate's images](../admin/vex.md).
 
 ## Dismissing findings
 

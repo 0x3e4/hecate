@@ -756,6 +756,29 @@ export interface ScanTarget {
   lastCommitSha?: string | null;
   // True when a per-target write password is configured (hash never exposed).
   writePasswordSet?: boolean;
+  /** https URLs of VEX documents applied to this target's findings after every scan. */
+  vexSources?: string[];
+  vexSourceStatus?: VexSourceStatus | null;
+}
+
+export interface VexSourceResult {
+  url: string;
+  ok: boolean;
+  format?: "cyclonedx" | "openvex" | null;
+  statements?: number | null;
+  errorKind?: "not_public" | "http_status" | "too_large" | "network" | "invalid_json" | "unknown_format" | null;
+  error?: string | null;
+}
+
+export interface VexSourceStatus {
+  checkedAt: string;
+  /** Findings whose VEX status was set. */
+  applied: number;
+  /** Statements left out: conflicting statuses for one vulnerability and no package named. */
+  skipped: number;
+  /** Source statuses removed because no source mentions the vulnerability any more. */
+  cleared: number;
+  sources: VexSourceResult[];
 }
 
 export interface ScanTargetListResponse {

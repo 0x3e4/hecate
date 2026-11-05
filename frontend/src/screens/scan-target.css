@@ -116,3 +116,12 @@
   .scan-target-access-actions { justify-content: flex-start; margin-top: var(--space-xs); }
   .scan-target-access-input { flex-basis: 100%; max-width: none; }
 }
+
+/* VEX sources card */
+.scan-target-vex-intro { max-width: 80ch; margin: 0 0 var(--space-sm); font-size: var(--text-sm); }
+.scan-target-vex-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.scan-target-vex-form { display: grid; gap: var(--space-xs); max-width: 80ch; }
+.scan-target-vex-form label { font-size: var(--text-sm); color: var(--color-muted); }
+.scan-target-vex-form textarea { width: 100%; font-family: var(--font-outlier); font-size: var(--text-sm); }
+.scan-target-vex-list { display: grid; gap: var(--space-xs); margin: 0 0 var(--space-xs); padding: 0; list-style: none; }
+.scan-target-vex-url { font-size: var(--text-sm); overflow-wrap: anywhere; }

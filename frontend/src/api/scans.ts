@@ -50,6 +50,21 @@ export const triggerTargetCheck = async (targetId: string): Promise<ScanTarget> 
   return response.data;
 };
 
+export const setTargetVexSources = async (targetId: string, urls: string[]): Promise<ScanTarget> => {
+  const response = await api.put<ScanTarget>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/vex-sources`,
+    { urls },
+  );
+  return response.data;
+};
+
+export const applyTargetVexSources = async (targetId: string): Promise<ScanTarget> => {
+  const response = await api.post<ScanTarget>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/vex-sources/apply`,
+  );
+  return response.data;
+};
+
 export const fetchScans = async (params?: {
   targetId?: string;
   status?: string;

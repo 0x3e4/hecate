@@ -525,6 +525,16 @@ class ScanService:
             await self._clear_running_state(target_id, scan_id)
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
+    async def apply_vex_sources(self, target_id: str) -> dict[str, Any] | None:
+        """Fetch and apply the target's VEX sources; never fails the caller."""
+        from app.services.vex_source_service import VexSourceService
+
+        try:
+            return await VexSourceService(self.target_repo, self.finding_repo).apply_target_sources(target_id)
+        except Exception:
+            log.warning("scan_service.vex_sources_failed", target_id=target_id, exc_info=True)
+            return None
+
     async def import_sbom(
         self,
         sbom_data: dict[str, Any],
@@ -625,6 +635,7 @@ class ScanService:
             latest_scan_id=scan_id_val,
             has_running_scan=False,
         )
+        await self.apply_vex_sources(target_id)
 
         return {
             "scan_id": scan_id_val,
@@ -967,6 +978,10 @@ class ScanService:
                     log.info("scan_service.dismissed_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried_dismissed)
         except Exception:
             log.warning("scan_service.vex_carry_forward_failed", scan_id=scan_id, exc_info=True)
+
+        # VEX sources come after the carry-forward: they may update what it
+        # copied from the previous scan, and fill in the new findings.
+        await self.apply_vex_sources(target_id)
 
         # Evaluate license compliance if a default policy exists
         try:

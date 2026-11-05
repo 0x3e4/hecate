@@ -27,6 +27,7 @@ import { SeverityBadges } from "../components/SeverityBadges";
 import { SkeletonBlock } from "../components/Skeleton";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
+import { VexSourcesCard } from "../components/VexSourcesCard";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
 import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget, TargetSbomDiff } from "../types";
@@ -608,6 +609,9 @@ export const ScanTargetDetailPage = () => {
 
       {/* SBOM changes */}
       {!isImport && sbomDiff && sbomDiff.latestScanId && <SbomChangesCard diff={sbomDiff} />}
+
+      {/* VEX sources: the vendor's statements, applied after every scan */}
+      <VexSourcesCard target={target} onUpdated={setTarget} notify={showToast} />
 
       {/* History */}
       <Section
