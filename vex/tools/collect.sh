@@ -21,6 +21,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 work="$here/../.work/$name"
 rm -rf "$work"
 mkdir -p "$work/govulncheck" "$work/gobin"
+# Keeps the scratch directory out of git in any clone; git honours an
+# untracked .gitignore.
+printf '*\n' > "$here/../.work/.gitignore"
 
 # Docker Desktop on Windows (Git Bash) needs Windows paths and no path mangling.
 hostpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1"; fi; }
