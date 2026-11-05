@@ -118,7 +118,7 @@ jobs:
             context: ./frontend
             target: runtime
             title: Hecate Frontend
-            description: React SPA — vulnerability dashboard, DQL query builder, SCA scan management, environment inventory, MCP info; static build served by Node.js `serve`.
+            description: React SPA — vulnerability dashboard, DQL query builder, SCA scan management, environment inventory, MCP info; static build served by nginx.
           - component: docs
             context: .
             file: ./docs/Dockerfile

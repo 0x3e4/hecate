@@ -22,11 +22,13 @@ ARG HECATE_BUILD_SHA=
 ENV VITE_BUILD_SHA=$HECATE_BUILD_SHA
 RUN pnpm run build
 
-FROM node:24-alpine AS runtime
-WORKDIR /app
-
-RUN npm install -g serve
-COPY --from=build /app/dist ./dist
+# The built app is static files; nginx serves them. The former node + `serve`
+# runtime carried npm, corepack and serve's own dependencies (undici,
+# minimatch, compression, ip-address, …), none of which the page needs, and
+# every one of them a scan finding. Same port as before.
+FROM nginx:1.30.6-alpine AS runtime
+RUN apk upgrade --no-cache
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 4173
-CMD ["serve", "-s", "dist", "-l", "4173"]

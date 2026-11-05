@@ -1,41 +1,73 @@
-FROM aquasec/trivy:0.72.0 AS trivy
-FROM anchore/grype:v0.120.1 AS grype
-FROM anchore/syft:v1.54.1 AS syft
+FROM aquasec/trivy:0.76.1 AS trivy
+FROM anchore/grype:v0.121.1 AS grype
+FROM anchore/syft:v1.56.0 AS syft
+
+# dive and dockle have had no release since early 2025, and their release
+# binaries carry Go 1.24.1 / 1.22.10 and old x/net, compress and xz modules.
+# osv-scanner v2.7.0 ships with Go 1.27.0. All three are built here from their
+# release tag (checked against the commit, so a moved tag fails the build) with
+# a current Go and the dependency fixes that still compile. Left out on
+# purpose: docker/docker 28.5 and selinux 1.13 for dockle, which break its
+# containers/image and filepath-securejoin.
+FROM golang:1.27.3-trixie AS gotools
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
+WORKDIR /src
+ARG DIVE_VERSION=0.13.1
+ARG DIVE_COMMIT=fe98c8a2eb08c443a36e3cc7568078909e298433
+RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${DIVE_VERSION} https://github.com/wagoodman/dive.git dive \
+    && cd dive && test "$(git rev-parse HEAD)" = "${DIVE_COMMIT}" \
+    && go get golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 golang.org/x/sys@v0.49.0 \
+        github.com/klauspost/compress@v1.18.7 github.com/go-viper/mapstructure/v2@v2.4.0 \
+        github.com/docker/docker@v28.5.2+incompatible github.com/docker/cli@v29.2.0+incompatible \
+    && go mod tidy \
+    && go build -ldflags "-s -w -X main.version=${DIVE_VERSION}" -o /out/dive .
+ARG DOCKLE_VERSION=0.4.15
+ARG DOCKLE_COMMIT=54368575d2a0c34a82fb05c904b8207284a64891
+RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${DOCKLE_VERSION} https://github.com/goodwithtech/dockle.git dockle \
+    && cd dockle && test "$(git rev-parse HEAD)" = "${DOCKLE_COMMIT}" \
+    && go get golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 golang.org/x/sys@v0.49.0 golang.org/x/oauth2@v0.27.0 \
+        github.com/klauspost/compress@v1.18.7 github.com/ulikunitz/xz@v0.5.15 github.com/moby/sys/user@v0.4.1 \
+    && go mod tidy \
+    && go build -ldflags "-s -w -X github.com/goodwithtech/dockle/pkg.version=${DOCKLE_VERSION}" -o /out/dockle ./cmd/dockle
+ARG OSV_SCANNER_VERSION=2.7.0
+ARG OSV_SCANNER_COMMIT=bfe2f84abd2f09fe0b83ba7f6dad40d296762f40
+RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${OSV_SCANNER_VERSION} https://github.com/google/osv-scanner.git osv-scanner \
+    && cd osv-scanner && test "$(git rev-parse HEAD)" = "${OSV_SCANNER_COMMIT}" \
+    && go get golang.org/x/net@v0.62.0 \
+    && go mod tidy \
+    && go build -ldflags "-s -w -X github.com/google/osv-scanner/v2/internal/version.OSVVersion=${OSV_SCANNER_VERSION}" \
+        -o /out/osv-scanner ./cmd/osv-scanner
+
 # .NET 10 (LTS) has no GA Debian image; only /usr/share/dotnet (a portable,
 # distro-agnostic linux-x64 build) is copied, so the Ubuntu-based tag is fine.
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS dotnet
 FROM python:3.14-slim
 
-# Install git for source repo cloning, skopeo for image fetching, and Poetry for dependency management
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl skopeo unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir poetry
+# Install git for source repo cloning and skopeo for image fetching, plus the
+# Debian security fixes that landed after the python image was built
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends git ca-certificates curl skopeo unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy scanner binaries from official images
 COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 COPY --from=grype /grype /usr/local/bin/grype
 COPY --from=syft /syft /usr/local/bin/syft
 
-# Install Dockle
-RUN curl -fsSL https://github.com/goodwithtech/dockle/releases/download/v0.4.15/dockle_0.4.15_Linux-64bit.tar.gz \
-    | tar xz -C /usr/local/bin dockle
-
-# Install osv-scanner
-RUN curl -fsSL https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 \
-    -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
-
-# Install Dive (Docker image layer analysis)
-RUN curl -fsSL https://github.com/wagoodman/dive/releases/download/v0.13.1/dive_0.13.1_linux_amd64.tar.gz \
-    | tar xz -C /usr/local/bin dive
+# Dockle, osv-scanner and Dive (Docker image layer analysis), built above
+COPY --from=gotools /out/dockle /out/osv-scanner /out/dive /usr/local/bin/
 
 # Install Semgrep (SAST scanner) into its own venv. Semgrep pins its deps tightly
 # (opentelemetry-api ~=1.37, click ~=8.1); installed into the system
 # site-packages, the app's `poetry install` below upgraded them underneath it
 # (FastAPI >= 0.14x requires opentelemetry-api >= 1.44) and semgrep failed to
 # import (`cannot import name '_ExtendedAttributes'`). semgrep>=1.16x no longer
-# imports pkg_resources, so no setuptools pin is needed.
+# imports pkg_resources, so no setuptools pin is needed. 1.183 pins PyJWT >= 2.15
+# and mcp 1.29 (1.164: PyJWT 2.12, mcp 1.23). pip leaves the venv afterwards:
+# nothing runs it, and its vendored urllib3 / msgpack showed up as findings.
 RUN python -m venv /opt/semgrep \
-    && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.164.0 \
+    && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.183.0 \
+    && /opt/semgrep/bin/python -m pip uninstall -y -q pip \
     && ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
 
 # Install TruffleHog (secret scanner)
@@ -81,9 +113,17 @@ WORKDIR /scanner
 
 # Install Python dependencies via Poetry. The lock file is copied too, so the
 # image gets the locked versions instead of whatever is newest at build time.
+# Poetry runs from a throwaway venv (with virtualenvs.create=false it installs
+# into the base interpreter) and leaves with it, together with the system pip:
+# virtualenv's bundled wheels and pip's vendored urllib3 / msgpack / setuptools
+# were findings, and the sidecar never installs anything at runtime.
 COPY pyproject.toml poetry.lock ./
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root --only main
+RUN python -m venv /opt/poetry \
+    && /opt/poetry/bin/pip install --no-cache-dir -q poetry==2.3.3 \
+    && /opt/poetry/bin/poetry config virtualenvs.create false \
+    && /opt/poetry/bin/poetry install --no-interaction --no-ansi --no-root --only main \
+    && rm -rf /opt/poetry /root/.config/pypoetry /root/.cache \
+    && python -m pip uninstall -y -q pip
 
 # Copy application
 COPY app ./app

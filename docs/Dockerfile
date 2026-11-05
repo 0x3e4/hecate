@@ -24,5 +24,8 @@ ARG DOCS_SITE_URL
 RUN mkdocs build --strict --site-dir /site
 
 FROM nginx:1.30.6-alpine
+# The nginx tag is rebuilt only now and then; Alpine fixes (curl, brotli,
+# expat) land in between, so take them at build time.
+RUN apk upgrade --no-cache
 COPY docs/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /site /usr/share/nginx/html

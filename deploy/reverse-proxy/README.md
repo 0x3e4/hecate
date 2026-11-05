@@ -17,8 +17,8 @@ They all deliver the same header set and route the same paths:
 
 ## Why the headers live in the proxy
 
-The frontend image is `serve -s dist` on `:4173` and sets **no** headers of its
-own, so the proxy is the only place to add them. Everything the SPA loads is
+The frontend image is nginx serving the built SPA on `:4173` and sets **no**
+security headers of its own (only `Cache-Control`), so the proxy is the only place to add them. Everything the SPA loads is
 bundled and same-origin (no CDN), which is why the Content-Security-Policy can
 stay strict (`script-src 'self'`, `connect-src 'self'`).
 

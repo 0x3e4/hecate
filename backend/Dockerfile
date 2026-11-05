@@ -31,6 +31,12 @@ WORKDIR /
 
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+# The backend installs nothing at runtime. pip's vendored urllib3, msgpack and
+# setuptools were the image's only fixable Python findings. Debian security
+# fixes that landed after the python image was built are taken here too.
+RUN python -m pip uninstall -y -q pip \
+    && apt-get update && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 COPY app /app
 # Carry pyproject.toml into the runtime image so /api/v1/version can read the
 # package version directly (poetry install --no-root never registers the
