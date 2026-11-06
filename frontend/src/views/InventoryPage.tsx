@@ -574,6 +574,7 @@ export const InventoryPage = () => {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
 
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -611,11 +612,12 @@ export const InventoryPage = () => {
       const response = await fetchInventoryItems();
       setItems(response.items);
     } catch (exc: unknown) {
-      setError(exc instanceof Error ? exc.message : String(exc));
+      setErrorCause(exc);
+      setError(t("The inventory could not be loaded.", "Das Inventar konnte nicht geladen werden."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadItems();
@@ -1181,7 +1183,7 @@ export const InventoryPage = () => {
         </dl>
       )}
 
-      {error && <ErrorState title={error} />}
+      {error && <ErrorState title={error} error={errorCause} onRetry={errorCause ? () => void loadItems() : undefined} />}
 
       {/* Items list */}
       <Section title={t("Configuration management", "Konfigurationsverwaltung")} className="inventory-items">

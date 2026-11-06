@@ -1,5 +1,17 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
-import { LuExternalLink } from "react-icons/lu";
+import {
+  LuExternalLink,
+  LuHourglass,
+  LuLock,
+  LuRefreshCw,
+  LuSearchX,
+  LuServerCrash,
+  LuTriangleAlert,
+  LuWifiOff,
+} from "react-icons/lu";
+
+import { useI18n } from "../i18n/context";
+import { describeError, errorHint, type ErrorKind } from "../utils/apiError";
 
 /** Shared building blocks of the 2.0 design system. See design.md at the repo root. */
 
@@ -84,14 +96,74 @@ export const EmptyState = ({ title, children, action }: { title: ReactNode; chil
   </div>
 );
 
-/** What broke and what to do about it. */
-export const ErrorState = ({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) => (
-  <div className="state-block state-block--error" role="alert">
-    <p className="state-block-title">{title}</p>
-    {children ? <p className="state-block-text">{children}</p> : null}
-    {action}
-  </div>
-);
+const ERROR_ICONS: Record<ErrorKind, ReactNode> = {
+  offline: <LuWifiOff />,
+  timeout: <LuHourglass />,
+  not_found: <LuSearchX />,
+  forbidden: <LuLock />,
+  rate_limited: <LuHourglass />,
+  server: <LuServerCrash />,
+  unknown: <LuTriangleAlert />,
+};
+
+/**
+ * What broke and what to do about it. Pass the caught `error` and the state
+ * names the cause (offline, server error, not found, refused, …) and keeps the
+ * request and status under "Technical details"; pass `onRetry` for a
+ * "Try again" button.
+ */
+export const ErrorState = ({
+  title,
+  children,
+  action,
+  error,
+  onRetry,
+  icon,
+}: {
+  title: ReactNode;
+  children?: ReactNode;
+  action?: ReactNode;
+  error?: unknown;
+  onRetry?: () => void;
+  icon?: ReactNode;
+}) => {
+  const { t } = useI18n();
+  const described = error === undefined || error === null ? null : describeError(error);
+  const technical = described
+    ? [described.request, described.status ? `HTTP ${described.status}` : null, described.detail, described.message]
+        .filter((line): line is string => Boolean(line))
+        .filter((line, index, all) => all.indexOf(line) === index)
+    : [];
+  return (
+    <div className="state-block state-block--error" role="alert">
+      <span className="state-block-icon" aria-hidden="true">
+        {icon ?? ERROR_ICONS[described?.kind ?? "unknown"]}
+      </span>
+      <div className="state-block-body">
+        <p className="state-block-title">{title}</p>
+        {children ? <p className="state-block-text">{children}</p> : null}
+        {described ? <p className="state-block-text">{errorHint(described, t)}</p> : null}
+        {onRetry || action ? (
+          <div className="state-block-actions">
+            {onRetry ? (
+              <button type="button" className="btn-secondary" onClick={onRetry}>
+                <LuRefreshCw aria-hidden="true" />
+                {t("Try again", "Erneut versuchen")}
+              </button>
+            ) : null}
+            {action}
+          </div>
+        ) : null}
+        {technical.length ? (
+          <details className="state-block-details">
+            <summary>{t("Technical details", "Technische Details")}</summary>
+            <pre className="mono">{technical.join("\n")}</pre>
+          </details>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 /** A figure and its label. Pairs inside a `.stat-row` part with hairlines. */
 export const Stat = ({ label, value, tone }: { label: ReactNode; value: ReactNode; tone?: string }) => (

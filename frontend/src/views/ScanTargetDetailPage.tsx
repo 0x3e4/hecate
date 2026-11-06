@@ -41,6 +41,7 @@ import {
   severityLevel,
   severityVar,
 } from "../ui/primitives";
+import { describeError } from "../utils/apiError";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
 
@@ -253,6 +254,7 @@ export const ScanTargetDetailPage = () => {
   const [sbomDiff, setSbomDiff] = useState<TargetSbomDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [errorCause, setErrorCause] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -265,6 +267,7 @@ export const ScanTargetDetailPage = () => {
     }
     setLoading(true);
     setError("");
+    setErrorCause(null);
     try {
       const tg = await fetchScanTarget(targetId);
       setTarget(tg);
@@ -288,8 +291,13 @@ export const ScanTargetDetailPage = () => {
       setHistoryTotal(hist.total ?? (hist.items?.length ?? 0));
       setFindings(finds.items ?? []);
       setSbomDiff(diff);
-    } catch {
-      setError(t("Target not found.", "Ziel nicht gefunden."));
+    } catch (exc) {
+      setErrorCause(exc);
+      setError(
+        describeError(exc).kind === "not_found"
+          ? t("Target not found.", "Ziel nicht gefunden.")
+          : t("The target could not be loaded.", "Das Ziel konnte nicht geladen werden."),
+      );
     } finally {
       setLoading(false);
     }
@@ -427,7 +435,11 @@ export const ScanTargetDetailPage = () => {
     return (
       <div className="page scan-target">
         {backLink}
-        <ErrorState title={error || t("Target not found.", "Ziel nicht gefunden.")} />
+        <ErrorState
+          title={error || t("Target not found.", "Ziel nicht gefunden.")}
+          error={errorCause}
+          onRetry={errorCause && describeError(errorCause).kind !== "not_found" ? () => void load() : undefined}
+        />
       </div>
     );
   }

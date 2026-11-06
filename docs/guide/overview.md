@@ -108,6 +108,13 @@ or AI passwords). If a write is blocked, the UI prompts you for the right passwo
 Server-Sent Events, so lists and detail pages refresh themselves as work completes — you rarely need
 to reload.
 
+**Errors say what happened.** When something fails to load, the message names the cause, such as
+the backend not answering, a server error with its HTTP status, a missing password or a record that
+does not exist, offers **Try again** where that can help, and keeps the request and status under
+*Technical details*. An address Hecate does not know shows a page with a search box instead of
+sending you back to the dashboard, and a page that crashes shows **Reload page**, **Dashboard** and
+**Copy details** for a bug report while the sidebar keeps working.
+
 **Language, timezone and date format follow your settings.** Hecate speaks English and German, and
 every timestamp is rendered in the timezone you pick on the System page. Set both under
 **System → General**.

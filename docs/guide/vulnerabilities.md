@@ -201,6 +201,25 @@ inserted, updated or skipped.
     Pulling a fresh copy is a mutating operation and may prompt for a password if write protection is
     enabled. See [Security & Access Control](../security-access-control.md).
 
+### An ID Hecate does not know yet
+
+A link to a vulnerability Hecate has not ingested, from an advisory feed, a colleague or the
+inventory, no longer ends in an error. The page first checks the database behind the search index:
+a record that exists there but is missing from the index (a write whose indexing failed) is indexed
+again and shown at once. Only a really unknown ID is fetched from **NVD, EUVD, CIRCL, GHSA and OSV**:
+
+- It starts on its own when that needs no password, either because no system password is set or
+  because this browser already holds it. The page shows *Fetching it…* with the elapsed time and
+  reloads itself when the record arrives, even if the live connection drops in between.
+- With a system password set and not yet entered, a **Fetch from sources** button asks for it first,
+  so following a link never opens a password prompt by surprise.
+- If no source knows the ID, the page says so (a CVE is often reserved before it is published) and
+  links to cve.org, NVD, GitHub or OSV as fitting, with **Ask again**. A source that failed, such as a
+  rate limit, is reported as such, not as "unknown".
+
+IDs are recognised in the CVE, GHSA, MAL, EUVD, PYSEC, GO, OSV and RUSTSEC formats; anything else
+is not fetched.
+
 ### Sharing and copying
 
 The share button in the tab bar offers four ways to take the entry elsewhere: **Copy URL** for a

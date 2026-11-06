@@ -16,6 +16,8 @@ export const ChangelogPage = () => {
   const [data, setData] = useState<ChangelogResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [page, setPage] = useState(0);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -72,6 +74,7 @@ export const ChangelogPage = () => {
         setData(response);
       } catch (err) {
         console.error("Failed to load changelog", err);
+        setErrorCause(err);
         setError(t("Failed to load changelog.", "Changelog konnte nicht geladen werden."));
       } finally {
         setLoading(false);
@@ -79,7 +82,7 @@ export const ChangelogPage = () => {
     };
 
     load();
-  }, [t, page, fromDate, toDate, sourceFilter, sseRefreshKey]);
+  }, [t, page, fromDate, toDate, sourceFilter, sseRefreshKey, retryKey]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
@@ -147,7 +150,7 @@ export const ChangelogPage = () => {
       </div>
 
       {showSkeleton && <ChangelogSkeleton />}
-      {error && !data && <ErrorState title={error} />}
+      {error && !data && <ErrorState title={error} error={errorCause} onRetry={() => setRetryKey((k) => k + 1)} />}
 
       {!showSkeleton && data && (
         <div className={`changelog-results${loading ? " is-loading" : ""}`}>

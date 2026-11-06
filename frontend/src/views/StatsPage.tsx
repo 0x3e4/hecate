@@ -18,6 +18,8 @@ export const StatsPage = () => {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const showSkeleton = loading && !stats;
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export const StatsPage = () => {
         setStats(response);
       } catch (err) {
         console.error("Failed to load stats", err);
+        setErrorCause(err);
         setError(t("Could not load statistics.", "Statistiken konnten nicht geladen werden."));
       } finally {
         setLoading(false);
@@ -44,7 +47,7 @@ export const StatsPage = () => {
     };
 
     load();
-  }, [t]);
+  }, [t, retryKey]);
 
   return (
     <div className="page stats-page">
@@ -57,7 +60,7 @@ export const StatsPage = () => {
       />
 
       {showSkeleton && <StatsSkeleton />}
-      {error && <ErrorState title={error} />}
+      {error && <ErrorState title={error} error={errorCause} onRetry={() => setRetryKey((k) => k + 1)} />}
 
       {!showSkeleton && stats && (
         <>

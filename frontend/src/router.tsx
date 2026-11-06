@@ -20,12 +20,19 @@ import { CiCdInfoPage } from "./views/CiCdInfoPage";
 import { ApiInfoPage } from "./views/ApiInfoPage";
 import { McpInfoPage } from "./views/McpInfoPage";
 import { SupportPage } from "./views/SupportPage";
+import { NotFoundPage, RouteErrorPage } from "./views/ErrorPages";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     element: <AppLayout />,
+    // The shell itself failing: no sidebar to fall back on, so the page stands alone.
+    errorElement: <RouteErrorPage />,
     children: [
+      {
+        // A page that crashes renders this inside the shell; the sidebar keeps working.
+        errorElement: <RouteErrorPage />,
+        children: [
       { index: true, element: <DashboardPage /> },
       { path: "vulnerabilities", element: <VulnerabilityListPage /> },
       { path: "vulnerability/:vulnId", element: <VulnerabilityDetailPage /> },
@@ -53,7 +60,9 @@ export const router = createBrowserRouter([
       { path: "cicd", element: <Navigate to="/info/cicd" replace /> },
       { path: "api-docs", element: <Navigate to="/info/api" replace /> },
       { path: "mcp-info", element: <Navigate to="/info/mcp" replace /> },
-      { path: "*", element: <Navigate to="/" replace /> }
+      { path: "*", element: <NotFoundPage /> }
+        ]
+      }
     ]
   }
 ]);

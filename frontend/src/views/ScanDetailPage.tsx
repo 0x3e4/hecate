@@ -26,6 +26,7 @@ import type { AIProviderInfo } from "../types";
 import { TriggeredByBadge } from "../ui/TriggeredByBadge";
 import { TabPill } from "../ui/TabPill";
 import { EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Stat, severityLevel, severityVar } from "../ui/primitives";
+import { describeError } from "../utils/apiError";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
 import { cleanAdvisoryText } from "../utils/advisoryText";
 import { fetchScanLicenseCompliance, fetchLicensePolicies } from "../api/licensePolicy";
@@ -355,6 +356,7 @@ export const ScanDetailPage = () => {
   const [tab, setTab] = useState<Tab>("findings");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
   const [severityFilter, setSeverityFilter] = useState<string | undefined>();
   const [findingsSearch, setFindingsSearch] = useState("");
   const [findingsSort, setFindingsSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "severity", dir: "asc" });
@@ -615,7 +617,7 @@ export const ScanDetailPage = () => {
 
   const loadScanData = useCallback(async (isInitial = false) => {
     if (!scanId) return;
-    if (isInitial) { setLoading(true); setError(null); }
+    if (isInitial) { setLoading(true); setError(null); setErrorCause(null); }
     try {
       const data = await fetchScan(scanId);
       setScan(data);
@@ -640,7 +642,14 @@ export const ScanDetailPage = () => {
       }
     } catch (err) {
       console.error("Failed to load scan", err);
-      if (isInitial) setError(t("Could not load scan.", "Scan konnte nicht geladen werden."));
+      if (isInitial) {
+        setErrorCause(err);
+        setError(
+          describeError(err).kind === "not_found"
+            ? t("Scan not found.", "Scan nicht gefunden.")
+            : t("Could not load scan.", "Scan konnte nicht geladen werden."),
+        );
+      }
     } finally {
       if (isInitial) setLoading(false);
     }
@@ -730,7 +739,18 @@ export const ScanDetailPage = () => {
       </div>
     </div>
   );
-  if (error) return <div className="page scan-detail"><ErrorState title={error} /></div>;
+  if (error) {
+    return (
+      <div className="page scan-detail">
+        <ErrorState
+          title={error}
+          error={errorCause}
+          onRetry={describeError(errorCause).kind === "not_found" ? undefined : () => void loadScanData(true)}
+          action={<Link className="btn-secondary" to="/scans">{t("All scans", "Alle Scans")}</Link>}
+        />
+      </div>
+    );
+  }
   if (!scan) return <div className="page scan-detail"><EmptyState title={t("Scan not found.", "Scan nicht gefunden.")} /></div>;
 
   const sourceUrl = buildSourceUrl(scan);

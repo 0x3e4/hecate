@@ -47,6 +47,8 @@ export const CertPage = () => {
   const [data, setData] = useState<CertOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [search, setSearch] = useState("");
   const [source, setSource] = useState("");
   const [kinds, setKinds] = usePersistentState<FeedKind[]>("hecate.advisories.kinds", DEFAULT_KINDS);
@@ -85,7 +87,10 @@ export const CertPage = () => {
       })
       .catch((error) => {
         console.error("Failed to load CERT advisories", error);
-        if (!cancelled) setFailed(true);
+        if (!cancelled) {
+          setFailure(error);
+          setFailed(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -93,7 +98,7 @@ export const CertPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, retryKey]);
 
   const allTopics = useMemo(() => data?.topics ?? [], [data]);
   const allRoundups = useMemo(() => data?.roundups ?? [], [data]);
@@ -153,7 +158,11 @@ export const CertPage = () => {
       />
 
       {failed ? (
-        <ErrorState title={t("Advisories could not be loaded.", "Meldungen konnten nicht geladen werden.")} />
+        <ErrorState
+          title={t("Advisories could not be loaded.", "Meldungen konnten nicht geladen werden.")}
+          error={failure}
+          onRetry={() => setRetryKey((k) => k + 1)}
+        />
       ) : loading && !data ? (
         <div className="cert-skeleton">
           {Array.from({ length: 8 }).map((_, index) => (

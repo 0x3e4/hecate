@@ -162,6 +162,7 @@ export const ScansPage = () => {
   const [scans, setScans] = useState<Scan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
   const [confirmModal, setConfirmModal] = useState<ConfirmModal | null>(null);
   const [newScanModalOpen, setNewScanModalOpen] = useState(false);
 
@@ -350,6 +351,7 @@ export const ScansPage = () => {
       }
     } catch (err) {
       console.error("Failed to load scan data", err);
+      setErrorCause(err);
       setError(t("Could not load data.", "Daten konnten nicht geladen werden."));
     } finally {
       setLoading(false);
@@ -708,7 +710,7 @@ export const ScansPage = () => {
         ))}
       </div>
 
-      {error && <ErrorState title={error} />}
+      {error && <ErrorState title={error} error={errorCause} onRetry={() => void loadData()} />}
 
       {/* Targets tab */}
       {tab === "targets" && (
