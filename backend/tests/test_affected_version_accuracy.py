@@ -504,3 +504,38 @@ def test_nvd_aggregation_keeps_the_operator_of_an_open_start():
     ]}]}]
     (entry,) = _build_impacted_products_payload(cpe_configurations=configs, cpematch_entries=None, cpes=[])
     assert entry["versions"] == [">= 5.1"]
+
+
+# --- 5. Range cap -------------------------------------------------------------
+
+
+def _indexed(ranges: list[dict], product: str, version: str) -> bool:
+    key = version_sort_key(version)
+    return any(r["productSlug"] == product and r["startKey"] <= key < r["endKey"] for r in ranges)
+
+
+def test_cap_keeps_every_products_newest_ranges(monkeypatch):
+    """Advisories listing every release (Go pseudo-versions, Magick.NET) ran
+    past the cap; the old cut dropped the last products entirely and, within a
+    product, the newest versions first."""
+    import app.services.version_ranges as version_ranges
+
+    monkeypatch.setattr(version_ranges, "MAX_VERSION_RANGES", 10)
+    big = [f"{major}.0.1" for major in range(1, 30)]  # 29 separate pins
+    impacted = [_entry("acme", "big", big), _entry("acme", "small", ["2.0.1", "3.0.1"])]
+    ranges = version_ranges.build_version_ranges(impacted_products=impacted)
+
+    assert len(ranges) == 10
+    assert _indexed(ranges, "small", "2.0.1") and _indexed(ranges, "small", "3.0.1")
+    assert _indexed(ranges, "big", "29.0.1")
+    assert _indexed(ranges, "big", "22.0.1")
+    assert not _indexed(ranges, "big", "1.0.1")
+
+
+def test_documents_below_the_cap_are_untouched(monkeypatch):
+    import app.services.version_ranges as version_ranges
+
+    impacted = [_entry("acme", "big", [f"{major}.0.1" for major in range(1, 30)])]
+    full = version_ranges.build_version_ranges(impacted_products=impacted)
+    monkeypatch.setattr(version_ranges, "MAX_VERSION_RANGES", len(full))
+    assert version_ranges.build_version_ranges(impacted_products=impacted) == full

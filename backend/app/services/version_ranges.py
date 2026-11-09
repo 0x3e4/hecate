@@ -61,12 +61,15 @@ from app.services.inventory_matcher import (
 
 log = structlog.get_logger()
 
-# Cap on the number of nested entries emitted per document. Some CVEs (the
-# WordPress core advisories, for instance) enumerate 20+ release lines across
-# several vendor spellings; a handful of pathological records would otherwise
-# blow up the nested-document count. With consecutive pins folded and
-# overlapping intervals merged, the largest of 1,271 .NET advisories needs 346.
-MAX_VERSION_RANGES = 512
+# Cap on the number of nested entries emitted per document, kept well below
+# OpenSearch's ``index.mapping.nested_objects.limit`` (10,000 per document,
+# shared with impactedProducts and the CPE configurations). Advisories that
+# enumerate every affected release need far more than the old 512: Go modules
+# with pseudo-versions (Argo Workflows GHSA-prqf-xr2j-xf65: 2,442 ranges after
+# merging, from 3,550 listed versions), Traefik and NATS (~1,500), Magick.NET's
+# 18 NuGet packages (~2,000). None of 66 such documents checked needs more than
+# 4,096; past it, ``_fit_to_cap`` keeps every product's newest ranges.
+MAX_VERSION_RANGES = 4096
 
 
 def encode_version(value: str | None) -> int | None:
@@ -155,7 +158,7 @@ def build_version_ranges(
     version information, which makes it unmatchable by an affected-version
     query rather than matching everything.
     """
-    out: list[dict[str, Any]] = []
+    per_product: list[tuple[str, str, list[tuple[str, str]]]] = []
     evidence = collect_product_evidence(impacted_products, cpe_configurations, cpes)
 
     for (vendor, product), item in evidence.items():
@@ -177,10 +180,56 @@ def build_version_ranges(
                 if bounds is not None:
                     intervals.append(bounds)
 
-        for start, end in _merge_intervals(intervals):
-            if len(out) >= MAX_VERSION_RANGES:
-                log.debug("version_ranges.cap_reached", vendor=vendor, product=product)
-                return out
-            out.append({"vendorSlug": vendor, "productSlug": product, "startKey": start, "endKey": end})
+        merged = _merge_intervals(intervals)
+        if merged:
+            per_product.append((vendor, product, merged))
 
-    return out
+    return [
+        {"vendorSlug": vendor, "productSlug": product, "startKey": start, "endKey": end}
+        for vendor, product, kept in _fit_to_cap(per_product)
+        for start, end in kept
+    ]
+
+
+def _fit_to_cap(
+    per_product: list[tuple[str, str, list[tuple[str, str]]]],
+) -> list[tuple[str, str, list[tuple[str, str]]]]:
+    """Trim to :data:`MAX_VERSION_RANGES`, keeping each product's newest ranges.
+
+    The cap used to cut the output in order: the last products of a document
+    vanished entirely, and a product's ranges were written oldest first, so the
+    current releases were the ones dropped. Now every product gets a share in
+    turn, newest range first, until the cap is reached. Queries are about the
+    version someone runs, which is rarely the oldest one listed.
+    """
+    total = sum(len(ranges) for _, _, ranges in per_product)
+    if total <= MAX_VERSION_RANGES:
+        return per_product
+
+    newest_first = [sorted(ranges, reverse=True) for _, _, ranges in per_product]
+    taken = [0] * len(per_product)
+    budget = MAX_VERSION_RANGES
+    while budget > 0:
+        progressed = False
+        for index, ranges in enumerate(newest_first):
+            if budget == 0:
+                break
+            if taken[index] < len(ranges):
+                taken[index] += 1
+                budget -= 1
+                progressed = True
+        if not progressed:
+            break
+
+    log.debug(
+        "version_ranges.cap_reached",
+        products=len(per_product),
+        ranges=total,
+        kept=MAX_VERSION_RANGES,
+        dropped_from=[f"{v}/{p}" for (v, p, r), n in zip(per_product, taken) if n < len(r)][:5],
+    )
+    return [
+        (vendor, product, sorted(newest_first[index][: taken[index]]))
+        for index, (vendor, product, _) in enumerate(per_product)
+        if taken[index]
+    ]
