@@ -73,6 +73,26 @@ Boundaries are honoured exactly: `< 7.0.2` excludes 7.0.2 itself, `<= 6.8.2` inc
 no usable version bound (`*`, `-`, `n/a`, `>=0`) never match — an unconstrained range carries no
 information, so it fails closed rather than matching every version.
 
+Three more rules keep the answer honest:
+
+- **Platforms don't count.** NVD names the software a vulnerable product runs on as a non-vulnerable
+  entry ("Next.js before 12.0.5, running on Node.js 15 or later"). Those entries are ignored, so
+  `affectedVersion:24.22.1` on Node.js does not return Next.js advisories.
+- **Release branches decide for themselves.** When an advisory gives a release line its own fix, a version
+  on that line is judged by that fix alone. nginx CVE-2026-90439 lists `>= 1.29.2, < 1.31.6` and
+  `>= 1.30.4, < 1.30.5`, so 1.30.6 is not affected but 1.31.2 is; Redis CVE-2026-81934 lists one
+  `< X` per line, so 7.4.12 is not affected by `< 8.10.1`. The branch is the first two version segments,
+  or the major alone when every fix sits on a different major (Node.js, .NET). A single `< 3.0` still
+  means "everything older"; an upper bound counts as a branch fix only next to upper bounds of other
+  branches. When one product name covers several packages (NVD files every Azure Identity SDK language
+  under one name), the rule is off for that product.
+- **Versions compare in full.** Windows builds (`10.0.19045.7807`), pre-releases (`11.0.0-rc.1`,
+  `12.4.0b1`) and letter releases (OpenSSL `1.0.2k`, Arista `4.26.9M`) are searchable and ordered
+  correctly: a listed `12.4.0b1` does not mark the final `12.4.0`.
+
+The inventory pages make the same decision, down to which source counts when an advisory carries
+several, so a version flagged there is the version this query returns.
+
 Clicking a version chip on a result card builds this query for you, pinned to that chip's vendor and
 product. Combine `affectedVersion:` with a vendor/product filter whenever you can: on its own, `7.0.1`
 matches every product that ever shipped a 7.0.1.
@@ -80,7 +100,9 @@ matches every product that ever shipped a 7.0.1.
 !!! note "Requires an up-to-date index"
     Range matching reads a field that is written when a record is indexed. Records ingested or refreshed
     after the feature landed have it; to backfill the existing corpus run
-    `poetry run python -m app.cli reindex-opensearch` once.
+    `poetry run python -m app.cli reindex-opensearch` once. The same applies after an update that
+    changes how ranges are read (see the changelog): until the reindex, older records keep the old
+    ranges.
 
 Slug fields (`vendorSlugs`, `productSlugs`, `productVersions`, `productVersionIds`, `sourceNames`) match
 the **whole** value, so `vendorSlugs:"wordpress"` returns WordPress itself and not every vendor whose name

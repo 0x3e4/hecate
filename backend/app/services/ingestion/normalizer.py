@@ -1520,19 +1520,27 @@ def _build_impacted_products_payload(
                     "vendor": {"name": vendor_label, "slug": vendor_slug or None},
                     "product": {"name": product_label, "slug": product_slug or None},
                     "versions": set(),
+                    "platform_versions": set(),
                     "vulnerable": None,
                     "environments": set(),
                 },
             )
 
+            # One vulnerable match makes the product vulnerable, and only its
+            # ranges count then. A ``vulnerable: false`` match is the platform
+            # the real target runs on ("Next.js on Node.js > 15.0.0"); letting
+            # it win flipped products that are vulnerable in another
+            # configuration (and every cpematch copy, which has no flag) to
+            # ``False`` and mixed platform ranges into their version list.
             version_range = _format_version_range(match)
-            if version_range:
-                entry["versions"].add(version_range)
-
-            vulnerable_flag = match.get("vulnerable")
-            if vulnerable_flag is False:
-                entry["vulnerable"] = False
-            elif entry["vulnerable"] is None and vulnerable_flag is not False:
+            if match.get("vulnerable") is False:
+                if version_range:
+                    entry["platform_versions"].add(version_range)
+                if entry["vulnerable"] is None:
+                    entry["vulnerable"] = False
+            else:
+                if version_range:
+                    entry["versions"].add(version_range)
                 entry["vulnerable"] = True
 
             # Add group environments to this entry
@@ -1558,7 +1566,10 @@ def _build_impacted_products_payload(
             {
                 "vendor": entry["vendor"],
                 "product": entry["product"],
-                "versions": sorted(entry["versions"], key=str.lower),
+                "versions": sorted(
+                    entry["versions"] if entry["vulnerable"] else entry["platform_versions"],
+                    key=str.lower,
+                ),
                 # CPE configurations carry no unaffected data; the key is emitted
                 # empty so every writer produces a uniform entry shape (the CIRCL
                 # builder is the only one that populates it).
@@ -1650,16 +1661,12 @@ def _format_version_range(match: Mapping[str, Any]) -> str | None:
     end_exc = match.get("versionEndExcluding")
     exact = match.get("version")
 
-    has_end = (isinstance(end_exc, str) and end_exc.strip()) or (
-        isinstance(end_inc, str) and end_inc.strip()
-    )
-
     parts: list[str] = []
     if isinstance(start_inc, str) and start_inc.strip():
-        if has_end:
-            parts.append(f">= {start_inc.strip()}")
-        else:
-            parts.append(start_inc.strip())
+        # Always with the operator: a bare "X" for "from X upwards" read as
+        # the exact version X in every range consumer (inventory matcher,
+        # affectedVersion index), so an unfixed product matched only at X.
+        parts.append(f">= {start_inc.strip()}")
     elif isinstance(start_exc, str) and start_exc.strip():
         parts.append(f"> {start_exc.strip()}")
 

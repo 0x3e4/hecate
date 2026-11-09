@@ -2114,7 +2114,11 @@ class ScanService:
         Resolves each target's name from the (denormalised) scan document,
         falling back to the target document.
         """
-        from app.services.inventory_matcher import _slug, _version_in_range_string
+        from app.services.inventory_matcher import (
+            _slug,
+            is_marked_not_vulnerable,
+            version_in_ranges,
+        )
 
         scan_name_cache: dict[str, str | None] = {}
         target_name_cache: dict[str, str | None] = {}
@@ -2178,7 +2182,8 @@ class ScanService:
         versions_by_slug: dict[str, list[str]] = {}
         candidate_names: set[str] = set()
         for entry in impacted_products:
-            if not isinstance(entry, dict):
+            # ``vulnerable: false`` = the platform the vulnerable product runs on.
+            if not isinstance(entry, dict) or is_marked_not_vulnerable(entry):
                 continue
             product = entry.get("product") or {}
             prod_slug = product.get("slug") if isinstance(product, dict) else None
@@ -2209,7 +2214,8 @@ class ScanService:
             ranges = versions_by_slug.get(slug)
             if not ranges or not version:
                 continue
-            if not any(_version_in_range_string(version, rng) for rng in ranges):
+            # Whole list at once, so the release-branch rule applies.
+            if not version_in_ranges(version, ranges):
                 continue
             target_id = comp.get("target_id") or ""
             if (target_id, slug) in covered:

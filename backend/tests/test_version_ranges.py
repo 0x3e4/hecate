@@ -21,11 +21,12 @@ import pytest
 
 from app.models.vulnerability import VulnerabilityDocument
 from app.services.inventory_matcher import (
+    KEY_MAX,
     _parse_range_clauses,
     _version_in_range_string,
+    version_sort_key,
 )
 from app.services.version_ranges import (
-    VERSION_NUMERIC_MAX,
     build_version_ranges,
     encode_version,
     range_bounds_from_string,
@@ -50,9 +51,9 @@ def _impacted(versions: list[str], vendor: str = "wordpress", product: str = "wo
 
 
 def _covers(ranges: list[dict], version: str) -> bool:
-    encoded = encode_version(version)
-    assert encoded is not None, f"{version!r} should be encodable"
-    return any(r["startNumeric"] <= encoded < r["endNumeric"] for r in ranges)
+    key = version_sort_key(version)
+    assert key is not None, f"{version!r} should have a sort key"
+    return any(r["startKey"] <= key < r["endKey"] for r in ranges)
 
 
 # --- encoding ---------------------------------------------------------------
@@ -90,8 +91,8 @@ def test_broad_sentinels_are_not_indexed(range_str):
 
 def test_bounds_are_half_open():
     start, end = range_bounds_from_string(">= 7.0, < 7.0.2")
-    assert start == encode_version("7.0")
-    assert end == encode_version("7.0.2")
+    assert start == version_sort_key("7.0")
+    assert end == version_sort_key("7.0.2")
 
 
 def test_inclusive_upper_bound_includes_its_own_boundary():
@@ -121,8 +122,8 @@ def test_exact_version_pins_a_single_point():
 
 def test_open_ended_lower_bound_keeps_the_max_sentinel():
     start, end = range_bounds_from_string(">= 5.1.0")
-    assert start == encode_version("5.1.0")
-    assert end == VERSION_NUMERIC_MAX
+    assert start == version_sort_key("5.1.0")
+    assert end == KEY_MAX
 
 
 def test_unencodable_bound_drops_the_range_rather_than_widening_it():
@@ -349,9 +350,16 @@ def test_version_range_clause_scopes_inside_the_nested_query():
     assert clause["nested"]["path"] == "versionRanges"
     assert {"terms": {"versionRanges.vendorSlug": ["wordpress"]}} in must
     assert {"terms": {"versionRanges.productSlug": ["wordpress"]}} in must
-    encoded = encode_version("7.0.1")
-    assert {"range": {"versionRanges.startNumeric": {"lte": encoded}}} in must
-    assert {"range": {"versionRanges.endNumeric": {"gt": encoded}}} in must
+    alternatives = must[-1]["bool"]["should"]
+    key = version_sort_key("7.0.1")
+    assert alternatives[0]["bool"]["filter"] == [
+        {"range": {"versionRanges.startKey": {"lte": key}}},
+        {"range": {"versionRanges.endKey": {"gt": key}}},
+    ]
+    # Documents indexed before the keys keep matching on the longs.
+    legacy = alternatives[1]["bool"]
+    assert legacy["must_not"] == [{"exists": {"field": "versionRanges.startKey"}}]
+    assert {"range": {"versionRanges.startNumeric": {"lte": encode_version("7.0.1")}}} in legacy["filter"]
 
 
 def test_version_range_clause_is_none_when_nothing_encodes():

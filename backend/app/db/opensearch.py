@@ -66,6 +66,11 @@ VERSION_RANGES_MAPPING: dict[str, Any] = {
     "properties": {
         "vendorSlug": {"type": "keyword"},
         "productSlug": {"type": "keyword"},
+        # Sort keys (inventory_matcher.version_sort_key): byte order equals the
+        # matcher's version order, with no segment cap. Written since the
+        # range rework; the longs below are what older documents still carry.
+        "startKey": {"type": "keyword"},
+        "endKey": {"type": "keyword"},
         "startNumeric": {"type": "long"},
         "endNumeric": {"type": "long"},
     },

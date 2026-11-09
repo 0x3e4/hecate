@@ -8,11 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **Existing instances: rebuild the search index after updating.** The affected-version fixes below change how version ranges are written to OpenSearch, and existing records only get the new ranges when they are indexed again. Run once, after the new backend is up:
+>
+> ```bash
+> docker compose exec backend python -m app.cli reindex-opensearch
+> ```
+>
+> The new fields (`versionRanges.startKey` / `endKey`) are added to the existing index automatically, no index recreation. Until a record is reindexed it is matched on its old ranges, so `affectedVersion:` keeps working while the reindex runs, but returns the old, partly wrong results for those records. Inventory pages and inventory alerts read MongoDB and are correct right after the update.
+
 ### Added
 
 ### Changed
 
 ### Fixed
+
+- `affectedVersion:` and the inventory matcher no longer count the platform a vulnerable product runs on. NVD lists it as a `vulnerable: false` entry ("Next.js before 12.0.5, running on Node.js 15 or later"), and those ranges were indexed as affected: `vendorSlugs=nodejs&productSlugs=node-js&dqlQuery=affectedVersion:24.22.1` returned the Next.js advisories CVE-2021-43803 and CVE-2022-36046, Python 3.14.10 returned the Odoo advisories CVE-2020-29396 and CVE-2021-32052, and inventory pages and inventory alerts flagged the same versions. Such entries are skipped in `impactedProducts`, in the CPE configurations, and for the flat CPE list, which carries no flag of its own; a missing flag still means affected. The NVD aggregation of `impactedProducts` no longer marks a product as not vulnerable because it is also a platform somewhere else in the advisory, and no longer mixes platform ranges into its versions.
+- Version ranges are read by release branch. A version that is fixed on its own release line no longer falls into a range meant for another line: nginx 1.30.6 for CVE-2026-90439 (`>= 1.29.2, < 1.31.6`, `>= 1.30.4, < 1.30.5`; stable fixed in 1.30.5), Redis 7.4.12 for CVE-2026-81934 (one `< X` per line in the CVE record itself, matched through `< 8.10.1`). When an advisory gives a product's branch (first two version segments) a range of its own, only that range and exact versions decide for versions on that branch; a lone `< 3.0` keeps meaning everything older, and the rule stays off where NVD shows one product name for several packages (`target_sw`, as for the Azure Identity SDKs). Applied once to the spans, so the OpenSearch index, the inventory pages, inventory alerts and the "Affected in your scans" SBOM check give the same answer; NetScaler's per-branch build numbers, until now only known to the matcher, are indexed the same way.
+- Ranges written with a space between their bounds, as OSV and GitHub do (`>=12.0.0 <12.0.5`), lost their upper bound and matched every later release.
+- .NET advisories that list each NuGet runtime release one by one (CVE-2026-88092 and 18 more of 1,271 .NET advisories checked) filled the 512-range cap of the index, so the remaining packages were not searchable by version. Consecutive versions are folded into one range and overlapping ranges merged; the largest such advisory now needs 346. Pre-release bounds (`< 10.0.403-servicing.26523.112`, `>= 11.0.0-preview.1`) are indexed for final versions instead of being dropped, and a listed pre-release (`12.4.0b1`) no longer marks the final `12.4.0` as affected.
+- The affected-version index and the inventory matcher make the same decision by construction: both take, per product, the first source with version information (curated `impactedProducts`, then the CPE configurations, then the flat CPE list) from one shared function. The index used to merge all three, and where they disagreed the CPE data was mostly the one naming the *fixed* release (a Windows Server build, gRPC 1.56.3 and 1.58.3), so `affectedVersion:` returned fixed versions; on 462 sampled advisories index and matcher now agree on all 82,646 checked versions. A source that names a product without any usable version (`[]`, `*`, `n/a`) passes the decision on instead of answering "not affected". CPE ranges are evaluated per target platform, so one NVD product covering several packages is no longer read as release branches.
+- The index stores versions as sort keys instead of a base-10000 number. Segments above 9999 used to be capped, so Windows builds 10.0.19044 and 10.0.19045 were the same version; pre-releases (`11.0.0-rc.1`) and letter releases could not be stored or searched at all.
+- Letter releases and glued pre-releases are compared correctly in the matcher and the index: OpenSSL `1.0.2k` and Arista `4.26.9M` come after their number, Python's `12.4.0b1` and `1.2.0rc1` before it. OpenSSL 1.0.x inventory entries matched nothing before.
+- When every fix in an advisory sits on a different major version (Node.js `< 20.18.2`, `< 22.12.1`; .NET 8, 9, 10), the release branch is the major: Node.js 20.19.0, past the 20.x fix, no longer matches `< 22.12.1`.
+- The NVD aggregation wrote "from X upwards, no fix" into `impactedProducts` as a bare `X`, which every consumer read as exactly version X, so later releases were missed. It now writes `>= X`, and records stored before are read that way where their CPE data shows the open range.
 
 ## [2.2.0] - 2026-11-07
 

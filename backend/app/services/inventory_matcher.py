@@ -68,6 +68,35 @@ class ParsedVersion:
     pre: tuple[Any, ...]
     raw: str
     valid: bool
+    # Suffix that sorts *after* the release: OpenSSL letters (1.0.2k < 1.0.2l
+    # < 1.0.2za), Arista trains (4.26.9M), PEP 440 ".postN".
+    post: tuple[Any, ...] = ()
+
+
+# A suffix glued to the last release segment ("2k", "9M", "0b1", "0rc1"). PEP
+# 440 pre-releases carry a number or a spelled-out tag; a bare one- or
+# two-letter suffix is an OpenSSL / Arista style release *after* the number.
+_GLUED_SUFFIX_RE = re.compile(r"^(?P<num>\d+)(?P<tag>[A-Za-z]+)(?P<n>\d*)$")
+_PRE_TAGS_NEED_NUMBER = {"a", "b", "c"}
+_PRE_TAGS = {"alpha", "beta", "rc", "pre", "preview", "dev"}
+
+
+def _glued_suffix(token: str) -> tuple[int, str, tuple[Any, ...]] | None:
+    """``"0rc1"`` -> ``(0, "pre", ((0, "rc"), (1, 1)))``; ``"2k"`` -> ``(2, "post", ((0, "k"),))``."""
+    match = _GLUED_SUFFIX_RE.match(token)
+    if not match:
+        return None
+    num = int(match.group("num"))
+    tag = match.group("tag").lower()
+    number = match.group("n")
+    tokens: tuple[Any, ...] = ((0, tag),) + (((1, int(number)),) if number else ())
+    if tag in _PRE_TAGS or (tag in _PRE_TAGS_NEED_NUMBER and number):
+        return num, "pre", tokens
+    if tag == "post" and number:
+        return num, "post", tokens
+    if not number and len(tag) <= 2:
+        return num, "post", tokens
+    return None
 
 
 def parse_version(raw: str) -> ParsedVersion:
@@ -90,20 +119,25 @@ def parse_version(raw: str) -> ParsedVersion:
     # separators). ``8.0.25-preview.1`` → release ``8.0.25``, pre ``preview.1``.
     release_part, _, pre_part = text.partition("-")
 
-    release_tokens = _SEGMENT_SPLIT_RE.split(release_part)
+    release_tokens = [t for t in _SEGMENT_SPLIT_RE.split(release_part) if t]
     release_ints: list[int] = []
     valid = True
-    for token in release_tokens:
-        if not token:
-            continue
+    glued_kind: str | None = None
+    glued_tokens: tuple[Any, ...] = ()
+    for index, token in enumerate(release_tokens):
         if _NUMERIC_RE.match(token):
             release_ints.append(int(token))
-        else:
-            # Trailing garbage after the numeric prefix (e.g. a stray comma
-            # from a malformed "14.1, 66.59" value) makes the whole version
-            # incomparable -- fail closed rather than silently truncating.
-            valid = False
-            break
+            continue
+        glued = _glued_suffix(token) if index == len(release_tokens) - 1 and index > 0 else None
+        if glued is not None:
+            release_ints.append(glued[0])
+            glued_kind, glued_tokens = glued[1], glued[2]
+            continue
+        # Trailing garbage after the numeric prefix (e.g. a stray comma
+        # from a malformed "14.1, 66.59" value) makes the whole version
+        # incomparable -- fail closed rather than silently truncating.
+        valid = False
+        break
 
     pre_tokens: tuple[Any, ...] = ()
     if pre_part:
@@ -117,22 +151,41 @@ def parse_version(raw: str) -> ParsedVersion:
                 segs.append((0, token.lower()))
         pre_tokens = tuple(segs)
 
+    post_tokens: tuple[Any, ...] = ()
+    if glued_kind == "pre":
+        # "12.4.0b1-foo" is not a shape anyone writes; keep the glued tag first.
+        pre_tokens = glued_tokens + pre_tokens
+    elif glued_kind == "post":
+        post_tokens = glued_tokens
+
     return ParsedVersion(
         release=tuple(release_ints),
         pre=pre_tokens,
         raw=text,
         valid=valid,
+        post=post_tokens,
     )
 
 
-def _tuple_for_compare(v: ParsedVersion) -> tuple[Any, ...]:
-    """Return a tuple where release < pre-release of same release.
+def _phase(v: ParsedVersion) -> tuple[int, tuple[Any, ...]]:
+    """Order within one release: pre-release < final < post-release.
 
-    The second element is ``0`` for pre-releases and ``1`` for final releases,
-    so ``8.0.25-preview.1 < 8.0.25``. When comparing releases of different
-    length we right-pad the shorter with zeros so ``8.0`` == ``8.0.0``.
+    ``8.0.25-preview.1 < 8.0.25 < 8.0.25a`` (OpenSSL letters come after).
     """
-    return (v.release, 0 if v.pre else 1, v.pre)
+    if v.pre:
+        return 0, v.pre
+    if v.post:
+        return 2, v.post
+    return 1, ()
+
+
+def _tuple_for_compare(v: ParsedVersion) -> tuple[Any, ...]:
+    """Return a tuple ordering release first, then :func:`_phase`.
+
+    When comparing releases of different length we right-pad the shorter with
+    zeros so ``8.0`` == ``8.0.0``.
+    """
+    return (v.release, *_phase(v))
 
 
 def _pad(a: tuple[int, ...], b: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -158,11 +211,77 @@ def _compare_versions(left: str, right: str) -> int | None:
     la, ra = _pad(lv.release, rv.release)
     if la != ra:
         return -1 if la < ra else 1
-    lt = _tuple_for_compare(ParsedVersion(la, lv.pre, lv.raw, lv.valid))
-    rt = _tuple_for_compare(ParsedVersion(ra, rv.pre, rv.raw, rv.valid))
+    lt, rt = _phase(lv), _phase(rv)
     if lt == rt:
         return 0
     return -1 if lt < rt else 1
+
+
+# --- Sort keys for the OpenSearch range index ---
+#
+# The index used to fold versions into one long (four segments, base 10000).
+# Segments above 9999 were capped, so Windows builds 10.0.19044 and 10.0.19045
+# collided, and pre-releases and letter suffixes could not be stored at all.
+# A keyword whose byte order equals ``_compare_versions`` fixes all three, and
+# OpenSearch range queries on keywords compare exactly that way:
+#
+#   * trailing zero segments are dropped (8.0.0 == 8.0 == 8),
+#   * each segment is its digit count followed by the digits, so 9 < 10 < 100,
+#   * "." separates segments and "!" ends the release; "!" sorts below ".",
+#     so 8 (any phase) < 8.0.1,
+#   * then "0" + pre tokens, "1" for a final release, or "2" + post tokens;
+#     within tokens text sorts before numbers, like ``_phase``.
+#
+# Keys only use "!", ".", digits, ":"-"?" (long digit counts) and lowercase
+# letters; " " sorts below all of them, so ``key + " "`` is the first key after
+# ``key`` (used for exclusive starts and inclusive ends) and "~" sorts above
+# every key (no upper bound).
+
+KEY_AFTER = " "
+KEY_MAX = "~"
+
+
+def _key_number(value: int) -> str:
+    digits = str(value)
+    if len(digits) > 40:
+        raise ValueError("version segment too long")
+    return chr(ord("0") + len(digits)) + digits
+
+
+def _key_tokens(tokens: tuple[Any, ...]) -> str:
+    parts = []
+    for kind, value in tokens:
+        parts.append("1" + _key_number(value) if kind == 1 else "0" + value)
+    return ".".join(parts)
+
+
+def version_sort_key(value: str | None) -> str | None:
+    """Keyword whose order matches :func:`_compare_versions`; ``None`` if unusable.
+
+    Versions the matcher can only compare by string (``valid=False``) have no
+    key; neither does a token with characters outside the key alphabet.
+    """
+    if not value:
+        return None
+    parsed = parse_version(value)
+    if not parsed.valid or not parsed.release:
+        return None
+    release = list(parsed.release)
+    while release and release[-1] == 0:
+        release.pop()
+    try:
+        key = ".".join(_key_number(seg) for seg in release) + "!"
+        if parsed.pre:
+            key += "0" + _key_tokens(parsed.pre)
+        elif parsed.post:
+            key += "2" + _key_tokens(parsed.post)
+        else:
+            key += "1"
+    except ValueError:
+        return None
+    if not all(ch.isdigit() or ch in "!.:;<=>?" or "a" <= ch <= "z" for ch in key):
+        return None
+    return key
 
 
 # --- CPE match evaluation ---
@@ -223,47 +342,6 @@ def _expand_wildcard(version: str) -> tuple[str, str] | None:
     upper_tokens = tokens[:-1] + [str(int(tokens[-1]) + 1)]
     upper = ".".join(upper_tokens)
     return lower, upper
-
-
-def _match_cpe_entry(item_version: str, match: CpeMatch) -> bool:
-    """Return True if ``item_version`` falls within the CPE match criteria."""
-    # Exact version on the CPE URI — must equal the item version (or fall
-    # inside a wildcard range if the item uses one).
-    exact = _extract_version_from_cpe(match.criteria)
-    if exact is not None and not any(
-        (match.version_start_including, match.version_start_excluding,
-         match.version_end_including, match.version_end_excluding)
-    ):
-        return _versions_equivalent(item_version, exact)
-
-    # Range-based match: evaluate each bound.
-    start_in = match.version_start_including
-    start_ex = match.version_start_excluding
-    end_in = match.version_end_including
-    end_ex = match.version_end_excluding
-
-    if not any((start_in, start_ex, end_in, end_ex)):
-        # No range and no concrete version on the CPE — a bare
-        # ``vendor:product:*`` (or ``:-:``) match carries no version evidence,
-        # so we cannot confirm the item's specific version is affected. Fail
-        # closed (return False) rather than blindly matching "any version".
-        #
-        # Background: matching every version here produced false positives for
-        # inventory items whose vendor/product appears only as a secondary,
-        # version-less platform CPE on an old CVE (e.g. phpBB 3.3.17 wrongly
-        # flagged by CVEs about third-party phpBB *modules* that reference
-        # ``cpe:2.3:a:phpbb:phpbb:*``). This mirrors the tier-3 flat-CPE
-        # fallback, which already skips ``*`` / ``-`` versions.
-        return False
-
-    cmp_result = _compare_bounds(
-        item_version,
-        start_in=start_in,
-        start_ex=start_ex,
-        end_in=end_in,
-        end_ex=end_ex,
-    )
-    return cmp_result
 
 
 def _versions_equivalent(item_version: str, cpe_version: str) -> bool:
@@ -423,6 +501,11 @@ _IMPLICIT_RANGE_RE = re.compile(
     r"^\s*(?P<low>[^\s<>=,]+)\s*(?P<op><=|<)\s*(?P<high>[^\s<>=,]+)\s*$"
 )
 
+# Whitespace-separated clauses (">=12.0.0 <12.0.5"): a version token, then
+# whitespace, then another operator.
+_LEADING_OP_RE = re.compile(r"^\s*(?:<=|>=|==|!=|<|>|=)")
+_SPACE_BEFORE_OP_RE = re.compile(r"(?<=[\w*+.])\s+(?=(?:<=|>=|==|!=|<|>|=))")
+
 # Lower-bound placeholders that carry no version information.
 _IMPLICIT_LOWER_PLACEHOLDERS = {"n/a", "na", "n.a.", "*", "-", "any", "unknown", "?"}
 
@@ -447,6 +530,11 @@ def _normalize_range_string(value: str) -> str:
         if low.lower() in _IMPLICIT_LOWER_PLACEHOLDERS or _is_zero_version(low):
             return f"{op} {high}"
         return f">= {low}, {op} {high}"
+    # OSV / GHSA write ">=12.0.0 <12.0.5": clauses separated by a space, not a
+    # comma. Split only splits on commas, so the upper bound vanished and the
+    # range read as ">= 12.0.0" with no ceiling, matching every later release.
+    if _LEADING_OP_RE.match(s):
+        s = _SPACE_BEFORE_OP_RE.sub(", ", s)
     return s
 
 
@@ -579,16 +667,71 @@ def _version_in_branch_scoped_range(version: str, range_str: str, branch_segment
     return a < b if end_ex is not None else a <= b
 
 
-def _version_in_range_string(version: str, range_str: str) -> bool:
-    """Return True if ``version`` satisfies ``range_str``.
+@dataclass(frozen=True)
+class VersionSpan:
+    """One affected interval with string bounds (``None`` = unbounded side).
 
-    Unknown or unconstrained strings (``*``, ``-``, ``>=0``, empty) return
-    False — they provide no usable information and we fail closed rather than
-    match everything.
+    Shared currency between this matcher and the OpenSearch range index
+    (``app.services.version_ranges``): both turn every range source into spans,
+    run them through :func:`effective_spans`, and then either compare a version
+    against them or encode them as integers. Doing the branch scoping once, on
+    strings, is what keeps the inventory pages and ``affectedVersion:`` queries
+    from disagreeing.
+    """
+
+    start: str | None = None
+    start_inclusive: bool = True
+    end: str | None = None
+    end_inclusive: bool = False
+
+    def contains(self, version: str) -> bool:
+        return _compare_bounds(
+            version,
+            start_in=self.start if self.start_inclusive else None,
+            start_ex=None if self.start_inclusive else self.start,
+            end_in=self.end if self.end_inclusive else None,
+            end_ex=None if self.end_inclusive else self.end,
+        )
+
+
+def _span_from_bounds(
+    *,
+    start_in: str | None,
+    start_ex: str | None,
+    end_in: str | None,
+    end_ex: str | None,
+) -> VersionSpan | None:
+    """Fold the four bound slots into one span; ``None`` when all are empty.
+
+    When both an inclusive and an exclusive bound sit on the same side (never
+    seen in real data) the tighter one wins, which is what evaluating both as
+    an AND did before.
+    """
+    start, start_inclusive = start_in, True
+    if start_ex is not None:
+        cmp = _compare_versions(start_ex, start_in) if start_in is not None else 1
+        if cmp is None or cmp >= 0:
+            start, start_inclusive = start_ex, False
+    end, end_inclusive = end_ex, False
+    if end_in is not None:
+        cmp = _compare_versions(end_in, end_ex) if end_ex is not None else -1
+        if cmp is not None and cmp < 0:
+            end, end_inclusive = end_in, True
+    if start is None and end is None:
+        return None
+    return VersionSpan(start, start_inclusive, end, end_inclusive)
+
+
+def _parse_range(range_str: str) -> tuple[tuple[str, ...], VersionSpan | None]:
+    """Split one range string into ``(exact pins, span)``.
+
+    ``"1.2.3"`` -> ``(("1.2.3",), None)``; ``">= 1.0, < 2.0"`` -> ``((), span)``.
+    Broad / unconstrained strings (``*``, ``>=0``, ``>= 0.0``, empty) give
+    ``((), None)``: they carry no version information and must not match.
     """
     clauses = _parse_range_clauses(range_str)
     if not clauses:
-        return False
+        return (), None
 
     start_in: str | None = None
     start_ex: str | None = None
@@ -610,31 +753,419 @@ def _version_in_range_string(version: str, range_str: str) -> bool:
 
     # Exact equality takes precedence when present (a plain "1.2.3" with no
     # relational operators).
-    if exact_values and not any((start_in, start_ex, end_in, end_ex)):
-        for v in exact_values:
-            cmp_val = _compare_versions(version, v)
-            if cmp_val == 0:
-                return True
-        return False
+    if not any((start_in, start_ex, end_in, end_ex)):
+        return tuple(exact_values), None
 
     # A lower bound at version 0 with no upper bound (``>= 0`` / ``> 0`` in any
     # spacing) is "all versions" — unconstrained, so fail closed. A non-zero
     # standalone ``>= 5.1.0`` is intentionally left alone ("from 5.1.0 upwards").
-    if (
-        not exact_values
-        and end_in is None
-        and end_ex is None
-        and _is_zero_version(start_in if start_in is not None else start_ex)
+    if end_in is None and end_ex is None and _is_zero_version(
+        start_in if start_in is not None else start_ex
     ):
-        return False
+        return (), None
 
-    return _compare_bounds(
-        version,
-        start_in=start_in,
-        start_ex=start_ex,
-        end_in=end_in,
-        end_ex=end_ex,
+    return (), _span_from_bounds(start_in=start_in, start_ex=start_ex, end_in=end_in, end_ex=end_ex)
+
+
+def _version_in_range_string(version: str, range_str: str) -> bool:
+    """Return True if ``version`` satisfies the single range ``range_str``.
+
+    Unknown or unconstrained strings (``*``, ``-``, ``>=0``, empty) return
+    False — they provide no usable information and we fail closed rather than
+    match everything. Evaluates one string in isolation; a product's whole
+    version list goes through :func:`version_in_ranges`, which also applies the
+    release-branch rule.
+    """
+    exact, span = _parse_range(range_str)
+    if exact:
+        return any(_compare_versions(version, v) == 0 for v in exact)
+    return span is not None and span.contains(version)
+
+
+# --- Release-branch scoping ---
+#
+# Every range used to sit on one shared axis. Products that maintain several
+# release lines publish one fix per line, so a version that is fixed on its own
+# line still fell into a range meant for another one:
+#
+#   nginx CVE-2026-90439:  ">= 1.29.2, < 1.31.6", ">= 1.30.4, < 1.30.5"
+#       1.30.6 is fixed (stable 1.30.x got 1.30.5) but sits inside the first range.
+#   Redis CVE-2026-81934:  "< 6.2.24", "< 7.2.16", "< 7.4.11", "< 8.10.1", …
+#       the CVE record itself says {"version": "0", "lessThan": X} per line, so
+#       7.4.12 matched "< 8.10.1".
+#
+# Rule (taken over from the nohub.lol audit): the branch of a version is its
+# first two segments. A range belongs to branch B when it has an upper bound
+# and all of its bounds lie on B (">= 1.30.4, < 1.30.5"). A bare upper bound
+# ("< 7.4.11") counts only when the same product lists another upper bound on
+# a different branch, so a lone "< 3.0" keeps meaning "everything older". When
+# the product has such a range for B, only those ranges (plus exact pins)
+# decide for versions on B; every other version is compared as before.
+#
+# Implemented as a rewrite of the spans rather than a query-time check so the
+# OpenSearch index can store the result and keep its one-clause query:
+#   * a branch range is clipped to its branch: "< 7.4.11" -> [7.4, 7.4.11)
+#   * every range additionally keeps what lies outside all branches that have
+#     their own range: [1.29.2, 1.31.6) -> [1.29.2, 1.30) + [1.31, 1.31.6)
+# For a version on branch B that has its own range only the clipped branch
+# ranges can contain it; for any other version only the second part can, and
+# that part equals the original ranges there. That is exactly the rule above.
+#
+# Branch depth: two segments by default. When every upper bound of the product
+# sits on a different major (Node "< 20.18.2", "< 22.12.1"; .NET ">= 8.0.0,
+# < 8.0.33", ">= 9.0.0, < 9.0.22"), the vendor ships one line per major and the
+# branch is the major alone; with two segments Node 20.19.0, above the 20.x fix,
+# would still have fallen into "< 22.12.1". Bounds at a branch start ("< 3.0")
+# don't count towards that decision. Redis (7.2 and 7.4, 8.2 and 8.10) and nginx
+# (1.30 and 1.31) share majors and stay at two.
+
+
+def _branch_key(version: str | None, depth: int = 2) -> tuple[int, ...] | None:
+    if not version:
+        return None
+    parsed = parse_version(version)
+    if not parsed.valid or not parsed.release:
+        return None
+    release = parsed.release + (0,) * depth
+    return tuple(release[:depth])
+
+
+def _branch_window(key: tuple[int, ...]) -> tuple[str, str]:
+    upper = key[:-1] + (key[-1] + 1,)
+    return ".".join(map(str, key)), ".".join(map(str, upper))
+
+
+def _above_branch_start(end: str, key: tuple[int, ...]) -> bool:
+    """"< 7.4" / "< 7.4.0" ends where branch 7.4 starts: "everything before 7.4"."""
+    cmp = _compare_versions(end, _branch_window(key)[0])
+    return cmp is not None and cmp > 0
+
+
+def _branch_depth(spans: list[VersionSpan]) -> int:
+    majors: list[tuple[int, ...]] = []
+    for span in spans:
+        if span.end is None:
+            continue
+        key = _branch_key(span.end, 1)
+        if key is not None and _above_branch_start(span.end, key):
+            majors.append(key)
+    if len(majors) >= 2 and len(set(majors)) == len(majors):
+        return 1
+    return 2
+
+
+def _scoped_branch(
+    span: VersionSpan, spans: list[VersionSpan], depth: int = 2
+) -> tuple[int, ...] | None:
+    """The branch ``span`` belongs to under the rule above, or ``None``."""
+    if span.end is None:
+        return None
+    key = _branch_key(span.end, depth)
+    if key is None or not _above_branch_start(span.end, key):
+        return None
+    if span.start is not None and not _is_zero_version(span.start):
+        return key if _branch_key(span.start, depth) == key else None
+    for other in spans:
+        if other is span or other.end is None:
+            continue
+        other_key = _branch_key(other.end, depth)
+        if other_key is not None and other_key != key:
+            return key
+    return None
+
+
+def _subtract_window(span: VersionSpan, lo: str, hi: str) -> list[VersionSpan] | None:
+    """``span`` minus ``[lo, hi)``; ``None`` when a comparison is undecidable."""
+    if span.start is not None:
+        cmp_hi = _compare_versions(span.start, hi)
+        if cmp_hi is None:
+            return None
+        if cmp_hi >= 0:
+            return [span]
+    if span.end is not None:
+        cmp_lo = _compare_versions(span.end, lo)
+        if cmp_lo is None:
+            return None
+        if cmp_lo < 0 or (cmp_lo == 0 and not span.end_inclusive):
+            return [span]
+
+    pieces: list[VersionSpan] = []
+    start_below = span.start is None or (_compare_versions(span.start, lo) or 0) < 0
+    if start_below:
+        pieces.append(VersionSpan(span.start, span.start_inclusive, lo, False))
+    if span.end is None:
+        pieces.append(VersionSpan(hi, True, None, False))
+    else:
+        cmp_end = _compare_versions(span.end, hi)
+        if cmp_end is not None and (cmp_end > 0 or (cmp_end == 0 and span.end_inclusive)):
+            pieces.append(VersionSpan(hi, True, span.end, span.end_inclusive))
+    return pieces
+
+
+def effective_spans(spans: list[VersionSpan]) -> list[VersionSpan]:
+    """Apply the release-branch rule to one product's spans within one CVE."""
+    depth = _branch_depth(spans)
+    scoped = {
+        i: key for i, span in enumerate(spans) if (key := _scoped_branch(span, spans, depth)) is not None
+    }
+    if not scoped:
+        return list(spans)
+    windows = [_branch_window(key) for key in sorted(set(scoped.values()))]
+
+    out: list[VersionSpan] = []
+    for i, span in enumerate(spans):
+        key = scoped.get(i)
+        if key is not None:
+            lo, _ = _branch_window(key)
+            if span.start is None or _is_zero_version(span.start):
+                out.append(VersionSpan(lo, True, span.end, span.end_inclusive))
+            else:
+                out.append(span)
+        pieces = [span]
+        for lo, hi in windows:
+            carved: list[VersionSpan] = []
+            for piece in pieces:
+                result = _subtract_window(piece, lo, hi)
+                carved.extend(result if result is not None else [piece])
+            pieces = carved
+        out.extend(pieces)
+    return out
+
+
+def coalesce_pins(exact: Iterable[str]) -> tuple[list[str], list[VersionSpan]]:
+    """Fold runs of consecutive exact pins into closed spans.
+
+    The NuGet runtime advisories list every .NET release one by one ("8.0.0",
+    "8.0.1", … "8.0.8", "8.0.10", …), several hundred per CVE. As single
+    points they overflowed the index's per-document cap, so later packages
+    were never indexed. A run of pins whose last segment counts up by one
+    becomes ``[first, last]``; a gap (8.0.9 missing) ends the run. Pins never
+    go through the branch rule, and matcher and index both call this.
+
+    The span also holds versions one segment deeper ("8.0.5.1"), so runs are
+    only folded where none can exist: at least three segments ("17.0", "17.1"
+    are release lines whose patches are real versions), and no pin in the
+    list is deeper than the run (Akka lists "2.4.11.1" next to "2.4.10").
+    """
+    singles: list[str] = []
+    parsed: list[tuple[tuple[int, ...], str]] = []
+    deepest = 0
+    for pin in exact:
+        p = parse_version(pin)
+        if p.valid and p.release:
+            deepest = max(deepest, len(p.release))
+        if p.valid and len(p.release) >= 3 and not p.pre and not p.post:
+            parsed.append((p.release, pin))
+        else:
+            singles.append(pin)
+    shallow = [entry for entry in parsed if len(entry[0]) < deepest]
+    singles.extend(pin for _, pin in shallow)
+    parsed = [entry for entry in parsed if len(entry[0]) == deepest]
+
+    spans: list[VersionSpan] = []
+    run: list[tuple[tuple[int, ...], str]] = []
+
+    def flush() -> None:
+        if len(run) >= 2:
+            spans.append(VersionSpan(run[0][1], True, run[-1][1], True))
+        else:
+            singles.extend(pin for _, pin in run)
+        run.clear()
+
+    for release, pin in sorted(set(parsed)):
+        if run:
+            prev = run[-1][0]
+            if release == prev:
+                continue
+            if not (
+                len(release) == len(prev)
+                and release[:-1] == prev[:-1]
+                and release[-1] == prev[-1] + 1
+            ):
+                flush()
+        run.append((release, pin))
+    flush()
+    return singles, spans
+
+
+def _matches_spans(
+    version: str,
+    exact: Iterable[str],
+    spans: list[VersionSpan],
+    *,
+    branch_rule: bool = True,
+) -> bool:
+    pins, pin_spans = coalesce_pins(exact)
+    if any(_versions_equivalent(version, pin) for pin in pins):
+        return True
+    if any(span.contains(version) for span in pin_spans):
+        return True
+    candidates = effective_spans(spans) if branch_rule else spans
+    return any(span.contains(version) for span in candidates)
+
+
+def version_in_ranges(version: str, range_strs: Iterable[str], *, branch_rule: bool = True) -> bool:
+    """Return True if ``version`` is affected by one product's version list.
+
+    Unlike evaluating each string on its own, this applies the release-branch
+    rule (see :func:`effective_spans`) across the whole list, unless
+    ``branch_rule`` is off (see :func:`multi_target_pairs`).
+    """
+    exact: list[str] = []
+    spans: list[VersionSpan] = []
+    for raw in range_strs:
+        if not isinstance(raw, str):
+            continue
+        pins, span = _parse_range(raw)
+        exact.extend(pins)
+        if span is not None:
+            spans.append(span)
+    return _matches_spans(version, exact, spans, branch_rule=branch_rule)
+
+
+# One product name can stand for several packages. NVD files the Azure
+# Identity SDK of every language under ``microsoft:azure_identity`` and tells
+# them apart only by ``target_sw`` (python, java, …); the impactedProducts
+# aggregation then merges their fixes into one list ("< 1.10.2", "< 1.14.1",
+# "< 3.3.1") that looks exactly like Redis' one-fix-per-branch list. Read as
+# branches, Python 1.10.3 (fixed in 1.14.1) would drop out. So the branch rule
+# runs per target_sw on CPE matches and is off for an impactedProducts list
+# whose product the CPE data shows on more than one target.
+
+# "*" is ANY; "-" is NA, i.e. explicitly no target (gRPC's C core next to
+# grpc-go), so it counts as a target of its own.
+_WILDCARD_TARGETS = {"", "*"}
+
+
+def _cpe_target(match: CpeMatch) -> str:
+    # Read from the URI first: the normalizer stores NA ("-") as no target_sw.
+    parts = match.criteria.split(":") if isinstance(match.criteria, str) else []
+    raw = parts[10] if len(parts) > 10 and match.criteria.startswith("cpe:2.3:") else match.target_sw
+    target = (raw or "").strip().lower()
+    return "" if target in _WILDCARD_TARGETS else target
+
+
+def multi_target_pairs(cpe_configurations: Iterable[CpeConfiguration]) -> set[tuple[str, str]]:
+    """Products whose vulnerable CPE matches name more than one ``target_sw``."""
+    targets: dict[tuple[str, str], set[str]] = {}
+    for config in cpe_configurations or []:
+        for match in _iter_matches(config.nodes):
+            if is_marked_not_vulnerable(match):
+                continue
+            target = _cpe_target(match)
+            if not target:
+                continue
+            pair = (_slug(match.vendor), _slug(match.product))
+            if not pair[0] or not pair[1]:
+                pair = _cpe_uri_pair(match.criteria) or ("", "")
+            targets.setdefault(pair, set()).add(target)
+    return {pair for pair, found in targets.items() if len(found) > 1}
+
+
+# --- Platform entries (``vulnerable: false``) ---
+#
+# NVD lists the software a vulnerable product runs on as a non-vulnerable CPE
+# match in the same configuration ("Next.js < 12.0.5 running on Node.js >
+# 15.0.0"). Those carry ranges too, and treating them as affected flagged every
+# current Node.js / Python for Next.js and Odoo CVEs. An explicit ``False``
+# marks such an entry; a missing flag keeps meaning "affected".
+
+
+def is_marked_not_vulnerable(obj: Any) -> bool:
+    """True only for an explicit ``vulnerable: False`` (dict or model)."""
+    if isinstance(obj, dict):
+        return obj.get("vulnerable") is False
+    if getattr(obj, "vulnerable", None) is not False:
+        return False
+    # ``CpeMatch.vulnerable`` defaults to False, so a stored match without the
+    # key would read as a platform. Only trust a value the data actually set.
+    fields_set = getattr(obj, "model_fields_set", None)
+    return fields_set is None or "vulnerable" in fields_set
+
+
+def impacted_entry_pairs(entry: dict[str, Any]) -> list[tuple[str, str]]:
+    """All (vendor, product) slug spellings an impacted-products entry answers to."""
+    vendor_obj = entry.get("vendor")
+    product_obj = entry.get("product")
+    if not isinstance(vendor_obj, dict) or not isinstance(product_obj, dict):
+        return []
+    vendors = {_slug(vendor_obj.get("slug")), _slug(vendor_obj.get("name"))}
+    products = {_slug(product_obj.get("slug")), _slug(product_obj.get("name"))}
+    vendors.discard("")
+    products.discard("")
+    return [(v, p) for v in sorted(vendors) for p in sorted(products)]
+
+
+def _cpe_uri_pair(criteria: str | None) -> tuple[str, str] | None:
+    if not isinstance(criteria, str) or not criteria.startswith("cpe:2.3:"):
+        return None
+    parts = criteria.split(":")
+    if len(parts) < 6:
+        return None
+    vendor, product = _slug(parts[3]), _slug(parts[4])
+    if not vendor or not product:
+        return None
+    return vendor, product
+
+
+def platform_cpe_filter(
+    impacted_products: list[dict[str, Any]],
+    cpe_configurations: list[CpeConfiguration],
+) -> tuple[set[str], set[tuple[str, str]]]:
+    """Flat CPEs that only ever appear as a platform, by criteria and by pair.
+
+    The flat ``cpes`` list is every criteria string of every configuration, the
+    platform ones included, with no flag of its own. A pair counts as platform
+    when it shows up only with ``vulnerable: False``; a criteria string when
+    every match carrying it is ``False`` (the cpematch API ships no flag, the
+    normalizer stores ``False`` there, and those copies always sit next to the
+    flagged NVD match with the same criteria).
+    """
+    false_pairs: set[tuple[str, str]] = set()
+    true_pairs: set[tuple[str, str]] = set()
+    false_criteria: set[str] = set()
+    true_criteria: set[str] = set()
+
+    for entry in impacted_products:
+        target = false_pairs if is_marked_not_vulnerable(entry) else true_pairs
+        target.update(impacted_entry_pairs(entry))
+
+    for config in cpe_configurations:
+        for match in _iter_matches(config.nodes):
+            not_vulnerable = is_marked_not_vulnerable(match)
+            pair = (_slug(match.vendor), _slug(match.product))
+            if not pair[0] or not pair[1]:
+                pair = _cpe_uri_pair(match.criteria) or ("", "")
+            if pair[0] and pair[1]:
+                (false_pairs if not_vulnerable else true_pairs).add(pair)
+            if isinstance(match.criteria, str):
+                (false_criteria if not_vulnerable else true_criteria).add(match.criteria)
+
+    return false_criteria - true_criteria, false_pairs - true_pairs
+
+
+def cpe_match_span(match: CpeMatch) -> tuple[tuple[str, ...], VersionSpan | None]:
+    """``(exact pins, span)`` of one CPE match; both empty for a bare wildcard.
+
+    A version-less ``vendor:product:*`` (or ``:-:``) match carries no version
+    evidence and yields nothing (fail closed). Background: matching every
+    version there flagged phpBB 3.3.17 for CVEs about third-party phpBB
+    *modules* that reference ``cpe:2.3:a:phpbb:phpbb:*`` as a platform.
+    """
+    span = _span_from_bounds(
+        start_in=match.version_start_including,
+        start_ex=match.version_start_excluding,
+        end_in=match.version_end_including,
+        end_ex=match.version_end_excluding,
     )
+    if span is not None:
+        return (), span
+    exact = _extract_version_from_cpe(match.criteria)
+    if exact is None and isinstance(match.version, str):
+        candidate = match.version.strip()
+        if candidate not in ("", "*", "-", "ANY", "NA"):
+            exact = candidate
+    return ((exact,) if exact else ()), None
 
 
 def _coerce_impacted_products(value: Any) -> list[dict[str, Any]]:
@@ -650,7 +1181,7 @@ def _coerce_impacted_products(value: Any) -> list[dict[str, Any]]:
 
     Pydantic entries are dumped via ``model_dump(by_alias=False)`` so the
     resulting dicts always use snake_case keys (``versions``, ``vendor``,
-    ``product``), which ``_impacted_product_matches_item`` expects.
+    ``product``), which the tier-1 evaluation expects.
     """
     if not isinstance(value, list):
         return []
@@ -669,32 +1200,6 @@ def _coerce_impacted_products(value: Any) -> list[dict[str, Any]]:
     return result
 
 
-def _impacted_product_matches_item(
-    entry: dict[str, Any],
-    item: "InventoryKey",
-) -> bool:
-    """Return True if the impacted_product entry's vendor/product matches the item."""
-    vendor_obj = entry.get("vendor")
-    product_obj = entry.get("product")
-    if not isinstance(vendor_obj, dict) or not isinstance(product_obj, dict):
-        return False
-
-    vendor_candidates = {
-        _slug(vendor_obj.get("slug")),
-        _slug(vendor_obj.get("name")),
-    }
-    vendor_candidates.discard("")
-    if item.vendor_slug not in vendor_candidates:
-        return False
-
-    product_candidates = {
-        _slug(product_obj.get("slug")),
-        _slug(product_obj.get("name")),
-    }
-    product_candidates.discard("")
-    return item.product_slug in product_candidates
-
-
 def _iter_matches(nodes: Iterable[CpeNode]) -> Iterable[CpeMatch]:
     for node in nodes or []:
         if node is None:
@@ -704,6 +1209,188 @@ def _iter_matches(nodes: Iterable[CpeNode]) -> Iterable[CpeMatch]:
                 yield match
         if node.nodes:
             yield from _iter_matches(node.nodes)
+
+
+def branch_scoped_product_span(
+    range_str: str, segments: int
+) -> tuple[tuple[str, ...], VersionSpan | None]:
+    """Span form of :func:`_version_in_branch_scoped_range` (NetScaler).
+
+    ``">= 14.1, < 56.73"`` means "14.1 builds below 56.73", i.e. ``(14.1,
+    14.1.56.73)``. Shapes that aren't "branch + threshold" fall back to the
+    ordinary parse, as in the matcher. Used by the index; the matcher keeps
+    evaluating the raw strings, which also accept "14.1, 66.59" item values.
+    """
+    start_bound: str | None = None
+    end_in: str | None = None
+    end_ex: str | None = None
+    for op, ver in _parse_range_clauses(range_str):
+        if op in (">=", ">"):
+            start_bound = ver
+        elif op == "<=":
+            end_in = ver
+        elif op == "<":
+            end_ex = ver
+    if start_bound is None or (end_in is None and end_ex is None):
+        return _parse_range(range_str)
+
+    branch = _leading_numeric_segments(start_bound, segments)
+    end_all = _split_numeric_segments(end_ex if end_ex is not None else end_in)
+    if branch is None or end_all is None:
+        return (), None
+    if len(end_all) > segments:
+        if end_all[:segments] != branch:
+            return (), None
+        build = end_all[segments:]
+    else:
+        build = end_all
+    low = ".".join(str(seg) for seg in branch)
+    high = ".".join(str(seg) for seg in branch + build)
+    # Exclusive start: "14.1" alone is not a NetScaler build.
+    return (), VersionSpan(low, False, high, end_ex is None)
+
+
+@dataclass
+class ProductEvidence:
+    """What decides for one (vendor, product) pair of one vulnerability.
+
+    ``groups`` holds ``(pins, spans)`` per package: one group for tiers 1 and
+    3, one per ``target_sw`` for tier 2. ``branch_segments`` is set for
+    NetScaler, whose raw tier-1 strings the matcher evaluates itself.
+    """
+
+    tier: int
+    groups: list[tuple[list[str], list[VersionSpan]]]
+    branch_rule: bool = True
+    raw_ranges: list[str] | None = None
+    branch_segments: int | None = None
+
+
+def _cpe_match_pair(match: CpeMatch) -> tuple[str, str] | None:
+    vendor, product = _slug(match.vendor), _slug(match.product)
+    if vendor and product:
+        return vendor, product
+    return _cpe_uri_pair(match.criteria)
+
+
+def collect_product_evidence(
+    impacted_products: Any,
+    cpe_configurations: Any,
+    flat_cpes: Iterable[str] | None,
+) -> dict[tuple[str, str], ProductEvidence]:
+    """Per (vendor, product): the first tier that has version evidence.
+
+    Shared by the inventory matcher and the OpenSearch range index, so both
+    pick the same tier and the same ranges:
+
+    1. ``impactedProducts`` (curated: EUVD, CIRCL, OSV, GHSA, NVD-derived),
+    2. ``cpeConfigurations`` matches, grouped per ``target_sw``,
+    3. the flat ``cpes`` list (concrete versions only, platforms dropped).
+
+    The index used to union all three. Checked on 450 documents: where tiers
+    1 and 2 disagreed, tier 2 was mostly the one naming the *fixed* release
+    (Windows Server builds, gRPC 1.56.3 / 1.58.3), so the union indexed fixed
+    versions as affected.
+
+    A tier only decides for a product when it has evidence: an entry whose
+    versions are ``[]`` or only broad (``*``, ``n/a``) passes the product on.
+    """
+    impacted = _coerce_impacted_products(impacted_products)
+    configs = _coerce_cpe_configurations(cpe_configurations)
+    mixed_targets = multi_target_pairs(configs)
+
+    # "from X upwards" CPE matches. The NVD aggregation used to write them into
+    # impactedProducts as a bare "X", which reads as the exact version X; the
+    # formatter is fixed, stored documents keep the old string until their next
+    # NVD write, so the bare pin is read as the open range it came from.
+    open_starts: dict[tuple[str, str], set[str]] = {}
+    for config in configs:
+        for match in _iter_matches(config.nodes):
+            if is_marked_not_vulnerable(match):
+                continue
+            if (
+                match.version_start_including
+                and not match.version_start_excluding
+                and not match.version_end_including
+                and not match.version_end_excluding
+            ):
+                pair = _cpe_match_pair(match)
+                if pair is not None:
+                    open_starts.setdefault(pair, set()).add(match.version_start_including.strip())
+
+    evidence: dict[tuple[str, str], ProductEvidence] = {}
+
+    # --- Tier 1: impactedProducts ---
+    tier1: dict[tuple[str, str], list[str]] = {}
+    for entry in impacted:
+        if is_marked_not_vulnerable(entry):
+            continue
+        versions = entry.get("versions")
+        ranges = [v for v in versions if isinstance(v, str)] if isinstance(versions, list) else []
+        for pair in impacted_entry_pairs(entry):
+            tier1.setdefault(pair, []).extend(ranges)
+    for pair, ranges in tier1.items():
+        segments = _BRANCH_SCOPED_PRODUCTS.get(pair)
+        pins: list[str] = []
+        spans: list[VersionSpan] = []
+        for raw in ranges:
+            try:
+                found, span = branch_scoped_product_span(raw, segments) if segments else _parse_range(raw)
+            except Exception as exc:  # pragma: no cover - defensive
+                log.debug("inventory_matcher.range_string_error", range_str=raw, error=str(exc))
+                continue
+            for pin in found:
+                if pin in open_starts.get(pair, ()):
+                    spans.append(VersionSpan(pin, True, None, False))
+                else:
+                    pins.append(pin)
+            if span is not None:
+                spans.append(span)
+        if pins or spans:
+            evidence[pair] = ProductEvidence(
+                tier=1,
+                groups=[(pins, spans)],
+                branch_rule=pair not in mixed_targets,
+                raw_ranges=ranges,
+                branch_segments=segments,
+            )
+
+    # --- Tier 2: CPE configuration matches, one group per target_sw ---
+    tier2: dict[tuple[str, str], dict[str, tuple[list[str], list[VersionSpan]]]] = {}
+    for config in configs:
+        for match in _iter_matches(config.nodes):
+            if is_marked_not_vulnerable(match):
+                continue
+            pair = _cpe_match_pair(match)
+            if pair is None or pair in evidence:
+                continue
+            found, span = cpe_match_span(match)
+            group = tier2.setdefault(pair, {}).setdefault(_cpe_target(match), ([], []))
+            group[0].extend(found)
+            if span is not None:
+                group[1].append(span)
+    for pair, by_target in tier2.items():
+        groups = [group for group in by_target.values() if group[0] or group[1]]
+        if groups:
+            evidence[pair] = ProductEvidence(tier=2, groups=groups)
+
+    # --- Tier 3: flat CPEs with a concrete version ---
+    if flat_cpes:
+        platform_criteria, platform_pairs = platform_cpe_filter(impacted, configs)
+        for cpe in flat_cpes:
+            if not isinstance(cpe, str) or cpe in platform_criteria:
+                continue
+            pair = _cpe_uri_pair(cpe)
+            if pair is None or pair in platform_pairs:
+                continue
+            if pair in evidence and evidence[pair].tier != 3:
+                continue
+            version = _extract_version_from_cpe(cpe)
+            if version is None:
+                continue
+            evidence.setdefault(pair, ProductEvidence(tier=3, groups=[([], [])])).groups[0][0].append(version)
+
+    return evidence
 
 
 def match_in_configuration(
@@ -731,97 +1418,43 @@ def match_in_configuration(
        vendor/product-matching entries. Wildcards (``*`` / ``-``) in the
        version component are **ignored** rather than matched: an unbounded
        wildcard CPE tells us nothing about a specific version.
+
+    A tier decides only when it carries version evidence for the product (a
+    pin or a range); an entry with ``[]`` or only ``*`` hands over to the next
+    tier. Entries and matches with ``vulnerable: False`` (platforms) are
+    skipped, and each tier's ranges go through :func:`effective_spans`
+    (release-branch rule). The tier selection lives in
+    :func:`collect_product_evidence`, which ``build_version_ranges`` uses as
+    well, so ``affectedVersion:`` queries and inventory pages agree.
     """
     item_vendor = _slug(item.vendor_slug)
     item_product = _slug(item.product_slug)
     item_version = item.version.strip()
     if not item_vendor or not item_product or not item_version:
         return False
+    evidence = collect_product_evidence(
+        impacted_products or [], cpe_configurations or [], flat_cpes or []
+    ).get((item_vendor, item_product))
+    return evidence_matches(item_version, evidence)
 
-    normalized_item = InventoryKey(
-        vendor_slug=item_vendor,
-        product_slug=item_product,
-        version=item_version,
-    )
-    branch_segments = _BRANCH_SCOPED_PRODUCTS.get((item_vendor, item_product))
 
-    # --- Tier 1: impacted_products (curated EUVD / enrichment data) ---
-    saw_product_in_impacted = False
-    for entry in impacted_products or []:
-        if not _impacted_product_matches_item(entry, normalized_item):
-            continue
-        saw_product_in_impacted = True
-        versions = entry.get("versions") or []
-        if not isinstance(versions, list):
-            continue
-        for raw_range in versions:
-            if not isinstance(raw_range, str):
-                continue
-            try:
-                if branch_segments is not None:
-                    matched = _version_in_branch_scoped_range(item_version, raw_range, branch_segments)
-                else:
-                    matched = _version_in_range_string(item_version, raw_range)
-                if matched:
-                    return True
-            except Exception as exc:  # pragma: no cover - defensive
-                log.debug(
-                    "inventory_matcher.range_string_error",
-                    range_str=raw_range,
-                    version=item_version,
-                    error=str(exc),
-                )
-    if saw_product_in_impacted:
-        # The curated source listed this exact vendor/product but no version
-        # range matched. Trust it.
+def evidence_matches(item_version: str, evidence: ProductEvidence | None) -> bool:
+    """Decide one version against the evidence of its product."""
+    if evidence is None:
         return False
-
-    # --- Tier 2: cpe_configurations (structured NVD range data) ---
-    saw_product_in_cpe = False
-    for config in cpe_configurations or []:
-        for match in _iter_matches(config.nodes):
-            mv = _slug(match.vendor)
-            mp = _slug(match.product)
-            if mv != item_vendor or mp != item_product:
-                continue
-            saw_product_in_cpe = True
-            try:
-                if _match_cpe_entry(item_version, match):
-                    return True
-            except Exception as exc:  # pragma: no cover - defensive
-                log.debug(
-                    "inventory_matcher.match_error",
-                    vendor=item_vendor,
-                    product=item_product,
-                    version=item_version,
-                    error=str(exc),
-                )
-    if saw_product_in_cpe:
-        # Structured source evaluated this product's ranges — none matched.
+    try:
+        if evidence.branch_segments is not None:
+            return any(
+                _version_in_branch_scoped_range(item_version, raw, evidence.branch_segments)
+                for raw in evidence.raw_ranges or []
+            )
+        return any(
+            _matches_spans(item_version, pins, spans, branch_rule=evidence.branch_rule)
+            for pins, spans in evidence.groups
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.debug("inventory_matcher.match_error", version=item_version, error=str(exc))
         return False
-
-    # --- Tier 3: flat CPEs (last-resort fallback) ---
-    # Only honored when no other source has any entry for this vendor/product.
-    # Wildcard versions are ignored: they can't confirm a specific version.
-    if flat_cpes:
-        for cpe in flat_cpes:
-            if not isinstance(cpe, str) or not cpe.startswith("cpe:2.3:"):
-                continue
-            parts = cpe.split(":")
-            if len(parts) < 6:
-                continue
-            vendor = _slug(parts[3])
-            product = _slug(parts[4])
-            if vendor != item_vendor or product != item_product:
-                continue
-            cpe_version = parts[5]
-            if cpe_version in ("", "*", "-"):
-                # Unbounded wildcard gives no version information — skip.
-                continue
-            if _versions_equivalent(item_version, cpe_version):
-                return True
-
-    return False
 
 
 # --- High-level query helpers ---
@@ -870,6 +1503,8 @@ def items_for_vuln(
     if not cpe_configurations and not flat_cpes and not vendor_slug_set and not impacted_products:
         return []
 
+    # One evidence pass per CVE, not per inventory item.
+    evidence = collect_product_evidence(impacted_products, cpe_configurations, flat_cpes)
     results: list[dict[str, Any]] = []
     for raw in inventory:
         if not isinstance(raw, dict):
@@ -889,12 +1524,7 @@ def items_for_vuln(
         )
         if not key.version.strip():
             continue
-        if match_in_configuration(
-            key,
-            cpe_configurations,
-            flat_cpes,
-            impacted_products=impacted_products,
-        ):
+        if evidence_matches(key.version.strip(), evidence.get((key.vendor_slug, key.product_slug))):
             results.append(raw)
     return results
 

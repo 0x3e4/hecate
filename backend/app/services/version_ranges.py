@@ -1,4 +1,4 @@
-"""Numeric version-range extraction for OpenSearch-side "affected version" search.
+"""Version-range extraction for OpenSearch-side "affected version" search.
 
 Hecate stores the versions a CVE affects in three different shapes:
 
@@ -15,34 +15,30 @@ in OpenSearch: the range strings are opaque keywords, and the denormalised
 (``6.9``, ``6.9.5``, ``7.0``, ``7.0.2``), never the versions in between. A
 term query for ``7.0.1`` therefore misses every CVE that covers it.
 
-This module folds all three shapes into one flat, indexable list of
-half-open numeric intervals::
+This module folds them into one flat, indexable list of half-open intervals::
 
     versionRanges: [
-      {vendorSlug, productSlug, startNumeric, endNumeric},
+      {vendorSlug, productSlug, startKey, endKey},
       ...
     ]
 
-``startNumeric`` is **inclusive**, ``endNumeric`` is **exclusive**, so the
-whole question collapses into a single OpenSearch nested clause::
+``startKey`` is **inclusive**, ``endKey`` is **exclusive**, and both are
+:func:`app.services.inventory_matcher.version_sort_key` keywords, whose byte
+order is the matcher's version order. The question collapses into one nested
+clause::
 
-    startNumeric <= encode(7.0.1) < endNumeric
+    startKey <= key(7.0.1) < endKey
 
-Semantics deliberately mirror :mod:`app.services.inventory_matcher` — the
-same clause parser is reused, and the same fail-closed rules apply:
+Which ranges go in is decided by
+:func:`app.services.inventory_matcher.collect_product_evidence`, the function
+the inventory matcher uses too: the first tier with version evidence per
+product, platforms (``vulnerable: false``) skipped, the release-branch rule
+applied. Unconstrained ranges (``*``, ``-``, ``>=0``) and version-less wildcard
+CPEs carry no evidence and are never indexed.
 
-* Broad / unconstrained ranges (``*``, ``-``, ``>=0``, empty) are **not
-  indexed**. They carry no version information, and indexing them would make
-  every version match.
-* A bound that cannot be encoded numerically (pre-release suffixes such as
-  ``2.0.0-beta``) drops the whole range rather than widening it.
-* Version-less wildcard CPEs (``cpe:2.3:a:phpbb:phpbb:*``) are skipped —
-  consistent with ``_match_cpe_entry`` / tier 3 of ``match_in_configuration``.
-
-The encoding is the base-10000 fold already used for
-``cpeConfigurations.*.versionStartNumeric`` (see
-``app.services.ingestion.normalizer._encode_version_numeric``) so the two
-representations stay directly comparable.
+Indices built before the keys existed hold ``startNumeric`` / ``endNumeric``
+(base-10000 longs, segments capped at 9999). The query falls back to those for
+documents without keys until ``reindex-opensearch`` has rewritten them.
 """
 
 from __future__ import annotations
@@ -53,36 +49,30 @@ import structlog
 
 from app.services.ingestion.normalizer import _encode_version_numeric
 from app.services.inventory_matcher import (
-    _coerce_cpe_configurations,
-    _coerce_impacted_products,
-    _iter_matches,
-    _parse_range_clauses,
-    _slug,
+    KEY_AFTER,
+    KEY_MAX,
+    VersionSpan,
+    _parse_range,
+    coalesce_pins,
+    collect_product_evidence,
+    effective_spans,
+    version_sort_key,
 )
 
 log = structlog.get_logger()
 
-# One past the largest value ``_encode_version_numeric`` can produce
-# (9999.9999.9999.9999 -> 9_999_999_999_999_999). Used as the "no upper
-# bound" sentinel so every indexed range is a closed integer interval and
-# the query needs no ``exists`` gymnastics.
-VERSION_NUMERIC_MAX = 10**16
-
 # Cap on the number of nested entries emitted per document. Some CVEs (the
 # WordPress core advisories, for instance) enumerate 20+ release lines across
 # several vendor spellings; a handful of pathological records would otherwise
-# blow up the nested-document count. 512 covers every real record observed
-# while keeping the per-doc nested overhead bounded.
+# blow up the nested-document count. With consecutive pins folded and
+# overlapping intervals merged, the largest of 1,271 .NET advisories needs 346.
 MAX_VERSION_RANGES = 512
 
 
 def encode_version(value: str | None) -> int | None:
-    """Encode ``value`` to the base-10000 integer used by the range index.
+    """Legacy base-10000 encoding, only for documents indexed before the keys.
 
-    Thin wrapper over the normalizer's encoder that additionally tolerates a
-    leading ``v`` (``v1.2.3``). Returns ``None`` when the value carries no
-    parsable numeric release, which callers must treat as "cannot be indexed
-    / cannot be searched" rather than as an open bound.
+    Tolerates a leading ``v``. ``None`` when the value has no numeric release.
     """
     if not value:
         return None
@@ -94,173 +84,61 @@ def encode_version(value: str | None) -> int | None:
     return _encode_version_numeric(candidate)
 
 
-def _bounds_from_clauses(clauses: list[tuple[str, str]]) -> tuple[int, int] | None:
-    """Fold ``(op, version)`` clauses into a half-open ``[start, end)`` pair.
+def _encode_span(span: VersionSpan) -> tuple[str, str] | None:
+    """``[startKey, endKey)`` for a span; ``None`` if a bound has no key.
 
-    Returns ``None`` when the clause set is unconstrained (mirroring
-    ``_version_in_range_string``'s ``>= 0`` guard) or when any bound fails to
-    encode.
+    A bound without a key (a string the matcher can only compare by equality)
+    drops the range rather than widening it. A span without any bound carries
+    no version evidence and is not indexed.
     """
-    start_in: str | None = None
-    start_ex: str | None = None
-    end_in: str | None = None
-    end_ex: str | None = None
-    exact_values: list[str] = []
-
-    for op, ver in clauses:
-        if op in ("=", "=="):
-            exact_values.append(ver)
-        elif op == ">=":
-            start_in = ver
-        elif op == ">":
-            start_ex = ver
-        elif op == "<=":
-            end_in = ver
-        elif op == "<":
-            end_ex = ver
-        # "!=" is ignored — exclusions aren't modelled, same as the matcher.
-
-    has_relational = any(v is not None for v in (start_in, start_ex, end_in, end_ex))
-
-    # Plain "1.2.3" with no relational operator: an exact pin.
-    if exact_values and not has_relational:
-        encoded = encode_version(exact_values[0])
-        if encoded is None:
-            return None
-        return encoded, encoded + 1
-
-    if not has_relational:
+    if span.start is None and span.end is None:
         return None
-
-    # "from zero upwards with no ceiling" is unconstrained — fail closed.
-    if end_in is None and end_ex is None:
-        lower = start_in if start_in is not None else start_ex
-        lower_encoded = encode_version(lower)
-        if lower_encoded is None:
+    if span.start is None:
+        start = ""
+    else:
+        key = version_sort_key(span.start)
+        if key is None:
             return None
-        if lower_encoded == 0:
+        start = key if span.start_inclusive else key + KEY_AFTER
+    if span.end is None:
+        end = KEY_MAX
+    else:
+        key = version_sort_key(span.end)
+        if key is None:
             return None
-
-    return _half_open(
-        start_in=start_in,
-        start_ex=start_ex,
-        end_in=end_in,
-        end_ex=end_ex,
-    )
-
-
-def _half_open(
-    *,
-    start_in: str | None,
-    start_ex: str | None,
-    end_in: str | None,
-    end_ex: str | None,
-) -> tuple[int, int] | None:
-    """Convert inclusive/exclusive bound strings into ``[start, end)`` integers.
-
-    ``>= X`` -> ``start = enc(X)``; ``> X`` -> ``start = enc(X) + 1``.
-    ``< X``  -> ``end = enc(X)``;   ``<= X`` -> ``end = enc(X) + 1``.
-
-    Returns ``None`` when:
-
-    * no bound is supplied at all — a version-less wildcard CPE node
-      (``cpe:2.3:a:wordpress:wordpress:*`` with no ``versionStart/End*``)
-      carries no version evidence and must **not** be indexed as ``[0, MAX)``,
-      which would make every version query match it (fail-closed, mirroring
-      ``inventory_matcher._match_cpe_entry``); or
-    * a bound is present but unencodable — dropped rather than silently widened
-      to the sentinel.
-    """
-    start = 0
-    end = VERSION_NUMERIC_MAX
-    saw_bound = False
-
-    if start_in is not None:
-        encoded = encode_version(start_in)
-        if encoded is None:
-            return None
-        start = max(start, encoded)
-        saw_bound = True
-    if start_ex is not None:
-        encoded = encode_version(start_ex)
-        if encoded is None:
-            return None
-        start = max(start, encoded + 1)
-        saw_bound = True
-    if end_in is not None:
-        encoded = encode_version(end_in)
-        if encoded is None:
-            return None
-        end = min(end, encoded + 1)
-        saw_bound = True
-    if end_ex is not None:
-        encoded = encode_version(end_ex)
-        if encoded is None:
-            return None
-        end = min(end, encoded)
-        saw_bound = True
-
-    if not saw_bound:
-        return None
+        end = key + KEY_AFTER if span.end_inclusive else key
     if start >= end:
         return None
     return start, end
 
 
-def range_bounds_from_string(range_str: str) -> tuple[int, int] | None:
-    """Public helper: ``">= 7.0, < 7.0.2"`` -> ``(enc(7.0), enc(7.0.2))``.
+def _pin_interval(pin: str) -> tuple[str, str] | None:
+    key = version_sort_key(pin)
+    return (key, key + KEY_AFTER) if key is not None else None
 
-    ``None`` for broad, unconstrained or unencodable inputs.
+
+def _merge_intervals(intervals: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Union of half-open intervals, sorted; ``[a, b)`` + ``[b, c)`` -> ``[a, c)``."""
+    merged: list[tuple[str, str]] = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def range_bounds_from_string(range_str: str) -> tuple[str, str] | None:
+    """Public helper: ``">= 7.0, < 7.0.2"`` -> ``(key(7.0), key(7.0.2))``.
+
+    ``None`` for broad, unconstrained or unusable inputs. Evaluates one string
+    in isolation, without tier selection or the release-branch rule.
     """
-    clauses = _parse_range_clauses(range_str)
-    if not clauses:
-        return None
-    return _bounds_from_clauses(clauses)
-
-
-def _slug_pairs_from_impacted_entry(entry: dict[str, Any]) -> list[tuple[str, str]]:
-    """All (vendor, product) slug spellings an impacted-products entry answers to.
-
-    Mirrors ``_impacted_product_matches_item``: both the curated ``slug`` and
-    the slugified display ``name`` are accepted on each side, so the index
-    matches whichever spelling the user filters by.
-    """
-    vendor_obj = entry.get("vendor")
-    product_obj = entry.get("product")
-    if not isinstance(vendor_obj, dict) or not isinstance(product_obj, dict):
-        return []
-
-    vendors = {_slug(vendor_obj.get("slug")), _slug(vendor_obj.get("name"))}
-    products = {_slug(product_obj.get("slug")), _slug(product_obj.get("name"))}
-    vendors.discard("")
-    products.discard("")
-    return [(v, p) for v in sorted(vendors) for p in sorted(products)]
-
-
-def _version_from_cpe(criteria: str | None) -> str | None:
-    """Concrete version out of a CPE 2.3 URI, or ``None`` for wildcards."""
-    if not isinstance(criteria, str) or not criteria.startswith("cpe:2.3:"):
-        return None
-    parts = criteria.split(":")
-    if len(parts) < 6:
-        return None
-    version = parts[5].strip()
-    if version in ("", "*", "-"):
-        return None
-    return version
-
-
-def _cpe_slugs(criteria: str | None) -> tuple[str, str] | None:
-    if not isinstance(criteria, str) or not criteria.startswith("cpe:2.3:"):
-        return None
-    parts = criteria.split(":")
-    if len(parts) < 6:
-        return None
-    vendor = _slug(parts[3])
-    product = _slug(parts[4])
-    if not vendor or not product:
-        return None
-    return vendor, product
+    exact, span = _parse_range(range_str)
+    if exact:
+        return _pin_interval(exact[0])
+    return _encode_span(span) if span is not None else None
 
 
 def build_version_ranges(
@@ -269,98 +147,40 @@ def build_version_ranges(
     cpe_configurations: Iterable[Any] | None = None,
     cpes: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Flatten every version-range signal on a vulnerability into nested docs.
+    """Flatten a vulnerability's version evidence into nested range docs.
 
-    Returns a list of ``{vendorSlug, productSlug, startNumeric, endNumeric}``
-    dicts with ``endNumeric`` **exclusive**, deduplicated and capped at
-    :data:`MAX_VERSION_RANGES`. Empty list when the document carries no usable
-    version information (which correctly makes it unmatchable by an
-    affected-version query rather than matching everything).
+    Returns ``{vendorSlug, productSlug, startKey, endKey}`` dicts with
+    ``endKey`` **exclusive**, merged per product and capped at
+    :data:`MAX_VERSION_RANGES`. Empty when the document carries no usable
+    version information, which makes it unmatchable by an affected-version
+    query rather than matching everything.
     """
-    seen: set[tuple[str, str, int, int]] = set()
     out: list[dict[str, Any]] = []
+    evidence = collect_product_evidence(impacted_products, cpe_configurations, cpes)
 
-    def add(vendor: str, product: str, bounds: tuple[int, int] | None) -> bool:
-        """Append one interval. Returns False once the per-doc cap is hit."""
-        if bounds is None or not vendor or not product:
-            return True
-        key = (vendor, product, bounds[0], bounds[1])
-        if key in seen:
-            return True
-        if len(out) >= MAX_VERSION_RANGES:
-            return False
-        seen.add(key)
-        out.append(
-            {
-                "vendorSlug": vendor,
-                "productSlug": product,
-                "startNumeric": bounds[0],
-                "endNumeric": bounds[1],
-            }
-        )
-        return True
+    for (vendor, product), item in evidence.items():
+        intervals: list[tuple[str, str]] = []
+        for pins, spans in item.groups:
+            # NetScaler spans are already branch-scoped by their own rule.
+            if item.branch_segments is None and item.branch_rule:
+                spans = effective_spans(spans)
+            # Consecutive pins fold into one span, as in the matcher; the NuGet
+            # runtime advisories list hundreds of them. Pins are added after
+            # the branch rule so it never cuts one.
+            singles, pin_spans = coalesce_pins(pins)
+            for pin in singles:
+                bounds = _pin_interval(pin)
+                if bounds is not None:
+                    intervals.append(bounds)
+            for span in [*pin_spans, *spans]:
+                bounds = _encode_span(span)
+                if bounds is not None:
+                    intervals.append(bounds)
 
-    # --- Tier 1: curated impactedProducts range strings ---
-    for entry in _coerce_impacted_products(impacted_products):
-        pairs = _slug_pairs_from_impacted_entry(entry)
-        if not pairs:
-            continue
-        versions = entry.get("versions")
-        if not isinstance(versions, list):
-            continue
-        for raw_range in versions:
-            if not isinstance(raw_range, str):
-                continue
-            try:
-                bounds = range_bounds_from_string(raw_range)
-            except Exception as exc:  # pragma: no cover - defensive
-                log.debug(
-                    "version_ranges.range_string_error",
-                    range_str=raw_range,
-                    error=str(exc),
-                )
-                continue
-            for vendor, product in pairs:
-                if not add(vendor, product, bounds):
-                    return out
-
-    # --- Tier 2: structured NVD cpeConfigurations bounds ---
-    for config in _coerce_cpe_configurations(cpe_configurations):
-        for match in _iter_matches(config.nodes):
-            vendor = _slug(getattr(match, "vendor", None))
-            product = _slug(getattr(match, "product", None))
-            if not vendor or not product:
-                fallback = _cpe_slugs(getattr(match, "criteria", None))
-                if fallback is None:
-                    continue
-                vendor, product = fallback
-
-            bounds = _half_open(
-                start_in=getattr(match, "version_start_including", None),
-                start_ex=getattr(match, "version_start_excluding", None),
-                end_in=getattr(match, "version_end_including", None),
-                end_ex=getattr(match, "version_end_excluding", None),
-            )
-            if bounds is None:
-                # No usable range bounds — fall back to a concrete version in
-                # the CPE criteria. A bare wildcard yields nothing (fail-closed).
-                concrete = getattr(match, "version", None) or _version_from_cpe(
-                    getattr(match, "criteria", None)
-                )
-                encoded = encode_version(concrete)
-                bounds = (encoded, encoded + 1) if encoded is not None else None
-            if not add(vendor, product, bounds):
+        for start, end in _merge_intervals(intervals):
+            if len(out) >= MAX_VERSION_RANGES:
+                log.debug("version_ranges.cap_reached", vendor=vendor, product=product)
                 return out
-
-    # --- Tier 3: flat CPE URIs with a concrete version ---
-    for cpe in cpes or []:
-        slugs = _cpe_slugs(cpe)
-        if slugs is None:
-            continue
-        encoded = encode_version(_version_from_cpe(cpe))
-        if encoded is None:
-            continue
-        if not add(slugs[0], slugs[1], (encoded, encoded + 1)):
-            return out
+            out.append({"vendorSlug": vendor, "productSlug": product, "startKey": start, "endKey": end})
 
     return out
