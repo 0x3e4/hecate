@@ -319,7 +319,7 @@ in CI and gate the image build.
 
 ### Docker build
 
-Multi-stage build: `dev` and `build` on `node:24-alpine`, the `runtime` stage on `nginx:1.30.6-alpine` (with `apk upgrade` at build time), which serves `dist/` on port 4173 through [nginx.conf](nginx.conf): hashed `/assets/` are cached for good, every other path falls back to `index.html`. Node, npm and `serve` are no longer in the image, so their bundled dependencies stop turning up in scans. Security headers stay with the reverse proxy ([deploy/reverse-proxy/](../deploy/reverse-proxy/)).
+Multi-stage build: `dev` and `build` on `node:24-alpine`, the `runtime` stage on `nginx:1.31.8-alpine` (with `apk upgrade` at build time), which serves `dist/` on port 4173 through [nginx.conf](nginx.conf): hashed `/assets/` are cached for good, every other path falls back to `index.html`. Node, npm and `serve` are no longer in the image, so their bundled dependencies stop turning up in scans. Security headers stay with the reverse proxy ([deploy/reverse-proxy/](../deploy/reverse-proxy/)).
 
 ```sh
 docker build -t hecate-frontend ./frontend

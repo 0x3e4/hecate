@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Frontend and documentation images: the nginx runtime moves from `nginx:1.30.6-alpine` to `nginx:1.31.8-alpine` (mainline).
+
 ### Fixed
 
 - `affectedVersion:` and the inventory matcher no longer count the platform a vulnerable product runs on. NVD lists it as a `vulnerable: false` entry ("Next.js before 12.0.5, running on Node.js 15 or later"), and those ranges were indexed as affected: `vendorSlugs=nodejs&productSlugs=node-js&dqlQuery=affectedVersion:24.22.1` returned the Next.js advisories CVE-2021-43803 and CVE-2022-36046, Python 3.14.10 returned the Odoo advisories CVE-2020-29396 and CVE-2021-32052, and inventory pages and inventory alerts flagged the same versions. Such entries are skipped in `impactedProducts`, in the CPE configurations, and for the flat CPE list, which carries no flag of its own; a missing flag still means affected. The NVD aggregation of `impactedProducts` no longer marks a product as not vulnerable because it is also a platform somewhere else in the advisory, and no longer mixes platform ranges into its versions.

@@ -23,7 +23,7 @@ ARG DOCS_SITE_URL
 # --strict fails the build on broken links and pages missing from the nav.
 RUN mkdocs build --strict --site-dir /site
 
-FROM nginx:1.30.6-alpine
+FROM nginx:1.31.8-alpine
 # The nginx tag is rebuilt only now and then; Alpine fixes (curl, brotli,
 # expat) land in between, so take them at build time.
 RUN apk upgrade --no-cache
