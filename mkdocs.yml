@@ -91,4 +91,5 @@ nav:
   - Reference:
       - Configuration: configuration.md
       - Architecture: architecture.md
+      - How Hecate Compares: comparison.md
   - Changelog: changelog.md

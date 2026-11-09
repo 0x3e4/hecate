@@ -2,9 +2,14 @@
 
 # Hecate
 
-> Vulnerability management platform that aggregates, normalises, enriches, and analyses security advisories — and actively scans container images and source repositories (SCA).
+> Self-hosted vulnerability management – aggregate, search and act on advisories, scan your images and repos. AI optional.
 
-Hecate ingests data from **10 external sources** (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV, CERT advisory feeds), normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, and DevSkim against your container images and source repos.
+**[Live demo](https://hecate.pw)** · **[Quick start](#quick-start-docker-compose)** · [Documentation](https://docs.hecate.pw) · [How Hecate compares](#how-hecate-compares)
+
+Hecate ingests **9 vulnerability data sources** (EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL, CPE, CWE, CAPEC) plus CERT, vendor and community advisory feeds, normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, and DevSkim against your container images and source repos.
+
+> [!NOTE]
+> **Works without AI.** Every core feature runs without an API key: the catalogue and its search, SCA scanning, SBOM and VEX, malware detection, inventory matching, notifications, the deterministic attack-path graph per CVE and the ATT&CK chain per scan. AI analysis stays off until a provider is configured and only adds narrative and triage text on top, with a local model (Ollama, vLLM, LM Studio) or a cloud provider.
 
 ![Python](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?logo=fastapi&logoColor=white)
@@ -93,6 +98,44 @@ Hecate ingests data from **10 external sources** (EUVD, NVD, CISA KEV, CPE, CWE,
 
 ---
 
+## Quick start (Docker Compose)
+
+> [!NOTE]
+> Requires Docker + Docker Compose.
+
+```sh
+# 1. Create configuration
+cp .env.example .env
+cp docker-compose.yml.example docker-compose.yml
+
+# 2. Edit secrets (Mongo password, OpenSearch password, API keys, …)
+nano .env
+
+# 3. Bring the stack up
+docker compose up --build
+```
+
+### Default endpoints
+
+| Service | URL |
+| --- | --- |
+| Frontend | <http://localhost:4173> |
+| Backend API | <http://localhost:8000/api/v1> |
+| Health check | <http://localhost:8000/api/v1/status/health> |
+| MongoDB | `mongodb://localhost:27017` |
+| OpenSearch | <https://localhost:9200> |
+| Scanner sidecar | <http://localhost:8080> |
+| Apprise (internal) | `http://apprise:8000` |
+
+### Behind a reverse proxy
+
+For a live deployment, terminate TLS at a reverse proxy. Ready-to-adapt **nginx**, **Caddy**, and
+**Traefik** templates — terminating HTTPS, routing `/api` / `/mcp` / SSE to the backend, and setting
+a hardened HTTP security-header set (HSTS, a strict CSP, `X-Frame-Options`, `Permissions-Policy`, …) —
+live in [`deploy/reverse-proxy/`](deploy/reverse-proxy/).
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -136,10 +179,11 @@ flowchart TB
 
 ## Table of contents
 
+- [Quick start (Docker Compose)](#quick-start-docker-compose)
 - [Highlights](#highlights)
+- [How Hecate compares](#how-hecate-compares)
 - [Project layout](#project-layout)
 - [Core capabilities](#core-capabilities)
-- [Quick start (Docker Compose)](#quick-start-docker-compose)
 - [Local development](#local-development)
 - [API surface](#api-surface)
 - [Status badges](#status-badges)
@@ -157,7 +201,8 @@ flowchart TB
 | --- | --- |
 | **Needs attention** | Dashboard panel of what CISA KEV listed or several CERTs or vendors named this week, with anything in your stack first. Community posts add context but never make a CVE trend. |
 | **Advisories** | Feeds of CERTs, vendors and community accounts (Mastodon, blogs) merged into topics through shared CVEs, with your stack first and round-ups kept apart. Manage the feeds on System → Data or with `CERT_FEEDS_EXTRA`. |
-| **10-source ingestion** | EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV, CERT feeds — normalised into a single schema with priority-gated upserts and a 3-tier cache. |
+| **Ingestion** | 9 vulnerability data sources (EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) plus CERT, vendor and community advisory feeds — normalised into a single schema with priority-gated upserts and a 3-tier cache. |
+| **Affected-version search** | `affectedVersion:7.0.1` finds advisories that cover a version inside a range, not only those that name it, per release branch and without the platforms a product runs on. The inventory uses the same decision. |
 | **Active SCA scanning** | 10 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, DevSkim) for container images and source repos. |
 | **Supply-chain malware detection** | 35 heuristic rules informed by real attacks (Shai-Hulud, LiteLLM, Trivy v0.69.4, Glassworm, Telnyx, Axios, …) plus a continuous OSV MAL-* watcher that retroactively injects findings into the latest scan of every affected target. |
 | **Provenance verification** | npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker — Sigstore, PEP 740, Go sumdb, Cosign. |
@@ -168,6 +213,38 @@ flowchart TB
 | **MCP server** | 40 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
 | **Notifications** | Apprise integration with rules, watch queries, message templates, and per-tag channel routing. |
 | **Bilingual UI** | German + English, browser detection, no external i18n framework. |
+| **AI analysis (optional)** | Disabled unless a provider is configured; local models supported (Ollama, vLLM, LM Studio and other OpenAI-compatible endpoints) as well as OpenAI, Anthropic and Gemini. Adds narrative and triage text to the deterministic results, in the web UI or through the MCP server with your own assistant. |
+
+---
+
+## How Hecate compares
+
+Status: November 2026. Corrections welcome – open an issue if something is outdated.
+
+The tools solve different problems: Dependency-Track manages SBOM components, DefectDojo collects findings from other scanners, OpenCVE and Vulnerability-Lookup are vulnerability databases with alerting, Snyk and Aikido are commercial developer-security platforms. Values for the others come only from their official docs, websites and repositories (read 2026-11-09); Hecate's were checked against its code. `?` means the official sources do not settle it. Every cell has a source in **[docs/comparison.md](docs/comparison.md)**.
+
+| | Hecate | Dependency-Track | OpenCVE (CE) | DefectDojo (OSS) | Vulnerability-Lookup | Snyk | Aikido |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Operating model | Self-hosted | Self-hosted | Self-hosted; Cloud separate | Self-hosted; Pro also SaaS | Self-hosted + public instances | SaaS | SaaS; local scanner, appliance |
+| License | MIT | Apache-2.0 | BUSL-1.1 | BSD-3-Clause | AGPL-3.0 | Proprietary | Proprietary |
+| Searchable advisory DB | Keyword, DQL, regex | Lookup per vulnerability | CVEs, query language | No (findings only) | Full-text + API | security.snyk.io | Aikido Intel (browse) |
+| Data sources | EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL (EPSS), CPE, CWE, CAPEC; CERT, vendor and community feeds | NVD, GHSA, OSV + analyzers; EUVD only as KEV flag | MITRE, NVD, Vulnrichment, Red Hat; EUVD not in docs | Imported reports (360+ parsers) | Many incl. CSAF, national DBs; EUVD only as KEV | NVD + own research; EUVD not mentioned | Intel, NVD, GHSA, distros; EUVD not listed |
+| Version-range search | `affectedVersion:` query | Internal only | No | No | Not documented | Per-version pages | Not documented |
+| SCA scanning (images, repos) | Trivy, Grype, Syft, OSV-Scanner, Semgrep, TruffleHog, DevSkim, Dockle, Dive, Hecate Analyzer | No, ingests SBOMs | No | No, imports results | No | Yes | Yes |
+| SBOM import / export | CycloneDX, SPDX / CycloneDX 1.5, SPDX 2.3 | CycloneDX / CycloneDX | None | CycloneDX, SPDX / Pro only | None | Both, Enterprise only | CycloneDX, SPDX / CSV, SPDX, CycloneDX |
+| VEX | CycloneDX import/export, OpenVEX sources, carry-forward | CycloneDX import/export | None | OpenVEX import | Reads vendor CSAF VEX | ? | CycloneDX export |
+| Supply-chain malware | Heuristics, MAL-* feed, SBOM watcher | Integrity check only | Not documented | Not documented | OpenSSF malicious-packages data | Malicious packages in DB | Scanning (Pro+), Safe Chain |
+| AI features | Optional, off by default, local models | None | Optional summaries, local models | None (Pro only) | Optional, local models | Built in; no local models documented | Built in; local only on appliance |
+| Works fully without AI | Yes | Yes | Yes | Yes | Yes | ? | Partly / ? |
+| MCP server | Built in, 40 tools | None official | None | Separate repo; built in on Pro | Separate repo (VulnMCP) | In the CLI | `@aikidosec/mcp` |
+| Notifications / integrations | Apprise, REST, CI; no ticketing | Email, Slack, Teams, Jira, Kafka, webhooks, DefectDojo | Email, Slack, webhooks | Email, Slack, Teams, Jira/GitHub two-way | Email/webhooks, RSS, MISP | SCM, CI, IDE, Jira, Slack | Slack, Teams, 14 trackers, CI, SIEM |
+| Project started | 2025 | 2013 | 2020 | 2015 | 2022 | 2015 | 2022 |
+| Policy engine | License policies, CI severity gate | CEL policies, build gates | ? | ? | ? | ? | ? |
+| Commercial support | None | None found | Cloud plans | Pro | ? | Paid plans | Paid plans |
+
+Where the others are ahead: Dependency-Track, DefectDojo and OpenCVE have years of releases and large communities; Dependency-Track has a real policy engine; DefectDojo, Snyk and Aikido integrate with ticketing, SCM and CI tools far beyond Hecate; Vulnerability-Lookup reads more sources, national databases included; the commercial products come with support. Hecate is a young solo project.
+
+Main sources: [Dependency-Track](https://dependencytrack.github.io/docs/next/) · [OpenCVE](https://docs.opencve.io/) · [DefectDojo editions](https://docs.defectdojo.com/get_started/about/defectdojo_versions/) · [Vulnerability-Lookup](https://www.vulnerability-lookup.org/sources) · [Snyk](https://docs.snyk.io/) · [Aikido](https://help.aikido.dev/).
 
 ---
 
@@ -297,45 +374,7 @@ scanner/
 - **Backup & restore** for vulnerabilities (EUVD / NVD / all), saved searches, and the environment inventory.
 - **Saved searches** with sidebar integration and audit trail.
 - **Statistics** via OpenSearch aggregations with MongoDB fallback.
-- **Manual sync triggers** for all 10 sources via the API.
-
----
-
-## Quick start (Docker Compose)
-
-> [!NOTE]
-> Requires Docker + Docker Compose.
-
-```sh
-# 1. Create configuration
-cp .env.example .env
-cp docker-compose.yml.example docker-compose.yml
-
-# 2. Edit secrets (Mongo password, OpenSearch password, API keys, …)
-nano .env
-
-# 3. Bring the stack up
-docker compose up --build
-```
-
-### Default endpoints
-
-| Service | URL |
-| --- | --- |
-| Frontend | <http://localhost:4173> |
-| Backend API | <http://localhost:8000/api/v1> |
-| Health check | <http://localhost:8000/api/v1/status/health> |
-| MongoDB | `mongodb://localhost:27017` |
-| OpenSearch | <https://localhost:9200> |
-| Scanner sidecar | <http://localhost:8080> |
-| Apprise (internal) | `http://apprise:8000` |
-
-### Behind a reverse proxy
-
-For a live deployment, terminate TLS at a reverse proxy. Ready-to-adapt **nginx**, **Caddy**, and
-**Traefik** templates — terminating HTTPS, routing `/api` / `/mcp` / SSE to the backend, and setting
-a hardened HTTP security-header set (HSTS, a strict CSP, `X-Frame-Options`, `Permissions-Policy`, …) —
-live in [`deploy/reverse-proxy/`](deploy/reverse-proxy/).
+- **Manual sync triggers** for every source, the advisory feeds included, via the API.
 
 ---
 
