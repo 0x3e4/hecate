@@ -727,8 +727,8 @@ export function AttackPathGraphView({
         {!aiEnabled ? (
           <p className="vulnerability-detail-path-note">
             {t(
-              "Configure an AI provider in System settings to generate prose attack scenarios.",
-              "Konfiguriere einen AI-Provider in den Systemeinstellungen, um eine Prosa-Angriffsbeschreibung zu erzeugen.",
+              "The graph above needs no AI. A written scenario can be added once an AI provider is configured on the server, a local model through Ollama or vLLM included.",
+              "Der Graph oben braucht keine KI. Eine ausformulierte Beschreibung kommt dazu, sobald auf dem Server ein KI-Anbieter eingerichtet ist, auch ein lokales Modell über Ollama oder vLLM.",
             )}
           </p>
         ) : null}

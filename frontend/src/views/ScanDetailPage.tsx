@@ -909,13 +909,17 @@ export const ScanDetailPage = () => {
         >
           {t("History", "Verlauf")}
         </TabPill>
-        <TabPill
-          active={tab === "ai-analysis"}
-          onClick={() => setTab("ai-analysis")}
-          count={scan.aiAnalyses && scan.aiAnalyses.length > 0 ? scan.aiAnalyses.length : null}
-        >
-          {t("AI analysis", "KI-Analyse")}
-        </TabPill>
+        {/* Without a provider the tab could only say so; analyses stored
+            earlier stay reachable. */}
+        {(aiEnabled || (scan.aiAnalyses?.length ?? 0) > 0) && (
+          <TabPill
+            active={tab === "ai-analysis"}
+            onClick={() => setTab("ai-analysis")}
+            count={scan.aiAnalyses && scan.aiAnalyses.length > 0 ? scan.aiAnalyses.length : null}
+          >
+            {t("AI analysis", "KI-Analyse")}
+          </TabPill>
+        )}
         <TabPill
           active={tab === "compare"}
           onClick={() => {
