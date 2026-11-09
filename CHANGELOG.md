@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [2.2.1] - 2026-11-09
+
 > **Existing instances: rebuild the search index after updating.** The affected-version fixes below change how version ranges are written to OpenSearch, and existing records only get the new ranges when they are indexed again. Run once, after the new backend is up:
 >
 > ```bash
