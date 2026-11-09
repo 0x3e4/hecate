@@ -1,10 +1,14 @@
 # Hecate
 
 Hecate is a self-hosted **vulnerability management and software-composition-analysis (SCA)**
-platform. It pulls vulnerability intelligence from nine upstream feeds, normalises everything into
-one schema, indexes it for fast search, scans your container images and source repositories, and
-then tells you what actually affects the products you run — in the web UI, over a REST API, and
-through an MCP server you can talk to from Claude Desktop.
+platform. It pulls vulnerability intelligence from nine data sources plus CERT, vendor and community
+advisory feeds, normalises everything into one schema, indexes it for fast search, scans your
+container images and source repositories, and then tells you what actually affects the products you
+run — in the web UI, over a REST API, and through an MCP server you can talk to from Claude Desktop.
+
+Everything works without AI. AI analysis is an optional add-on that stays off until you configure a
+provider, a local model through Ollama or vLLM included, and only adds narrative and triage text to
+results Hecate computes on its own.
 
 ![Hecate dashboard](img/hecate-dash.png)
 
