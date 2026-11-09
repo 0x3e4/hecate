@@ -794,7 +794,17 @@ async def _run_osv_scanner(
 
         # --no-resolve: prevent OSV's transitive dep resolver from guessing
         # minimum versions for manifest files (produces false positives)
-        cmd = ["osv-scanner", "scan", "--format", "json", "--no-resolve", "-r", scan_dir]
+        # --x-disable-plugins sbom: by default OSV-Scanner also reads every
+        # committed *.cdx.json / *.spdx.json / bom.json as an inventory. A repo
+        # that ships a VEX or SBOM of its *image* (Hecate's own vex/ folder)
+        # then reported the image's Debian and Go packages as repository
+        # dependencies: 119 of 121 findings on the Hecate repo. Trivy and Grype
+        # don't read those files in a source scan either; lockfiles and
+        # manifests are unaffected.
+        cmd = [
+            "osv-scanner", "scan", "--format", "json", "--no-resolve",
+            "--x-disable-plugins", "sbom", "-r", scan_dir,
+        ]
 
         stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("osv-scanner"))
         # osv-scanner returns exit code 1 when vulnerabilities are found (expected)

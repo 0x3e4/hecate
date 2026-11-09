@@ -246,3 +246,14 @@ async def test_concurrent_dive_runs_do_not_share_files(monkeypatch):
     assert len(set(archives)) == 2
     assert first.report["image"] != second.report["image"]
     assert not any(os.path.exists(os.path.dirname(path)) for path in archives)
+
+
+async def test_osv_scanner_does_not_read_committed_sbom_or_vex_files(captured, tmp_path):
+    """A repo that ships a CycloneDX VEX or SBOM of its image (Hecate's own
+    ``vex/*.cdx.json``) must not have the image's packages reported as its
+    dependencies; only lockfiles and manifests count in a source scan."""
+    await scanners._run_osv_scanner("https://example.com/repo.git", "source_repo", str(tmp_path))
+    cmd = captured[-1]
+    assert cmd[:2] == ["osv-scanner", "scan"]
+    assert cmd[cmd.index("--x-disable-plugins") + 1] == "sbom"
+    assert cmd[-2:] == ["-r", str(tmp_path)]

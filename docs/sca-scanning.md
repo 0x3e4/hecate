@@ -56,6 +56,11 @@ scanners chosen at its first scan and reuses them for later auto-scans.
 | devskim | Microsoft SAST, strong .NET coverage (shares the SAST tab) |
 | trufflehog | Secret scanning for source repositories |
 
+In a repository scan the dependency scanners read lockfiles and manifests. SBOM or VEX files committed
+to the repository (`*.cdx.json`, `*.spdx.json`, `bom.json`) are not treated as the repository's
+dependencies: they usually describe something else, such as the container image built from it. To
+check an SBOM, import it as its own target instead.
+
 The image-only scanners (Dockle, Dive) and the repo-only scanners (Semgrep, DevSkim, TruffleHog) only
 produce output for the matching target type. Container images are pulled directly through registry
 APIs — no Docker socket is mounted — and Dive uses Skopeo to fetch the image as an archive. Registry
