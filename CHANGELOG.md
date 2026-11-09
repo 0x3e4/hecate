@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- AI assessments, attack-path narratives and batch-analysis references on vulnerabilities no longer disappear when the record is written again. They live only in the search index, and every pipeline update, manual refresh, deps.dev enrichment and `reindex-opensearch` replaced the whole indexed document, so a CVE that NVD or EUVD touched after its analysis lost it. These writes now replace the document but keep those fields. Analyses lost before this release cannot be recovered; scan AI analyses and attack chains are stored in MongoDB and were never affected.
+
 ## [2.2.1] - 2026-11-09
 
 > **Existing instances: rebuild the search index after updating.** The affected-version fixes below change how version ranges are written to OpenSearch, and existing records only get the new ranges when they are indexed again. Run once, after the new backend is up:

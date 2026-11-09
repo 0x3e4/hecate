@@ -81,7 +81,33 @@ docker compose exec backend python -m app.cli reindex-opensearch
 ```
 
 It reads from MongoDB, so nothing is lost if you skip or interrupt it — search simply keeps returning
-results from whatever has been indexed so far. Expect it to take a while on a large corpus.
+results from whatever has been indexed so far. Expect it to take a while on a large corpus. AI
+assessments and attack-path narratives of vulnerabilities exist only in the index; the reindex keeps
+them on every record it rewrites.
+
+If the backend logs `opensearch.ensure_mappings_failed` with *cannot change object mapping from
+non-nested to nested*, the index predates a field type Hecate now needs, and a reindex cannot change
+that. Check the two fields (this assumes the default index name and the bundled OpenSearch):
+
+```bash
+docker compose exec -T opensearch sh -c 'curl -sk -u "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD" https://localhost:9200/hecate-vulnerabilities/_mapping' \
+  | python3 -c "import json,sys; p=list(json.load(sys.stdin).values())[0]['mappings']['properties']; print({k: p.get(k,{}).get('type','object') for k in ('impactedProducts','versionRanges')})"
+```
+
+If `versionRanges` shows `object` instead of `nested`, affected-version search cannot work and the
+index has to be created again. Stop the backend first: a running backend would recreate the deleted
+index on its next write, without the mapping.
+
+```bash
+docker compose stop backend
+docker compose exec -T opensearch sh -c 'curl -sk -u "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD" -X DELETE https://localhost:9200/hecate-vulnerabilities'
+docker compose run --rm backend python -m app.cli reindex-opensearch
+```
+
+The reindex creates the index with the current mapping before it writes. Once it prints
+`Reindexing N vulnerabilities`, `docker compose start backend` can run alongside it. Deleting the
+index removes the AI assessments and attack-path narratives of vulnerabilities, since MongoDB has no
+copy of them; scan analyses are unaffected.
 
 ### Shrinking the change history
 

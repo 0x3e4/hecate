@@ -431,6 +431,57 @@ def _resolve_refresh(wait_for_refresh: bool | None) -> str | bool:
     return "wait_for" if wait_for_refresh else False
 
 
+# Fields that exist only on the OpenSearch copy of a vulnerability: the AI
+# assessments, attack-path narratives and batch references are appended by
+# scripted updates (``VulnerabilityService.save_*``) and MongoDB never holds
+# them. Every full write (pipeline upsert, manual refresh, deps.dev
+# enrichment, ``reindex-opensearch``) builds the document from MongoDB, so a
+# plain ``index`` call replaced the document and dropped them.
+PRESERVED_VULNERABILITY_FIELDS: tuple[str, ...] = (
+    "ai_assessment",
+    "ai_assessments",
+    "attack_path",
+    "attack_paths",
+    "batch_analyses",
+)
+
+_REPLACE_KEEPING_FIELDS_SCRIPT = """
+Map kept = new HashMap();
+for (def field : params.preserve) {
+    if (ctx._source.containsKey(field)) {
+        kept.put(field, ctx._source.get(field));
+    }
+}
+ctx._source.clear();
+ctx._source.putAll(params.doc);
+for (def entry : kept.entrySet()) {
+    if (!ctx._source.containsKey(entry.getKey())) {
+        ctx._source.put(entry.getKey(), entry.getValue());
+    }
+}
+"""
+
+
+def replace_keeping_fields_body(
+    document: dict[str, Any], preserve: tuple[str, ...] = PRESERVED_VULNERABILITY_FIELDS
+) -> dict[str, Any]:
+    """Update body that replaces a document but keeps ``preserve`` fields.
+
+    The new document wins for a field it carries itself. ``scripted_upsert``
+    runs the same script on an empty source when the document is new, so the
+    document travels once instead of again as ``upsert``.
+    """
+    return {
+        "scripted_upsert": True,
+        "script": {
+            "lang": "painless",
+            "source": _REPLACE_KEEPING_FIELDS_SCRIPT,
+            "params": {"doc": document, "preserve": list(preserve)},
+        },
+        "upsert": {},
+    }
+
+
 async def async_index_document(
     index: str,
     document_id: str,
@@ -438,7 +489,11 @@ async def async_index_document(
     *,
     wait_for_refresh: bool | None = None,
 ) -> None:
-    """Index a single document. See ``opensearch_bulk_mode`` for refresh semantics."""
+    """Index a single document. See ``opensearch_bulk_mode`` for refresh semantics.
+
+    On the vulnerability index the write replaces the document but keeps
+    ``PRESERVED_VULNERABILITY_FIELDS``; other indices take a plain ``index``.
+    """
     client = get_client()
     loop = asyncio.get_running_loop()
 
@@ -447,11 +502,20 @@ async def async_index_document(
         ensure_vulnerability_index(index)
 
     refresh = _resolve_refresh(wait_for_refresh)
+
+    def _write() -> Any:
+        if index == settings.opensearch_index:
+            return client.update(
+                index=index,
+                id=document_id,
+                body=replace_keeping_fields_body(document),
+                refresh=refresh,
+                retry_on_conflict=3,
+            )
+        return client.index(index=index, id=document_id, body=document, refresh=refresh)
+
     try:
-        await loop.run_in_executor(
-            None,
-            lambda: client.index(index=index, id=document_id, body=document, refresh=refresh),
-        )
+        await loop.run_in_executor(None, _write)
         _mark_opensearch_available()
     except (OSConnectionError, OpenSearchException) as exc:
         _mark_opensearch_unavailable(error=exc, operation="index", index=index, document_id=document_id)

@@ -478,7 +478,7 @@ async def run_opensearch_reindex() -> dict[str, Any]:
     from app.repositories.vulnerability_repository import VulnerabilityRepository
     from app.repositories.ingestion_state_repository import IngestionStateRepository
     from app.models.vulnerability import VulnerabilityDocument
-    from app.db.opensearch import get_client, ensure_vulnerability_index
+    from app.db.opensearch import get_client, ensure_vulnerability_index, replace_keeping_fields_body
     from app.core.config import settings
     from app.services.ingestion.job_tracker import JobTracker
     from opensearchpy.helpers import bulk
@@ -519,10 +519,15 @@ async def run_opensearch_reindex() -> dict[str, Any]:
 
                 # Validate and convert to VulnerabilityDocument
                 vuln = VulnerabilityDocument.model_validate(doc)
-                os_doc = vuln.opensearch_document()
-                os_doc["_index"] = settings.opensearch_index
-                os_doc["_id"] = vuln.vuln_id
-                bulk_batch.append(os_doc)
+                # Replace the indexed document but keep the AI assessments,
+                # attack paths and batch references that only OpenSearch holds.
+                bulk_batch.append({
+                    "_op_type": "update",
+                    "_index": settings.opensearch_index,
+                    "_id": vuln.vuln_id,
+                    "retry_on_conflict": 3,
+                    **replace_keeping_fields_body(vuln.opensearch_document()),
+                })
 
             except Exception as exc:
                 failed += 1
