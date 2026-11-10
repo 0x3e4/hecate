@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tags with a pre-release suffix (`2.3.0-beta.1`) no longer create a GitHub release or GHCR images; only plain `X.Y.Z` tags do.
+
 ### Fixed
 
 - AI assessments, attack-path narratives and batch-analysis references on vulnerabilities no longer disappear when the record is written again. They live only in the search index, and every pipeline update, manual refresh, deps.dev enrichment and `reindex-opensearch` replaced the whole indexed document, so a CVE that NVD or EUVD touched after its analysis lost it. These writes now replace the document but keep those fields. Analyses lost before this release cannot be recovered; scan AI analyses and attack chains are stored in MongoDB and were never affected.
