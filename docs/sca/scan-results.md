@@ -177,6 +177,24 @@ reason.
     Matching is on the vulnerability ID plus package name (falling back to title plus package for findings without a
     CVE), so the work you put into triaging one scan is not lost the moment the target is scanned again.
 
+## Exporting findings
+
+**Export CSV** and **Export JSON** in the Findings toolbar download the vulnerability findings of this scan. With
+rows ticked, only those are exported; with none ticked, every row the current search, severity filter and
+**Show dismissed** setting shows. The count on the button says how many rows the file will hold. One row is one
+merged finding (vulnerability + package + version across scanners), as in the table.
+
+Both formats carry the vulnerability ID, severity, CVSS score, package name, version, type and path, fix version
+and fix state, the advisory's fixed versions, title, description, scanners, data source, VEX status with
+justification and detail, the dismissal flag and reason, and the reference URLs. The JSON file adds a `metadata`
+block (export time, `scope` = `selected` or `filtered`, target, image or commit, scan times) and the raw finding IDs
+behind each row. The CSV is UTF-8 with a BOM so Excel shows umlauts correctly; a value that starts with `=`, `+`,
+`-` or `@` gets a leading `'`, because package names and titles come from the scanned code and a spreadsheet would
+otherwise run them as a formula.
+
+The export covers the Findings tab only; malware alerts, SAST, secrets and best-practice checks stay in their own
+tabs. For a standards format use the CycloneDX / SPDX SBOM and the VEX export on the SBOM tab.
+
 ## The target overview page
 
 ![Target overview](../img/hecate-target-detail.png)

@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Scan findings can be exported as CSV or JSON from the Findings tab of a scan: the ticked rows, or every row the current filter shows when none is ticked. The JSON file carries the scan and target metadata, the CSV opens in Excel with umlauts intact and neutralises values a spreadsheet would run as a formula.
+
 ### Changed
 
 - Tags with a pre-release suffix (`2.3.0-beta.1`) no longer create a GitHub release or GHCR images; only plain `X.Y.Z` tags do.

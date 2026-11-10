@@ -12,6 +12,7 @@ import {
   LuChevronDown,
   LuChevronUp,
   LuCircleAlert,
+  LuDownload,
   LuExternalLink,
   LuList,
   LuMinus,
@@ -39,6 +40,8 @@ import { Toast, useToast } from "../components/Toast";
 import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
+import { downloadText } from "../utils/download";
+import { findingsExportFilename, findingsToCsv, findingsToJson } from "../utils/findingsExport";
 import { safeHref } from "../utils/safeHref";
 import { getCurrentTimezone } from "../timezone/storage";
 import {
@@ -790,6 +793,20 @@ export const ScanDetailPage = () => {
   const toggleAllVisible = (checked: boolean) =>
     setSelectedKeys(checked ? new Set(filteredMerged.map(f => f.key)) : new Set<string>());
 
+  // Export: the checked rows, or every row the current filter shows when none is checked.
+  const selectedVisible = filteredMerged.filter(f => selectedKeys.has(f.key));
+  const exportRows = selectedVisible.length > 0 ? selectedVisible : filteredMerged;
+  const handleFindingsExport = (format: "json" | "csv") => {
+    if (!scan || exportRows.length === 0) return;
+    const filename = findingsExportFilename(scan, format);
+    if (format === "csv") {
+      downloadText(findingsToCsv(exportRows), filename, "text/csv;charset=utf-8");
+    } else {
+      const scope = selectedVisible.length > 0 ? "selected" : "filtered";
+      downloadText(findingsToJson(exportRows, scan, scope), filename, "application/json");
+    }
+  };
+
   return (
     <div className="page scan-detail">
       <Link to="/scans" className="scan-detail-back">
@@ -1058,6 +1075,21 @@ export const ScanDetailPage = () => {
             >
               {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
             </button>
+            {(["csv", "json"] as const).map(format => (
+              <button
+                key={format}
+                type="button"
+                className="btn"
+                onClick={() => handleFindingsExport(format)}
+                disabled={exportRows.length === 0}
+                title={selectedVisible.length > 0
+                  ? t(`Export the ${selectedVisible.length} selected findings`, `Die ${selectedVisible.length} ausgewählten Ergebnisse exportieren`)
+                  : t(`Export all ${exportRows.length} findings shown (select rows to narrow it down)`, `Alle ${exportRows.length} angezeigten Ergebnisse exportieren (Zeilen auswählen, um einzuschränken)`)}
+              >
+                <LuDownload aria-hidden="true" />
+                {t("Export", "Export")} {format.toUpperCase()} ({exportRows.length})
+              </button>
+            ))}
             {/* Open all CVEs in vulnerability list */}
             {(() => {
               const cveIds = [...new Set(filteredMerged.map(f => f.vulnerabilityId).filter((v): v is string => !!v))];
