@@ -14,7 +14,8 @@ worth-keeping queries can be saved as named searches.
 The detail page (`/vulnerability/:id`) is the full dossier for one entry: its scores, affected
 products, weaknesses and attack patterns, an optional AI write-up, a structural attack-path graph,
 and a complete change history of how the record evolved as feeds enriched it. From here you can pull
-a fresh copy from any upstream source and share the entry by link, email or Mastodon.
+a fresh copy from any upstream source and share the entry by link, Markdown, email, Teams or social
+networks.
 
 ![The vulnerability list in DQL mode](../img/hecate-vuln-dql-filter.png)
 
@@ -222,12 +223,22 @@ is not fetched.
 
 ### Sharing and copying
 
-The share button in the tab bar offers four ways to take the entry elsewhere: **Copy URL** for a
-direct link, **Share on Mastodon** with a pre-filled post, **Share by email** with a formatted
-subject and body (scores, vector, CWEs, affected products and references), and **Copy JSON to
-clipboard** for the full record minus its change history. The copy button in the header copies a
-compact text block — IDs, severity, vendors, products and the summary — for quick pasting into a
-ticket or chat.
+The share button in the page header takes the entry elsewhere:
+
+| Entry | What it does |
+| --- | --- |
+| **Copy link** | Copies the direct link to the entry. |
+| **Copy as Markdown** | Copies the linked ID with severity, CVSS and exploitation, the title and the start of the summary as a quote — ready for a Jira, GitHub or GitLab ticket, or a chat that renders Markdown. |
+| **Share via…** | Opens your system's share sheet (Signal, WhatsApp, Messages, …). Only shown where the browser supports it, usually on phones and on HTTPS. |
+| **Share by email** | Opens your mail client with a formatted subject and body: scores, vector, CWEs, affected products and references. |
+| **Share in Microsoft Teams** | Opens Teams' share dialog with the link and the headline. |
+| **Share on Mastodon / Bluesky / LinkedIn / X** | Opens the network's composer with a pre-filled post: ID, severity, CVSS, an *Exploited* mark when the CVE is exploited, the title and the link. Bluesky and X posts are shortened to fit the networks' limits. Mastodon goes through the instance picker at `s2f.kytta.dev`. |
+| **Copy JSON** / **Download JSON** | The full record without its change history, to the clipboard or as `<id>.json`. |
+
+The links point at the address you opened Hecate under. On an internal instance, people outside your
+network can't open them, so a post on a public network is mostly useful from a public instance like
+[hecate.pw](https://hecate.pw). The copy button next to the share button copies a compact text block — IDs, severity,
+vendors, products, the summary and the link — for quick pasting into a ticket or chat.
 
 ## Where to go next
 

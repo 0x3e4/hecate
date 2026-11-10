@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Scan findings can be exported as CSV or JSON from the Findings tab of a scan: the ticked rows, or every row the current filter shows when none is ticked. The JSON file carries the scan and target metadata, the CSV opens in Excel with umlauts intact and neutralises values a spreadsheet would run as a formula.
+- More ways to share a vulnerability from its detail page: **Copy as Markdown** (linked ID, severity, CVSS, title and summary for tickets and chats), the system share sheet where the browser offers it, Microsoft Teams, Bluesky, LinkedIn and X, and **Download JSON** next to **Copy JSON**. **Copy URL** is now **Copy link**, and the copy button in the header adds the link to its text block.
 
 ### Changed
 
