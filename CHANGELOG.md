@@ -6,10 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.2.2-beta.2] - 2026-11-10
 
 ### Added
 
+- **Import VEX** on the Findings tab and `POST /scans/vex/import` read OpenVEX as well as CycloneDX VEX; the format is detected. OpenVEX statements match by vulnerability and its aliases, and where a document gives one vulnerability different statuses per package, each statement only reaches the packages it names. A file in neither format is refused with a message instead of importing nothing.
+- VEX over MCP: `set_finding_vex` sets or clears the status of findings (by finding ids, or target and vulnerability), `import_vex` imports a CycloneDX VEX or OpenVEX document, `get_target_vex_sources`, `set_target_vex_sources` and `apply_target_vex_sources` manage a target's VEX sources, and `export_scan_vex` returns a scan's statuses as CycloneDX VEX. The writes need the `mcp:write` scope; a status set this way counts as set by hand, so a VEX source never overwrites it. Findings returned over MCP now carry their VEX status and whether they are dismissed.
 - Scan findings can be exported as CSV or JSON from the Findings tab of a scan: the ticked rows, or every row the current filter shows when none is ticked. The JSON file carries the scan and target metadata, the CSV opens in Excel with umlauts intact and neutralises values a spreadsheet would run as a formula.
 - More ways to share a vulnerability from its detail page: **Copy as Markdown** (linked ID, severity, CVSS, title and summary for tickets and chats), the system share sheet where the browser offers it, Microsoft Teams, Bluesky, LinkedIn and X, and **Download JSON** next to **Copy JSON**. **Copy URL** is now **Copy link**, and the copy button in the header adds the link to its text block.
 

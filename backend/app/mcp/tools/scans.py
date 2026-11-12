@@ -1347,6 +1347,10 @@ def _serialize_finding(finding: dict[str, Any]) -> dict[str, Any]:
         "description": (finding.get("description") or "")[:500],
         "cvssScore": finding.get("cvssScore") or finding.get("cvss_score"),
         "packageType": finding.get("packageType") or finding.get("package_type"),
+        "vexStatus": finding.get("vexStatus") or finding.get("vex_status"),
+        "vexJustification": finding.get("vexJustification") or finding.get("vex_justification"),
+        "vexUpdatedBy": finding.get("vexUpdatedBy") or finding.get("vex_updated_by"),
+        "dismissed": bool(finding.get("dismissed")),
     }
 
 
@@ -1449,4 +1453,5 @@ def _serialize_target(target: dict[str, Any]) -> dict[str, Any]:
         "latestScanId": target.get("latest_scan_id") or target.get("latestScanId"),
         "latestSummary": summary,
         "hasRunningScan": target.get("has_running_scan") or target.get("hasRunningScan") or False,
+        "vexSources": target.get("vex_sources") or target.get("vexSources") or [],
     }

@@ -660,6 +660,41 @@ class ScanFindingRepository:
             log.warning("scan_finding_repository.bulk_update_vex_failed", error=str(exc))
             return 0
 
+    async def bulk_update_vex_by_vulnerability_ids(
+        self,
+        target_id: str,
+        vulnerability_ids: list[str],
+        vex_status: str,
+        *,
+        package_names: list[str] | None = None,
+        vex_justification: str | None = None,
+        vex_detail: str | None = None,
+        vex_updated_by: str = "vex-import",
+    ) -> int:
+        """Apply one imported statement (any of its ids) to the target's findings.
+
+        Unlike a VEX source, an import overwrites whatever status a finding has.
+        ``package_names`` narrows the statement to those packages; ``vex_detail``
+        is only written when given.
+        """
+        query: dict[str, Any] = {"target_id": target_id, "vulnerability_id": {"$in": vulnerability_ids}}
+        if package_names:
+            query["package_name"] = {"$in": package_names}
+        update: dict[str, Any] = {
+            "vex_status": vex_status,
+            "vex_justification": vex_justification,
+            "vex_updated_at": datetime.now(tz=UTC),
+            "vex_updated_by": vex_updated_by,
+        }
+        if vex_detail is not None:
+            update["vex_detail"] = vex_detail
+        try:
+            result = await self.collection.update_many(query, {"$set": update})
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.bulk_update_vex_ids_failed", target_id=target_id, error=str(exc))
+            return 0
+
     async def bulk_update_vex_by_ids(
         self,
         finding_ids: list[str],

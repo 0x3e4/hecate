@@ -27,7 +27,7 @@ export const McpInfoPage = () => {
         )}
       />
       <div className="info-tags">
-        <span className="tag">{t("40 tools", "40 Tools")}</span>
+        <span className="tag">{t("46 tools", "46 Tools")}</span>
         <span className="tag">OAuth 2.0 + PKCE</span>
         <span className="tag">{t("Rate limited", "Rate-limitiert")}</span>
         <span className="tag">{t("Audit logged", "Audit-protokolliert")}</span>
@@ -84,7 +84,7 @@ export const McpInfoPage = () => {
         <ul className="info-list">
           <li>{t("Read tools (search, get_vulnerability, etc.) are available to anyone who successfully authenticates with the configured IdP.", "Lese-Tools (search, get_vulnerability usw.) stehen jedem zur Verfügung, der sich erfolgreich beim konfigurierten IdP authentifiziert.")}</li>
           <li>{t("Optionally narrow read access with ", "Optional kann der Lesezugriff über ")}<code>MCP_ALLOWED_USERS</code>{t(" (CSV of usernames/emails).", " (CSV von Benutzernamen/E-Mails) eingegrenzt werden.")}</li>
-          <li>{t("Write tools (trigger_scan, trigger_sync, the inventory writes and all save_* tools) require the caller's source IP to be in ", "Schreib-Tools (trigger_scan, trigger_sync, die Inventar-Schreibzugriffe und alle save_* Tools) erfordern, dass die Quell-IP in ")}<code>MCP_WRITE_IP_SAFELIST</code>{t(" (CSV of IPs or CIDR blocks) at authorize time. Only then is the mcp:write scope granted; tool calls check the scope on the token.", " (CSV von IPs oder CIDR-Blöcken) enthalten ist. Nur dann wird der mcp:write Scope erteilt und zur Aufrufzeit erneut geprüft.")}</li>
+          <li>{t("Write tools (trigger_scan, trigger_sync, the inventory and VEX writes and all save_* tools) require the caller's source IP to be in ", "Schreib-Tools (trigger_scan, trigger_sync, die Inventar- und VEX-Schreibzugriffe und alle save_* Tools) erfordern, dass die Quell-IP in ")}<code>MCP_WRITE_IP_SAFELIST</code>{t(" (CSV of IPs or CIDR blocks) at authorize time. Only then is the mcp:write scope granted; tool calls check the scope on the token.", " (CSV von IPs oder CIDR-Blöcken) enthalten ist. Nur dann wird der mcp:write Scope erteilt und zur Aufrufzeit erneut geprüft.")}</li>
           <li>{t("All OAuth events and tool invocations are recorded in the ", "Alle OAuth-Events und Tool-Aufrufe werden im ")}<a href="/audit">{t("audit log", "Audit-Log")}</a>{t(" with identity, email, source IP, and granted scope.", " mit Identität, E-Mail, Quell-IP und erteiltem Scope protokolliert.")}</li>
         </ul>
       </Section>
@@ -288,6 +288,12 @@ claude mcp get hecate`} />
               <tr><td><code>create_inventory_item</code></td><td>{t("Create an inventory item (write scope)", "Inventar-Eintrag anlegen (Schreib-Scope)")}</td></tr>
               <tr><td><code>update_inventory_item</code></td><td>{t("Update an inventory item (write scope)", "Inventar-Eintrag aktualisieren (Schreib-Scope)")}</td></tr>
               <tr><td><code>delete_inventory_item</code></td><td>{t("Delete an inventory item (write scope)", "Inventar-Eintrag löschen (Schreib-Scope)")}</td></tr>
+              <tr><td><code>set_finding_vex</code></td><td>{t("Set or clear the VEX status of findings, by finding ids or target + vulnerability (write scope)", "VEX-Status von Ergebnissen setzen oder entfernen, per Ergebnis-IDs oder Target + Schwachstelle (Schreib-Scope)")}</td></tr>
+              <tr><td><code>import_vex</code></td><td>{t("Import a CycloneDX VEX or OpenVEX document into a target (write scope)", "CycloneDX-VEX- oder OpenVEX-Dokument in ein Target importieren (Schreib-Scope)")}</td></tr>
+              <tr><td><code>get_target_vex_sources</code></td><td>{t("A target's VEX source URLs and the result of their last fetch", "VEX-Quellen eines Targets und das Ergebnis ihres letzten Abrufs")}</td></tr>
+              <tr><td><code>set_target_vex_sources</code></td><td>{t("Set a target's VEX source URLs; applied now and after every scan (write scope)", "VEX-Quellen eines Targets setzen; sofort und nach jedem Scan angewendet (Schreib-Scope)")}</td></tr>
+              <tr><td><code>apply_target_vex_sources</code></td><td>{t("Fetch a target's VEX sources again and apply them (write scope)", "VEX-Quellen eines Targets erneut abrufen und anwenden (Schreib-Scope)")}</td></tr>
+              <tr><td><code>export_scan_vex</code></td><td>{t("Export a scan's VEX statuses as CycloneDX VEX", "VEX-Status eines Scans als CycloneDX VEX exportieren")}</td></tr>
               <tr><td><code>prepare_attack_path_analysis</code></td><td>{t("Return the deterministic attack-path graph plus prompts for a narrative", "Liefert den deterministischen Attack-Path-Graphen plus Prompts für eine Beschreibung")}</td></tr>
               <tr><td><code>refine_attack_path_analysis</code></td><td>{t("Re-render the graph under hypothetical assumptions, without saving", "Rendert den Graphen unter hypothetischen Annahmen neu, ohne zu speichern")}</td></tr>
               <tr><td><code>save_attack_path_analysis</code></td><td>{t("Save an assistant-generated attack-path narrative (write scope)", "Speichert eine vom Assistenten erzeugte Attack-Path-Beschreibung (Schreib-Scope)")}</td></tr>

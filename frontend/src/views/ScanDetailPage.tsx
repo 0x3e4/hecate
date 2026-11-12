@@ -1060,7 +1060,10 @@ export const ScanDetailPage = () => {
                   }
                 } catch (err) {
                   console.error("VEX import failed", err);
-                  setToast({ type: "error", message: t("VEX import failed. Check file format.", "VEX-Import fehlgeschlagen. Dateiformat prüfen.") });
+                  const detail = describeError(err).detail;
+                  setToast({ type: "error", message: detail
+                    ? t(`VEX import failed: ${detail}`, `VEX-Import fehlgeschlagen: ${detail}`)
+                    : t("VEX import failed. Check file format.", "VEX-Import fehlgeschlagen. Dateiformat prüfen.") });
                 } finally {
                   setVexImporting(false);
                 }
@@ -1071,7 +1074,7 @@ export const ScanDetailPage = () => {
               className="btn"
               onClick={() => vexImportRef.current?.click()}
               disabled={vexImporting}
-              title={t("Import a CycloneDX VEX document and apply to matching findings", "CycloneDX VEX-Dokument importieren und auf passende Ergebnisse anwenden")}
+              title={t("Import a CycloneDX VEX or OpenVEX document and apply it to matching findings", "CycloneDX-VEX- oder OpenVEX-Dokument importieren und auf passende Ergebnisse anwenden")}
             >
               {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
             </button>

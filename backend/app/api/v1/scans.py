@@ -814,11 +814,14 @@ async def import_vex(
     request: VexImportRequest,
     _auth: None = Depends(require_target_write_body_target),
 ) -> VexImportResponse:
-    """Import a CycloneDX VEX document and apply to matching findings."""
+    """Import a CycloneDX VEX or OpenVEX document and apply it to matching findings."""
     finding_repo = await ScanFindingRepository.create()
     scan_repo = await ScanRepository.create()
     vex_service = VexService(finding_repo, scan_repo)
-    result = await vex_service.import_cyclonedx_vex(request.vex_document, request.target_id)
+    try:
+        result = await vex_service.import_vex_document(request.vex_document, request.target_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return VexImportResponse(**result)
 
 

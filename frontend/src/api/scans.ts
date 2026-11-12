@@ -372,7 +372,7 @@ export const importVex = async (payload: {
   vexDocument: Record<string, unknown>;
   targetId: string;
   format?: string;
-}): Promise<{ applied: number; skipped: number; notFound: number }> => {
+}): Promise<{ applied: number; skipped: number; notFound: number; format?: "cyclonedx" | "openvex" | null }> => {
   const response = await api.post("/v1/scans/vex/import", payload);
   return response.data;
 };

@@ -59,7 +59,8 @@ scanners chosen at its first scan and reuses them for later auto-scans.
 In a repository scan the dependency scanners read lockfiles and manifests. SBOM or VEX files committed
 to the repository (`*.cdx.json`, `*.spdx.json`, `bom.json`) are not treated as the repository's
 dependencies: they usually describe something else, such as the container image built from it. To
-check an SBOM, import it as its own target instead.
+check an SBOM, import it as its own target instead. A committed VEX file is not applied either; add
+its raw URL as a [VEX source](sca/scan-results.md#vex-sources) on the target.
 
 The image-only scanners (Dockle, Dive) and the repo-only scanners (Semgrep, DevSkim, TruffleHog) only
 produce output for the matching target type. Container images are pulled directly through registry
@@ -113,7 +114,8 @@ Each scan produces a software bill of materials you can export as **CycloneDX 1.
 you can import an external SBOM to match its components against the vulnerability database without
 running a scanner. Findings can be annotated with **VEX** status (`not_affected`, `affected`, `fixed`,
 `under_investigation`) and dismissed when irrelevant — both carry forward automatically onto matching
-findings on the next rescan, and VEX exports and imports as CycloneDX VEX. **License compliance** checks
+findings on the next rescan. VEX exports as CycloneDX VEX and imports from CycloneDX VEX or OpenVEX, either as a
+file or as a VEX source URL on the target that is read again after every scan. **License compliance** checks
 every component's licenses against your policy after each scan. These workflows are covered in depth in
 [Reading Scan Results](sca/scan-results.md) and [License Compliance](sca/licenses.md).
 

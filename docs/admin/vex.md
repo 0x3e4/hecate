@@ -50,7 +50,7 @@ statements rest on.
     `https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json`.
     Hecate applies it right away and again after every scan, so a new release of the documents
     reaches your findings without anything to do; a status you set yourself stays. See
-    [VEX sources](../sca/scan-results.md#vex-sources). A one-off import of the `.cdx.json` file
+    [VEX sources](../sca/scan-results.md#vex-sources). A one-off import of either file
     through **Findings → Import VEX** works too.
 
 Trivy and Grype match a statement by the image name and the exact package version: scan the

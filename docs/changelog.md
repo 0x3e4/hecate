@@ -15,6 +15,8 @@ generated from it on every semver tag. The format follows
 
 ### Added
 
+- **Import VEX** on the Findings tab and `POST /scans/vex/import` read OpenVEX as well as CycloneDX VEX; the format is detected. OpenVEX statements match by vulnerability and its aliases, and where a document gives one vulnerability different statuses per package, each statement only reaches the packages it names. A file in neither format is refused with a message instead of importing nothing.
+- VEX over MCP: `set_finding_vex` sets or clears the status of findings (by finding ids, or target and vulnerability), `import_vex` imports a CycloneDX VEX or OpenVEX document, `get_target_vex_sources`, `set_target_vex_sources` and `apply_target_vex_sources` manage a target's VEX sources, and `export_scan_vex` returns a scan's statuses as CycloneDX VEX. The writes need the `mcp:write` scope; a status set this way counts as set by hand, so a VEX source never overwrites it. Findings returned over MCP now carry their VEX status and whether they are dismissed.
 ### Changed
 
 ### Fixed

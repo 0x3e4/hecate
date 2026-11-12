@@ -235,11 +235,41 @@ def _parse_openvex(document: dict[str, Any]) -> list[VexStatement]:
     return statements
 
 
+def scope_statements(
+    statements: list[VexStatement],
+) -> tuple[list[tuple[VexStatement, list[str] | None]], int]:
+    """Pair each statement with the packages it may reach; count the unusable ones.
+
+    When the documents give one vulnerability different statuses for
+    different packages, a statement only reaches the packages it names (one
+    that names none is skipped); otherwise it covers every finding of that
+    vulnerability (``None``), so a package spelled differently by the
+    scanner still gets it.
+    """
+    statuses: dict[str, set[str]] = defaultdict(set)
+    for st in statements:
+        for vid in st.ids:
+            statuses[vid].add(st.status)
+    scoped: list[tuple[VexStatement, list[str] | None]] = []
+    skipped = 0
+    for st in statements:
+        ambiguous = any(len(statuses[vid]) > 1 for vid in st.ids)
+        if ambiguous and not st.packages:
+            skipped += 1
+            continue
+        scoped.append((st, st.packages if ambiguous else None))
+    return scoped, skipped
+
+
+def is_openvex(document: dict[str, Any]) -> bool:
+    context = document.get("@context")
+    return isinstance(document.get("statements"), list) and isinstance(context, str) and "openvex" in context
+
+
 def parse_vex_document(document: dict[str, Any]) -> tuple[str, list[VexStatement]]:
     if document.get("bomFormat") == "CycloneDX" and isinstance(document.get("vulnerabilities"), list):
         return "cyclonedx", _parse_cyclonedx(document)
-    context = document.get("@context")
-    if isinstance(document.get("statements"), list) and isinstance(context, str) and "openvex" in context:
+    if is_openvex(document):
         return "openvex", _parse_openvex(document)
     raise VexSourceError("unknown_format", "The document is neither CycloneDX VEX nor OpenVEX.")
 
@@ -255,26 +285,16 @@ class VexSourceService:
     async def apply_statements(self, target_id: str, statements: list[VexStatement]) -> tuple[int, int]:
         """Apply statements to the target's findings. Returns (findings set, statements skipped).
 
-        When the documents give one vulnerability different statuses for
-        different packages, a statement only reaches the packages it names;
-        otherwise it covers every finding of that vulnerability, so a package
-        spelled differently by the scanner still gets it.
+        See ``scope_statements`` for which packages a statement reaches.
         """
-        statuses: dict[str, set[str]] = defaultdict(set)
-        for st in statements:
-            for vid in st.ids:
-                statuses[vid].add(st.status)
-        applied = skipped = 0
-        for st in statements:
-            ambiguous = any(len(statuses[vid]) > 1 for vid in st.ids)
-            if ambiguous and not st.packages:
-                skipped += 1
-                continue
+        scoped, skipped = scope_statements(statements)
+        applied = 0
+        for st, packages in scoped:
             applied += await self.finding_repo.apply_vex_from_source(
                 target_id,
                 st.ids,
                 st.status,
-                package_names=st.packages if ambiguous else None,
+                package_names=packages,
                 vex_justification=st.justification or st.detail,
                 vex_detail=st.detail,
             )

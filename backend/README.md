@@ -56,7 +56,7 @@ app/
 │   ├── oauth_providers.py   Upstream IdP abstraction (GitHub / Microsoft Entra / generic OIDC)
 │   ├── security.py          Rate limiting · input sanitisation
 │   ├── audit.py             Dual audit (structlog + MongoDB) for tool invocations and OAuth events
-│   └── tools/               40 MCP tools (7 modules; incl. inventory CRUD)
+│   └── tools/               46 MCP tools (8 modules; incl. inventory CRUD, VEX)
 │       ├── vulnerabilities.py   search_vulnerabilities · get_vulnerability · prepare/save_vulnerability_ai_analysis ·
 │       │                          prepare/save_vulnerabilities_ai_batch_analysis · prepare/save_attack_path_analysis ·
 │       │                          refine_attack_path_analysis

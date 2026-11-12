@@ -132,8 +132,13 @@ merged row. To annotate many findings at once, select them with the row checkbox
 multi-select toolbar.
 
 You can also bring annotations in and out as files. **Import VEX** in the Findings toolbar reads a CycloneDX VEX
-document and applies its statuses to matching findings, and the VEX export on the SBOM tab writes your current
-annotations back out in the same format — so a VEX statement made once can travel across tools and teams.
+or OpenVEX document (the format is detected) and applies its statuses to the matching findings on all scans of the
+target. An imported status replaces the one a finding had, and a VEX source never overwrites it. OpenVEX statements
+are matched by vulnerability and its aliases; where a document gives one vulnerability different statuses for
+different packages, each statement only reaches the packages its `subcomponents` (or product purl) name. The toast
+reports how many findings were set, how many statements were skipped (unknown status, or a conflicting one without
+a package) and how many matched nothing. The VEX export on the SBOM tab writes your current
+annotations back out as CycloneDX VEX — so a VEX statement made once can travel across tools and teams.
 
 The import matches by vulnerability ID across all scans of the target. It stores `analysis.justification` as the
 short reason the findings table shows and `analysis.detail` in full in the editor's detail field. The export uses
@@ -163,6 +168,16 @@ on all scans of the target. **Apply now** fetches them again on demand.
 Hecate publishes VEX documents for its own images, so a scan of `ghcr.io/0x3e4/hecate-backend` with
 `https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json` as its source shows how it
 works. See [VEX for Hecate's images](../admin/vex.md).
+
+!!! note "VEX files in the scanned repository"
+    A scan does not read VEX files committed to the scanned repository: the repository could otherwise mark its
+    own findings `not_affected`. To use a file you keep next to the code, add its raw URL as a VEX source, for
+    example `https://raw.githubusercontent.com/<owner>/<repo>/main/vex/app.openvex.json` (a
+    `github.com/…/blob/…` link works too). It is then read again after every scan, so the next commit to the file
+    reaches the findings on its own.
+
+Over MCP, `set_finding_vex`, `import_vex`, `set_target_vex_sources` and their siblings do the same from an
+assistant; see [MCP Server](../integrations/mcp.md).
 
 ## Dismissing findings
 

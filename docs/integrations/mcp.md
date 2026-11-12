@@ -6,11 +6,12 @@ language. Instead of opening the web UI to look something up, you ask your assis
 by any vulnerabilities in OpenClaw 2026.02.24?*" and it queries Hecate directly, joins the answer to
 whatever else you are working on, and writes the result back where useful.
 
-The server is mounted at `/mcp` on the same host as the rest of Hecate and exposes 40 tools spanning
+The server is mounted at `/mcp` on the same host as the rest of Hecate and exposes 46 tools spanning
 CVE search and detail lookups, CPE and asset catalogues, CWE/CAPEC weakness data, database
 statistics, and a large set of SCA queries (findings, SBOMs, scan history, comparisons, security
-alerts). A handful of write tools can trigger scans and syncs and manage the environment inventory
-(create/update/delete items, each with their endoflife.date support status), and a set of AI-analysis
+alerts). A handful of write tools can trigger scans and syncs, manage the environment inventory
+(create/update/delete items, each with their endoflife.date support status), set VEX statuses,
+import VEX documents and manage a target's VEX sources, and a set of AI-analysis
 tool pairs let the assistant produce and persist vulnerability and scan triage using its own reasoning.
 
 Authentication is **delegated OAuth 2.0** — there is no static API key. Hecate acts as an
@@ -131,6 +132,7 @@ question — you never name a tool by hand.
 | Attack-path & chain | read | `prepare_attack_path_analysis`, `refine_attack_path_analysis`, `prepare_scan_attack_chain_analysis`. |
 | AI analysis (prepare) | read | `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`. |
 | Environment inventory | read + **write** | `list_inventory_items`, `get_inventory_item` (read; each item carries its endoflife.date status); `create_inventory_item`, `update_inventory_item`, `delete_inventory_item` (**write**). |
+| VEX | read + **write** | `get_target_vex_sources`, `export_scan_vex` (read); `set_finding_vex` (by finding ids, or target + vulnerability; `null` clears), `import_vex` (CycloneDX VEX or OpenVEX, as object or JSON string), `set_target_vex_sources`, `apply_target_vex_sources` (**write**). A status set over MCP counts as set by hand (`vex_updated_by` = `<client> - MCP`), so a VEX source never overwrites it. Like the other write tools they need only the `mcp:write` scope, not the target password. |
 | Actions & persistence | **write** | `trigger_scan`, `trigger_sync`, and every `save_*` analysis tool. |
 
 Every OAuth event and tool invocation is recorded with the caller's identity, email, source IP, and

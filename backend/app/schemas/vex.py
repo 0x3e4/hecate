@@ -74,11 +74,11 @@ class FindingsDismissRequest(BaseModel):
 
 
 class VexImportRequest(BaseModel):
-    """Import a CycloneDX VEX document."""
+    """Import a CycloneDX VEX or OpenVEX document (the format is detected)."""
 
     vex_document: dict[str, Any] = Field(alias="vexDocument", serialization_alias="vexDocument")
     target_id: str = Field(alias="targetId", serialization_alias="targetId")
-    format: str = Field(default="cyclonedx-vex")
+    format: str | None = Field(default=None, description="Ignored; the format is read from the document.")
 
     model_config = {"populate_by_name": True}
 
@@ -98,5 +98,6 @@ class VexImportResponse(BaseModel):
     applied: int
     skipped: int
     not_found: int = Field(alias="notFound", serialization_alias="notFound")
+    format: str | None = Field(default=None, description="cyclonedx or openvex")
 
     model_config = {"populate_by_name": True}

@@ -110,6 +110,68 @@ class VexService:
             "vulnerabilities": vulnerabilities,
         }
 
+    async def import_vex_document(
+        self,
+        vex_data: dict[str, Any],
+        target_id: str,
+    ) -> dict[str, Any]:
+        """Import a CycloneDX VEX or OpenVEX document; the format is detected.
+
+        Raises ``ValueError`` for a document that is neither.
+        """
+        from app.services.vex_source_service import is_openvex
+
+        if is_openvex(vex_data):
+            result: dict[str, Any] = await self.import_openvex(vex_data, target_id)
+            result["format"] = "openvex"
+            return result
+        if isinstance(vex_data.get("vulnerabilities"), list):
+            result = await self.import_cyclonedx_vex(vex_data, target_id)
+            result["format"] = "cyclonedx"
+            return result
+        raise ValueError("The document is neither CycloneDX VEX nor OpenVEX.")
+
+    async def import_openvex(
+        self,
+        vex_data: dict[str, Any],
+        target_id: str,
+    ) -> dict[str, int]:
+        """Import an OpenVEX document and apply it to the target's findings.
+
+        Statements are read like a VEX source's (aliases, package scoping when
+        one vulnerability has different statuses per package), but an import
+        overwrites the status a finding has, like the CycloneDX import.
+        """
+        from app.services.vex_source_service import _parse_openvex, scope_statements
+
+        raw = vex_data.get("statements") or []
+        statements = _parse_openvex(vex_data)
+        scoped, skipped = scope_statements(statements)
+        skipped += len(raw) - len(statements)  # unknown status or no vulnerability id
+        applied = not_found = 0
+        seen: set[tuple[tuple[str, ...], str, tuple[str, ...]]] = set()
+        for st, packages in scoped:
+            # One statement per (vulnerability, package) is common; once it
+            # covers the whole vulnerability, a repeat would only count twice.
+            key = (tuple(st.ids), st.status, tuple(packages or ()))
+            if key in seen:
+                continue
+            seen.add(key)
+            count = await self.finding_repo.bulk_update_vex_by_vulnerability_ids(
+                target_id,
+                st.ids,
+                st.status,
+                package_names=packages,
+                vex_justification=st.justification or st.detail,
+                vex_detail=st.detail,
+                vex_updated_by="vex-import",
+            )
+            if count > 0:
+                applied += count
+            else:
+                not_found += 1
+        return {"applied": applied, "skipped": skipped, "not_found": not_found}
+
     async def import_cyclonedx_vex(
         self,
         vex_data: dict[str, Any],
