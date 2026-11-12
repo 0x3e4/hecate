@@ -4,9 +4,28 @@ import { LuBox, LuScanLine } from "react-icons/lu";
 
 export interface CoverageCve {
   vulnId: string;
+  vendorSlugs?: string[];
   productSlugs?: string[];
   inventoryMatchIds?: string[];
 }
+
+// The scan whose SBOM ships this product for this CVE. An OS or binary package is
+// keyed by its name; a language-registry package (npm, PyPI, Maven, …) only as
+// "vendor|product" for the vendors that may name it (the registry, its
+// namespace, itself — backend/app/services/sbom_ecosystem.py), so npm's
+// `console` does not cover Citrix NetScaler Console.
+export const productScanHit = (
+  vendorSlugs: readonly string[] | undefined,
+  productSlug: string,
+  scanProductScan: Record<string, string>,
+): string | undefined => {
+  if (scanProductScan[productSlug]) return scanProductScan[productSlug];
+  for (const vendor of vendorSlugs ?? []) {
+    const sid = scanProductScan[`${vendor}|${productSlug}`];
+    if (sid) return sid;
+  }
+  return undefined;
+};
 
 // A highlight chip on a CVE. Inventory chips link to /inventory; scan chips link
 // to the covering scan's detail page.
@@ -33,7 +52,8 @@ export const resolveCveScanId = (
 ): string | undefined => {
   if (scanCveScan[cve.vulnId]) return scanCveScan[cve.vulnId];
   for (const p of cve.productSlugs ?? []) {
-    if (scanProductScan[p]) return scanProductScan[p];
+    const sid = productScanHit(cve.vendorSlugs, p, scanProductScan);
+    if (sid) return sid;
   }
   return undefined;
 };

@@ -478,7 +478,9 @@ export const importSbomFile = async (
 export interface ScanCoverage {
   /** CVE/GHSA id → most-recent scanId that found it (from scan findings). */
   cveScan: Record<string, string>;
-  /** slugified package name → most-recent scanId that ships it (from SBOMs). */
+  /** Most-recent scanId that ships a package (from SBOMs): OS / binary packages keyed by
+   *  slugified name, language-registry packages as "vendor|name" per vendor that may name
+   *  them. Read through `productScanHit`, never by bare slug. */
   productScan: Record<string, string>;
   /** scanId → its target's display name (for the chip label + link). */
   scanTargets: Record<string, string>;

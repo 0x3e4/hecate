@@ -150,6 +150,14 @@ package at a version that falls in this CVE's affected range — but the scan ra
 existed, so it was never flagged — the row is tagged *in SBOM · rescan to confirm*. Re-running that
 scan turns it into a normal finding.
 
+The SBOM match goes by package name, so a package from a language registry (npm, PyPI, Maven, Go,
+Cargo, NuGet, RubyGems, Packagist, …) also has to belong to the advisory's vendor: the registry itself
+(GHSA and OSV name it as the vendor), the package's namespace (`@angular`, `org.apache…`) or the
+package's own name (NVD's `lodash:lodash`). npm's `console` therefore does not show up under Citrix
+NetScaler Console. OS and binary packages (Debian, Alpine, RPM, generic binaries such as `node`) match
+by name, because there the advisory's vendor is the project itself. The dashboard's scan chips follow
+the same rule.
+
 ### The detail tabs
 
 The body is organised into tabs, each badged with a count where one applies. They render only the

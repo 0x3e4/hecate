@@ -404,6 +404,62 @@ async def test_affected_scan_targets_sbom_version_checked():
 
 
 @pytest.mark.asyncio
+async def test_affected_scan_targets_sbom_needs_a_fitting_vendor_for_registry_packages():
+    # CVE-2026-120869: Citrix NetScaler *Console*. npm's "console" shares the name,
+    # and 0.15.11 sits numerically below "< 14.1-74.34" — but npm is not Citrix.
+    impacted = [{
+        "vendor": {"slug": "citrix-netscaler", "name": "Citrix NetScaler"},
+        "product": {"slug": "console", "name": "Console"},
+        "versions": ["< 14.1-74.34"],
+    }]
+    components = [
+        {"name": "console", "version": "0.15.11", "purl": "pkg:npm/console@0.15.11",
+         "scan_id": "sX", "target_id": "tX"},
+        # An OS / binary package keeps the plain name match.
+        {"name": "console", "version": "13.1", "purl": "pkg:generic/console@13.1",
+         "scan_id": "sX", "target_id": "tY"},
+    ]
+    svc = _make_service(
+        scan_repo=_FakeScanRepo(scans={"sX": {"target_name": "node"}}, latest_ids=["sX"]),
+        finding_repo=_FakeFindingRepo([]),
+        sbom_repo=_FakeSbomRepo(components=components),
+        target_repo=_FakeTargetRepo({}),
+    )
+    res = await svc.affected_scan_targets_for_vuln(
+        ["CVE-2026-120869"], impacted_products=impacted, limit=25
+    )
+    assert [(r["targetId"], r["packageName"], r["packageVersion"]) for r in res] == [
+        ("tY", "console", "13.1"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_affected_scan_targets_sbom_registry_vendor_still_matches():
+    # GHSA / OSV write the registry as the vendor; that names the npm package.
+    impacted = [
+        {"vendor": {"slug": "npm", "name": "npm"}, "product": {"slug": "lodash", "name": "lodash"},
+         "versions": ["< 4.17.21"]},
+        # A second entry of another vendor for the same name must not lend its ranges.
+        {"vendor": {"slug": "acme", "name": "Acme"}, "product": {"slug": "lodash", "name": "lodash"},
+         "versions": ["< 99"]},
+    ]
+    components = [
+        {"name": "lodash", "version": "4.17.20", "purl": "pkg:npm/lodash@4.17.20",
+         "scan_id": "sX", "target_id": "tA"},
+        {"name": "lodash", "version": "4.17.21", "purl": "pkg:npm/lodash@4.17.21",
+         "scan_id": "sX", "target_id": "tB"},
+    ]
+    svc = _make_service(
+        scan_repo=_FakeScanRepo(scans={"sX": {"target_name": "web"}}, latest_ids=["sX"]),
+        finding_repo=_FakeFindingRepo([]),
+        sbom_repo=_FakeSbomRepo(components=components),
+        target_repo=_FakeTargetRepo({}),
+    )
+    res = await svc.affected_scan_targets_for_vuln(["CVE-1"], impacted_products=impacted, limit=25)
+    assert [(r["targetId"], r["packageVersion"]) for r in res] == [("tA", "4.17.20")]
+
+
+@pytest.mark.asyncio
 async def test_affected_scan_targets_sbom_skipped_when_finding_covers():
     # A finding already covers node on tX → the SBOM hit must not duplicate it.
     findings = [{

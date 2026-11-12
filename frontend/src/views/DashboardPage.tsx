@@ -21,6 +21,7 @@ import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
 import {
   ChipLinks,
   cveMatchesInventory,
+  productScanHit,
   resolveCveScanId,
   scanChip,
   uniqueChips,
@@ -731,7 +732,7 @@ const TodayStats = ({
   const productChips = (p: ProductBucket): CoverageChip[] => {
     const chips: CoverageChip[] = [];
     if (p.inventoryMatch) chips.push({ label: invLabel, href: "/inventory" });
-    const sid = scanProductMap.get(p.slug);
+    const sid = scanProductMap.get(p.slug) ?? productScanHit([p.vendorSlug], p.slug, scanProductScan);
     if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
     return chips;
   };
@@ -988,7 +989,7 @@ const TodayLeadGroups = ({
     () =>
       groupCves(
         cves.filter((cve) => chipsByCve.has(cve.vulnId)),
-        (cve) => productKey(cve, cve.productSlugs?.find((slug) => scanProductScan[slug])),
+        (cve) => productKey(cve, cve.productSlugs?.find((slug) => productScanHit(cve.vendorSlugs, slug, scanProductScan))),
         cveMatchesInventory,
       ),
     [cves, chipsByCve, scanProductScan],

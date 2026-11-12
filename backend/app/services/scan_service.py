@@ -1694,8 +1694,11 @@ class ScanService:
         the key: ``cveScan`` from the latest scans' findings (by ``vulnerability_id``),
         ``productScan`` from the latest scans' SBOM components (keyed on
         ``slugify(package name)`` so it lines up with the vuln index's product
-        slugs). Cached for 5 min — scans change rarely relative to dashboard loads.
+        slugs; a language-registry package as ``vendor|product`` for each vendor
+        that may name it, see ``sbom_ecosystem``). Cached for 5 min — scans change
+        rarely relative to dashboard loads.
         """
+        from app.services.sbom_ecosystem import allowed_vendor_slugs
         from app.utils.strings import slugify
 
         now = time.monotonic()
@@ -1748,14 +1751,21 @@ class ScanService:
             log.warning("scan_service.coverage_findings_failed", error=str(exc))
         try:
             async for c in self.sbom_repo.collection.find(
-                {"scan_id": {"$in": scan_ids}}, {"name": 1, "scan_id": 1}
+                {"scan_id": {"$in": scan_ids}}, {"name": 1, "scan_id": 1, "purl": 1}
             ):
                 name = c.get("name")
                 sid = c.get("scan_id")
                 if isinstance(name, str) and name and isinstance(sid, str):
                     slug = slugify(name)
-                    if slug:
-                        product_scan[slug] = _newer(product_scan.get(slug), sid)
+                    if not slug:
+                        continue
+                    # A registry package only covers a CVE whose vendor fits it
+                    # (sbom_ecosystem): it is keyed "vendor|product" once per
+                    # allowed vendor, an OS / binary package by its name alone.
+                    allowed = allowed_vendor_slugs(c.get("purl"), name)
+                    keys = [slug] if allowed is None else [f"{v}|{slug}" for v in allowed]
+                    for key in keys:
+                        product_scan[key] = _newer(product_scan.get(key), sid)
         except Exception as exc:  # noqa: BLE001
             log.warning("scan_service.coverage_sbom_failed", error=str(exc))
 
@@ -2119,6 +2129,7 @@ class ScanService:
             is_marked_not_vulnerable,
             version_in_ranges,
         )
+        from app.services.sbom_ecosystem import allowed_vendor_slugs, vendor_names_component
 
         scan_name_cache: dict[str, str | None] = {}
         target_name_cache: dict[str, str | None] = {}
@@ -2178,8 +2189,11 @@ class ScanService:
         if not impacted_products:
             return results
 
-        # product-slug -> affected version-range strings; candidate SBOM names.
-        versions_by_slug: dict[str, list[str]] = {}
+        # product-slug -> [(vendor values, affected version-range strings)]; candidate SBOM names.
+        # The vendor stays with its ranges: a name shared across ecosystems
+        # (npm "console" vs. Citrix NetScaler Console) must not borrow another
+        # product's ranges, see sbom_ecosystem.
+        entries_by_slug: dict[str, list[tuple[tuple[str, ...], list[str]]]] = {}
         candidate_names: set[str] = set()
         for entry in impacted_products:
             # ``vulnerable: false`` = the platform the vulnerable product runs on.
@@ -2188,9 +2202,15 @@ class ScanService:
             product = entry.get("product") or {}
             prod_slug = product.get("slug") if isinstance(product, dict) else None
             prod_name = product.get("name") if isinstance(product, dict) else None
+            vendor = entry.get("vendor") or {}
+            vendor_values = tuple(
+                str(v) for v in ((vendor.get("slug"), vendor.get("name")) if isinstance(vendor, dict) else ())
+                if v
+            )
             ranges = [str(v) for v in (entry.get("versions") or []) if str(v).strip()]
             if not ranges:
                 continue
+            slugs_for_entry: set[str] = set()
             for raw in (prod_slug, prod_name):
                 if raw:
                     candidate_names.add(str(raw))
@@ -2198,8 +2218,10 @@ class ScanService:
                     slug = _slug(raw)
                     if slug:
                         candidate_names.add(slug)
-                        versions_by_slug.setdefault(slug, []).extend(ranges)
-        if not versions_by_slug:
+                        slugs_for_entry.add(slug)
+            for slug in slugs_for_entry:
+                entries_by_slug.setdefault(slug, []).append((vendor_values, ranges))
+        if not entries_by_slug:
             return results
 
         latest_scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
@@ -2211,8 +2233,16 @@ class ScanService:
             name = comp.get("name") or ""
             version = comp.get("version") or ""
             slug = _slug(name)
-            ranges = versions_by_slug.get(slug)
-            if not ranges or not version:
+            if not version or slug not in entries_by_slug:
+                continue
+            allowed = allowed_vendor_slugs(comp.get("purl"), name)
+            ranges = [
+                r
+                for vendor_values, entry_ranges in entries_by_slug[slug]
+                if vendor_names_component(allowed, vendor_values)
+                for r in entry_ranges
+            ]
+            if not ranges:
                 continue
             # Whole list at once, so the release-branch rule applies.
             if not version_in_ranges(version, ranges):
