@@ -34,6 +34,23 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .app-sidebar.collapsed ~ .app-main { margin-left: var(--sidebar-width-collapsed); }
 .app-content { flex: 1; width: 100%; max-width: var(--container); margin-inline: auto; padding: var(--space-lg) var(--space-xl) var(--space-2xl); min-height: 0; }
 
+/* Wide, ultrawide and 4K screens: the content takes the room instead of a 1600px column in the
+   middle. Running text keeps its measure through the ch limits on p, headings and summaries; tables,
+   lists and grids get the width. Past 2560px CSS pixels (4K at 100–125 %, 5K, ultrawide) the type
+   grows a step, spacing stays in px. rem in a media query is the browser default, not this font-size. */
+@media (min-width: 120rem) {
+  :root { --container: 2560px; }
+  .app-content { padding-inline: var(--space-2xl); }
+}
+@media (min-width: 160rem) {
+  :root { --container: 3200px; }
+  html { font-size: 106.25%; }
+}
+@media (min-width: 220rem) {
+  :root { --container: 3840px; }
+  html { font-size: 112.5%; }
+}
+
 /* Top bar: phones and tablets only, the sidebar carries the brand on desktop */
 .app-header { display: none; position: sticky; top: 0; z-index: var(--z-sticky-nav); align-items: center; gap: var(--space-sm); padding: var(--space-xs) var(--space-md); border-bottom: var(--rule-hair) solid var(--color-rule); background: var(--color-paper-2); }
 .header-branding { display: flex; align-items: center; gap: var(--space-sm); flex: 1; min-width: 0; text-decoration: none; color: inherit; }

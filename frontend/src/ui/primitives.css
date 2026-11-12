@@ -57,7 +57,10 @@
 .stat dt { color: var(--color-muted); font-size: var(--text-xs); }
 .stat dd { margin: 0; font-size: var(--text-xl); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
 
-.table-scroll { overflow-x: auto; }
+/* overflow-x: auto alone turns overflow-y into auto too, so a few pixels a cell lets stick out
+   below the last row (the product buttons' negative margin) put a vertical scrollbar on the table.
+   A table scrolls sideways only; a box that should scroll down sets its own height and overflow-y. */
+.table-scroll { overflow-x: auto; overflow-y: hidden; }
 .row-link { color: inherit; text-decoration: none; }
 .row-link:hover { color: var(--color-link); }
 .row-link.mono { white-space: nowrap; }

@@ -45,27 +45,68 @@ export const AIAnalysePage = () => {
   const [authOk, setAuthOk] = useState(false);
   const [authPassword, setAuthPassword] = useState("");
   const [authChecking, setAuthChecking] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [aiAnalysisPassword, setAiAnalysisPassword] = usePersistentState<string>("ai_analysis_password", "");
 
+  // Nothing below loads before the gate is open: the provider list and the
+  // history answer 401 without the password, which used to raise an error toast
+  // while the password dialog was still empty. A password kept from an earlier
+  // visit is tried once, silently; only a fresh wrong entry says so.
   useEffect(() => {
-    api.get<{ required: boolean }>("/v1/status/ai-auth").then((r) => {
-      setAuthRequired(r.data.required);
-      if (!r.data.required) setAuthOk(true);
+    let cancelled = false;
+    const stored = aiAnalysisPassword;
+    api.get<{ required: boolean }>("/v1/status/ai-auth").then(async (r) => {
+      if (cancelled) return;
+      if (!r.data.required) {
+        setAuthRequired(false);
+        setAuthOk(true);
+        return;
+      }
+      if (stored) {
+        try {
+          const check = await api.post<{ authenticated: boolean }>("/v1/status/ai-auth", { password: stored });
+          if (cancelled) return;
+          if (check.data.authenticated) {
+            setAuthRequired(true);
+            setAuthOk(true);
+            return;
+          }
+        } catch {
+          // A stale or changed password: fall through to the dialog.
+        }
+        if (cancelled) return;
+        setAiAnalysisPassword("");
+      }
+      setAuthRequired(true);
     }).catch(() => {
+      if (cancelled) return;
       setAuthRequired(false);
       setAuthOk(true);
     });
+    return () => { cancelled = true; };
+    // Runs once per visit; the stored password is read at mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAuthSubmit = async () => {
+    if (!authPassword || authChecking) return;
     setAuthChecking(true);
+    setAuthError(null);
     try {
       const r = await api.post<{ authenticated: boolean }>("/v1/status/ai-auth", { password: authPassword });
       if (r.data.authenticated) {
         setAuthOk(true);
         setAiAnalysisPassword(authPassword);
+      } else {
+        setAuthError(t("Wrong password.", "Falsches Passwort."));
       }
-    } catch {
-      showToast(t("Invalid password.", "Falsches Passwort."), "error");
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setAuthError(status === 429
+        ? t("Too many attempts. Wait a few minutes and try again.", "Zu viele Versuche. Ein paar Minuten warten und erneut versuchen.")
+        : status === 401
+          ? t("Wrong password.", "Falsches Passwort.")
+          : t("The password could not be checked. Try again.", "Das Passwort konnte nicht geprüft werden. Erneut versuchen."));
     } finally {
       setAuthChecking(false);
     }
@@ -73,7 +114,6 @@ export const AIAnalysePage = () => {
 
   const [selectedVulnIds, setSelectedVulnIds] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<AIProviderId | null>(null);
-  const [aiAnalysisPassword, setAiAnalysisPassword] = usePersistentState<string>("ai_analysis_password", "");
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiProviders, setAiProviders] = useState<AIProviderInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -108,8 +148,9 @@ export const AIAnalysePage = () => {
     };
   }, [t]);
 
-  // Load AI providers on mount
+  // Load AI providers once the gate is open
   useEffect(() => {
+    if (!authOk) return;
     const loadProviders = async () => {
       try {
         const providers = await getAiProviders(aiAnalysisPassword);
@@ -124,7 +165,7 @@ export const AIAnalysePage = () => {
       }
     };
     loadProviders();
-  }, [aiAnalysisPassword, t, showToast]);
+  }, [authOk, aiAnalysisPassword, t, showToast]);
 
   const loadHistory = useCallback(async (page: number) => {
     setHistoryLoading(true);
@@ -155,8 +196,9 @@ export const AIAnalysePage = () => {
   }, [HISTORY_PAGE_SIZE, aiAnalysisPassword, t, showToast]);
 
   useEffect(() => {
+    if (!authOk) return;
     loadHistory(historyPage);
-  }, [loadHistory, historyPage]);
+  }, [authOk, loadHistory, historyPage]);
 
   // Watch for batch AI investigation completion via SSE
   useEffect(() => {
@@ -331,12 +373,17 @@ export const AIAnalysePage = () => {
           <input
             type="password"
             value={authPassword}
-            onChange={(e) => setAuthPassword(e.target.value)}
+            onChange={(e) => { setAuthPassword(e.target.value); setAuthError(null); }}
             onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
             aria-label={t("Password", "Passwort")}
+            aria-invalid={authError ? true : undefined}
+            aria-describedby={authError ? "ai-analyse-gate-error" : undefined}
             placeholder={t("Password", "Passwort")}
             autoFocus
           />
+          {authError && (
+            <p id="ai-analyse-gate-error" className="ai-analyse-gate-error" role="alert">{authError}</p>
+          )}
           <div className="dialog-actions">
             <button
               type="button"

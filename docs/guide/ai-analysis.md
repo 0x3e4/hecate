@@ -39,8 +39,11 @@ AI triggers can be protected by a dedicated password, separate from the system a
 page prompts for the password, and triggering an analysis from a CVE detail page or a scan asks for it
 too. Reading existing analyses is never gated — only generating new ones.
 
-The password you enter is remembered in your browser for the session, so you are not asked repeatedly.
-If you enter the wrong one, the page tells you directly rather than bouncing you elsewhere.
+The password you enter is remembered in this browser. On your next visit the AI Analysis page checks it
+quietly and opens straight away; it asks again only when the password has changed. Nothing on the page
+loads before the password is accepted, so an empty dialog shows no error. If you enter the wrong one, the
+dialog says so under the field, and after ten wrong tries within a minute it asks you to wait a few
+minutes.
 
 !!! note
     The AI password is a shared-secret gate on AI generation, not user authentication. It exists so an

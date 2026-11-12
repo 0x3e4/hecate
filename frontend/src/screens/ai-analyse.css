@@ -4,6 +4,8 @@
 /* Password gate */
 .ai-analyse-gate { background: var(--scrim); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .ai-analyse-gate-title { max-width: none; margin-bottom: var(--space-xs); font-size: var(--text-section); }
+.ai-analyse-gate-error { margin-top: var(--space-xs); color: var(--color-error); font-size: var(--text-sm); }
+.ai-analyse-gate .dialog input[type="password"][aria-invalid="true"] { border-color: var(--color-error); }
 .ai-analyse-gate .dialog input[type="password"]:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; border-color: var(--color-field-edge); }
 
 /* Compose: selection and result in the wide column, the form beside them */

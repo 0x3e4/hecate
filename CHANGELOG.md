@@ -16,9 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Tags with a pre-release suffix (`2.3.0-beta.1`) no longer create a GitHub release or GHCR images; only plain `X.Y.Z` tags do.
+- Wide, ultrawide and 4K screens use their width: the content column grows from 1600 px to 2560 px from a 1920 px wide window, to 3200 px from 2560 px and to 3840 px from 3520 px, and the type grows a step at the last two. Running text keeps its line length; tables, lists and grids take the room.
+- The AI Analysis page tries a password kept from an earlier visit on its own and opens straight away, and a wrong password is shown under the field instead of in a toast, with its own message once the attempts are throttled.
+- On wide screens a vulnerability's description runs to 120 characters a line (140 from 2560 px) instead of 80, and the details column beside it widens; the list's expanded rows go from 75 to 110.
 
 ### Fixed
 
+- The vulnerability list no longer shows a vertical scrollbar on its table. The product buttons in the last row reach a few pixels below the table, and a table box that only meant to scroll sideways scrolled down for them; table boxes now scroll sideways only, everywhere.
+- The AI Analysis page no longer shows "AI password is missing or invalid" while its password dialog is still empty. It loaded the providers and the history before the password was entered, and both answered 401.
 - AI assessments, attack-path narratives and batch-analysis references on vulnerabilities no longer disappear when the record is written again. They live only in the search index, and every pipeline update, manual refresh, deps.dev enrichment and `reindex-opensearch` replaced the whole indexed document, so a CVE that NVD or EUVD touched after its analysis lost it. These writes now replace the document but keep those fields. Analyses lost before this release cannot be recovered; scan AI analyses and attack chains are stored in MongoDB and were never affected.
 
 ## [2.2.1] - 2026-11-09
