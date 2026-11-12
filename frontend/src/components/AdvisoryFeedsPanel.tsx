@@ -14,10 +14,10 @@ import {
 import { FEED_KINDS, type FeedKind } from "../api/cert";
 import { triggerCertFeedsSync } from "../api/sync";
 import { useI18n, type TranslateFn } from "../i18n/context";
-import { EmptyState, ErrorState, Section } from "../ui/primitives";
+import { BusyLabel, EmptyState, ErrorState, Section } from "../ui/primitives";
 import { feedKindLabel } from "../utils/certTopics";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonRows } from "./Skeleton";
 import { useToastContext } from "./ToastProvider";
 
 const feedKindHelp = (kind: FeedKind, t: TranslateFn): string =>
@@ -168,9 +168,17 @@ export const AdvisoryFeedsPanel = () => {
       title={t("Advisory feeds", "Meldungs-Feeds")}
       actions={
         <>
-          <button type="button" className="btn btn-secondary" onClick={() => void handleSync()} disabled={syncing || !syncEnabled}>
-            <LuRefreshCw aria-hidden="true" />
-            {t("Read now", "Jetzt lesen")}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void handleSync()}
+            disabled={syncing || !syncEnabled}
+            aria-busy={syncing || undefined}
+          >
+            <BusyLabel busy={syncing}>
+              {!syncing && <LuRefreshCw aria-hidden="true" />}
+              {t("Read now", "Jetzt lesen")}
+            </BusyLabel>
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => openForm()} disabled={editing !== null}>
             <LuPlus aria-hidden="true" />
@@ -248,8 +256,8 @@ export const AdvisoryFeedsPanel = () => {
             )}
           </p>
           <div className="advisory-feeds-actions">
-            <button type="submit" className="btn btn-primary" disabled={!canSave}>
-              {saving ? t("Saving...", "Speichern…") : editedFeed ? t("Save", "Speichern") : t("Add feed", "Feed hinzufügen")}
+            <button type="submit" className="btn btn-primary" disabled={!canSave} aria-busy={saving || undefined}>
+              <BusyLabel busy={saving}>{editedFeed ? t("Save", "Speichern") : t("Add feed", "Feed hinzufügen")}</BusyLabel>
             </button>
             <button type="button" className="btn btn-secondary" onClick={closeForm}>
               {t("Cancel", "Abbrechen")}
@@ -259,11 +267,9 @@ export const AdvisoryFeedsPanel = () => {
       )}
 
       {status === "loading" ? (
-        <div className="system-skeleton" role="status">
-          {[0, 1, 2].map((index) => (
-            <SkeletonBlock key={index} height={36} />
-          ))}
-        </div>
+        <LoadingRegion label={t("Loading advisory feeds", "Meldungs-Feeds werden geladen")} className="system-skeleton">
+          <SkeletonRows rows={3} height={36} />
+        </LoadingRegion>
       ) : status === "error" ? (
         <ErrorState title={t("Advisory feeds could not be loaded.", "Meldungs-Feeds konnten nicht geladen werden.")} />
       ) : feeds.length === 0 ? (
@@ -299,10 +305,13 @@ export const AdvisoryFeedsPanel = () => {
                         className={`system-toggle${feed.enabled ? "" : " system-toggle--off"}`}
                         aria-pressed={feed.enabled}
                         disabled={busyId === feed.id}
+                        aria-busy={busyId === feed.id || undefined}
                         onClick={() => void handleToggle(feed)}
                         title={t("Click to switch on or off", "Klicken zum Ein- oder Ausschalten")}
                       >
-                        {feed.enabled ? t("UI · on", "UI · an") : t("UI · off", "UI · aus")}
+                        <BusyLabel busy={busyId === feed.id}>
+                          {feed.enabled ? t("UI · on", "UI · an") : t("UI · off", "UI · aus")}
+                        </BusyLabel>
                       </button>
                     )}
                   </td>

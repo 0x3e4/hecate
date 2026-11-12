@@ -23,7 +23,7 @@ import {
 import { VulnerabilitySelector } from "../components/AIAnalyse/VulnerabilitySelector";
 import { BatchAnalysisDisplay } from "../components/AIAnalyse/BatchAnalysisDisplay";
 import { TimelineReport } from "../components/AIAnalyse/TimelineReport";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useSSE } from "../hooks/useSSE";
@@ -31,7 +31,7 @@ import { eventForRun } from "../utils/aiRun";
 import { useServerConfig } from "../server-config/context";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useToastContext } from "../components/ToastProvider";
-import { EmptyState, PageHeader, Section } from "../ui/primitives";
+import { BusyLabel, EmptyState, LoadingState, PageHeader, Section } from "../ui/primitives";
 
 export const AIAnalysePage = () => {
   const { t, locale } = useI18n();
@@ -130,6 +130,8 @@ export const AIAnalysePage = () => {
   const [singleHistory, setSingleHistory] = useState<SingleAnalysisItem[]>([]);
   const [scanHistory, setScanHistory] = useState<ScanAiAnalysisHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  // After the first answer the timeline stays on screen while a page loads
+  const [historyLoaded, setHistoryLoaded] = useState<boolean>(false);
   const [historyPage, setHistoryPage] = useState<number>(0);
   const [batchTotal, setBatchTotal] = useState<number>(0);
   const [singleTotal, setSingleTotal] = useState<number>(0);
@@ -192,6 +194,7 @@ export const AIAnalysePage = () => {
       }
     } finally {
       setHistoryLoading(false);
+      setHistoryLoaded(true);
     }
   }, [HISTORY_PAGE_SIZE, aiAnalysisPassword, t, showToast]);
 
@@ -397,8 +400,9 @@ export const AIAnalysePage = () => {
               className="btn btn-primary"
               onClick={() => void handleAuthSubmit()}
               disabled={authChecking || !authPassword}
+              aria-busy={authChecking || undefined}
             >
-              {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
+              <BusyLabel busy={authChecking}>{t("Unlock", "Entsperren")}</BusyLabel>
             </button>
           </div>
         </div>
@@ -410,7 +414,7 @@ export const AIAnalysePage = () => {
     return (
       <div className="dialog-overlay ai-analyse-gate">
         <div className="dialog">
-          <p className="muted">{t("Loading...", "Laden…")}</p>
+          <LoadingState />
         </div>
       </div>
     );
@@ -507,8 +511,11 @@ export const AIAnalysePage = () => {
               className="btn btn-primary ai-analyse-start"
               onClick={() => void handleRunAnalysis()}
               disabled={loading || selectedVulnIds.length === 0}
+              aria-busy={loading || undefined}
             >
-              {loading ? t("Analysis running...", "Analyse läuft...") : t("Start analysis", "Analyse starten")}
+              <BusyLabel busy={loading} busyLabel={t("Analysis running...", "Analyse läuft...")}>
+                {t("Start analysis", "Analyse starten")}
+              </BusyLabel>
             </button>
           </div>
 
@@ -529,10 +536,9 @@ export const AIAnalysePage = () => {
           {t("Overview of all AI analyses.", "Übersicht aller AI-Analysen.")}
         </p>
 
-        {historyLoading && (
-          <div role="status">
-            <span className="visually-hidden">{t("Loading AI analyses...", "AI-Analysen werden geladen...")}</span>
-            <div className="ai-analyse-timeline" aria-hidden="true">
+        {historyLoading && !historyLoaded && (
+          <LoadingRegion label={t("Loading AI analyses", "AI-Analysen werden geladen")}>
+            <div className="ai-analyse-timeline">
               {["45%", "60%", "35%"].map((width) => (
                 <div key={width} className="ai-analyse-report">
                   <div className="ai-analyse-report-rail">
@@ -549,13 +555,18 @@ export const AIAnalysePage = () => {
                 </div>
               ))}
             </div>
+          </LoadingRegion>
+        )}
+        {historyLoaded && batchHistory.length === 0 && singleHistory.length === 0 && scanHistory.length === 0 && (
+          <div className={historyLoading ? "is-refreshing" : undefined} aria-busy={historyLoading || undefined}>
+            <EmptyState title={t("No AI analyses available.", "Keine AI-Analysen vorhanden.")} />
           </div>
         )}
-        {!historyLoading && batchHistory.length === 0 && singleHistory.length === 0 && scanHistory.length === 0 && (
-          <EmptyState title={t("No AI analyses available.", "Keine AI-Analysen vorhanden.")} />
-        )}
-        {!historyLoading && (batchHistory.length > 0 || singleHistory.length > 0 || scanHistory.length > 0) && (
-          <ol className="ai-analyse-timeline">
+        {historyLoaded && (batchHistory.length > 0 || singleHistory.length > 0 || scanHistory.length > 0) && (
+          <ol
+            className={`ai-analyse-timeline${historyLoading ? " is-refreshing" : ""}`}
+            aria-busy={historyLoading || undefined}
+          >
             {/* Combine and sort by timestamp */}
             {[
               ...batchHistory.map((b) => ({ ...b, type: "batch" as const })),
@@ -649,7 +660,7 @@ export const AIAnalysePage = () => {
               })}
           </ol>
         )}
-        {!historyLoading && historyPager}
+        {historyLoaded && historyPager}
       </Section>
     </div>
   );

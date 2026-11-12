@@ -8,9 +8,9 @@ import "../screens/scan-target.css";
 import { createApiToken, fetchApiTokens, revokeApiToken } from "../api/apiTokens";
 import { useI18n } from "../i18n/context";
 import type { ApiToken, ApiTokenCreated, ApiTokenScope } from "../types";
-import { EmptyState, ErrorState, IconButton } from "../ui/primitives";
+import { BusyLabel, EmptyState, ErrorState, IconButton } from "../ui/primitives";
 import { formatDateOnly, formatDateTime } from "../utils/dateFormat";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonRows } from "./Skeleton";
 import { useToastContext } from "./ToastProvider";
 
 const DEFAULT_EXPIRY = "365";
@@ -115,11 +115,9 @@ export const ApiTokenPanel = () => {
       </p>
 
       {status === "loading" && (
-        <div className="scan-target-access-skeleton" aria-busy="true">
-          {[0, 1].map((i) => (
-            <SkeletonBlock key={i} height={36} />
-          ))}
-        </div>
+        <LoadingRegion label={t("Loading API tokens", "API-Tokens werden geladen")} className="scan-target-access-skeleton">
+          <SkeletonRows rows={2} height={36} />
+        </LoadingRegion>
       )}
 
       {status === "unavailable" && (
@@ -178,8 +176,13 @@ export const ApiTokenPanel = () => {
                 <option value="">{t("Never", "Nie")}</option>
               </select>
             </label>
-            <button type="submit" className="btn-primary" disabled={creating || !name.trim() || scopes.length === 0}>
-              {t("Create token", "Token erstellen")}
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={creating || !name.trim() || scopes.length === 0}
+              aria-busy={creating || undefined}
+            >
+              <BusyLabel busy={creating}>{t("Create token", "Token erstellen")}</BusyLabel>
             </button>
           </form>
 
@@ -249,9 +252,10 @@ export const ApiTokenPanel = () => {
                                 type="button"
                                 className="btn-secondary"
                                 disabled={busyId === token.id}
+                                aria-busy={busyId === token.id || undefined}
                                 onClick={() => void handleRevoke(token)}
                               >
-                                {t("Confirm", "Bestätigen")}
+                                <BusyLabel busy={busyId === token.id}>{t("Confirm", "Bestätigen")}</BusyLabel>
                               </button>
                               <button type="button" className="btn-secondary" onClick={() => setConfirmingId(null)}>
                                 {t("Cancel", "Abbrechen")}

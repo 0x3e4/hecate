@@ -18,7 +18,7 @@ import { fetchEolProducts, fetchInventoryEol } from "../api/endoflife";
 import { fetchProducts, fetchVendors } from "../api/assets";
 import { renderCatalogOption } from "../components/CatalogOption";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useServerConfig } from "../server-config/context";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -34,7 +34,17 @@ import type {
   InventoryHistoryEntry,
   InventoryItem,
 } from "../types";
-import { EmptyState, ErrorState, IconButton, PageHeader, Section, SeverityTag, Stat } from "../ui/primitives";
+import {
+  BusyLabel,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  LoadingState,
+  PageHeader,
+  Section,
+  SeverityTag,
+  Stat,
+} from "../ui/primitives";
 import { primaryVendorSlug } from "../utils/catalog";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
@@ -108,6 +118,14 @@ const SEVERITY_RANK: Record<string, number> = {
   medium: 2,
   low: 3,
   unknown: 4,
+};
+
+/** `prev` without `key`; the same object when the key is not there. */
+const withoutKey = (prev: Record<string, true>, key: string): Record<string, true> => {
+  if (!prev[key]) return prev;
+  const next = { ...prev };
+  delete next[key];
+  return next;
 };
 
 // --- endoflife.date status presentation ---
@@ -381,10 +399,12 @@ const VersionUpdateForm = ({
   const { showToast } = useToastContext();
   const [value, setValue] = useState(item.version);
   const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
+  // Which button started the save, so only that one shows the spinner
+  const [savingFrom, setSavingFrom] = useState<"form" | "suggestion" | null>(null);
+  const saving = savingFrom !== null;
 
-  const save = async (version: string) => {
-    setSaving(true);
+  const save = async (version: string, from: "form" | "suggestion") => {
+    setSavingFrom(from);
     try {
       const updated = await updateInventoryItem(item.id, { version, changeNote: note.trim() || null });
       setValue(updated.version);
@@ -393,7 +413,7 @@ const VersionUpdateForm = ({
     } catch (exc: unknown) {
       showToast(exc instanceof Error ? exc.message : String(exc), "error");
     } finally {
-      setSaving(false);
+      setSavingFrom(null);
     }
   };
 
@@ -403,7 +423,7 @@ const VersionUpdateForm = ({
       className="inventory-version-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (trimmed && trimmed !== item.version) void save(trimmed);
+        if (trimmed && trimmed !== item.version) void save(trimmed, "form");
       }}
     >
       <label htmlFor={`inventory-version-${item.id}`}>{t("Running version", "Laufende Version")}</label>
@@ -420,8 +440,9 @@ const VersionUpdateForm = ({
           type="submit"
           className="btn btn-secondary"
           disabled={saving || !trimmed || trimmed === item.version}
+          aria-busy={savingFrom === "form" || undefined}
         >
-          {t("Update", "Aktualisieren")}
+          <BusyLabel busy={savingFrom === "form"}>{t("Update", "Aktualisieren")}</BusyLabel>
         </button>
       </div>
       <input
@@ -438,13 +459,16 @@ const VersionUpdateForm = ({
           type="button"
           className="inventory-version-suggestion"
           disabled={saving}
-          onClick={() => void save(suggested)}
+          aria-busy={savingFrom === "suggestion" || undefined}
+          onClick={() => void save(suggested, "suggestion")}
           title={t(
             "Latest release of this cycle according to endoflife.date. Use it once this version is deployed.",
             "Neueste Version dieses Zyklus laut endoflife.date. Erst verwenden, wenn sie ausgerollt ist.",
           )}
         >
-          {t("Set to", "Setzen auf")} <span className="mono">{suggested}</span>
+          <BusyLabel busy={savingFrom === "suggestion"}>
+            {t("Set to", "Setzen auf")} <span className="mono">{suggested}</span>
+          </BusyLabel>
         </button>
       ) : null}
     </form>
@@ -573,6 +597,8 @@ export const InventoryPage = () => {
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // After the first answer the table stays on screen while the list loads again
+  const [itemsLoaded, setItemsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCause, setErrorCause] = useState<unknown>(null);
 
@@ -592,13 +618,19 @@ export const InventoryPage = () => {
   >({});
 
   // endoflife.date support status per item (eager-loaded, parallel to affectedById).
-  const [eolById, setEolById] = useState<Record<string, EolStatus | "loading">>({});
+  const [eolById, setEolById] = useState<Record<string, EolStatus | "loading" | "failed">>({});
+  // Items whose CVEs / EOL status are fetched again after an edit: the old
+  // values stay on screen, dimmed, until the new ones arrive.
+  const [staleAffected, setStaleAffected] = useState<Record<string, true>>({});
+  const [staleEol, setStaleEol] = useState<Record<string, true>>({});
   const [historyById, setHistoryById] = useState<
     Record<string, InventoryHistoryEntry[] | "loading" | { error: string }>
   >({});
+  const [historyReloading, setHistoryReloading] = useState<Record<string, true>>({});
   const [recentChanges, setRecentChanges] = useState<
     InventoryHistoryEntry[] | "loading" | { error: string }
   >("loading");
+  const [recentReloading, setRecentReloading] = useState(false);
   // Manual EOL-product link in the modal: only sent to the backend when the
   // user touches the picker, so an untouched create/edit lets the backend
   // auto-match (or re-match when the product changes).
@@ -616,6 +648,7 @@ export const InventoryPage = () => {
       setError(t("The inventory could not be loaded.", "Das Inventar konnte nicht geladen werden."));
     } finally {
       setLoading(false);
+      setItemsLoaded(true);
     }
   }, [t]);
 
@@ -624,11 +657,14 @@ export const InventoryPage = () => {
   }, [loadItems]);
 
   const loadRecentChanges = useCallback(async () => {
+    setRecentReloading(true);
     try {
       const response = await fetchInventoryHistory();
       setRecentChanges(response.items);
     } catch (exc: unknown) {
       setRecentChanges({ error: exc instanceof Error ? exc.message : String(exc) });
+    } finally {
+      setRecentReloading(false);
     }
   }, []);
 
@@ -637,7 +673,9 @@ export const InventoryPage = () => {
   }, [loadRecentChanges]);
 
   const loadItemHistory = useCallback(async (itemId: string) => {
-    setHistoryById((prev) => ({ ...prev, [itemId]: "loading" }));
+    // A history already on screen stays there while it loads again
+    setHistoryById((prev) => (Array.isArray(prev[itemId]) ? prev : { ...prev, [itemId]: "loading" }));
+    setHistoryReloading((prev) => ({ ...prev, [itemId]: true }));
     try {
       const response = await fetchInventoryItemHistory(itemId);
       setHistoryById((prev) => ({ ...prev, [itemId]: response.items }));
@@ -646,6 +684,8 @@ export const InventoryPage = () => {
         ...prev,
         [itemId]: { error: exc instanceof Error ? exc.message : String(exc) },
       }));
+    } finally {
+      setHistoryReloading((prev) => withoutKey(prev, itemId));
     }
   }, []);
 
@@ -658,7 +698,9 @@ export const InventoryPage = () => {
     if (items.length === 0) return;
     let cancelled = false;
     // "loading" counts as pending: a cleaned-up run left it behind without a result.
-    const pending = items.filter((item) => affectedById[item.id] === undefined || affectedById[item.id] === "loading");
+    const pending = items.filter(
+      (item) => affectedById[item.id] === undefined || affectedById[item.id] === "loading" || staleAffected[item.id],
+    );
     if (pending.length === 0) return;
 
     (async () => {
@@ -678,6 +720,7 @@ export const InventoryPage = () => {
               [item.id]: { error: exc instanceof Error ? exc.message : String(exc) },
             }));
           }
+          setStaleAffected((prev) => withoutKey(prev, item.id));
         }),
       );
     })();
@@ -696,7 +739,13 @@ export const InventoryPage = () => {
   useEffect(() => {
     if (!eolEnabled || items.length === 0) return;
     let cancelled = false;
-    const pending = items.filter((item) => eolById[item.id] === undefined || eolById[item.id] === "loading");
+    const pending = items.filter(
+      (item) =>
+        eolById[item.id] === undefined ||
+        eolById[item.id] === "loading" ||
+        eolById[item.id] === "failed" ||
+        staleEol[item.id],
+    );
     if (pending.length === 0) return;
 
     (async () => {
@@ -709,8 +758,10 @@ export const InventoryPage = () => {
             setEolById((prev) => ({ ...prev, [item.id]: status }));
           } catch {
             if (cancelled) return;
-            // Leave as "loading" → the card simply renders no EOL badge.
+            // "failed" → the row renders no EOL badge; retried with the next item change.
+            setEolById((prev) => ({ ...prev, [item.id]: "failed" }));
           }
+          setStaleEol((prev) => withoutKey(prev, item.id));
         }),
       );
     })();
@@ -787,16 +838,8 @@ export const InventoryPage = () => {
   // A version or product change invalidates the cached CVEs and EOL status: the
   // eager `[items]` effects then re-fetch, so the row updates without a reload.
   const forgetItemDetails = (itemId: string) => {
-    setAffectedById((prev) => {
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
-    setEolById((prev) => {
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
+    setStaleAffected((prev) => ({ ...prev, [itemId]: true }));
+    setStaleEol((prev) => ({ ...prev, [itemId]: true }));
   };
 
   const startEditing = (item: InventoryItem) => {
@@ -1044,9 +1087,9 @@ export const InventoryPage = () => {
     () =>
       items.some((item) => {
         const e = affectedById[item.id];
-        return e === undefined || e === "loading";
+        return e === undefined || e === "loading" || staleAffected[item.id] === true;
       }),
-    [items, affectedById],
+    [items, affectedById, staleAffected],
   );
 
   // DQL query for the VulnerabilityList page. We use the backend matcher
@@ -1163,7 +1206,9 @@ export const InventoryPage = () => {
             label={t("Flagged CVEs", "Gemeldete CVEs")}
             value={
               aggregatedLoading && aggregatedCves.length === 0 ? (
-                <SkeletonBlock height="2rem" width="3rem" radius={4} />
+                <LoadingRegion label={t("Loading flagged CVEs", "Gemeldete CVEs werden geladen")}>
+                  <SkeletonBlock height="2rem" width="3rem" radius={4} />
+                </LoadingRegion>
               ) : (
                 aggregatedCves.length
               )
@@ -1207,250 +1252,275 @@ export const InventoryPage = () => {
             )}
           </div>
         )}
-        {loading ? (
-          <div className="inventory-skeleton" role="status">
-            <span className="visually-hidden">{t("Loading...", "Laden...")}</span>
-            {Array.from({ length: 3 }, (_, i) => (
-              <SkeletonBlock key={i} height="3.25rem" radius={4} />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <EmptyState title={t("No inventory items yet.", "Noch keine Einträge.")}>
-            {t(
-              'Use the "Add" button above to add your first product + version.',
-              'Nutzen Sie die Schaltfläche „Hinzufügen" oben, um Ihr erstes Produkt + Version anzulegen.',
-            )}
-          </EmptyState>
-        ) : filteredItems.length === 0 ? (
-          <EmptyState title={t("No items match your search.", "Keine Einträge passen zur Suche.")} />
+        {!itemsLoaded ? (
+          <LoadingRegion label={t("Loading inventory", "Inventar wird geladen")}>
+            <SkeletonRows rows={3} height="3.25rem" />
+          </LoadingRegion>
         ) : (
-          <div className="table-scroll">
-            <table className="inventory-table">
-              <thead>
-                <tr>
-                  <th scope="col">{t("Item", "Eintrag")}</th>
-                  <th scope="col">{t("Version", "Version")}</th>
-                  <th scope="col">{t("Worst severity", "Höchster Schweregrad")}</th>
-                  <th scope="col">{t("CVEs", "CVEs")}</th>
-                  {eolEnabled && <th scope="col">{t("End of life", "End of Life")}</th>}
-                  <th scope="col">{t("Environment", "Umgebung")}</th>
-                  <th scope="col">{t("Deployment", "Betriebsart")}</th>
-                  <th scope="col">{t("Instances", "Instanzen")}</th>
-                  <th scope="col">
-                    <span className="visually-hidden">{t("Actions", "Aktionen")}</span>
-                  </th>
-                </tr>
-              </thead>
-              {filteredItems.map((item) => {
-                const expanded = expandedItemId === item.id;
-                const affected = affectedById[item.id];
-                const isLoading = affected === "loading";
-                const isError =
-                  !!affected && typeof affected === "object" && !Array.isArray(affected) && "error" in affected;
-                const vulns = Array.isArray(affected) ? affected : [];
-                const worst = vulns.length > 0 ? severityOf(vulns[0]?.severity as string | null) : "unknown";
-                const eolEntry = eolEnabled ? eolById[item.id] : undefined;
-                const itemHistory = historyById[item.id];
-                const eolStatus =
-                  eolEntry && eolEntry !== "loading" && eolEntry.linked ? eolEntry : null;
-
-                return (
-                  <tbody key={item.id} className="inventory-item">
-                    {/* The whole row toggles; the button is the keyboard and
-                        screen-reader path and bubbles its click to the row. */}
-                    <tr className="inventory-item-row" onClick={() => toggleExpanded(item.id)}>
-                      <td className="inventory-cell-name">
-                        <button type="button" className="inventory-toggle" aria-expanded={expanded}>
-                          <LuChevronRight
-                            aria-hidden="true"
-                            className={`inventory-chevron${expanded ? " is-open" : ""}`}
-                          />
-                          <span>{item.name}</span>
-                        </button>
-                        <div className="inventory-sub">
-                          <span>
-                            {[item.vendorName || item.vendorSlug, item.productName || item.productSlug]
-                              .filter(Boolean)
-                              .join(" / ")}
-                          </span>
-                          {item.owner && <span>{item.owner}</span>}
-                        </div>
-                        {item.notes && <div className="inventory-notes">{item.notes}</div>}
-                      </td>
-                      <td className="inventory-cell-version mono">{item.version}</td>
-                      <td className="inventory-cell-severity">
-                        {vulns.length > 0 && (
-                          <SeverityTag severity={worst}>{severityLabel(worst, t)}</SeverityTag>
-                        )}
-                      </td>
-                      <td className="inventory-cell-cves">
-                        {isLoading ? (
-                          <SkeletonBlock height="1rem" width="2rem" radius={4} />
-                        ) : (
-                          <span className={isError ? "inventory-cve-count is-error" : "inventory-cve-count"}>
-                            {isError ? "!" : vulns.length}
-                            <span className="inventory-unit"> {t("CVEs", "CVEs")}</span>
-                          </span>
-                        )}
-                      </td>
-                      {eolEnabled && (
-                        <td className="inventory-cell-eol">
-                          {eolStatus && (
-                            <div onClick={(e) => e.stopPropagation()} role="presentation">
-                              <EolStatusBadge status={eolStatus} t={t} />
-                            </div>
-                          )}
-                        </td>
-                      )}
-                      <td className="inventory-cell-meta">{environmentLabel(item.environment, t)}</td>
-                      <td className="inventory-cell-meta">{deploymentLabel(item.deployment, t)}</td>
-                      <td className="inventory-cell-meta inventory-cell-instances">
-                        {item.instanceCount}
-                        <span className="inventory-unit">
-                          {" "}
-                          {t(
-                            item.instanceCount === 1 ? "instance" : "instances",
-                            item.instanceCount === 1 ? "Instanz" : "Instanzen",
-                          )}
-                        </span>
-                      </td>
-                      <td className="inventory-cell-actions">
-                        <div
-                          className="inventory-actions"
-                          role="presentation"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            className="btn btn-secondary inventory-dql"
-                            onClick={() => void handleOpenInList(item)}
-                            disabled={dqlLoadingId === item.id}
-                            title={t(
-                              "Open a pre-built DQL query for this item in the Vulnerabilities list",
-                              "Vorbereitete DQL-Abfrage für diesen Eintrag in der Schwachstellen-Liste öffnen",
-                            )}
-                          >
-                            {dqlLoadingId === item.id ? t("…", "…") : t("DQL", "DQL")}
-                          </button>
-                          <IconButton label={t("Edit", "Bearbeiten")} onClick={() => startEditing(item)}>
-                            <LuPencil aria-hidden="true" />
-                          </IconButton>
-                          <IconButton label={t("Duplicate", "Duplizieren")} onClick={() => startDuplicating(item)}>
-                            <LuCopy aria-hidden="true" />
-                          </IconButton>
-                          <IconButton
-                            label={t("Delete", "Löschen")}
-                            className="inventory-delete"
-                            onClick={() => setDeleteCandidate(item)}
-                          >
-                            <LuTrash2 aria-hidden="true" />
-                          </IconButton>
-                        </div>
-                      </td>
+          <div className={loading ? "is-refreshing" : undefined} aria-busy={loading || undefined}>
+            {items.length === 0 ? (
+              <EmptyState title={t("No inventory items yet.", "Noch keine Einträge.")}>
+                {t(
+                  'Use the "Add" button above to add your first product + version.',
+                  'Nutzen Sie die Schaltfläche „Hinzufügen" oben, um Ihr erstes Produkt + Version anzulegen.',
+                )}
+              </EmptyState>
+            ) : filteredItems.length === 0 ? (
+              <EmptyState title={t("No items match your search.", "Keine Einträge passen zur Suche.")} />
+            ) : (
+              <div className="table-scroll">
+                <table className="inventory-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">{t("Item", "Eintrag")}</th>
+                      <th scope="col">{t("Version", "Version")}</th>
+                      <th scope="col">{t("Worst severity", "Höchster Schweregrad")}</th>
+                      <th scope="col">{t("CVEs", "CVEs")}</th>
+                      {eolEnabled && <th scope="col">{t("End of life", "End of Life")}</th>}
+                      <th scope="col">{t("Environment", "Umgebung")}</th>
+                      <th scope="col">{t("Deployment", "Betriebsart")}</th>
+                      <th scope="col">{t("Instances", "Instanzen")}</th>
+                      <th scope="col">
+                        <span className="visually-hidden">{t("Actions", "Aktionen")}</span>
+                      </th>
                     </tr>
+                  </thead>
+                  {filteredItems.map((item) => {
+                    const expanded = expandedItemId === item.id;
+                    const affected = affectedById[item.id];
+                    const isLoading = affected === "loading";
+                    const isError =
+                      !!affected && typeof affected === "object" && !Array.isArray(affected) && "error" in affected;
+                    const vulns = Array.isArray(affected) ? affected : [];
+                    const worst = vulns.length > 0 ? severityOf(vulns[0]?.severity as string | null) : "unknown";
+                    const eolEntry = eolEnabled ? eolById[item.id] : undefined;
+                    const itemHistory = historyById[item.id];
+                    const eolStatus =
+                      eolEntry && eolEntry !== "loading" && eolEntry !== "failed" && eolEntry.linked ? eolEntry : null;
+                    const affectedStale = !!staleAffected[item.id] && !isLoading;
+                    const eolStale = !!staleEol[item.id];
 
-                    {expanded && (
-                      <tr className="inventory-expansion-row">
-                        <td colSpan={columnCount}>
-                          <div className="well inventory-expansion">
-                            <div className="inventory-expansion-side">
-                              <VersionUpdateForm
-                                key={item.version}
-                                item={item}
-                                suggested={eolStatus?.isOutdated ? (eolStatus.latestVersion ?? null) : null}
-                                onSaved={handleVersionSaved}
-                                t={t}
+                    return (
+                      <tbody key={item.id} className="inventory-item">
+                        {/* The whole row toggles; the button is the keyboard and
+                            screen-reader path and bubbles its click to the row. */}
+                        <tr className="inventory-item-row" onClick={() => toggleExpanded(item.id)}>
+                          <td className="inventory-cell-name">
+                            <button type="button" className="inventory-toggle" aria-expanded={expanded}>
+                              <LuChevronRight
+                                aria-hidden="true"
+                                className={`inventory-chevron${expanded ? " is-open" : ""}`}
                               />
-                              {eolStatus && <EolDetailBlock status={eolStatus} t={t} />}
-                              <div className="inventory-item-history">
-                                <div className="inventory-expansion-head">
-                                  <h3>{t("History", "Verlauf")}</h3>
-                                </div>
-                                {itemHistory === undefined || itemHistory === "loading" ? (
-                                  <SkeletonBlock height="1.5rem" radius={4} />
-                                ) : "error" in itemHistory ? (
-                                  <ErrorState title={itemHistory.error} />
-                                ) : itemHistory.length === 0 ? (
-                                  <p className="inventory-note">
-                                    {t(
-                                      "No changes recorded yet. Changes are tracked from now on.",
-                                      "Noch keine Änderungen erfasst. Änderungen werden ab jetzt aufgezeichnet.",
-                                    )}
-                                  </p>
-                                ) : (
-                                  <InventoryHistoryList entries={itemHistory} t={t} />
-                                )}
+                              <span>{item.name}</span>
+                            </button>
+                            <div className="inventory-sub">
+                              <span>
+                                {[item.vendorName || item.vendorSlug, item.productName || item.productSlug]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </span>
+                              {item.owner && <span>{item.owner}</span>}
+                            </div>
+                            {item.notes && <div className="inventory-notes">{item.notes}</div>}
+                          </td>
+                          <td className="inventory-cell-version mono">{item.version}</td>
+                          <td className="inventory-cell-severity">
+                            {vulns.length > 0 && (
+                              <SeverityTag severity={worst}>{severityLabel(worst, t)}</SeverityTag>
+                            )}
+                          </td>
+                          <td className="inventory-cell-cves">
+                            {isLoading ? (
+                              <div className="loading-appear" aria-hidden="true">
+                                <SkeletonBlock height="1rem" width="2rem" radius={4} />
                               </div>
-                            </div>
-                            <div className="inventory-expansion-cves">
-                              {isLoading ? (
-                                <div className="inventory-skeleton" role="status">
-                                  <span className="visually-hidden">
-                                    {t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")}
-                                  </span>
-                                  {Array.from({ length: 3 }, (_, i) => (
-                                    <SkeletonBlock key={i} height="1.5rem" radius={4} />
-                                  ))}
+                            ) : (
+                              <span
+                                className={`inventory-cve-count${isError ? " is-error" : ""}${affectedStale ? " is-refreshing" : ""}`}
+                                aria-busy={affectedStale || undefined}
+                              >
+                                {isError ? "!" : vulns.length}
+                                <span className="inventory-unit"> {t("CVEs", "CVEs")}</span>
+                              </span>
+                            )}
+                          </td>
+                          {eolEnabled && (
+                            <td className="inventory-cell-eol">
+                              {eolEntry === "loading" ? (
+                                <div className="loading-appear" aria-hidden="true">
+                                  <SkeletonBlock height="1.25rem" width="6rem" radius={4} />
                                 </div>
-                              ) : isError ? (
-                                <ErrorState title={(affected as { error: string }).error} />
-                              ) : vulns.length === 0 ? (
-                                <EmptyState
-                                  title={t(
-                                    "No known vulnerabilities currently affect this version.",
-                                    "Aktuell sind keine Schwachstellen für diese Version bekannt.",
-                                  )}
-                                />
-                              ) : (
-                                <>
-                                  <div className="inventory-expansion-head">
-                                    <h3>
-                                      {vulns.length}{" "}
-                                      {t(
-                                        vulns.length === 1 ? "affecting vulnerability" : "affecting vulnerabilities",
-                                        vulns.length === 1 ? "betroffene Schwachstelle" : "betroffene Schwachstellen",
-                                      )}
-                                    </h3>
-                                  </div>
-                                  <ul className="inventory-cve-list">
-                                    {vulns.slice(0, 50).map((v) => {
-                                      const sev = severityOf(v.severity);
-                                      return (
-                                        <li key={v.vulnId}>
-                                          <Link
-                                            to={`/vulnerability/${encodeURIComponent(v.vulnId)}`}
-                                            className="row-link inventory-cve-row"
-                                          >
-                                            <span className="mono inventory-cve-id">{v.vulnId}</span>
-                                            <span className="inventory-cve-severity">
-                                              <SeverityTag severity={sev}>{severityLabel(sev, t)}</SeverityTag>
-                                            </span>
-                                            {v.exploited && <span className="chip inventory-kev">KEV</span>}
-                                            {v.title && v.title !== v.vulnId && (
-                                              <span className="inventory-cve-title">{v.title}</span>
-                                            )}
-                                          </Link>
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                  {vulns.length > 50 && (
-                                    <p className="inventory-cve-more">
-                                      {t("... and", "... und")} {vulns.length - 50} {t("more", "weitere")}
-                                    </p>
-                                  )}
-                                </>
+                              ) : eolStatus && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  role="presentation"
+                                  className={eolStale ? "is-refreshing" : undefined}
+                                  aria-busy={eolStale || undefined}
+                                >
+                                  <EolStatusBadge status={eolStatus} t={t} />
+                                </div>
                               )}
+                            </td>
+                          )}
+                          <td className="inventory-cell-meta">{environmentLabel(item.environment, t)}</td>
+                          <td className="inventory-cell-meta">{deploymentLabel(item.deployment, t)}</td>
+                          <td className="inventory-cell-meta inventory-cell-instances">
+                            {item.instanceCount}
+                            <span className="inventory-unit">
+                              {" "}
+                              {t(
+                                item.instanceCount === 1 ? "instance" : "instances",
+                                item.instanceCount === 1 ? "Instanz" : "Instanzen",
+                              )}
+                            </span>
+                          </td>
+                          <td className="inventory-cell-actions">
+                            <div
+                              className="inventory-actions"
+                              role="presentation"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="btn btn-secondary inventory-dql"
+                                onClick={() => void handleOpenInList(item)}
+                                disabled={dqlLoadingId === item.id}
+                                aria-busy={dqlLoadingId === item.id || undefined}
+                                title={t(
+                                  "Open a pre-built DQL query for this item in the Vulnerabilities list",
+                                  "Vorbereitete DQL-Abfrage für diesen Eintrag in der Schwachstellen-Liste öffnen",
+                                )}
+                              >
+                                <BusyLabel busy={dqlLoadingId === item.id}>{t("DQL", "DQL")}</BusyLabel>
+                              </button>
+                              <IconButton label={t("Edit", "Bearbeiten")} onClick={() => startEditing(item)}>
+                                <LuPencil aria-hidden="true" />
+                              </IconButton>
+                              <IconButton label={t("Duplicate", "Duplizieren")} onClick={() => startDuplicating(item)}>
+                                <LuCopy aria-hidden="true" />
+                              </IconButton>
+                              <IconButton
+                                label={t("Delete", "Löschen")}
+                                className="inventory-delete"
+                                onClick={() => setDeleteCandidate(item)}
+                              >
+                                <LuTrash2 aria-hidden="true" />
+                              </IconButton>
                             </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                );
-              })}
-            </table>
+                          </td>
+                        </tr>
+
+                        {expanded && (
+                          <tr className="inventory-expansion-row">
+                            <td colSpan={columnCount}>
+                              <div className="well inventory-expansion">
+                                <div className="inventory-expansion-side">
+                                  <VersionUpdateForm
+                                    key={item.version}
+                                    item={item}
+                                    suggested={eolStatus?.isOutdated ? (eolStatus.latestVersion ?? null) : null}
+                                    onSaved={handleVersionSaved}
+                                    t={t}
+                                  />
+                                  {eolStatus && <EolDetailBlock status={eolStatus} t={t} />}
+                                  <div className="inventory-item-history">
+                                    <div className="inventory-expansion-head">
+                                      <h3>{t("History", "Verlauf")}</h3>
+                                    </div>
+                                    {itemHistory === undefined || itemHistory === "loading" ? (
+                                      <LoadingRegion label={t("Loading history", "Verlauf wird geladen")}>
+                                        <SkeletonBlock height="1.5rem" radius={4} />
+                                      </LoadingRegion>
+                                    ) : "error" in itemHistory ? (
+                                      <ErrorState title={itemHistory.error} />
+                                    ) : itemHistory.length === 0 ? (
+                                      <p className="inventory-note">
+                                        {t(
+                                          "No changes recorded yet. Changes are tracked from now on.",
+                                          "Noch keine Änderungen erfasst. Änderungen werden ab jetzt aufgezeichnet.",
+                                        )}
+                                      </p>
+                                    ) : (
+                                      <div
+                                        className={historyReloading[item.id] ? "is-refreshing" : undefined}
+                                        aria-busy={historyReloading[item.id] || undefined}
+                                      >
+                                        <InventoryHistoryList entries={itemHistory} t={t} />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div
+                                  className={`inventory-expansion-cves${affectedStale ? " is-refreshing" : ""}`}
+                                  aria-busy={affectedStale || undefined}
+                                >
+                                  {isLoading ? (
+                                    <LoadingRegion
+                                      label={t("Loading affected vulnerabilities", "Betroffene Schwachstellen werden geladen")}
+                                    >
+                                      <SkeletonRows rows={3} height="1.5rem" />
+                                    </LoadingRegion>
+                                  ) : isError ? (
+                                    <ErrorState title={(affected as { error: string }).error} />
+                                  ) : vulns.length === 0 ? (
+                                    <EmptyState
+                                      title={t(
+                                        "No known vulnerabilities currently affect this version.",
+                                        "Aktuell sind keine Schwachstellen für diese Version bekannt.",
+                                      )}
+                                    />
+                                  ) : (
+                                    <>
+                                      <div className="inventory-expansion-head">
+                                        <h3>
+                                          {vulns.length}{" "}
+                                          {t(
+                                            vulns.length === 1 ? "affecting vulnerability" : "affecting vulnerabilities",
+                                            vulns.length === 1 ? "betroffene Schwachstelle" : "betroffene Schwachstellen",
+                                          )}
+                                        </h3>
+                                      </div>
+                                      <ul className="inventory-cve-list">
+                                        {vulns.slice(0, 50).map((v) => {
+                                          const sev = severityOf(v.severity);
+                                          return (
+                                            <li key={v.vulnId}>
+                                              <Link
+                                                to={`/vulnerability/${encodeURIComponent(v.vulnId)}`}
+                                                className="row-link inventory-cve-row"
+                                              >
+                                                <span className="mono inventory-cve-id">{v.vulnId}</span>
+                                                <span className="inventory-cve-severity">
+                                                  <SeverityTag severity={sev}>{severityLabel(sev, t)}</SeverityTag>
+                                                </span>
+                                                {v.exploited && <span className="chip inventory-kev">KEV</span>}
+                                                {v.title && v.title !== v.vulnId && (
+                                                  <span className="inventory-cve-title">{v.title}</span>
+                                                )}
+                                              </Link>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                      {vulns.length > 50 && (
+                                        <p className="inventory-cve-more">
+                                          {t("... and", "... und")} {vulns.length - 50} {t("more", "weitere")}
+                                        </p>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    );
+                  })}
+                </table>
+              </div>
+            )}
           </div>
         )}
       </Section>
@@ -1465,14 +1535,9 @@ export const InventoryPage = () => {
         </p>
         {aggregatedCves.length === 0 ? (
           aggregatedLoading ? (
-            <div className="inventory-skeleton" role="status">
-              <span className="visually-hidden">
-                {t("Loading affected vulnerabilities...", "Betroffene Schwachstellen werden geladen...")}
-              </span>
-              {Array.from({ length: 5 }, (_, i) => (
-                <SkeletonBlock key={i} height="2.25rem" radius={4} />
-              ))}
-            </div>
+            <LoadingRegion label={t("Loading affected vulnerabilities", "Betroffene Schwachstellen werden geladen")}>
+              <SkeletonRows rows={5} height="2.25rem" />
+            </LoadingRegion>
           ) : (
             <EmptyState
               title={
@@ -1485,12 +1550,10 @@ export const InventoryPage = () => {
         ) : (
           <>
             {aggregatedLoading && (
-              <p className="inventory-note">
-                {t("Still resolving some items…", "Einige Einträge werden noch geladen…")}
-              </p>
+              <LoadingState label={t("Still resolving some items…", "Einige Einträge werden noch geladen…")} />
             )}
             <div className="table-scroll">
-              <table className="inventory-flagged-table">
+              <table className="inventory-flagged-table" aria-busy={aggregatedLoading || undefined}>
                 <thead>
                   <tr>
                     <th scope="col">{t("CVE", "CVE")}</th>
@@ -1549,7 +1612,9 @@ export const InventoryPage = () => {
 
       <Section title={t("Recent changes", "Letzte Änderungen")} className="inventory-recent-changes">
         {recentChanges === "loading" ? (
-          <SkeletonBlock height="4rem" radius={4} />
+          <LoadingRegion label={t("Loading recent changes", "Letzte Änderungen werden geladen")}>
+            <SkeletonBlock height="4rem" radius={4} />
+          </LoadingRegion>
         ) : "error" in recentChanges ? (
           <ErrorState title={recentChanges.error} />
         ) : recentChanges.length === 0 ? (
@@ -1562,7 +1627,9 @@ export const InventoryPage = () => {
             )}
           </EmptyState>
         ) : (
-          <InventoryHistoryList entries={recentChanges} showItem t={t} />
+          <div className={recentReloading ? "is-refreshing" : undefined} aria-busy={recentReloading || undefined}>
+            <InventoryHistoryList entries={recentChanges} showItem t={t} />
+          </div>
         )}
       </Section>
 
@@ -1850,12 +1917,11 @@ export const InventoryPage = () => {
                 className="btn btn-primary"
                 onClick={() => void handleSave()}
                 disabled={saving}
+                aria-busy={saving || undefined}
               >
-                {saving
-                  ? t("Saving...", "Speichern…")
-                  : editingId
-                    ? t("Save", "Speichern")
-                    : t("Create", "Erstellen")}
+                <BusyLabel busy={saving}>
+                  {editingId ? t("Save", "Speichern") : t("Create", "Erstellen")}
+                </BusyLabel>
               </button>
             </div>
           </div>

@@ -87,6 +87,41 @@ export const IconButton = ({
   </button>
 );
 
+/**
+ * A small ring in the current text colour, for work in place: a busy button,
+ * a panel loading on demand. Decorative; the text next to it carries the meaning.
+ */
+export const Spinner = ({ className }: { className?: string }) => (
+  <span className={`spinner${className ? ` ${className}` : ""}`} aria-hidden="true" />
+);
+
+/**
+ * "Loading …" for a panel or tab whose shape is not worth a skeleton: a
+ * spinner and one muted line, announced once. Appears after a short delay so
+ * a fast answer never flashes it.
+ */
+export const LoadingState = ({ label, inline = false }: { label?: ReactNode; inline?: boolean }) => {
+  const { t } = useI18n();
+  return (
+    <div className={`loading-state${inline ? " loading-state--inline" : ""}`} role="status" aria-live="polite">
+      <Spinner />
+      <span>{label ?? t("Loading…", "Wird geladen…")}</span>
+    </div>
+  );
+};
+
+/**
+ * The content of a button that can be busy: while `busy`, a spinner sits in
+ * front of the label (or of `busyLabel`). The caller keeps `disabled` and sets
+ * `aria-busy` on the button itself.
+ */
+export const BusyLabel = ({ busy, busyLabel, children }: { busy: boolean; busyLabel?: ReactNode; children: ReactNode }) => (
+  <>
+    {busy ? <Spinner /> : null}
+    {busy && busyLabel ? busyLabel : children}
+  </>
+);
+
 /** What is empty, why it matters and the one action that fills it. */
 export const EmptyState = ({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) => (
   <div className="state-block">

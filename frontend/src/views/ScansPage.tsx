@@ -28,11 +28,11 @@ import {
 } from "../api/scans";
 import { fetchLicenseOverview } from "../api/licensePolicy";
 import { SeverityBadges } from "../components/SeverityBadges";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
-import { EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Stat } from "../ui/primitives";
+import { BusyLabel, EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Spinner, Stat } from "../ui/primitives";
 import { TabPill } from "../ui/TabPill";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
@@ -160,7 +160,7 @@ export const ScansPage = () => {
     {},
   );
   const [scans, setScans] = useState<Scan[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorCause, setErrorCause] = useState<unknown>(null);
   const [confirmModal, setConfirmModal] = useState<ConfirmModal | null>(null);
@@ -716,8 +716,8 @@ export const ScansPage = () => {
       {tab === "targets" && (
         <div>
           <div className="scans-lead">
-            {!loading && targets.length > 0 && (
-              <dl className="stat-row">
+            {targets.length > 0 && (
+              <dl className={`stat-row${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
                 <Stat label={t("Critical", "Kritisch")} value={visibleSummary.critical.toLocaleString()} tone={visibleSummary.critical ? "critical" : undefined} />
                 <Stat label={t("High", "Hoch")} value={visibleSummary.high.toLocaleString()} tone={visibleSummary.high ? "high" : undefined} />
                 <Stat label={t("Medium", "Mittel")} value={visibleSummary.medium.toLocaleString()} tone={visibleSummary.medium ? "medium" : undefined} />
@@ -733,17 +733,15 @@ export const ScansPage = () => {
               aria-label={t("Search targets", "Ziele suchen")}
             />
           </div>
-          {loading && (
-            <div className="scans-skeleton-rows">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <SkeletonBlock key={i} height={56} radius={4} />
-              ))}
-            </div>
+          {loading && targets.length === 0 && (
+            <LoadingRegion label={t("Loading scan targets", "Scan-Ziele werden geladen")}>
+              <SkeletonRows rows={8} height={56} />
+            </LoadingRegion>
           )}
           {!loading && targets.length === 0 && (
             <EmptyState title={t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")} />
           )}
-          {!loading && targets.length > 0 && (() => {
+          {targets.length > 0 && (() => {
             if (visibleTargets.length === 0) {
               return (
                 <EmptyState title={<>{t("No targets match", "Keine Ziele passen zu")} “{targetSearch.trim()}”.</>} />
@@ -774,7 +772,7 @@ export const ScansPage = () => {
               setTab("scans");
             };
             return (
-              <div className="scans-targets-wrap">
+              <div className={`scans-targets-wrap${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
                 <table className="scans-table scans-targets">
                   <thead>
                     <tr>
@@ -891,19 +889,17 @@ export const ScansPage = () => {
             </span>
           </div>
 
-          {loading && (
-            <div className="scans-skeleton-rows">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <SkeletonBlock key={i} height={40} radius={4} />
-              ))}
-            </div>
+          {loading && scans.length === 0 && (
+            <LoadingRegion label={t("Loading scans", "Scans werden geladen")}>
+              <SkeletonRows rows={6} height={40} />
+            </LoadingRegion>
           )}
           {!loading && scans.length === 0 && (
             <EmptyState title={t("No scans yet.", "Noch keine Scans.")} />
           )}
-          {!loading && scans.length > 0 && (
+          {scans.length > 0 && (
             <>
-              <div className="table-scroll">
+              <div className={`table-scroll${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
                 <table className="scans-table scans-table--pin scans-table--pin-end">
                   <thead>
                     <tr>
@@ -1062,9 +1058,9 @@ export const ScansPage = () => {
             </span>
           </div>
 
-          {findingsLoading ? (
+          {findingsLoading && globalFindings.length === 0 ? (
             <div className="table-scroll">
-              <table className="scans-table">
+              <table className="scans-table" aria-busy="true">
                 <thead>
                   <tr>
                     {[t("Vulnerability", "Schwachstelle"), t("Severity", "Schweregrad"), "CVSS", t("Package", "Paket"), t("Version", "Version"), t("Fix", "Fix"), t("Scanners", "Scanner"), t("Targets", "Ziele")].map(label => (
@@ -1074,7 +1070,7 @@ export const ScansPage = () => {
                 </thead>
                 <tbody>
                   {Array.from({ length: 10 }).map((_, i) => (
-                    <tr key={i}>
+                    <tr key={i} className="loading-appear" aria-hidden="true">
                       {Array.from({ length: 8 }).map((_, j) => (
                         <td key={j}>
                           <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 2 ? "40px" : j === 7 ? "30px" : "60%"} radius={4} />
@@ -1093,7 +1089,7 @@ export const ScansPage = () => {
             />
           ) : (
             <>
-              <div className="table-scroll">
+              <div className={`table-scroll${findingsLoading ? " is-refreshing" : ""}`} aria-busy={findingsLoading || undefined}>
                 <table className="scans-table scans-table--pin">
                   <thead>
                     <tr>
@@ -1325,17 +1321,15 @@ export const ScansPage = () => {
             </select>
           </div>
 
-          {alertsLoading ? (
-            <div className="scans-skeleton-rows">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <SkeletonBlock key={i} height={48} radius={4} />
-              ))}
-            </div>
+          {alertsLoading && globalAlerts.length === 0 ? (
+            <LoadingRegion label={t("Loading security alerts", "Sicherheitswarnungen werden geladen")}>
+              <SkeletonRows rows={8} height={48} />
+            </LoadingRegion>
           ) : globalAlerts.length === 0 ? (
             <EmptyState title={t("No security alerts from current scans.", "Keine Sicherheitswarnungen aus aktuellen Scans.")} />
           ) : (
             <>
-              <div className="table-scroll">
+              <div className={`table-scroll${alertsLoading ? " is-refreshing" : ""}`} aria-busy={alertsLoading || undefined}>
                 <table className="scans-table scans-table--pin">
                   <thead>
                     <tr>
@@ -1497,6 +1491,7 @@ export const ScansPage = () => {
                   type="button"
                   className="btn"
                   disabled={!sbomImportFile || sbomImportLoading}
+                  aria-busy={sbomImportLoading || undefined}
                   onClick={async () => {
                     if (!sbomImportFile) return;
                     setSbomImportLoading(true);
@@ -1516,7 +1511,7 @@ export const ScansPage = () => {
                     }
                   }}
                 >
-                  {sbomImportLoading ? t("Importing...", "Importiert...") : t("Import", "Importieren")}
+                  <BusyLabel busy={sbomImportLoading}>{t("Import", "Importieren")}</BusyLabel>
                 </button>
               </div>
             </div>
@@ -1637,9 +1632,9 @@ export const ScansPage = () => {
             </span>
           </div>
 
-          {sbomLoading ? (
+          {sbomLoading && sbomComponents.length === 0 ? (
             <div className="table-scroll">
-              <table className="scans-table">
+              <table className="scans-table" aria-busy="true">
                 <thead>
                   <tr>
                     {[t("Component", "Komponente"), t("Version", "Version"), t("Type", "Typ"), t("Provenance", "Herkunft"), t("Licenses", "Lizenzen"), t("Targets", "Ziele")].map(label => (
@@ -1649,7 +1644,7 @@ export const ScansPage = () => {
                 </thead>
                 <tbody>
                   {Array.from({ length: 10 }).map((_, i) => (
-                    <tr key={i}>
+                    <tr key={i} className="loading-appear" aria-hidden="true">
                       {Array.from({ length: 6 }).map((_, j) => (
                         <td key={j}>
                           <SkeletonBlock height={16} width={j === 0 ? "80%" : j === 3 ? "30px" : j === 5 ? "30px" : "60%"} radius={4} />
@@ -1668,7 +1663,7 @@ export const ScansPage = () => {
             />
           ) : (
             <>
-              <div className="table-scroll">
+              <div className={`table-scroll${sbomLoading ? " is-refreshing" : ""}`} aria-busy={sbomLoading || undefined}>
                 <table className="scans-table scans-table--pin">
                   <thead>
                     <tr>
@@ -1903,8 +1898,8 @@ export const ScansPage = () => {
               </fieldset>
 
               <div className="scans-dialog-actions">
-                <button type="submit" className="btn-primary" disabled={isSubmitDisabled}>
-                  {scanning ? t("Scanning...", "Scannt...") : t("Start scan", "Scan starten")}
+                <button type="submit" className="btn-primary" disabled={isSubmitDisabled} aria-busy={scanning || undefined}>
+                  <BusyLabel busy={scanning}>{t("Start scan", "Scan starten")}</BusyLabel>
                 </button>
               </div>
             </form>
@@ -1933,16 +1928,14 @@ export const ScansPage = () => {
             </span>
           </div>
 
-          {licensesLoading ? (
-            <div className="scans-skeleton-rows">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <SkeletonBlock key={i} height={40} radius={4} />
-              ))}
-            </div>
+          {licensesLoading && licenseOverview.length === 0 ? (
+            <LoadingRegion label={t("Loading licenses", "Lizenzen werden geladen")}>
+              <SkeletonRows rows={8} height={40} />
+            </LoadingRegion>
           ) : licenseOverview.length === 0 ? (
             <EmptyState title={t("No license data available. Run a scan with SBOM generation first.", "Keine Lizenzdaten verfügbar. Führen Sie zuerst einen Scan mit SBOM-Generierung durch.")} />
           ) : (
-            <div className="table-scroll">
+            <div className={`table-scroll${licensesLoading ? " is-refreshing" : ""}`} aria-busy={licensesLoading || undefined}>
               <table className="scans-table scans-table--pin">
                 <thead>
                   <tr>
@@ -1982,12 +1975,16 @@ export const ScansPage = () => {
       {/* Scanner tab */}
       {tab === "scanner" && (
         <div>
-          {loading && <SkeletonBlock height={200} radius={4} />}
+          {loading && !scannerStats && (
+            <LoadingRegion label={t("Loading scanner status", "Scanner-Status wird geladen")}>
+              <SkeletonBlock height={200} />
+            </LoadingRegion>
+          )}
           {!loading && !scannerStats && (
             <ErrorState title={t("Could not reach scanner.", "Scanner nicht erreichbar.")} />
           )}
-          {!loading && scannerStats && !scannerStats.error && (
-            <div className="scans-scanner">
+          {scannerStats && !scannerStats.error && (
+            <div className={`scans-scanner${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
               <div className="scans-scanner-head">
                 {/* Active scans indicator */}
                 <div className="scans-active">
@@ -2071,7 +2068,7 @@ export const ScansPage = () => {
               />
             </div>
           )}
-          {!loading && scannerStats?.error && (
+          {scannerStats?.error && (
             <ErrorState title={scannerStats.error} />
           )}
         </div>
@@ -2407,9 +2404,14 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
 };
 
 const ScanningBadge = ({ status }: { status?: string | null }) => {
+  const { t } = useI18n();
   const isPending = status === "pending";
-  const label = isPending ? "Queued..." : "Scanning...";
-  return <span className={`scans-running${isPending ? " is-queued" : ""}`}>{label}</span>;
+  return (
+    <span className={`scans-running${isPending ? " is-queued" : ""}`}>
+      {isPending ? null : <Spinner />}
+      {isPending ? t("Queued", "Wartend") : t("Scanning", "Scannt")}
+    </span>
+  );
 };
 
 const SourceBadge = ({ source }: { source: string }) => {
@@ -2626,10 +2628,10 @@ const AutoScanDiagnosticsTable = ({
                       className={`scans-verdict scans-verdict--${verdict.tone}`}
                       onClick={() => runCheck(target.id)}
                       disabled={isPending}
-                      aria-busy={isPending}
+                      aria-busy={isPending || undefined}
                       title={tooltip}
                     >
-                      <LuRefreshCw aria-hidden="true" />
+                      {isPending ? <Spinner /> : <LuRefreshCw aria-hidden="true" />}
                       {verdict.label}
                     </button>
                   </td>

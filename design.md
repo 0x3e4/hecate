@@ -49,6 +49,16 @@ The spacing scale, the type scale, the easings and the durations are the scaffol
 
 ## Motion
 - Character: still. `--dur-micro` and `--dur-short` for state only, `transform` and `opacity` for movement, no reveal on load, no pulsing.
+- Two exceptions, both for waiting: a skeleton carries one slow sheen, and a spinner turns. Reduced motion stops both (global rule in `base.css`).
+
+## Loading
+One family, shared by every screen. Components in `components/Skeleton.tsx` and `ui/primitives.tsx`, CSS in `styles.css`.
+- **First load of a region with a known shape**: a skeleton inside `LoadingRegion` (`role="status"`, one screen-reader label, appears only after `--loading-delay` so a fast answer flashes nothing). Build it from `SkeletonBlock`, `SkeletonText`, `SkeletonRows`; a screen keeps its own layout class through `className`. Table rows that cannot sit in a `div` take `.loading-appear` and the table `aria-busy`.
+- **A panel, tab, dialog or list whose shape is not worth a skeleton**: `LoadingState` (spinner + one muted line), `inline` inside running text.
+- **Fetching again while content is shown**: keep the content, add `.is-refreshing` and `aria-busy="true"` on its container. Never swap loaded content back to a skeleton, never refetch with no sign at all.
+- **A button doing its work**: `disabled`, `aria-busy`, and `<BusyLabel busy>` — a spinner in front of the unchanged label. Never replace the label with `...`, `Saving…` or another verb; a `busyLabel` only where the wait is long and the state is the news (an AI analysis running).
+- **A long job**: its own status (AI: `AILoadingIndicator`; scans and syncs: their status word). The sidebar dot marks a running scan or AI job in `--color-info`; its state comes from the server, SSE only makes it ask again.
+- A spinner is `Spinner`, nothing else: no screen-specific rings, no icon swapped for an hourglass.
 
 ## Exports
 `frontend/src/tokens.css` in this project.

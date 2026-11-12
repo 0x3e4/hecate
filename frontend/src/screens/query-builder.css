@@ -70,7 +70,7 @@
 .query-builder-value:focus-visible { outline-offset: -2px; }
 .query-builder-values-table tr:hover .query-builder-value { color: var(--color-link); }
 .query-builder-value-count { color: var(--color-muted); font-size: var(--text-xs); text-align: right; white-space: nowrap; }
-.query-builder-values-loading { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-sm); }
+.loading-region.query-builder-values-loading { gap: var(--space-sm); margin-top: var(--space-sm); }
 .query-builder-values-loading-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); }
 
 /* Save dialog */

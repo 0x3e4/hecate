@@ -24,6 +24,10 @@ async def _event_generator(request: Request):
     try:
         # Send an initial keepalive so the client knows the connection is live
         yield ": connected\n\n"
+        # Then what is running now and how recently finished jobs ended, so a
+        # client that reconnects drops "running" states whose end it missed.
+        snapshot = {"jobs": [event.to_dict() for event in bus.snapshot()]}
+        yield f"event: snapshot\ndata: {json.dumps(snapshot, default=str)}\n\n"
 
         while True:
             # Check if client disconnected

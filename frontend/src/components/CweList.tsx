@@ -4,7 +4,7 @@ import type { CWEInfo } from "../api/cwe";
 import { getCweBulk } from "../api/cwe";
 import { useI18n } from "../i18n/context";
 import { EmptyState, ExternalLink } from "../ui/primitives";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonBlock } from "./Skeleton";
 
 interface CweListProps {
   cwes: string[];
@@ -45,14 +45,14 @@ export const CweList = ({ cwes }: CweListProps) => {
 
   if (loading) {
     return (
-      <div role="status">
-        <span className="visually-hidden">{t("Loading CWE information...", "CWE-Informationen werden geladen...")}</span>
-        <div className="vulnerability-detail-skeleton-stack">
-          {cwes.map((cwe) => (
-            <SkeletonBlock key={cwe} height="3rem" radius={4} />
-          ))}
-        </div>
-      </div>
+      <LoadingRegion
+        label={t("Loading CWE information", "CWE-Informationen werden geladen")}
+        className="vulnerability-detail-skeleton-stack"
+      >
+        {cwes.map((cwe) => (
+          <SkeletonBlock key={cwe} height="3rem" radius={4} />
+        ))}
+      </LoadingRegion>
     );
   }
 

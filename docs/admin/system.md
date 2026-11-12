@@ -109,6 +109,12 @@ long it took, and when it is next scheduled to run. Initial syncs show "Only on 
 *Next Run* column because they have no recurring schedule. The table auto-refreshes every few seconds
 and reacts immediately to live job events, so you can watch a running sync progress without reloading.
 
+A running NVD, EUVD, OSV or CPE sync shows how far it is under its status: the number of records
+processed so far, and for an initial (full) NVD or EUVD sync a bar with the share of the source's
+total. The count updates live as the pipeline reports progress, every 500 records or once a minute.
+An incremental run gets the count only, because the source's total says nothing about how many
+records changed since the last run.
+
 Each row carries a **Start manually** button that kicks off that job out of band — handy after a feed
 outage, or to force an initial bootstrap. Click a row to expand its details: a successful run shows its
 last result as formatted JSON, and a failed run shows the error text in red. A few jobs (such as the

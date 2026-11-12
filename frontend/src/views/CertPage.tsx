@@ -15,7 +15,7 @@ import {
 } from "../api/cert";
 import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
 import { ChipLinks, cveMatchesInventory, uniqueChips, useCveChips, type CoverageChip } from "../components/CoverageChips";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -164,11 +164,9 @@ export const CertPage = () => {
           onRetry={() => setRetryKey((k) => k + 1)}
         />
       ) : loading && !data ? (
-        <div className="cert-skeleton">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <SkeletonBlock key={index} height="3rem" />
-          ))}
-        </div>
+        <LoadingRegion label={t("Loading advisories", "Meldungen werden geladen")}>
+          <SkeletonRows rows={8} height="3rem" />
+        </LoadingRegion>
       ) : totalCount === 0 ? (
         <EmptyState title={t("No advisories in this period.", "Keine Meldungen in diesem Zeitraum.")}>
           {t(
@@ -178,7 +176,7 @@ export const CertPage = () => {
         </EmptyState>
       ) : (
         <>
-          <dl className="stat-row cert-stats">
+          <dl className={`stat-row cert-stats${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
             <Stat label={t("Topics", "Themen")} value={topics.length.toLocaleString(locale)} />
             <Stat
               label={t("Named by several CERTs or vendors", "Von mehreren CERTs oder Herstellern genannt")}
@@ -237,38 +235,40 @@ export const CertPage = () => {
             </label>
           </div>
 
-          <Section title={t("Topics", "Themen")}>
-            {visible.length === 0 ? (
-              <EmptyState title={t("No topic matches these filters.", "Kein Thema passt zu diesen Filtern.")} />
-            ) : (
-              <ul className="cert-topics">
-                {visible.map((topic) => (
-                  <TopicRow
-                    key={topic.id}
-                    t={t}
-                    topic={topic}
-                    chips={uniqueChips(topic.cves.flatMap((cve) => chipsByCve.get(cve.vulnId) ?? []))}
-                  />
-                ))}
-              </ul>
-            )}
-          </Section>
-
-          {visibleRoundups.length > 0 && (
-            <Section title={t("Round-ups", "Sammelmeldungen")}>
-              <p className="cert-note">
-                {t(
-                  "Batches of 20 or more CVEs, such as a kernel update, and community posts listing more than three. They stay apart so unrelated topics do not merge through them.",
-                  "Sammlungen ab 20 CVEs, etwa ein Kernel-Update, und Community-Beiträge mit mehr als drei. Sie bleiben getrennt, damit fremde Themen nicht über sie zusammenfallen.",
-                )}
-              </p>
-              <ul className="cert-roundups">
-                {visibleRoundups.map((roundup) => (
-                  <RoundupRow key={roundup.id} t={t} roundup={roundup} hits={roundupHits(roundup, coverage.cveScan)} />
-                ))}
-              </ul>
+          <div className={loading ? "is-refreshing" : undefined} aria-busy={loading || undefined}>
+            <Section title={t("Topics", "Themen")}>
+              {visible.length === 0 ? (
+                <EmptyState title={t("No topic matches these filters.", "Kein Thema passt zu diesen Filtern.")} />
+              ) : (
+                <ul className="cert-topics">
+                  {visible.map((topic) => (
+                    <TopicRow
+                      key={topic.id}
+                      t={t}
+                      topic={topic}
+                      chips={uniqueChips(topic.cves.flatMap((cve) => chipsByCve.get(cve.vulnId) ?? []))}
+                    />
+                  ))}
+                </ul>
+              )}
             </Section>
-          )}
+
+            {visibleRoundups.length > 0 && (
+              <Section title={t("Round-ups", "Sammelmeldungen")}>
+                <p className="cert-note">
+                  {t(
+                    "Batches of 20 or more CVEs, such as a kernel update, and community posts listing more than three. They stay apart so unrelated topics do not merge through them.",
+                    "Sammlungen ab 20 CVEs, etwa ein Kernel-Update, und Community-Beiträge mit mehr als drei. Sie bleiben getrennt, damit fremde Themen nicht über sie zusammenfallen.",
+                  )}
+                </p>
+                <ul className="cert-roundups">
+                  {visibleRoundups.map((roundup) => (
+                    <RoundupRow key={roundup.id} t={t} roundup={roundup} hits={roundupHits(roundup, coverage.cveScan)} />
+                  ))}
+                </ul>
+              </Section>
+            )}
+          </div>
         </>
       )}
     </div>

@@ -8,7 +8,7 @@ import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useI18n } from "../i18n/context";
 import { Toast, useToast } from "../components/Toast";
 import { DQL_FIELD_HINTS } from "../constants/dqlFields";
-import { EmptyState, PageHeader } from "../ui/primitives";
+import { BusyLabel, EmptyState, PageHeader } from "../ui/primitives";
 
 export const QueryBuilderPage = () => {
   const { t } = useI18n();
@@ -20,6 +20,7 @@ export const QueryBuilderPage = () => {
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [saving, setSaving] = useState(false);
   const { toast, showToast, dismiss } = useToast();
 
   const { createSavedSearch } = useSavedSearches();
@@ -82,13 +83,14 @@ export const QueryBuilderPage = () => {
   };
 
   const handleSave = async () => {
-    if (!currentQuery.trim()) return;
+    if (!currentQuery.trim() || saving) return;
 
     if (!saveName.trim()) {
       setShowSaveDialog(true);
       return;
     }
 
+    setSaving(true);
     try {
       await createSavedSearch({
         name: saveName.trim(),
@@ -102,6 +104,8 @@ export const QueryBuilderPage = () => {
     } catch (error) {
       console.error("Failed to save query:", error);
       showToast(t("Saving failed", "Speichern fehlgeschlagen"), "error");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -227,9 +231,10 @@ export const QueryBuilderPage = () => {
                 type="button"
                 className="btn btn-primary"
                 onClick={handleSave}
-                disabled={!saveName.trim()}
+                disabled={saving || !saveName.trim()}
+                aria-busy={saving || undefined}
               >
-                {t("Save", "Speichern")}
+                <BusyLabel busy={saving}>{t("Save", "Speichern")}</BusyLabel>
               </button>
             </div>
           </div>

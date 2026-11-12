@@ -24,7 +24,7 @@ import {
   triggerTargetCheck,
 } from "../api/scans";
 import { SeverityBadges } from "../components/SeverityBadges";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
 import { VexSourcesCard } from "../components/VexSourcesCard";
@@ -32,6 +32,7 @@ import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
 import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget, TargetSbomDiff } from "../types";
 import {
+  BusyLabel,
   EmptyState,
   ErrorState,
   PageHeader,
@@ -249,7 +250,7 @@ export const ScanTargetDetailPage = () => {
   // history is accumulated newest-first across server pages.
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
-  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState<"more" | "all" | null>(null);
   const [findings, setFindings] = useState<ConsolidatedFinding[]>([]);
   const [sbomDiff, setSbomDiff] = useState<TargetSbomDiff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -309,7 +310,7 @@ export const ScanTargetDetailPage = () => {
     async (showAll: boolean) => {
       const id = target?.id ?? targetId;
       if (!id) return;
-      setHistoryBusy(true);
+      setHistoryBusy(showAll ? "all" : "more");
       try {
         let current = history;
         do {
@@ -326,7 +327,7 @@ export const ScanTargetDetailPage = () => {
       } catch {
         /* ignore: keep what we have */
       } finally {
-        setHistoryBusy(false);
+        setHistoryBusy(null);
       }
     },
     [target, targetId, history, historyTotal]
@@ -408,11 +409,12 @@ export const ScanTargetDetailPage = () => {
     </Link>
   );
 
-  if (loading) {
+  // First load only: a refetch keeps the target on screen (dimmed below).
+  if (loading && !target) {
     return (
       <div className="page scan-target">
         {backLink}
-        <div className="scan-target-skeleton" aria-busy="true">
+        <LoadingRegion label={t("Loading scan target", "Scan-Ziel wird geladen")} className="scan-target-skeleton">
           <SkeletonBlock height={30} width="40%" />
           <SkeletonBlock height={18} width="60%" />
           <div className="scan-target-skeleton-figures">
@@ -421,12 +423,8 @@ export const ScanTargetDetailPage = () => {
             ))}
           </div>
           <SkeletonBlock height={8} />
-          <div className="scan-target-skeleton-rows">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <SkeletonBlock key={i} height={32} />
-            ))}
-          </div>
-        </div>
+          <SkeletonRows rows={5} height={32} />
+        </LoadingRegion>
       </div>
     );
   }
@@ -456,7 +454,7 @@ export const ScanTargetDetailPage = () => {
   const rollup = SEVERITY_ORDER.map((s) => ({ ...s, n: Number(summary?.[s.key]) || 0 })).filter((s) => !s.optional || s.n > 0);
 
   return (
-    <div className="page scan-target">
+    <div className={`page scan-target${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
       {backLink}
 
       <PageHeader
@@ -494,13 +492,25 @@ export const ScanTargetDetailPage = () => {
         actions={
           !isImport ? (
             <>
-              <button type="button" className="btn-primary" disabled={busy === "rescan"} onClick={handleRescan}>
-                <LuRefreshCw aria-hidden="true" />
-                {busy === "rescan" ? t("Starting…", "Startet…") : t("Rescan", "Neu scannen")}
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy === "rescan"}
+                aria-busy={busy === "rescan" || undefined}
+                onClick={handleRescan}
+              >
+                {busy === "rescan" ? null : <LuRefreshCw aria-hidden="true" />}
+                <BusyLabel busy={busy === "rescan"}>{t("Rescan", "Neu scannen")}</BusyLabel>
               </button>
-              <button type="button" className="btn-secondary" disabled={busy === "check"} onClick={handleCheck}>
-                <LuSearchCheck aria-hidden="true" />
-                {busy === "check" ? t("Checking…", "Prüft…") : t("Run check", "Prüfung ausführen")}
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy === "check"}
+                aria-busy={busy === "check" || undefined}
+                onClick={handleCheck}
+              >
+                {busy === "check" ? null : <LuSearchCheck aria-hidden="true" />}
+                <BusyLabel busy={busy === "check"}>{t("Run check", "Prüfung ausführen")}</BusyLabel>
               </button>
               <button
                 type="button"
@@ -684,13 +694,25 @@ export const ScanTargetDetailPage = () => {
             </div>
             {history.length < historyTotal && (
               <div className="scan-target-pager">
-                <button type="button" className="btn-secondary" disabled={historyBusy} onClick={() => loadMoreHistory(false)}>
-                  {historyBusy
-                    ? t("Loading…", "Lädt…")
-                    : `${t("Load more", "Mehr laden")} (${history.length} / ${historyTotal})`}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={historyBusy !== null}
+                  aria-busy={historyBusy === "more" || undefined}
+                  onClick={() => loadMoreHistory(false)}
+                >
+                  <BusyLabel busy={historyBusy === "more"}>
+                    {`${t("Load more", "Mehr laden")} (${history.length} / ${historyTotal})`}
+                  </BusyLabel>
                 </button>
-                <button type="button" className="btn-secondary" disabled={historyBusy} onClick={() => loadMoreHistory(true)}>
-                  {t("Show all", "Alle anzeigen")}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={historyBusy !== null}
+                  aria-busy={historyBusy === "all" || undefined}
+                  onClick={() => loadMoreHistory(true)}
+                >
+                  <BusyLabel busy={historyBusy === "all"}>{t("Show all", "Alle anzeigen")}</BusyLabel>
                 </button>
               </div>
             )}

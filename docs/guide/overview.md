@@ -106,7 +106,14 @@ or AI passwords). If a write is blocked, the UI prompts you for the right passwo
 
 **The UI updates live.** Long-running jobs (ingestion, scans, AI analysis) stream their progress over
 Server-Sent Events, so lists and detail pages refresh themselves as work completes — you rarely need
-to reload.
+to reload. When the connection drops and comes back, Hecate asks for what is running now, so a
+finished scan or analysis never stays marked as running. The dot next to **SCA** and **AI Analysis**
+in the sidebar shows a running scan or analysis.
+
+**Loading looks the same everywhere.** A first load shows the shape of what is coming as grey
+placeholders; a fast answer shows nothing in between. Content that is fetched again stays on screen,
+dimmed, until the new data arrives. A button that is working keeps its label and shows a small
+spinner.
 
 **Errors say what happened.** When something fails to load, the message names the cause, such as
 the backend not answering, a server error with its HTTP status, a missing password or a record that

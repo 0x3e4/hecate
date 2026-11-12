@@ -78,7 +78,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .sidebar-link.active { background: var(--overlay-3); color: var(--color-accent); }
 .sidebar-link-short { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; font-size: 1.05rem; }
 .sidebar-link-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-pulse { display: inline-block; flex-shrink: 0; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: var(--color-accent); }
+.sidebar-pulse { display: inline-block; flex-shrink: 0; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: var(--color-info); }
 .sidebar-link-short .sidebar-pulse { display: none; }
 .app-sidebar.collapsed .sidebar-link { justify-content: center; padding: 0; }
 .app-sidebar.collapsed .sidebar-link-text, .app-sidebar.collapsed .sidebar-subnav, .app-sidebar.collapsed .sidebar-collapse-label, .app-sidebar.collapsed .sidebar-link > .sidebar-pulse { display: none; }
@@ -169,7 +169,30 @@ table td { font-variant-numeric: tabular-nums; }
 .dialog-close:hover { background: var(--overlay-2); color: var(--color-ink); }
 @media (max-width: 40rem) { .dialog { min-width: 0; width: 100%; max-width: 100%; padding: var(--space-md); } .dialog-actions { flex-direction: column-reverse; } table th, table td { padding: var(--space-2xs) var(--space-xs); } }
 
-.skeleton { background: var(--overlay-2); border-radius: var(--radius-control); }
+/* Loading, one family for every screen (design.md, "Loading").
+   Placeholders and spinners appear only after --loading-delay, so a fast answer shows nothing in
+   between; a slow one gets one quiet sheen per placeholder. Reduced motion is handled by the global
+   rule in base.css: the sheen stops off-screen and the spinner stands still as an open ring. */
+@keyframes loading-appear { from { visibility: hidden; } to { visibility: visible; } }
+@keyframes skeleton-sheen { to { transform: translateX(100%); } }
+@keyframes spinner-turn { to { transform: rotate(360deg); } }
+.skeleton { position: relative; overflow: hidden; background: var(--overlay-2); border-radius: var(--radius-control); }
+.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--overlay-2), transparent); animation: skeleton-sheen 1.8s var(--ease-in-out) infinite; }
+.skeleton-text { display: flex; flex-direction: column; gap: 0.55em; }
+.skeleton-rows { display: flex; flex-direction: column; gap: var(--space-xs); }
+/* .loading-appear alone: for placeholders that cannot sit in a LoadingRegion (table rows) */
+.loading-region, .loading-appear { animation: loading-appear 0s linear var(--loading-delay) both; }
+.loading-region { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 0; }
+.spinner { display: inline-block; flex-shrink: 0; width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.125em; opacity: 0.75; animation: spinner-turn 0.75s linear infinite; }
+.loading-state { display: flex; align-items: center; gap: var(--space-xs); padding-block: var(--space-md); color: var(--color-muted); font-size: var(--text-sm); animation: loading-appear 0s linear var(--loading-delay) both; }
+.loading-state--inline { display: inline-flex; padding-block: 0; }
+/* .btn and its kin space their children with gap; a plain button needs the margin. Zero specificity,
+   so a screen whose button has its own gap sets margin-right: 0 on its spinner. */
+:where(button:not(.btn, .btn-primary, .btn-secondary, .icon-button) > .spinner:not(:only-child)) { margin-right: var(--space-2xs); }
+[aria-busy="true"] { cursor: progress; }
+button[aria-busy="true"]:disabled, .btn[aria-busy="true"]:disabled { opacity: 0.85; }
+/* Content that is being fetched again stays readable but stops looking final */
+.is-refreshing { opacity: 0.55; transition: opacity var(--dur-short) var(--ease-out); }
 .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
 .tabs-scroll::-webkit-scrollbar { display: none; }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LuChevronRight } from "react-icons/lu";
 import { Link } from "react-router-dom";
 import { ChangelogEntry, ChangelogResponse, fetchChangelog } from "../api/changelog";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock } from "../components/Skeleton";
 import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
@@ -57,6 +57,9 @@ export const ChangelogPage = () => {
   }, [t]);
 
   useEffect(() => {
+    // The pager stays clickable while a page loads, so an older answer can
+    // arrive after a newer one; only the latest request may write.
+    let cancelled = false;
     const load = async () => {
       setLoading(true);
       setError(null);
@@ -71,17 +74,21 @@ export const ChangelogPage = () => {
           toISO,
           sourceFilter || undefined,
         );
-        setData(response);
+        if (!cancelled) setData(response);
       } catch (err) {
+        if (cancelled) return;
         console.error("Failed to load changelog", err);
         setErrorCause(err);
         setError(t("Failed to load changelog.", "Changelog konnte nicht geladen werden."));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [t, page, fromDate, toDate, sourceFilter, sseRefreshKey, retryKey]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
@@ -153,7 +160,7 @@ export const ChangelogPage = () => {
       {error && !data && <ErrorState title={error} error={errorCause} onRetry={() => setRetryKey((k) => k + 1)} />}
 
       {!showSkeleton && data && (
-        <div className={`changelog-results${loading ? " is-loading" : ""}`}>
+        <div className={loading ? "is-refreshing" : undefined} aria-busy={loading || undefined}>
           {data.entries.length === 0 && (
             <EmptyState title={t("No changes available.", "Keine Änderungen verfügbar.")} />
           )}
@@ -211,34 +218,39 @@ export const ChangelogPage = () => {
   );
 };
 
-const ChangelogSkeleton = () => (
-  <div className="table-scroll" aria-hidden="true">
-    <table className="changelog-table">
-      <tbody>
-        {Array.from({ length: 10 }).map((_, index) => (
-          <tr key={index}>
-            <td className="changelog-cell-toggle" />
-            <td className="changelog-cell-time">
-              <SkeletonBlock height="0.85rem" width="9rem" radius={4} />
-            </td>
-            <td className="changelog-cell-vuln">
-              <SkeletonBlock height="0.85rem" width="60%" radius={4} />
-            </td>
-            <td className="changelog-cell-severity">
-              <SkeletonBlock height="0.85rem" width="3.5rem" radius={4} />
-            </td>
-            <td className="changelog-cell-change">
-              <SkeletonBlock height="0.85rem" width="4rem" radius={4} />
-            </td>
-            <td className="changelog-cell-job">
-              <SkeletonBlock height="0.85rem" width="8rem" radius={4} />
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+const ChangelogSkeleton = () => {
+  const { t } = useI18n();
+  return (
+    <LoadingRegion label={t("Loading changes", "Änderungen werden geladen")}>
+      <div className="table-scroll">
+        <table className="changelog-table">
+          <tbody>
+            {Array.from({ length: 10 }).map((_, index) => (
+              <tr key={index}>
+                <td className="changelog-cell-toggle" />
+                <td className="changelog-cell-time">
+                  <SkeletonBlock height="0.85rem" width="9rem" radius={4} />
+                </td>
+                <td className="changelog-cell-vuln">
+                  <SkeletonBlock height="0.85rem" width="60%" radius={4} />
+                </td>
+                <td className="changelog-cell-severity">
+                  <SkeletonBlock height="0.85rem" width="3.5rem" radius={4} />
+                </td>
+                <td className="changelog-cell-change">
+                  <SkeletonBlock height="0.85rem" width="4rem" radius={4} />
+                </td>
+                <td className="changelog-cell-job">
+                  <SkeletonBlock height="0.85rem" width="8rem" radius={4} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </LoadingRegion>
+  );
+};
 
 /** Keyed by severityLevel(): a record with no severity, or an unrecognised one, reads "Unknown". */
 const SEVERITY_LABELS: Record<string, [string, string]> = {

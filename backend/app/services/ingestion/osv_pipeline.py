@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.event_bus import publish_job_progress
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.deps_dev_client import DepsDevClient
 from app.services.ingestion.mal_enrichment import maybe_enrich_by_id
@@ -342,6 +343,7 @@ class OsvPipeline:
                                 "last_progress_at": now,
                             },
                         )
+                        publish_job_progress(ctx.name, progress_payload)
                         if ctx.log_id is not None:
                             if log_repo is None:
                                 log_repo = await IngestionLogRepository.create()

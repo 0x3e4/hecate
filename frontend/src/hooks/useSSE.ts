@@ -18,17 +18,19 @@ export interface JobEvent {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
-type Listener = (jobs: Map<string, JobEvent>, connected: boolean) => void;
+type Listener = (jobs: Map<string, JobEvent>, connected: boolean, snapshotSeq: number) => void;
 
 let _es: EventSource | null = null;
 let _jobs: Map<string, JobEvent> = new Map();
 let _connected = false;
+/** Bumped on every snapshot, i.e. every (re)connect; lets callers re-check server state. */
+let _snapshotSeq = 0;
 const _listeners: Set<Listener> = new Set();
 let _retryDelay = 1000;
 let _retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function _notify() {
-  for (const fn of _listeners) fn(_jobs, _connected);
+  for (const fn of _listeners) fn(_jobs, _connected, _snapshotSeq);
 }
 
 function _connect() {
@@ -59,6 +61,33 @@ function _connect() {
     }
   };
 
+  // Sent first on every (re)connect: running jobs plus recently finished ones.
+  // A job this client still holds as running but the server no longer lists
+  // ended while the stream was down (or the backend restarted); keeping it
+  // left indicators such as the sidebar dots stuck until a page reload.
+  const handleSnapshot = (e: MessageEvent) => {
+    try {
+      const payload = JSON.parse(e.data) as { jobs?: JobEvent[] };
+      const listed = new Map((payload.jobs ?? []).map((job) => [job.jobName, job]));
+      const next = new Map<string, JobEvent>();
+      for (const [name, job] of _jobs) {
+        if (job.status === "running" && !listed.has(name)) continue;
+        next.set(name, job);
+      }
+      // Running jobs always; a finished one only to settle a job this client
+      // already tracked, so a fresh page doesn't react to old completions.
+      for (const [name, job] of listed) {
+        if (job.status === "running" || _jobs.has(name)) next.set(name, job);
+      }
+      _jobs = next;
+      _snapshotSeq += 1;
+      _notify();
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  es.addEventListener("snapshot", handleSnapshot);
   es.addEventListener("job_started", handleEvent);
   es.addEventListener("job_completed", handleEvent);
   es.addEventListener("job_failed", handleEvent);
@@ -98,18 +127,19 @@ function _maybeDisconnect() {
 // ---------------------------------------------------------------------------
 
 export function useSSE() {
-  const [state, setState] = useState<{ jobs: Map<string, JobEvent>; connected: boolean }>({
+  const [state, setState] = useState<{ jobs: Map<string, JobEvent>; connected: boolean; snapshotSeq: number }>({
     jobs: _jobs,
     connected: _connected,
+    snapshotSeq: _snapshotSeq,
   });
 
   useEffect(() => {
-    const listener: Listener = (jobs, connected) => setState({ jobs, connected });
+    const listener: Listener = (jobs, connected, snapshotSeq) => setState({ jobs, connected, snapshotSeq });
     _listeners.add(listener);
     _ensureConnection();
 
     // Push current state immediately in case events arrived before mount
-    listener(_jobs, _connected);
+    listener(_jobs, _connected, _snapshotSeq);
 
     return () => {
       _listeners.delete(listener);

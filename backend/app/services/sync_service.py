@@ -120,6 +120,7 @@ class SyncService:
                 nextRun=next_run,
                 lastResult=None,
                 error=None,
+                progress=job_state.get("progress") if isinstance(job_state.get("progress"), dict) else None,
             )
 
         # Not currently running, get last completed run from logs

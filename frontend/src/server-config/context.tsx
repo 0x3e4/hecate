@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
+import { LoadingState } from "../ui/primitives";
 
 export interface ServerConfig {
   aiEnabled: boolean;
@@ -30,8 +31,6 @@ const splashStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   minHeight: "100vh",
-  color: "var(--color-muted)",
-  fontFamily: "system-ui, sans-serif",
 };
 
 export const ServerConfigProvider = ({ children }: { children: ReactNode }) => {
@@ -58,7 +57,11 @@ export const ServerConfigProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   if (!config) {
-    return <div style={splashStyle}>Loading…</div>;
+    return (
+      <div style={splashStyle}>
+        <LoadingState />
+      </div>
+    );
   }
 
   return <ServerConfigContext.Provider value={config}>{children}</ServerConfigContext.Provider>;

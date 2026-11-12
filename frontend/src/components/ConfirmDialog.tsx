@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/context";
+import { BusyLabel } from "../ui/primitives";
 
 // A destructive action asks here instead of window.confirm: the native prompt
 // looks foreign, can be suppressed by the browser and blocks the page.
@@ -60,8 +61,14 @@ export const ConfirmDialog = ({
           <button ref={cancelRef} type="button" className="btn" disabled={busy} onClick={onCancel}>
             {t("Cancel", "Abbrechen")}
           </button>
-          <button type="button" className="btn dialog-danger" disabled={busy} onClick={() => void confirm()}>
-            {confirmLabel}
+          <button
+            type="button"
+            className="btn dialog-danger"
+            disabled={busy}
+            aria-busy={busy || undefined}
+            onClick={() => void confirm()}
+          >
+            <BusyLabel busy={busy}>{confirmLabel}</BusyLabel>
           </button>
         </div>
       </div>

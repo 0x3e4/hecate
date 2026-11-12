@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuRadioTower,
   LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart } from "react-icons/lu";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { version } from "../../package.json";
 import { useSavedSearches } from "../hooks/useSavedSearches";
@@ -90,7 +90,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const { recentVulnerabilities, removeVisit } = useRecentlyVisited();
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
-  const { jobs } = useSSE();
+  const { jobs, snapshotSeq } = useSSE();
   const { aiEnabled, scaEnabled, supportPageEnabled, docsUrl } = useServerConfig();
   const navSections = useMemo(
     () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled, docsUrl),
@@ -99,41 +99,60 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
 
   const aiRunning = useMemo(() => {
     for (const [name, job] of jobs) {
-      if (name.startsWith("ai_investigation_") || name === "ai_batch_investigation") {
+      if (
+        name.startsWith("ai_investigation_") || name === "ai_batch_investigation"
+        || name.startsWith("ai_scan_analysis_") || name.startsWith("attack_path_")
+      ) {
         if (job.status === "running") return true;
       }
     }
     return false;
   }, [jobs]);
 
-  const scaRunningSSE = useMemo(() => {
+  // Changes whenever a scan event arrives; only used to trigger a re-check.
+  const scaEventKey = useMemo(() => {
+    let key = "";
     for (const [name, job] of jobs) {
-      if (name.startsWith("sca_scan_")) {
-        if (job.status === "running") return true;
-      }
+      if (name.startsWith("sca_scan_")) key += `${name}:${job.eventType};`;
     }
-    return false;
+    return key;
   }, [jobs]);
 
-  // Also poll for running scans to catch scans started before SSE connected
-  const [scaRunningPoll, setScaRunningPoll] = useState(false);
+  // The server's scan list is the only source of truth for the dot. SSE events
+  // (and every reconnect) just make it ask right away: OR-ing in a "running"
+  // event kept the dot on whenever the stream missed the scan's last event.
+  const [scaRunning, setScaRunning] = useState(false);
+  const scaCheck = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!scaEnabled) return;
+    if (!scaEnabled) {
+      setScaRunning(false);
+      return;
+    }
     let cancelled = false;
+    let seq = 0;
     const check = async () => {
+      const mine = ++seq;
       try {
         const resp = await api.get<{ total: number }>("/v1/scans", { params: { status: "running", limit: 1 } });
-        if (!cancelled) {
-          setScaRunningPoll(resp.data.total > 0);
-        }
-      } catch { /* ignore */ }
+        if (!cancelled && mine === seq) setScaRunning(resp.data.total > 0);
+      } catch { /* keep the last known state */ }
     };
+    scaCheck.current = () => void check();
     check();
-    const interval = setInterval(check, 10000);
-    return () => { cancelled = true; clearInterval(interval); };
+    const interval = setInterval(check, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") void check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      scaCheck.current = () => {};
+    };
   }, [scaEnabled]);
 
-  const scaRunning = scaRunningSSE || scaRunningPoll;
+  useEffect(() => {
+    if (scaEventKey) scaCheck.current();
+  }, [scaEventKey, snapshotSeq]);
   const germanLabels: Record<string, string> = {
     "/": "Dashboard",
     "/vulnerabilities": "Schwachstellen",
@@ -165,6 +184,13 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
       })),
     [t]
   );
+
+  // The dot says "something is running here"; the link's name has to say it too.
+  const busyLabel = (item: { to: string; label: string }) => {
+    if (item.to === "/scans" && scaRunning) return `${item.label} · ${t("scan running", "Scan läuft")}`;
+    if (item.to === "/ai-analyse" && aiRunning) return `${item.label} · ${t("analysis running", "Analyse läuft")}`;
+    return item.label;
+  };
 
   const handleLinkClick = () => {
     if (onMobileMenuClose) {
@@ -210,8 +236,8 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                   ) : (
                   <NavLink
                     to={item.to}
-                    title={item.label}
-                    aria-label={item.label}
+                    title={busyLabel(item)}
+                    aria-label={busyLabel(item)}
                     className={({ isActive }) =>
                       `sidebar-link${isActive ? " active" : ""}`
                     }
@@ -219,12 +245,12 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
                   >
                     <span className="sidebar-link-short">
                       <Icon aria-hidden="true" focusable="false" />
-                      {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
-                      {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" />}
+                      {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" aria-hidden="true" />}
+                      {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" aria-hidden="true" />}
                     </span>
                     <span className="sidebar-link-text">{item.label}</span>
-                    {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" />}
-                    {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" />}
+                    {item.to === "/ai-analyse" && aiRunning && <span className="sidebar-pulse" aria-hidden="true" />}
+                    {item.to === "/scans" && scaRunning && <span className="sidebar-pulse" aria-hidden="true" />}
                   </NavLink>
                   )}
                   {item.to === "/" && !collapsed && recentVulnerabilities.length > 0 && (

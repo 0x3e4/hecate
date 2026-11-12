@@ -557,6 +557,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
           styles={selectStyles}
           menuPortalTarget={document.body}
           menuPosition="fixed"
+          loadingMessage={() => t("Loading…", "Wird geladen…")}
           noOptionsMessage={({ inputValue }) =>
             inputValue
               ? t(`No vendors found for "${inputValue}"`, `Keine Vendors gefunden für "${inputValue}"`)
@@ -586,6 +587,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
+            loadingMessage={() => t("Loading…", "Wird geladen…")}
             noOptionsMessage={({ inputValue }) =>
               inputValue
                 ? t(`No products found for "${inputValue}"`, `Keine Produkte gefunden für "${inputValue}"`)
@@ -616,6 +618,7 @@ export const AssetFilters = ({ onChange, selection }: Props) => {
             styles={selectStyles}
             menuPortalTarget={document.body}
             menuPosition="fixed"
+            loadingMessage={() => t("Loading…", "Wird geladen…")}
             noOptionsMessage={({ inputValue }) =>
               inputValue
                 ? t(`No versions found for "${inputValue}"`, `Keine Versionen gefunden für "${inputValue}"`)

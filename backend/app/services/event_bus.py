@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -45,11 +45,55 @@ class JobEvent:
         }
 
 
+# Lifecycle events are remembered so a client that (re)connects learns what
+# is running now and how the jobs it missed ended. Without that, a client that
+# missed a job's last event kept showing it as running until a page reload.
+_LIFECYCLE_EVENTS = {"job_started", "job_completed", "job_failed", "job_progress"}
+FINISHED_RETENTION = timedelta(minutes=15)
+RUNNING_RETENTION = timedelta(hours=24)
+MAX_REMEMBERED_JOBS = 500
+
+
 class EventBus:
     """Fan-out event bus backed by per-subscriber asyncio queues."""
 
     def __init__(self) -> None:
         self._subscribers: set[asyncio.Queue[JobEvent]] = set()
+        # job_name -> (newest lifecycle event, when it was recorded)
+        self._latest: dict[str, tuple[JobEvent, datetime]] = {}
+
+    def _remember(self, event: JobEvent) -> None:
+        if event.event_type not in _LIFECYCLE_EVENTS:
+            return
+        now = datetime.now(tz=UTC)
+        previous = self._latest.get(event.job_name)
+        if event.event_type == "job_progress" and previous and previous[0].status == "running":
+            # Progress keeps the run's own start time and metadata (runId etc.).
+            kept = previous[0]
+            event = JobEvent(
+                event_type=kept.event_type,
+                job_name=kept.job_name,
+                status="running",
+                started_at=kept.started_at,
+                progress=event.progress,
+                metadata=kept.metadata,
+            )
+        self._latest.pop(event.job_name, None)  # re-insert: dict order = recency
+        self._latest[event.job_name] = (event, now)
+        self._prune(now)
+
+    def _prune(self, now: datetime) -> None:
+        for name, (event, seen) in list(self._latest.items()):
+            limit = RUNNING_RETENTION if event.status == "running" else FINISHED_RETENTION
+            if now - seen > limit:
+                del self._latest[name]
+        while len(self._latest) > MAX_REMEMBERED_JOBS:
+            del self._latest[next(iter(self._latest))]
+
+    def snapshot(self) -> list[JobEvent]:
+        """Running jobs plus the outcome of jobs that finished recently, oldest first."""
+        self._prune(datetime.now(tz=UTC))
+        return [event for event, _ in self._latest.values()]
 
     def subscribe(self) -> asyncio.Queue[JobEvent]:
         queue: asyncio.Queue[JobEvent] = asyncio.Queue(maxsize=256)
@@ -62,6 +106,7 @@ class EventBus:
         log.debug("event_bus.subscriber_removed", count=len(self._subscribers))
 
     def publish(self, event: JobEvent) -> None:
+        self._remember(event)
         for queue in self._subscribers:
             try:
                 queue.put_nowait(event)

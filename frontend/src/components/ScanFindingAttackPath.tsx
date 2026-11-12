@@ -5,7 +5,7 @@ import { useI18n } from "../i18n/context";
 import type { AIProviderInfo, AttackPathResponse } from "../types";
 import { EmptyState, ErrorState } from "../ui/primitives";
 import { AttackPathGraphView } from "./AttackPathGraph";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonBlock } from "./Skeleton";
 
 interface ScanFindingAttackPathProps {
   vulnerabilityId: string;
@@ -68,22 +68,24 @@ export function ScanFindingAttackPath({
     };
   }, [vulnerabilityId, scanId, targetId, packageName, packageVersion, locale, t]);
 
-  if (loading) {
+  if (loading && !response) {
     return (
-      <div role="status" aria-label={t("Loading attack path…", "Angriffspfad wird geladen…")}>
-        <SkeletonBlock height={160} radius={4} />
-      </div>
+      <LoadingRegion label={t("Loading attack path", "Angriffspfad wird geladen")}>
+        <SkeletonBlock height={160} />
+      </LoadingRegion>
     );
   }
   if (error) return <ErrorState title={error} />;
   if (!response) return <EmptyState title={t("No attack path available.", "Kein Angriffspfad verfügbar.")} />;
   return (
-    <AttackPathGraphView
-      graph={response.graph}
-      narrative={response.narrative ?? null}
-      aiEnabled={aiEnabled}
-      aiProviders={aiProviders}
-    />
+    <div className={loading ? "is-refreshing" : undefined} aria-busy={loading || undefined}>
+      <AttackPathGraphView
+        graph={response.graph}
+        narrative={response.narrative ?? null}
+        aiEnabled={aiEnabled}
+        aiProviders={aiProviders}
+      />
+    </div>
   );
 }
 

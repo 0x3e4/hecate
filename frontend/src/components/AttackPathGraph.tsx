@@ -6,7 +6,7 @@ import { LuArrowDown, LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 
 import "../screens/vulnerability-detail.css";
 import { useI18n, type TranslateFn } from "../i18n/context";
-import { ExternalLink, IconButton, severityLevel } from "../ui/primitives";
+import { BusyLabel, ExternalLink, IconButton, severityLevel } from "../ui/primitives";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
 import type {
   AttackPathExploitMaturity,
@@ -19,7 +19,7 @@ import type {
   AIProviderInfo,
 } from "../types";
 import { AILoadingIndicator } from "./AILoadingIndicator";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonBlock } from "./Skeleton";
 
 interface AttackPathGraphProps {
   graph: AttackPathGraph;
@@ -712,10 +712,9 @@ export function AttackPathGraphView({
         ) : renderState === "fallback" ? (
           <FallbackChain graph={graph} />
         ) : (
-          <div role="status">
-            <span className="visually-hidden">{t("Rendering attack path…", "Angriffspfad wird gezeichnet…")}</span>
+          <LoadingRegion label={t("Rendering attack path…", "Angriffspfad wird gezeichnet…")}>
             <SkeletonBlock height={320} radius={4} />
-          </div>
+          </LoadingRegion>
         )}
       </div>
 
@@ -758,10 +757,9 @@ export function AttackPathGraphView({
                   void onTriggerNarrative?.(selectedProvider, additionalContext.trim())
                 }
                 disabled={loading || !selectedProvider}
+                aria-busy={loading || undefined}
               >
-                {loading
-                  ? t("Generating...", "Erzeuge...")
-                  : t("Generate scenario narrative", "Szenario-Beschreibung erzeugen")}
+                <BusyLabel busy={loading}>{t("Generate scenario narrative", "Szenario-Beschreibung erzeugen")}</BusyLabel>
               </button>
             </div>
             <div className="vulnerability-detail-ai-context">

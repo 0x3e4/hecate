@@ -1,7 +1,6 @@
 /* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
  * Advisories: what CERTs, vendors and the community warn about, one row per topic. Tokens only; see design.md. */
 .cert-stats { margin-bottom: var(--space-lg); }
-.cert-skeleton { display: flex; flex-direction: column; gap: var(--space-xs); }
 .cert-kinds { display: flex; flex-wrap: wrap; gap: 0 var(--space-md); margin: 0 0 var(--space-xs); padding: 0; border: 0; }
 .cert-toggle { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: var(--control-height); color: var(--color-ink-2); font-size: var(--text-sm); cursor: pointer; }
 .cert-note { margin-bottom: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }

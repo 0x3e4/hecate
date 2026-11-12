@@ -17,11 +17,19 @@ generated from it on every semver tag. The format follows
 
 - **Import VEX** on the Findings tab and `POST /scans/vex/import` read OpenVEX as well as CycloneDX VEX; the format is detected. OpenVEX statements match by vulnerability and its aliases, and where a document gives one vulnerability different statuses per package, each statement only reaches the packages it names. A file in neither format is refused with a message instead of importing nothing.
 - VEX over MCP: `set_finding_vex` sets or clears the status of findings (by finding ids, or target and vulnerability), `import_vex` imports a CycloneDX VEX or OpenVEX document, `get_target_vex_sources`, `set_target_vex_sources` and `apply_target_vex_sources` manage a target's VEX sources, and `export_scan_vex` returns a scan's statuses as CycloneDX VEX. The writes need the `mcp:write` scope; a status set this way counts as set by hand, so a VEX source never overwrites it. Findings returned over MCP now carry their VEX status and whether they are dismissed.
+- A running NVD, EUVD, OSV or CPE sync shows its progress on **System → Data**: the records processed so far, live, and for an initial (full) NVD or EUVD sync a bar with the share of the source's total. The pipelines already recorded this progress, but nothing showed it, and the live event stream never sent it.
+
 ### Changed
+
+- Loading looks and behaves the same on every page. A first load shows grey placeholders in the shape of what is coming, with a quiet sheen and only after a short delay, so a fast answer shows nothing in between. Content that is fetched again stays on screen, dimmed, instead of turning back into placeholders (dashboard day change, scan lists, target page, inventory, malware feed, AI history, audit log, changelog). A button that is working keeps its label and shows a small spinner instead of `...` or a changed word, and only the button that was clicked shows it. Pages that refetched without any sign now dim while they do, screen readers hear one "loading" per region, and the start-up splash is translated.
+- License policies on **System → Policies** show a spinner on Create/Save, Set default and Delete while the request runs, and the buttons can't be pressed twice. The notification channel, rule and template tables and the policy table dim while they reload after a change instead of swapping in silently.
 
 ### Fixed
 
 - AI assessments, attack-path narratives and batch-analysis references on vulnerabilities no longer disappear when the record is written again. They live only in the search index, and every pipeline update, manual refresh, deps.dev enrichment and `reindex-opensearch` replaced the whole indexed document, so a CVE that NVD or EUVD touched after its analysis lost it. These writes now replace the document but keep those fields. Analyses lost before this release cannot be recovered; scan AI analyses and attack chains are stored in MongoDB and were never affected.
+- The dot next to **SCA** in the sidebar no longer stays on after a scan has finished until the page is reloaded. It now follows the server's list of running scans and checks again on every scan event, reconnect and return to the tab. The live event stream also starts every connection with the jobs running now, so a client that missed a job's end while disconnected (or across a backend restart) drops it; this applies to the AI dot and to pages waiting for an analysis too. The AI dot also lights up for scan AI analyses and attack-path narratives, and the dot is announced to screen readers.
+- The changelog no longer shows an older page when its pager is clicked again before the previous page has loaded.
+- On the page that fetches an unknown vulnerability, screen readers no longer announce the elapsed seconds every second; they hear when the fetch starts and when it turns slow.
 
 ## [2.2.1] - 2026-11-09
 

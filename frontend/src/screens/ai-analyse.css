@@ -20,6 +20,7 @@
 .ai-analyse-selector-note { margin-top: var(--space-xs); color: var(--color-info); font-size: var(--text-sm); }
 
 .ai-analyse-selector-results { max-height: 22rem; margin-top: var(--space-sm); overflow-y: auto; border-top: var(--rule-hair) solid var(--color-rule); }
+.ai-analyse-selector-results > .loading-region { gap: 0; }
 .ai-analyse-selector-row { display: flex; align-items: flex-start; gap: var(--space-sm); padding: var(--space-xs) var(--space-3xs); border-bottom: var(--rule-hair) solid var(--color-rule); }
 .ai-analyse-selector-row:not([aria-hidden="true"]):not(.ai-analyse-selector-row--disabled):hover { background: var(--overlay-1); }
 .ai-analyse-selector-row--disabled .ai-analyse-selector-row-body { color: var(--color-muted); cursor: not-allowed; }

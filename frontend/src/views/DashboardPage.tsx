@@ -28,7 +28,7 @@ import {
   useCveChips,
   type CoverageChip,
 } from "../components/CoverageChips";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
@@ -40,7 +40,7 @@ import { getPreferredCvssMetric } from "../utils/cvss";
 import { formatDateOnly } from "../utils/dateFormat";
 import { formatEcosystemName } from "../utils/advisoryText";
 import { safeHref } from "../utils/safeHref";
-import { EmptyState, IconButton, PageHeader, Section, SeverityTag, Stat, severityLevel } from "../ui/primitives";
+import { EmptyState, IconButton, LoadingState, PageHeader, Section, SeverityTag, Spinner, Stat, severityLevel } from "../ui/primitives";
 
 export const DashboardPage = () => {
   const { t, locale } = useI18n();
@@ -391,7 +391,7 @@ const SingleVulnQuery = ({
     <div className="dashboard-search">
       <div className="dashboard-search-field">
         {queryLoading ? (
-          <span className="dashboard-spinner dashboard-search-icon" aria-hidden="true" />
+          <Spinner className="dashboard-search-icon" />
         ) : (
           <LuSearch className="dashboard-search-icon" aria-hidden="true" />
         )}
@@ -421,16 +421,14 @@ const SingleVulnQuery = ({
 
       {/* Status messages */}
       {queryLoading && (
-        <p className="dashboard-search-status">
-          {t("Searching local database...", "Suche in lokaler Datenbank…")}
-        </p>
+        <LoadingState inline label={t("Searching local database…", "Suche in lokaler Datenbank…")} />
       )}
 
       {showNotFound && (
         <div className="well dashboard-search-notice">
           {syncLoading ? (
             <div className="dashboard-search-notice-row">
-              <span className="dashboard-spinner" aria-hidden="true" />
+              <Spinner className="dashboard-search-notice-icon" />
               <p className="dashboard-search-notice-title">
                 {t(
                   `Fetching "${queryNotFound}" from upstream sources…`,
@@ -666,21 +664,31 @@ const TodayStats = ({
     />
   );
 
-  if (loading) {
+  // Only the first load shows the skeleton; a day change or an SSE refresh keeps
+  // the shown day readable and dims it until the new one arrives.
+  if (loading && !data) {
     return (
       <>
         {header}
-        <TodayStatsSkeleton />
+        <TodayStatsSkeleton t={t} />
       </>
     );
   }
+
+  const refreshing = loading;
+  const refreshProps = {
+    className: refreshing ? "is-refreshing" : undefined,
+    "aria-busy": refreshing || undefined,
+  };
 
   if (!data || data.total === 0) {
     return (
       <>
         {header}
-        <EmptyState title={t("No vulnerabilities to show for this day.", "Für diesen Tag gibt es keine Schwachstellen anzuzeigen.")} />
-        {attention && <div className="dashboard-triage">{attention}</div>}
+        <div {...refreshProps}>
+          <EmptyState title={t("No vulnerabilities to show for this day.", "Für diesen Tag gibt es keine Schwachstellen anzuzeigen.")} />
+          {attention && <div className="dashboard-triage">{attention}</div>}
+        </div>
       </>
     );
   }
@@ -772,112 +780,114 @@ const TodayStats = ({
     <>
       {header}
 
-      <dl className="stat-row dashboard-stats">
-        {invCveCount > 0 && (
-          <Stat
-            label={t("Affect your inventory", "Betreffen Ihr Inventar")}
-            value={invCveCount.toLocaleString(locale)}
-          />
-        )}
-        {scanCveCount > 0 && (
-          <Stat
-            label={t("In your SCA scans", "In Ihren SCA-Scans")}
-            value={scanCveCount.toLocaleString(locale)}
-          />
-        )}
-        <Stat label={t("Vulnerabilities", "Schwachstellen")} value={data.total.toLocaleString(locale)} />
-        {SEVERITY_ORDER.map((severity) => {
-          const count = severityCounts.get(severity);
-          if (!count) return null;
-          return (
+      <div {...refreshProps}>
+        <dl className="stat-row dashboard-stats">
+          {invCveCount > 0 && (
             <Stat
-              key={severity}
-              label={severityLabel(severity, t)}
-              tone={severityLevel(severity)}
-              value={
-                <Link to={severityDql(severity, todayDate)} className="dashboard-stat-link">
-                  {count.toLocaleString(locale)}
-                </Link>
-              }
+              label={t("Affect your inventory", "Betreffen Ihr Inventar")}
+              value={invCveCount.toLocaleString(locale)}
             />
-          );
-        })}
-      </dl>
-
-      {(attention || hasMatchedCves) && (
-        <div className="dashboard-triage">
-          {attention}
-          {hasMatchedCves && (
-            <Section className="dashboard-triage-panel" title={t("In your inventory or scans", "In Inventar oder Scans")}>
-              <TodayLeadGroups
-                t={t}
-                cves={data.cves}
-                scanCveScan={scanCveScan}
-                scanProductScan={scanProductScan}
-                scanTargets={scanTargets}
-                invLabel={invLabel}
-                scanFallback={scanFallback}
-                describeCve={describeCve}
+          )}
+          {scanCveCount > 0 && (
+            <Stat
+              label={t("In your SCA scans", "In Ihren SCA-Scans")}
+              value={scanCveCount.toLocaleString(locale)}
+            />
+          )}
+          <Stat label={t("Vulnerabilities", "Schwachstellen")} value={data.total.toLocaleString(locale)} />
+          {SEVERITY_ORDER.map((severity) => {
+            const count = severityCounts.get(severity);
+            if (!count) return null;
+            return (
+              <Stat
+                key={severity}
+                label={severityLabel(severity, t)}
+                tone={severityLevel(severity)}
+                value={
+                  <Link to={severityDql(severity, todayDate)} className="dashboard-stat-link">
+                    {count.toLocaleString(locale)}
+                  </Link>
+                }
               />
-            </Section>
-          )}
+            );
+          })}
+        </dl>
+
+        {(attention || hasMatchedCves) && (
+          <div className="dashboard-triage">
+            {attention}
+            {hasMatchedCves && (
+              <Section className="dashboard-triage-panel" title={t("In your inventory or scans", "In Inventar oder Scans")}>
+                <TodayLeadGroups
+                  t={t}
+                  cves={data.cves}
+                  scanCveScan={scanCveScan}
+                  scanProductScan={scanProductScan}
+                  scanTargets={scanTargets}
+                  invLabel={invLabel}
+                  scanFallback={scanFallback}
+                  describeCve={describeCve}
+                />
+              </Section>
+            )}
+          </div>
+        )}
+
+        <Section title={t("CVEs by severity", "CVEs nach Schweregrad")}>
+          <TodayCveList
+            t={t}
+            cves={data.cves}
+            scanCveScan={scanCveScan}
+            scanProductScan={scanProductScan}
+            scanTargets={scanTargets}
+            invLabel={invLabel}
+            scanFallback={scanFallback}
+            describeCve={describeCve}
+          />
+        </Section>
+
+        <div className="dashboard-support">
+          <TodayMiniCard title={t("Vendors", "Hersteller")}>
+            {sortedVendors.length === 0 ? (
+              <EmptyState title={t("No vendor data.", "Keine Vendor-Daten.")} />
+            ) : (
+              <TodayListPreview
+                t={t}
+                matched={sortedVendors.filter((v) => vendorChips(v).length > 0).length}
+                rows={sortedVendors.map((v) => (
+                  <TodayListItem
+                    key={v.slug}
+                    to={vendorDql(v.slug)}
+                    label={formatEcosystemName(v.name)}
+                    count={v.doc_count}
+                    chips={vendorChips(v)}
+                  />
+                ))}
+              />
+            )}
+          </TodayMiniCard>
+
+          <TodayMiniCard title={t("Products", "Produkte")}>
+            {sortedProducts.length === 0 ? (
+              <EmptyState title={t("No product data.", "Keine Produkt-Daten.")} />
+            ) : (
+              <TodayListPreview
+                t={t}
+                matched={sortedProducts.filter((p) => productChips(p).length > 0).length}
+                rows={sortedProducts.map((p) => (
+                  <TodayListItem
+                    key={`${p.vendorSlug}:${p.slug}`}
+                    to={productDql(p.vendorSlug, p.slug)}
+                    label={p.name}
+                    sublabel={formatEcosystemName(p.vendorName)}
+                    count={p.doc_count}
+                    chips={productChips(p)}
+                  />
+                ))}
+              />
+            )}
+          </TodayMiniCard>
         </div>
-      )}
-
-      <Section title={t("CVEs by severity", "CVEs nach Schweregrad")}>
-        <TodayCveList
-          t={t}
-          cves={data.cves}
-          scanCveScan={scanCveScan}
-          scanProductScan={scanProductScan}
-          scanTargets={scanTargets}
-          invLabel={invLabel}
-          scanFallback={scanFallback}
-          describeCve={describeCve}
-        />
-      </Section>
-
-      <div className="dashboard-support">
-        <TodayMiniCard title={t("Vendors", "Hersteller")}>
-          {sortedVendors.length === 0 ? (
-            <EmptyState title={t("No vendor data.", "Keine Vendor-Daten.")} />
-          ) : (
-            <TodayListPreview
-              t={t}
-              matched={sortedVendors.filter((v) => vendorChips(v).length > 0).length}
-              rows={sortedVendors.map((v) => (
-                <TodayListItem
-                  key={v.slug}
-                  to={vendorDql(v.slug)}
-                  label={formatEcosystemName(v.name)}
-                  count={v.doc_count}
-                  chips={vendorChips(v)}
-                />
-              ))}
-            />
-          )}
-        </TodayMiniCard>
-
-        <TodayMiniCard title={t("Products", "Produkte")}>
-          {sortedProducts.length === 0 ? (
-            <EmptyState title={t("No product data.", "Keine Produkt-Daten.")} />
-          ) : (
-            <TodayListPreview
-              t={t}
-              matched={sortedProducts.filter((p) => productChips(p).length > 0).length}
-              rows={sortedProducts.map((p) => (
-                <TodayListItem
-                  key={`${p.vendorSlug}:${p.slug}`}
-                  to={productDql(p.vendorSlug, p.slug)}
-                  label={p.name}
-                  sublabel={formatEcosystemName(p.vendorName)}
-                  count={p.doc_count}
-                  chips={productChips(p)}
-                />
-              ))}
-            />
-          )}
-        </TodayMiniCard>
       </div>
     </>
   );
@@ -1374,8 +1384,8 @@ const TodayCveItem = ({
   );
 };
 
-const TodayStatsSkeleton = () => (
-  <>
+const TodayStatsSkeleton = ({ t }: { t: TranslateFn }) => (
+  <LoadingRegion label={t("Loading the day's vulnerabilities", "Schwachstellen des Tages werden geladen")}>
     <div className="stat-row dashboard-stats">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="dashboard-skeleton-stat">
@@ -1384,11 +1394,7 @@ const TodayStatsSkeleton = () => (
         </div>
       ))}
     </div>
-    <div className="dashboard-skeleton-rows">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <SkeletonBlock key={i} height="1.75rem" />
-      ))}
-    </div>
+    <SkeletonRows rows={8} height="1.75rem" />
     <div className="dashboard-support">
       {Array.from({ length: 2 }).map((_, i) => (
         <div key={i} className="dashboard-skeleton-rows">
@@ -1399,7 +1405,7 @@ const TodayStatsSkeleton = () => (
         </div>
       ))}
     </div>
-  </>
+  </LoadingRegion>
 );
 
 interface VulnerabilityListProps {
@@ -1465,9 +1471,11 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
       }
     >
       {showSkeleton ? (
-        <DashboardSkeleton />
+        <LoadingRegion label={t("Loading latest findings", "Neueste Treffer werden geladen")}>
+          <SkeletonRows rows={LATEST_LIMIT} height="1.75rem" />
+        </LoadingRegion>
       ) : hasResults ? (
-        <div className="table-scroll">
+        <div className={`table-scroll${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
           <table className="dashboard-latest-table">
             <thead>
               <tr>
@@ -1492,11 +1500,6 @@ const VulnerabilityList = ({ vulnerabilities, loading, t }: VulnerabilityListPro
         </div>
       ) : (
         <EmptyState title={t("No data loaded.", "Keine Daten geladen.")} />
-      )}
-      {loading && hasResults && (
-        <p className="dashboard-refreshing">
-          {t("Refreshing results...", "Aktualisiere Ergebnisse...")}
-        </p>
       )}
     </Section>
   );
@@ -1572,11 +1575,3 @@ const LatestRow = ({ vuln, t }: { vuln: VulnerabilityPreview; t: TranslateFn }) 
     </tr>
   );
 };
-
-const DashboardSkeleton = () => (
-  <div className="dashboard-skeleton-rows">
-    {Array.from({ length: LATEST_LIMIT }).map((_, index) => (
-      <SkeletonBlock key={index} height="1.75rem" />
-    ))}
-  </div>
-);

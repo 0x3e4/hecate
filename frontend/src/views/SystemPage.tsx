@@ -53,7 +53,7 @@ import {
 } from "../api/sync";
 import { fetchScanTargets } from "../api/scans";
 import { setAdminPassword } from "../api/writeAuth";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { AdvisoryFeedsPanel } from "../components/AdvisoryFeedsPanel";
 import { ApiTokenPanel } from "../components/ApiTokenPanel";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
@@ -66,7 +66,7 @@ import type { AppLanguage } from "../i18n/language";
 import { useTimezone } from "../timezone/context";
 import { listSupportedTimezones } from "../timezone/storage";
 import { useServerConfig } from "../server-config/context";
-import { EmptyState, PageHeader, Section } from "../ui/primitives";
+import { BusyLabel, EmptyState, LoadingState, PageHeader, Section } from "../ui/primitives";
 import { tabPillStyle } from "../ui/TabPill";
 import type {
   NotificationChannel,
@@ -85,6 +85,7 @@ import type {
   InventoryItem,
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
+import { syncProgressView } from "../utils/syncProgress";
 
 type StatusTone = "ok" | "error" | "info" | "muted";
 
@@ -120,18 +121,48 @@ const Setting = ({
 );
 
 /** A state as a word, never colour alone. */
+/** How far a running sync is: a bar for a full sync of known size, a count otherwise. */
+const SyncProgress = ({
+  jobName,
+  progress,
+  locale,
+  t,
+}: {
+  jobName: string;
+  progress: Record<string, unknown> | null | undefined;
+  locale: string;
+  t: (en: string, de: string) => string;
+}) => {
+  const view = syncProgressView(jobName, progress);
+  if (!view) return null;
+  const fmt = new Intl.NumberFormat(locale);
+  const processed = fmt.format(view.processed);
+  if (view.total === null || view.percent === null) {
+    return <span className="system-sync-progress-text">{t(`${processed} processed`, `${processed} verarbeitet`)}</span>;
+  }
+  const label = t(
+    `${processed} of ${fmt.format(view.total)} processed`,
+    `${processed} von ${fmt.format(view.total)} verarbeitet`,
+  );
+  return (
+    <span className="system-sync-progress">
+      <progress value={view.processed} max={view.total} aria-label={label} />
+      <span className="system-sync-progress-text">
+        {label} · {view.percent} %
+      </span>
+    </span>
+  );
+};
+
 const StatusWord = ({ tone, children }: { tone: StatusTone; children: ReactNode }) => (
   <span className={`system-status system-status--${tone}`}>{children}</span>
 );
 
 /** Loading placeholder shaped like the rows it stands in for. */
 const RowsSkeleton = ({ rows, label }: { rows: number; label: string }) => (
-  <div className="system-skeleton" role="status">
-    <span className="visually-hidden">{label}</span>
-    {Array.from({ length: rows }, (_, index) => (
-      <SkeletonBlock key={index} height={36} />
-    ))}
-  </div>
+  <LoadingRegion label={label} className="system-skeleton">
+    <SkeletonRows rows={rows} height={36} />
+  </LoadingRegion>
 );
 
 type SystemTab = "general" | "access" | "notifications" | "data" | "policies";
@@ -217,7 +248,7 @@ export const SystemPage = () => {
   };
 
   // --- Regular state ---
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState<{ id: string; action: "export" | "restore" } | null>(null);
   const { showToast } = useToastContext();
 
   const handleSaveAiBatchLimit = async () => {
@@ -253,11 +284,14 @@ export const SystemPage = () => {
   const syncIntervalRef = useRef<number | null>(null);
 
   const [resyncInput, setResyncInput] = useState("");
-  const [resyncBusy, setResyncBusy] = useState(false);
+  const [resyncPending, setResyncPending] = useState<"resync" | "delete" | null>(null);
+  const resyncBusy = resyncPending !== null;
 
   // License policies
   const [licensePolicies, setLicensePolicies] = useState<LicensePolicy[]>([]);
   const [licensePoliciesLoading, setLicensePoliciesLoading] = useState(true);
+  // Which policy action is in flight, so only that button shows the spinner
+  const [lpBusy, setLpBusy] = useState<{ action: "save" | "delete" | "default"; id?: string } | null>(null);
   const [licenseGroups, setLicenseGroups] = useState<LicenseGroups | null>(null);
   const [lpEditing, setLpEditing] = useState<LicensePolicy | null>(null);
   const [lpCreating, setLpCreating] = useState(false);
@@ -282,6 +316,10 @@ export const SystemPage = () => {
 
   const [notifRules, setNotifRules] = useState<NotificationRule[]>([]);
   const [notifRulesLoading, setNotifRulesLoading] = useState(true);
+  // Set while a list is fetched again after a change; the loaded table stays, dimmed.
+  const [refreshing, setRefreshing] = useState<Record<"rules" | "channels" | "templates" | "policies", boolean>>({
+    rules: false, channels: false, templates: false, policies: false,
+  });
   const [ruleDeletePendingId, setRuleDeletePendingId] = useState<string | null>(null);
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [editingRule, setEditingRule] = useState<NotificationRule | null>(null);
@@ -325,6 +363,7 @@ export const SystemPage = () => {
   const [tplBody, setTplBody] = useState("");
 
   const loadChannels = async () => {
+    setRefreshing((prev) => ({ ...prev, channels: true }));
     try {
       const response = await fetchNotificationChannels();
       setChannels(response.items);
@@ -332,6 +371,7 @@ export const SystemPage = () => {
       console.error("Failed to load channels", error);
     } finally {
       setChannelsLoading(false);
+      setRefreshing((prev) => ({ ...prev, channels: false }));
     }
   };
 
@@ -368,6 +408,7 @@ export const SystemPage = () => {
   };
 
   const loadNotifRules = async () => {
+    setRefreshing((prev) => ({ ...prev, rules: true }));
     try {
       const response = await fetchNotificationRules();
       setNotifRules(response.items);
@@ -375,6 +416,7 @@ export const SystemPage = () => {
       console.error("Failed to load notification rules", error);
     } finally {
       setNotifRulesLoading(false);
+      setRefreshing((prev) => ({ ...prev, rules: false }));
     }
   };
 
@@ -627,6 +669,7 @@ export const SystemPage = () => {
   };
 
   const loadTemplates = async () => {
+    setRefreshing((prev) => ({ ...prev, templates: true }));
     try {
       const response = await fetchNotificationTemplates();
       setTemplates(response.items);
@@ -634,6 +677,7 @@ export const SystemPage = () => {
       console.error("Failed to load templates", error);
     } finally {
       setTemplatesLoading(false);
+      setRefreshing((prev) => ({ ...prev, templates: false }));
     }
   };
 
@@ -707,7 +751,7 @@ export const SystemPage = () => {
   };
 
   const handleExport = async (dataset: BackupDataset) => {
-    setBusyId(dataset.id);
+    setBackupBusy({ id: dataset.id, action: "export" });
     try {
       const response =
         dataset.type === "vuln"
@@ -751,7 +795,7 @@ export const SystemPage = () => {
         "error"
       );
     } finally {
-      setBusyId(null);
+      setBackupBusy(null);
     }
   };
 
@@ -815,6 +859,7 @@ export const SystemPage = () => {
   }, [t]);
 
   const loadLicensePolicies = async () => {
+    setRefreshing((prev) => ({ ...prev, policies: true }));
     try {
       const [policiesRes, groupsRes] = await Promise.all([
         fetchLicensePolicies(),
@@ -826,6 +871,7 @@ export const SystemPage = () => {
       console.error("Failed to load license policies", error);
     } finally {
       setLicensePoliciesLoading(false);
+      setRefreshing((prev) => ({ ...prev, policies: false }));
     }
   };
 
@@ -841,6 +887,7 @@ export const SystemPage = () => {
   };
 
   const handleCreateLicensePolicy = async () => {
+    setLpBusy({ action: "save" });
     try {
       await createLicensePolicy({
         name: lpFormName,
@@ -855,11 +902,14 @@ export const SystemPage = () => {
       showToast(t("Policy created.", "Richtlinie erstellt."));
     } catch (error) {
       showToast(t("Failed to create policy.", "Richtlinie konnte nicht erstellt werden."), "error");
+    } finally {
+      setLpBusy(null);
     }
   };
 
   const handleUpdateLicensePolicy = async () => {
     if (!lpEditing) return;
+    setLpBusy({ action: "save" });
     try {
       await updateLicensePolicy(lpEditing.id, {
         name: lpFormName,
@@ -874,26 +924,34 @@ export const SystemPage = () => {
       showToast(t("Policy updated.", "Richtlinie aktualisiert."));
     } catch (error) {
       showToast(t("Failed to update policy.", "Richtlinie konnte nicht aktualisiert werden."), "error");
+    } finally {
+      setLpBusy(null);
     }
   };
 
   const handleDeleteLicensePolicy = async (policyId: string) => {
+    setLpBusy({ action: "delete", id: policyId });
     try {
       await deleteLicensePolicy(policyId);
       void loadLicensePolicies();
       showToast(t("Policy deleted.", "Richtlinie gelöscht."));
     } catch (error) {
       showToast(t("Failed to delete policy.", "Richtlinie konnte nicht gelöscht werden."), "error");
+    } finally {
+      setLpBusy(null);
     }
   };
 
   const handleSetDefaultPolicy = async (policyId: string) => {
+    setLpBusy({ action: "default", id: policyId });
     try {
       await setDefaultLicensePolicy(policyId);
       void loadLicensePolicies();
       showToast(t("Default policy updated.", "Standardrichtlinie aktualisiert."));
     } catch (error) {
       showToast(t("Failed to set default policy.", "Standardrichtlinie konnte nicht gesetzt werden."), "error");
+    } finally {
+      setLpBusy(null);
     }
   };
 
@@ -934,15 +992,24 @@ export const SystemPage = () => {
     };
   }, [sseConnected]);
 
-  // Refresh sync states immediately when SSE events arrive
+  // Refresh sync states when a job starts, ends or fails. Progress reports
+  // come every few seconds during a large sync and are read straight from
+  // the event below, so they don't reload the table.
+  const sseLifecycleKey = useMemo(() => {
+    let key = "";
+    for (const [name, job] of sseJobs) {
+      if (job.eventType !== "job_progress") key += `${name}:${job.eventType}:${job.finishedAt ?? ""};`;
+    }
+    return key;
+  }, [sseJobs]);
   useEffect(() => {
-    if (sseJobs.size > 0) {
+    if (sseLifecycleKey) {
       void loadSyncStates();
     }
-  }, [sseJobs]);
+  }, [sseLifecycleKey]);
 
   const handleRestore = async (dataset: BackupDataset, file: File) => {
-    setBusyId(dataset.id);
+    setBackupBusy({ id: dataset.id, action: "restore" });
     try {
       const fileContent = await file.text();
       const payload = JSON.parse(fileContent);
@@ -999,7 +1066,7 @@ export const SystemPage = () => {
             );
       showToast(message, "error");
     } finally {
-      setBusyId(null);
+      setBackupBusy(null);
     }
   };
 
@@ -1014,7 +1081,7 @@ export const SystemPage = () => {
   const handleResync = async (deleteOnly: boolean = false) => {
     const ids = parseResyncIds(resyncInput);
     if (ids.length === 0) return;
-    setResyncBusy(true);
+    setResyncPending(deleteOnly ? "delete" : "resync");
     try {
       const result = await resyncVulnerabilities(ids, deleteOnly);
       if (result.deleted === 0 && result.errors.length === 0) {
@@ -1031,7 +1098,7 @@ export const SystemPage = () => {
       console.error("Resync failed", error);
       showToast(t("Operation failed.", "Vorgang fehlgeschlagen."), "error");
     } finally {
-      setResyncBusy(false);
+      setResyncPending(null);
     }
   };
 
@@ -1240,8 +1307,9 @@ export const SystemPage = () => {
               className="btn btn-primary"
               onClick={() => void handleAuthSubmit()}
               disabled={authChecking || !authPassword}
+              aria-busy={authChecking || undefined}
             >
-              {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
+              <BusyLabel busy={authChecking}>{t("Unlock", "Entsperren")}</BusyLabel>
             </button>
           </div>
         </div>
@@ -1249,7 +1317,7 @@ export const SystemPage = () => {
     ) : authRequired === null ? (
       <div className="dialog-overlay system-overlay">
         <div className="dialog">
-          <p className="muted">{t("Loading...", "Laden…")}</p>
+          <LoadingState />
         </div>
       </div>
     ) : (
@@ -1291,7 +1359,7 @@ export const SystemPage = () => {
         </p>
         {/* Apprise (Notifications) */}
         {notifLoading ? (
-          <RowsSkeleton rows={1} label={t("Loading...", "Laden…")} />
+          <RowsSkeleton rows={1} label={t("Loading notification status", "Benachrichtigungsstatus wird geladen")} />
         ) : notifStatus ? (
           <Setting label="Apprise">
             <StatusWord tone={serviceTone(notifStatus)}>{serviceLabel(notifStatus)}</StatusWord>
@@ -1309,15 +1377,16 @@ export const SystemPage = () => {
               className="btn btn-secondary"
               onClick={() => void handleTestNotification()}
               disabled={notifTestBusy || !notifStatus.enabled}
+              aria-busy={notifTestBusy || undefined}
             >
-              {notifTestBusy ? "..." : t("Test", "Test")}
+              <BusyLabel busy={notifTestBusy}>{t("Test", "Test")}</BusyLabel>
             </button>
           </Setting>
         ) : null}
 
         {/* Scanner */}
         {scannerLoading ? (
-          <RowsSkeleton rows={1} label={t("Loading...", "Laden…")} />
+          <RowsSkeleton rows={1} label={t("Loading scanner status", "Scanner-Status wird geladen")} />
         ) : scannerStatus ? (
           <Setting label="Scanner">
             <StatusWord tone={serviceTone(scannerStatus)}>{serviceLabel(scannerStatus)}</StatusWord>
@@ -1429,8 +1498,9 @@ export const SystemPage = () => {
             className="btn btn-primary"
             onClick={() => void handleSaveAiBatchLimit()}
             disabled={aiBatchSaving}
+            aria-busy={aiBatchSaving || undefined}
           >
-            {aiBatchSaving ? t("Saving…", "Speichere…") : t("Save", "Speichern")}
+            <BusyLabel busy={aiBatchSaving}>{t("Save", "Speichern")}</BusyLabel>
           </button>
         </Setting>
       </Section>
@@ -1448,17 +1518,23 @@ export const SystemPage = () => {
               type="button"
               className="btn btn-secondary"
               onClick={() => void handleExport(dataset)}
-              disabled={busyId === dataset.id}
+              disabled={backupBusy?.id === dataset.id}
+              aria-busy={(backupBusy?.id === dataset.id && backupBusy.action === "export") || undefined}
             >
-              {busyId === dataset.id ? t("Please wait...", "Bitte warten…") : t("Download backup", "Backup herunterladen")}
+              <BusyLabel busy={backupBusy?.id === dataset.id && backupBusy.action === "export"}>
+                {t("Download backup", "Backup herunterladen")}
+              </BusyLabel>
             </button>
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => triggerRestoreDialog(dataset.id)}
-              disabled={busyId === dataset.id}
+              disabled={backupBusy?.id === dataset.id}
+              aria-busy={(backupBusy?.id === dataset.id && backupBusy.action === "restore") || undefined}
             >
-              {t("Restore...", "Wiederherstellen…")}
+              <BusyLabel busy={backupBusy?.id === dataset.id && backupBusy.action === "restore"}>
+                {t("Restore...", "Wiederherstellen…")}
+              </BusyLabel>
             </button>
             <input
               type="file"
@@ -1534,8 +1610,8 @@ export const SystemPage = () => {
               />
             </Setting>
             <div className="system-form-actions">
-              <button type="button" className="btn btn-primary" onClick={() => void handleAddChannel()} disabled={channelSaving || !channelUrl.trim()}>
-                {channelSaving ? t("Saving...", "Speichern…") : t("Add Channel", "Kanal hinzufügen")}
+              <button type="button" className="btn btn-primary" onClick={() => void handleAddChannel()} disabled={channelSaving || !channelUrl.trim()} aria-busy={channelSaving || undefined}>
+                <BusyLabel busy={channelSaving}>{t("Add Channel", "Kanal hinzufügen")}</BusyLabel>
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => { setShowChannelForm(false); setChannelUrl(""); setChannelTag(""); }}>
                 {t("Cancel", "Abbrechen")}
@@ -1545,13 +1621,13 @@ export const SystemPage = () => {
         )}
 
         {channelsLoading ? (
-          <RowsSkeleton rows={2} label={t("Loading channels...", "Lade Kanäle…")} />
+          <RowsSkeleton rows={2} label={t("Loading channels", "Kanäle werden geladen")} />
         ) : channels.length === 0 ? (
           <EmptyState title={t("No notification channels configured yet.", "Noch keine Benachrichtigungskanäle konfiguriert.")}>
             {t("Add a channel to receive notifications.", "Füge einen Kanal hinzu, um Benachrichtigungen zu empfangen.")}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
+          <div className={`table-scroll${refreshing.channels ? " is-refreshing" : ""}`} aria-busy={refreshing.channels || undefined}>
             <table className="system-table">
               <thead>
                 <tr>
@@ -1571,8 +1647,9 @@ export const SystemPage = () => {
                         className="btn btn-secondary system-btn-danger"
                         onClick={() => void handleRemoveChannel(ch.id)}
                         disabled={channelRemovingId === ch.id}
+                        aria-busy={channelRemovingId === ch.id || undefined}
                       >
-                        {channelRemovingId === ch.id ? "..." : t("Remove", "Entfernen")}
+                        <BusyLabel busy={channelRemovingId === ch.id}>{t("Remove", "Entfernen")}</BusyLabel>
                       </button>
                     </td>
                   </tr>
@@ -1806,12 +1883,10 @@ export const SystemPage = () => {
             </Setting>
 
             <div className="system-form-actions">
-              <button type="button" className="btn btn-primary" onClick={() => void handleSaveRule()} disabled={ruleSaving || !formName.trim()}>
-                {ruleSaving
-                  ? t("Saving...", "Speichern…")
-                  : editingRule
-                    ? t("Update Rule", "Regel aktualisieren")
-                    : t("Create Rule", "Regel erstellen")}
+              <button type="button" className="btn btn-primary" onClick={() => void handleSaveRule()} disabled={ruleSaving || !formName.trim()} aria-busy={ruleSaving || undefined}>
+                <BusyLabel busy={ruleSaving}>
+                  {editingRule ? t("Update Rule", "Regel aktualisieren") : t("Create Rule", "Regel erstellen")}
+                </BusyLabel>
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => { setShowRuleForm(false); resetRuleForm(); }}>
                 {t("Cancel", "Abbrechen")}
@@ -1821,11 +1896,11 @@ export const SystemPage = () => {
         )}
 
         {notifRulesLoading ? (
-          <RowsSkeleton rows={3} label={t("Loading rules...", "Lade Regeln…")} />
+          <RowsSkeleton rows={3} label={t("Loading rules", "Regeln werden geladen")} />
         ) : notifRules.length === 0 ? (
           <EmptyState title={t("No notification rules configured yet.", "Noch keine Benachrichtigungsregeln konfiguriert.")} />
         ) : (
-          <div className="table-scroll">
+          <div className={`table-scroll${refreshing.rules ? " is-refreshing" : ""}`} aria-busy={refreshing.rules || undefined}>
             <table className="system-table">
               <thead>
                 <tr>
@@ -1868,8 +1943,9 @@ export const SystemPage = () => {
                           className="btn btn-secondary system-btn-danger"
                           onClick={() => void handleDeleteRule(rule)}
                           disabled={ruleDeletePendingId === rule.id}
+                          aria-busy={ruleDeletePendingId === rule.id || undefined}
                         >
-                          {ruleDeletePendingId === rule.id ? "..." : t("Delete", "Löschen")}
+                          <BusyLabel busy={ruleDeletePendingId === rule.id}>{t("Delete", "Löschen")}</BusyLabel>
                         </button>
                       </div>
                     </td>
@@ -1969,12 +2045,10 @@ export const SystemPage = () => {
               </Setting>
             )}
             <div className="system-form-actions">
-              <button type="button" className="btn btn-primary" onClick={() => void handleSaveTemplate()} disabled={templateSaving || !tplTitle.trim() || !tplBody.trim()}>
-                {templateSaving
-                  ? t("Saving...", "Speichern…")
-                  : editingTemplate
-                    ? t("Update Template", "Vorlage aktualisieren")
-                    : t("Create Template", "Vorlage erstellen")}
+              <button type="button" className="btn btn-primary" onClick={() => void handleSaveTemplate()} disabled={templateSaving || !tplTitle.trim() || !tplBody.trim()} aria-busy={templateSaving || undefined}>
+                <BusyLabel busy={templateSaving}>
+                  {editingTemplate ? t("Update Template", "Vorlage aktualisieren") : t("Create Template", "Vorlage erstellen")}
+                </BusyLabel>
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => { setShowTemplateForm(false); resetTemplateForm(); }}>
                 {t("Cancel", "Abbrechen")}
@@ -1984,13 +2058,13 @@ export const SystemPage = () => {
         )}
 
         {templatesLoading ? (
-          <RowsSkeleton rows={2} label={t("Loading templates...", "Lade Vorlagen…")} />
+          <RowsSkeleton rows={2} label={t("Loading templates", "Vorlagen werden geladen")} />
         ) : templates.length === 0 ? (
           <EmptyState title={t("No custom message templates configured.", "Keine benutzerdefinierten Nachrichtenvorlagen konfiguriert.")}>
             {t("Default messages will be used.", "Standardnachrichten werden verwendet.")}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
+          <div className={`table-scroll${refreshing.templates ? " is-refreshing" : ""}`} aria-busy={refreshing.templates || undefined}>
             <table className="system-table">
               <thead>
                 <tr>
@@ -2020,8 +2094,9 @@ export const SystemPage = () => {
                           className="btn btn-secondary system-btn-danger"
                           onClick={() => void handleDeleteTemplate(tpl)}
                           disabled={templateDeletePendingId === tpl.id}
+                          aria-busy={templateDeletePendingId === tpl.id || undefined}
                         >
-                          {templateDeletePendingId === tpl.id ? "..." : t("Delete", "Löschen")}
+                          <BusyLabel busy={templateDeletePendingId === tpl.id}>{t("Delete", "Löschen")}</BusyLabel>
                         </button>
                       </div>
                     </td>
@@ -2043,7 +2118,7 @@ export const SystemPage = () => {
           )}
         </p>
         {syncLoading ? (
-          <RowsSkeleton rows={9} label={t("Loading sync status ...", "Lade Sync-Status …")} />
+          <RowsSkeleton rows={9} label={t("Loading sync status", "Sync-Status wird geladen")} />
         ) : (
           <div className="table-scroll">
             <table className="system-table">
@@ -2080,7 +2155,10 @@ export const SystemPage = () => {
                     : "cwe";
                   const isInitial = sync.jobName.includes("initial");
                   const syncId = `${syncType}_${isInitial ? "initial" : "normal"}`;
-                  const isBusy = syncTriggeringId === syncId || sync.status === "running";
+                  // While the job runs, its status word is the indicator; the
+                  // spinner only covers the start request.
+                  const isStarting = syncTriggeringId === syncId;
+                  const isBusy = isStarting || sync.status === "running";
                   const isExpanded = expandedSyncId === sync.jobName;
                   const hasDetails = sync.lastResult || sync.error;
                   // Some jobs are CLI-only (no scheduler / HTTP trigger): hide
@@ -2111,6 +2189,14 @@ export const SystemPage = () => {
                         </td>
                         <td data-label={t("Status", "Status")}>
                           <StatusWord tone={getStatusTone(sync.status)}>{getStatusLabel(sync.status)}</StatusWord>
+                          {sync.status === "running" ? (
+                            <SyncProgress
+                              jobName={sync.jobName}
+                              progress={sseJobs.get(sync.jobName)?.progress ?? sync.progress}
+                              locale={locale}
+                              t={t}
+                            />
+                          ) : null}
                         </td>
                         <td data-label={t("Duration", "Dauer")}>{formatDuration(sync.durationSeconds)}</td>
                         <td className="system-cell-nowrap" data-label={t("Next run", "Nächster Lauf")}>
@@ -2132,8 +2218,9 @@ export const SystemPage = () => {
                                 void handleTriggerSync(syncType, isInitial);
                               }}
                               disabled={isBusy}
+                              aria-busy={isStarting || undefined}
                             >
-                              {isBusy ? t("Starting...", "Wird gestartet…") : t("Start manually", "Manuell starten")}
+                              <BusyLabel busy={isStarting}>{t("Start manually", "Manuell starten")}</BusyLabel>
                             </button>
                           ) : (
                             <span
@@ -2214,16 +2301,18 @@ export const SystemPage = () => {
               className="btn btn-secondary system-btn-danger"
               onClick={() => void handleResync(false)}
               disabled={resyncBusy || !resyncInput.trim()}
+              aria-busy={resyncPending === "resync" || undefined}
             >
-              {resyncBusy ? t("Processing…", "Verarbeitung…") : t("Delete & Re-Sync", "Löschen & Re-Sync")}
+              <BusyLabel busy={resyncPending === "resync"}>{t("Delete & Re-Sync", "Löschen & Re-Sync")}</BusyLabel>
             </button>
             <button
               type="button"
               className="btn btn-secondary system-btn-danger"
               onClick={() => void handleResync(true)}
               disabled={resyncBusy || !resyncInput.trim()}
+              aria-busy={resyncPending === "delete" || undefined}
             >
-              {t("Delete Only", "Nur löschen")}
+              <BusyLabel busy={resyncPending === "delete"}>{t("Delete Only", "Nur löschen")}</BusyLabel>
             </button>
           </div>
         </div>
@@ -2235,11 +2324,14 @@ export const SystemPage = () => {
           {t("Total:", "Gesamt:")} {sortedSavedSearches.length.toLocaleString(locale)}.
         </p>
         {savedSearchLoading && sortedSavedSearches.length === 0 ? (
-          <RowsSkeleton rows={3} label={t("Loading saved searches ...", "Lade gespeicherte Suchen …")} />
+          <RowsSkeleton rows={3} label={t("Loading saved searches", "Gespeicherte Suchen werden geladen")} />
         ) : sortedSavedSearches.length === 0 ? (
           <EmptyState title={t("No saved searches available.", "Es sind keine gespeicherten Suchen vorhanden.")} />
         ) : (
-          <div className="table-scroll">
+          <div
+            className={`table-scroll${savedSearchLoading ? " is-refreshing" : ""}`}
+            aria-busy={savedSearchLoading || undefined}
+          >
             <table className="system-table">
               <thead>
                 <tr>
@@ -2289,8 +2381,9 @@ export const SystemPage = () => {
                           className="btn btn-secondary system-btn-danger"
                           onClick={() => void handleDeleteSavedSearch(search)}
                           disabled={deletePendingId === search.id || isEditing}
+                          aria-busy={deletePendingId === search.id || undefined}
                         >
-                          {deletePendingId === search.id ? t("Deleting…", "Löschen…") : t("Delete", "Löschen")}
+                          <BusyLabel busy={deletePendingId === search.id}>{t("Delete", "Löschen")}</BusyLabel>
                         </button>
                       </div>
                     </td>
@@ -2335,8 +2428,9 @@ export const SystemPage = () => {
                               className="btn btn-primary"
                               onClick={() => void handleSaveSearch()}
                               disabled={editSaving || !editName.trim()}
+                              aria-busy={editSaving || undefined}
                             >
-                              {editSaving ? t("Saving…", "Speichern…") : t("Save", "Speichern")}
+                              <BusyLabel busy={editSaving}>{t("Save", "Speichern")}</BusyLabel>
                             </button>
                             <button
                               type="button"
@@ -2442,9 +2536,12 @@ export const SystemPage = () => {
                 type="button"
                 className="btn btn-primary"
                 onClick={lpEditing ? handleUpdateLicensePolicy : handleCreateLicensePolicy}
-                disabled={!lpFormName.trim()}
+                disabled={!lpFormName.trim() || lpBusy?.action === "save"}
+                aria-busy={lpBusy?.action === "save" || undefined}
               >
-                {lpEditing ? t("Save", "Speichern") : t("Create", "Erstellen")}
+                <BusyLabel busy={lpBusy?.action === "save"}>
+                  {lpEditing ? t("Save", "Speichern") : t("Create", "Erstellen")}
+                </BusyLabel>
               </button>
               <button type="button" className="btn btn-secondary" onClick={resetLpForm}>
                 {t("Cancel", "Abbrechen")}
@@ -2454,11 +2551,11 @@ export const SystemPage = () => {
         )}
 
         {licensePoliciesLoading ? (
-          <RowsSkeleton rows={2} label={t("Loading...", "Laden...")} />
+          <RowsSkeleton rows={2} label={t("Loading license policies", "Lizenzrichtlinien werden geladen")} />
         ) : licensePolicies.length === 0 ? (
           <EmptyState title={t("No license policies configured yet.", "Noch keine Lizenzrichtlinien konfiguriert.")} />
         ) : (
-          <div className="table-scroll">
+          <div className={`table-scroll${refreshing.policies ? " is-refreshing" : ""}`} aria-busy={refreshing.policies || undefined}>
             <table className="system-table system-table--stack-actions">
               <thead>
                 <tr>
@@ -2485,15 +2582,31 @@ export const SystemPage = () => {
                     <td className="system-cell-action">
                       <div className="system-row-actions">
                         {!policy.isDefault && (
-                          <button type="button" className="btn btn-secondary" onClick={() => handleSetDefaultPolicy(policy.id)}>
-                            {t("Set Default", "Als Standard")}
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => handleSetDefaultPolicy(policy.id)}
+                            disabled={lpBusy !== null}
+                            aria-busy={(lpBusy?.action === "default" && lpBusy.id === policy.id) || undefined}
+                          >
+                            <BusyLabel busy={lpBusy?.action === "default" && lpBusy.id === policy.id}>
+                              {t("Set Default", "Als Standard")}
+                            </BusyLabel>
                           </button>
                         )}
                         <button type="button" className="btn btn-secondary" onClick={() => startEditingLicensePolicy(policy)}>
                           {t("Edit", "Bearbeiten")}
                         </button>
-                        <button type="button" className="btn btn-secondary system-btn-danger" onClick={() => handleDeleteLicensePolicy(policy.id)}>
-                          {t("Delete", "Löschen")}
+                        <button
+                          type="button"
+                          className="btn btn-secondary system-btn-danger"
+                          onClick={() => handleDeleteLicensePolicy(policy.id)}
+                          disabled={lpBusy !== null}
+                          aria-busy={(lpBusy?.action === "delete" && lpBusy.id === policy.id) || undefined}
+                        >
+                          <BusyLabel busy={lpBusy?.action === "delete" && lpBusy.id === policy.id}>
+                            {t("Delete", "Löschen")}
+                          </BusyLabel>
                         </button>
                       </div>
                     </td>

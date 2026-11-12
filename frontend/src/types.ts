@@ -685,6 +685,8 @@ export interface SyncState {
   nextRun?: string | null;
   lastResult?: Record<string, unknown> | null;
   error?: string | null;
+  /** While running: the pipeline's last progress report ({processed, ingested, remote_total, …}). */
+  progress?: Record<string, unknown> | null;
 }
 
 export interface SyncStatesResponse {

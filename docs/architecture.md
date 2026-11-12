@@ -102,7 +102,7 @@ scoped to explicit origins via `CORS_ORIGINS`.
 | `changelog` | Recent changes. |
 | `scans` | SCA scan management — submit, targets and groups, findings, SBOM + export/import, layer analysis, VEX, license compliance, AI analysis, and the public shields.io badges. |
 | `notifications` | Notification status, channels, rules and message templates. |
-| `events` | Server-Sent Events (SSE) stream. |
+| `events` | Server-Sent Events (SSE) stream. Every connection starts with a `snapshot` of running jobs and of jobs that finished in the last 15 minutes, so a client that reconnects settles the states it missed. |
 | `license_policies` | License-policy CRUD, default policy and license groups. |
 | `inventory` | Environment inventory CRUD + per-item affected vulnerabilities. |
 | `malware` | The malware-intel feed for the frontend overview (MongoDB-backed with OpenSearch-routed substring search). |

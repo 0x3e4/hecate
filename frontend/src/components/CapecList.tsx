@@ -4,7 +4,7 @@ import type { CAPECInfo } from "../api/capec";
 import { getCapecFromCwes } from "../api/capec";
 import { useI18n } from "../i18n/context";
 import { ExternalLink, SeverityTag } from "../ui/primitives";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonBlock } from "./Skeleton";
 
 const INITIAL_DISPLAY_COUNT = 5;
 
@@ -54,14 +54,14 @@ export const CapecList = ({ cwes, onCountChange }: CapecListProps) => {
 
   if (loading) {
     return (
-      <div role="status">
-        <span className="visually-hidden">{t("Loading CAPEC information...", "CAPEC-Informationen werden geladen...")}</span>
-        <div className="vulnerability-detail-skeleton-stack">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <SkeletonBlock key={index} height="3rem" radius={4} />
-          ))}
-        </div>
-      </div>
+      <LoadingRegion
+        label={t("Loading CAPEC information", "CAPEC-Informationen werden geladen")}
+        className="vulnerability-detail-skeleton-stack"
+      >
+        {Array.from({ length: 3 }).map((_, index) => (
+          <SkeletonBlock key={index} height="3rem" radius={4} />
+        ))}
+      </LoadingRegion>
     );
   }
 

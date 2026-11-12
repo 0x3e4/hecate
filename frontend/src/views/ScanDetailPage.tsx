@@ -26,12 +26,13 @@ import { getAiProviders } from "../api/vulnerabilities";
 import type { AIProviderInfo } from "../types";
 import { TriggeredByBadge } from "../ui/TriggeredByBadge";
 import { TabPill } from "../ui/TabPill";
-import { EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Stat, severityLevel, severityVar } from "../ui/primitives";
+import { BusyLabel, EmptyState, ErrorState, IconButton, LoadingState, PageHeader, SeverityTag, Stat, severityLevel, severityVar } from "../ui/primitives";
 import { describeError } from "../utils/apiError";
 import { stripAiSummaryFooter } from "../utils/aiSummary";
 import { cleanAdvisoryText } from "../utils/advisoryText";
 import { fetchScanLicenseCompliance, fetchLicensePolicies } from "../api/licensePolicy";
-import { SkeletonBlock } from "../components/Skeleton";
+import { AILoadingIndicator } from "../components/AILoadingIndicator";
+import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { useServerConfig } from "../server-config/context";
 import { ScanFindingAttackPath } from "../components/ScanFindingAttackPath";
@@ -356,6 +357,9 @@ export const ScanDetailPage = () => {
   const [sbomTotal, setSbomTotal] = useState(0);
   const [sbomFetched, setSbomFetched] = useState(false);
   const [sbomLoadingMore, setSbomLoadingMore] = useState(false);
+  // A user-triggered refetch (search, "show dismissed") dims the table it refills.
+  const [findingsRefreshing, setFindingsRefreshing] = useState(false);
+  const [sbomRefreshing, setSbomRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>("findings");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -407,7 +411,8 @@ export const ScanDetailPage = () => {
   const [bulkVexStatus, setBulkVexStatus] = useState<string>("not_affected");
   const [bulkVexJustification, setBulkVexJustification] = useState("");
   const [bulkVexDetail, setBulkVexDetail] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"vex" | "dismiss" | null>(null);
+  const bulkBusy = bulkAction !== null;
   const [showDismissed, setShowDismissed] = usePersistentState<boolean>("hecate.scan.showDismissed", false);
   const vexImportRef = useRef<HTMLInputElement | null>(null);
   const [vexImporting, setVexImporting] = useState(false);
@@ -666,9 +671,11 @@ export const ScanDetailPage = () => {
   // Reload findings when toggling "show dismissed"
   useEffect(() => {
     if (!scanId || loading) return;
+    setFindingsRefreshing(true);
     fetchScanFindings(scanId, { limit: 5000, includeDismissed: showDismissed })
       .then(data => { setFindings(data.items); setFindingsTotal(data.total); })
-      .catch(err => console.error("Failed to reload findings", err));
+      .catch(err => console.error("Failed to reload findings", err))
+      .finally(() => setFindingsRefreshing(false));
     // Drop selection on toggle to avoid stale IDs
     setSelectedKeys(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -687,11 +694,13 @@ export const ScanDetailPage = () => {
   useEffect(() => {
     if (!scanId || loading) return;
     const trimmedSearch = sbomSearch.trim();
+    setSbomRefreshing(true);
     fetchScanSbom(scanId, { search: trimmedSearch || undefined, limit: SBOM_PAGE_SIZE }).then(data => {
       setSbomComponents(data.items);
       setSbomTotal(data.total);
       setSbomFetched(true);
-    }).catch(err => console.error("Failed to load SBOM", err));
+    }).catch(err => console.error("Failed to load SBOM", err))
+      .finally(() => setSbomRefreshing(false));
   }, [sbomSearch]);
 
   const handleSbomLoadMore = useCallback(async () => {
@@ -725,21 +734,21 @@ export const ScanDetailPage = () => {
 
   if (loading) return (
     <div className="page scan-detail">
-      <div className="scan-detail-skeleton">
-        <SkeletonBlock height="0.75rem" width="120px" radius={4} />
-        <SkeletonBlock height="1.5rem" width="40%" radius={4} />
-        <div className="scan-detail-skeleton-row">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonBlock key={i} height="3rem" width="80px" radius={4} />
-          ))}
+      <LoadingRegion label={t("Loading scan", "Scan wird geladen")}>
+        <div className="scan-detail-skeleton">
+          <SkeletonBlock height="0.75rem" width="120px" />
+          <SkeletonBlock height="1.5rem" width="40%" />
+          <div className="scan-detail-skeleton-row">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonBlock key={i} height="3rem" width="80px" />
+            ))}
+          </div>
+          <SkeletonBlock height={4} />
         </div>
-        <SkeletonBlock height={4} radius={4} />
-      </div>
-      <div className="scan-detail-skeleton">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <SkeletonBlock key={i} height={36} radius={4} />
-        ))}
-      </div>
+        <div className="scan-detail-skeleton">
+          <SkeletonRows rows={8} height={36} />
+        </div>
+      </LoadingRegion>
     </div>
   );
   if (error) {
@@ -1074,9 +1083,10 @@ export const ScanDetailPage = () => {
               className="btn"
               onClick={() => vexImportRef.current?.click()}
               disabled={vexImporting}
+              aria-busy={vexImporting || undefined}
               title={t("Import a CycloneDX VEX or OpenVEX document and apply it to matching findings", "CycloneDX-VEX- oder OpenVEX-Dokument importieren und auf passende Ergebnisse anwenden")}
             >
-              {vexImporting ? "..." : t("Import VEX", "VEX importieren")}
+              <BusyLabel busy={vexImporting}>{t("Import VEX", "VEX importieren")}</BusyLabel>
             </button>
             {(["csv", "json"] as const).map(format => (
               <button
@@ -1160,8 +1170,9 @@ export const ScanDetailPage = () => {
                   type="button"
                   className="btn-primary"
                   disabled={bulkBusy || allFindingIds.length === 0}
+                  aria-busy={bulkAction === "vex" || undefined}
                   onClick={async () => {
-                    setBulkBusy(true);
+                    setBulkAction("vex");
                     try {
                       const res = await bulkUpdateVexByIds({
                         findingIds: allFindingIds,
@@ -1178,18 +1189,19 @@ export const ScanDetailPage = () => {
                       console.error("Bulk VEX update failed", err);
                       setToast({ type: "error", message: t("Bulk update failed", "Bulk-Update fehlgeschlagen") });
                     } finally {
-                      setBulkBusy(false);
+                      setBulkAction(null);
                     }
                   }}
                 >
-                  {t("Apply VEX", "VEX anwenden")}
+                  <BusyLabel busy={bulkAction === "vex"}>{t("Apply VEX", "VEX anwenden")}</BusyLabel>
                 </button>
                 <button
                   type="button"
                   className="btn"
                   disabled={bulkBusy || allFindingIds.length === 0}
+                  aria-busy={bulkAction === "dismiss" || undefined}
                   onClick={async () => {
-                    setBulkBusy(true);
+                    setBulkAction("dismiss");
                     try {
                       const res = await dismissFindings({
                         findingIds: allFindingIds,
@@ -1205,11 +1217,11 @@ export const ScanDetailPage = () => {
                       console.error("Dismiss failed", err);
                       setToast({ type: "error", message: t("Dismiss failed", "Verwerfen fehlgeschlagen") });
                     } finally {
-                      setBulkBusy(false);
+                      setBulkAction(null);
                     }
                   }}
                 >
-                  {anyDismissed ? t("Restore", "Wiederherstellen") : t("Dismiss", "Verwerfen")}
+                  <BusyLabel busy={bulkAction === "dismiss"}>{anyDismissed ? t("Restore", "Wiederherstellen") : t("Dismiss", "Verwerfen")}</BusyLabel>
                 </button>
                 <button type="button" className="btn" onClick={() => setSelectedKeys(new Set())} disabled={bulkBusy}>
                   {t("Clear", "Leeren")}
@@ -1221,7 +1233,7 @@ export const ScanDetailPage = () => {
           {filteredMerged.length === 0 ? (
             <EmptyState title={t("No findings.", "Keine Ergebnisse.")} />
           ) : (
-            <div className="table-scroll">
+            <div className={`table-scroll${findingsRefreshing ? " is-refreshing" : ""}`} aria-busy={findingsRefreshing || undefined}>
               <PhoneSortBar
                 id="scan-detail-sort-findings"
                 columns={[...findingSortColumns, ["scanner", t("Scanner", "Scanner")]]}
@@ -1490,7 +1502,7 @@ export const ScanDetailPage = () => {
                                 placeholder={t("Longer explanation (optional)", "Längere Erläuterung (optional)")}
                               />
                               <div className="scan-detail-form-actions">
-                                <button type="button" className="btn" disabled={vexSaving} onClick={async () => {
+                                <button type="button" className="btn" disabled={vexSaving} aria-busy={vexSaving || undefined} onClick={async () => {
                                   setVexSaving(true);
                                   try {
                                     // Update every raw finding (multi-scanner duplicates) so the merged view is consistent
@@ -1512,7 +1524,7 @@ export const ScanDetailPage = () => {
                                     setVexSaving(false);
                                   }
                                 }}>
-                                  {vexSaving ? "..." : t("Save", "Speichern")}
+                                  <BusyLabel busy={vexSaving}>{t("Save", "Speichern")}</BusyLabel>
                                 </button>
                                 <button type="button" className="btn" onClick={() => setVexEditingId(null)} disabled={vexSaving}>
                                   {t("Cancel", "Abbrechen")}
@@ -1568,16 +1580,18 @@ export const ScanDetailPage = () => {
                 className="btn"
                 onClick={() => void handleSbomExport("cyclonedx-json")}
                 disabled={!!sbomExporting || sbomComponents.length === 0}
+                aria-busy={sbomExporting === "cyclonedx-json" || undefined}
               >
-                {sbomExporting === "cyclonedx-json" ? "..." : "CycloneDX"}
+                <BusyLabel busy={sbomExporting === "cyclonedx-json"}>CycloneDX</BusyLabel>
               </button>
               <button
                 type="button"
                 className="btn"
                 onClick={() => void handleSbomExport("spdx-json")}
                 disabled={!!sbomExporting || sbomComponents.length === 0}
+                aria-busy={sbomExporting === "spdx-json" || undefined}
               >
-                {sbomExporting === "spdx-json" ? "..." : "SPDX"}
+                <BusyLabel busy={sbomExporting === "spdx-json"}>SPDX</BusyLabel>
               </button>
               <button
                 type="button"
@@ -1600,8 +1614,9 @@ export const ScanDetailPage = () => {
                   }
                 }}
                 disabled={vexExporting}
+                aria-busy={vexExporting || undefined}
               >
-                {vexExporting ? "..." : "VEX"}
+                <BusyLabel busy={vexExporting}>VEX</BusyLabel>
               </button>
             </div>
           </div>
@@ -1663,7 +1678,7 @@ export const ScanDetailPage = () => {
             <EmptyState title={t("No SBOM components.", "Keine SBOM-Komponenten.")} />
           ) : (
             <>
-              <div className="table-scroll">
+              <div className={`table-scroll${sbomRefreshing ? " is-refreshing" : ""}`} aria-busy={sbomRefreshing || undefined}>
                 <PhoneSortBar
                   id="scan-detail-sort-sbom"
                   columns={sbomSortColumns.map(h => [h.col, h.label] as const)}
@@ -1742,13 +1757,14 @@ export const ScanDetailPage = () => {
                     className="btn"
                     onClick={() => void handleSbomLoadMore()}
                     disabled={sbomLoadingMore}
+                    aria-busy={sbomLoadingMore || undefined}
                   >
-                    {sbomLoadingMore
-                      ? t("Loading...", "Lädt...")
-                      : t(
-                          `Load more (${sbomComponents.length} / ${sbomTotal})`,
-                          `Mehr laden (${sbomComponents.length} / ${sbomTotal})`,
-                        )}
+                    <BusyLabel busy={sbomLoadingMore}>
+                      {t(
+                        `Load more (${sbomComponents.length} / ${sbomTotal})`,
+                        `Mehr laden (${sbomComponents.length} / ${sbomTotal})`,
+                      )}
+                    </BusyLabel>
                   </button>
                 </div>
               )}
@@ -1776,19 +1792,17 @@ export const ScanDetailPage = () => {
               {history.length} {t("scans", "Scans")}
             </span>
           </div>
-          {historyLoading ? (
-            <div className="scan-detail-skeleton">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <SkeletonBlock key={i} height={40} radius={4} />
-              ))}
-            </div>
+          {historyLoading && history.length < 2 ? (
+            <LoadingRegion label={t("Loading scan history", "Scan-Verlauf wird geladen")} className="scan-detail-skeleton">
+              <SkeletonRows rows={4} height={40} />
+            </LoadingRegion>
           ) : history.length < 2 ? (
             <EmptyState title={t("Not enough scan history for a chart. Run more scans.", "Nicht genügend Scan-Verlauf für ein Diagramm. Führen Sie weitere Scans durch.")} />
           ) : (
-            <>
+            <div className={historyLoading ? "is-refreshing" : undefined} aria-busy={historyLoading || undefined}>
               <HistoryChart history={history} />
               <HistoryChangesTable history={history} targetId={scan.targetId} />
-            </>
+            </div>
           )}
         </>
       )}
@@ -1845,7 +1859,7 @@ export const ScanDetailPage = () => {
                 </option>
               ))}
             </select>
-            {compareLoading && <span className="scan-detail-count">{t("Comparing...", "Vergleiche...")}</span>}
+            {compareLoading && <LoadingState inline label={t("Comparing…", "Wird verglichen…")} />}
           </div>
 
           {comparison && <ComparisonView comparison={comparison} />}
@@ -1902,7 +1916,9 @@ export const ScanDetailPage = () => {
       {tab === "layers" && (
         <>
           {layerLoading ? (
-            <SkeletonBlock height={160} radius={4} />
+            <LoadingRegion label={t("Loading layer analysis", "Schichtanalyse wird geladen")}>
+              <SkeletonBlock height={160} />
+            </LoadingRegion>
           ) : !scan?.layerAnalysisAvailable ? (
             <EmptyState
               title={t(
@@ -2175,11 +2191,9 @@ export const ScanDetailPage = () => {
       {tab === "license-compliance" && (
         <>
           {licenseComplianceLoading ? (
-            <div className="scan-detail-skeleton">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <SkeletonBlock key={i} height={40} radius={4} />
-              ))}
-            </div>
+            <LoadingRegion label={t("Loading license compliance", "Lizenz-Compliance wird geladen")} className="scan-detail-skeleton">
+              <SkeletonRows rows={6} height={40} />
+            </LoadingRegion>
           ) : !licenseCompliance || !licenseCompliance.policyId ? (
             <EmptyState title={t("No license policy configured. Create a default policy on the System page.", "Keine Lizenzrichtlinie konfiguriert. Erstellen Sie eine Standardrichtlinie auf der Systemseite.")} />
           ) : (
@@ -2768,6 +2782,7 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiStartedAt, setAiStartedAt] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -2784,6 +2799,7 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
   const handleStart = async () => {
     if (!selectedProvider) return;
     setAiLoading(true);
+    setAiStartedAt(Date.now());
     try {
       await triggerScanAiAnalysis(scan.id, {
         provider: selectedProvider,
@@ -2866,8 +2882,11 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
               className="btn-primary"
               onClick={() => void handleStart()}
               disabled={aiLoading || !selectedProvider}
+              aria-busy={aiLoading || undefined}
             >
-              {aiLoading ? t("Analysis running...", "Analyse läuft...") : t("Start AI analysis", "AI-Analyse starten")}
+              <BusyLabel busy={aiLoading} busyLabel={t("Analysis running…", "Analyse läuft…")}>
+                {t("Start AI analysis", "AI-Analyse starten")}
+              </BusyLabel>
             </button>
           </div>
           <label htmlFor="scan-ai-context">
@@ -2883,6 +2902,7 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
               "Geben Sie zusätzliche Informationen ein, die bei der AI-Analyse berücksichtigt werden sollen..."
             )}
           />
+          {aiLoading && <AILoadingIndicator compact startedAt={aiStartedAt} />}
         </>
       )}
     </div>

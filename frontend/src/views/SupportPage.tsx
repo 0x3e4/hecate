@@ -3,7 +3,7 @@ import { LuCoffee, LuExternalLink, LuGithub } from "react-icons/lu";
 
 import "../screens/support.css";
 import { fetchVersionInfo } from "../api/version";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import type { VersionInfo } from "../types";
 import { ErrorState, PageHeader, Section } from "../ui/primitives";
@@ -179,12 +179,9 @@ export const SupportPage = () => {
     }
     if (!info) {
       return (
-        <div className="support-screen-skeleton" role="status">
-          <span className="visually-hidden">{t("Loading…", "Wird geladen…")}</span>
-          <SkeletonBlock height={36} />
-          <SkeletonBlock height={36} />
-          <SkeletonBlock height={36} />
-        </div>
+        <LoadingRegion label={t("Loading version information", "Versionsinformationen werden geladen")} className="support-screen-skeleton">
+          <SkeletonRows rows={3} height={36} />
+        </LoadingRegion>
       );
     }
 

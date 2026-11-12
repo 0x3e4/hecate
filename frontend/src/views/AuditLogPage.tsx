@@ -8,7 +8,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
-import { EmptyState, PageHeader } from "../ui/primitives";
+import { BusyLabel, EmptyState, LoadingState, PageHeader } from "../ui/primitives";
 import "../screens/audit.css";
 
 const JOB_LABELS: Record<string, string> = {
@@ -334,6 +334,7 @@ export const AuditLogPage = () => {
 
   const showSkeleton = loading && logs.length === 0;
   const isEmptyState = !loading && logs.length === 0;
+  const isRefreshing = loading && logs.length > 0;
   const hasPreviousPage = page > 0;
   const hasNextPage = (page + 1) * PAGE_SIZE < total;
   const pageStartIndexRaw = total === 0 ? 0 : page * PAGE_SIZE + 1;
@@ -375,8 +376,9 @@ export const AuditLogPage = () => {
               className="btn btn-primary"
               onClick={() => void handleAuthSubmit()}
               disabled={authChecking || !authPassword}
+              aria-busy={authChecking || undefined}
             >
-              {authChecking ? t("Checking...", "Prüfe…") : t("Unlock", "Entsperren")}
+              <BusyLabel busy={authChecking}>{t("Unlock", "Entsperren")}</BusyLabel>
             </button>
           </div>
         </div>
@@ -384,7 +386,7 @@ export const AuditLogPage = () => {
     ) : authRequired === null ? (
       <div className="dialog-overlay audit-gate">
         <div className="dialog">
-          <p className="muted">{t("Loading...", "Laden…")}</p>
+          <LoadingState />
         </div>
       </div>
     ) : (
@@ -486,7 +488,10 @@ export const AuditLogPage = () => {
       </div>
 
       <div className="table-scroll">
-        <table className="audit-table">
+        <table
+          className={`audit-table${isRefreshing ? " is-refreshing" : ""}`}
+          aria-busy={loading || undefined}
+        >
           <thead>
             <tr>
               <th>{t("Started", "Gestartet")}</th>
@@ -519,7 +524,7 @@ export const AuditLogPage = () => {
 const AuditSkeletonRows = ({ rows }: { rows: number }) => (
   <>
     {Array.from({ length: rows }).map((_, index) => (
-      <tr key={`audit-skeleton-${index}`}>
+      <tr key={`audit-skeleton-${index}`} className="loading-appear" aria-hidden="true">
         <td className="audit-cell-time">
           <SkeletonBlock height="0.85rem" width="80%" radius={4} />
         </td>

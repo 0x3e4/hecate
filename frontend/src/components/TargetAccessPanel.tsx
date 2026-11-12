@@ -11,8 +11,8 @@ import {
 import { setTargetPassword, clearTargetPassword } from "../api/writeAuth";
 import { useI18n } from "../i18n/context";
 import type { ScanTarget } from "../types";
-import { EmptyState, ErrorState } from "../ui/primitives";
-import { SkeletonBlock } from "./Skeleton";
+import { BusyLabel, EmptyState, ErrorState } from "../ui/primitives";
+import { LoadingRegion, SkeletonRows } from "./Skeleton";
 
 /**
  * Admin "Target Access" manager (System, Access Control). Lists SCA targets and lets
@@ -88,11 +88,9 @@ export const TargetAccessPanel = () => {
       </p>
       {error && <ErrorState title={error} />}
       {loading ? (
-        <div className="scan-target-access-skeleton" aria-busy="true">
-          {[0, 1, 2, 3].map((i) => (
-            <SkeletonBlock key={i} height={36} />
-          ))}
-        </div>
+        <LoadingRegion label={t("Loading targets", "Ziele werden geladen")} className="scan-target-access-skeleton">
+          <SkeletonRows rows={4} height={36} />
+        </LoadingRegion>
       ) : targets.length === 0 ? (
         <EmptyState title={t("No scan targets yet.", "Noch keine Scan-Ziele.")} />
       ) : (
@@ -137,8 +135,13 @@ export const TargetAccessPanel = () => {
                           placeholder={t("New password", "Neues Passwort")}
                           aria-label={t("New password", "Neues Passwort")}
                         />
-                        <button type="submit" className="btn-primary" disabled={busyId === target.id || !pwValue.trim()}>
-                          {t("Save", "Speichern")}
+                        <button
+                          type="submit"
+                          className="btn-primary"
+                          disabled={busyId === target.id || !pwValue.trim()}
+                          aria-busy={busyId === target.id || undefined}
+                        >
+                          <BusyLabel busy={busyId === target.id}>{t("Save", "Speichern")}</BusyLabel>
                         </button>
                         <button
                           type="button"
@@ -170,9 +173,10 @@ export const TargetAccessPanel = () => {
                             type="button"
                             className="btn-secondary"
                             disabled={busyId === target.id}
+                            aria-busy={busyId === target.id || undefined}
                             onClick={() => handleClear(target.id)}
                           >
-                            {t("Clear", "Entfernen")}
+                            <BusyLabel busy={busyId === target.id}>{t("Clear", "Entfernen")}</BusyLabel>
                           </button>
                         )}
                       </div>

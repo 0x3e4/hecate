@@ -18,6 +18,8 @@ class SyncState(BaseModel):
     next_run: UtcDatetime | None = Field(default=None, alias="nextRun", serialization_alias="nextRun")
     last_result: dict | None = Field(default=None, alias="lastResult", serialization_alias="lastResult")
     error: str | None = None
+    # While running: the pipeline's last progress report, e.g. {processed, ingested, remote_total}
+    progress: dict | None = None
 
     model_config = {"populate_by_name": True}
 

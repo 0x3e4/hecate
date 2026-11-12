@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.services.event_bus import publish_job_progress
 from app.services.asset_catalog_service import AssetCatalogService
 from app.services.ingestion.job_tracker import JobTracker
 from app.services.ingestion.cisa_client import CisaKevClient
@@ -378,6 +379,7 @@ class NVDPipeline:
                             "last_progress_at": now,
                         },
                     )
+                    publish_job_progress(ctx.name, progress_payload)
                     if ctx.log_id is not None:
                         if log_repo is None:
                             log_repo = await IngestionLogRepository.create()

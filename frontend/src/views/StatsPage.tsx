@@ -7,7 +7,7 @@ import {
   TimelinePoint,
   fetchStatsOverview,
 } from "../api/stats";
-import { SkeletonBlock } from "../components/Skeleton";
+import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
 import { EmptyState, ErrorState, PageHeader, Section, SeverityTag, Stat, severityVar } from "../ui/primitives";
@@ -63,7 +63,7 @@ export const StatsPage = () => {
       {error && <ErrorState title={error} error={errorCause} onRetry={() => setRetryKey((k) => k + 1)} />}
 
       {!showSkeleton && stats && (
-        <>
+        <div className={loading ? "is-refreshing" : undefined} aria-busy={loading || undefined}>
           <section className="stats-lead">
             <SummaryGrid stats={stats} />
             <ChartBlock title={t("Severity", "Schweregrade")}>
@@ -111,54 +111,51 @@ export const StatsPage = () => {
           </Section>
 
           <AssetSection assets={stats.assets} />
-        </>
+        </div>
       )}
     </div>
   );
 };
 
-const SkeletonBars = ({ rows }: { rows: number }) => (
-  <div className="stats-skeleton-bars">
-    {Array.from({ length: rows }).map((_, index) => (
-      <SkeletonBlock key={index} height="1rem" radius={2} />
-    ))}
-  </div>
-);
-
-const StatsSkeleton = () => (
-  <div aria-hidden="true">
-    <div className="stats-lead">
-      <div className="stats-summary">
-        <div className="stats-skeleton-figure">
-          <SkeletonBlock height="0.8rem" width="45%" radius={4} />
-          <SkeletonBlock height="2.3rem" width="70%" radius={4} />
+const StatsSkeleton = () => {
+  const { t } = useI18n();
+  return (
+    <LoadingRegion label={t("Loading statistics", "Statistiken werden geladen")}>
+      <div>
+        <div className="stats-lead">
+          <div className="stats-summary">
+            <div className="stats-skeleton-figure">
+              <SkeletonBlock height="0.8rem" width="45%" radius={4} />
+              <SkeletonBlock height="2.3rem" width="70%" radius={4} />
+            </div>
+            <div className="stats-skeleton-figure">
+              <SkeletonBlock height="0.8rem" width="45%" radius={4} />
+              <SkeletonBlock height="1.8rem" width="60%" radius={4} />
+            </div>
+          </div>
+          <div className="stats-block">
+            <SkeletonBlock height="1rem" width="30%" radius={4} />
+            <SkeletonRows rows={5} height="1rem" />
+          </div>
         </div>
-        <div className="stats-skeleton-figure">
-          <SkeletonBlock height="0.8rem" width="45%" radius={4} />
-          <SkeletonBlock height="1.8rem" width="60%" radius={4} />
+
+        <div className="ui-section stats-block">
+          <SkeletonBlock height="1rem" width="35%" radius={4} />
+          <SkeletonBlock height="240px" radius={4} />
+        </div>
+
+        <div className="ui-section stats-columns stats-columns--3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="stats-block">
+              <SkeletonBlock height="1rem" width="40%" radius={4} />
+              <SkeletonRows rows={5} height="1rem" />
+            </div>
+          ))}
         </div>
       </div>
-      <div className="stats-block">
-        <SkeletonBlock height="1rem" width="30%" radius={4} />
-        <SkeletonBars rows={5} />
-      </div>
-    </div>
-
-    <div className="ui-section stats-block">
-      <SkeletonBlock height="1rem" width="35%" radius={4} />
-      <SkeletonBlock height="240px" radius={4} />
-    </div>
-
-    <div className="ui-section stats-columns stats-columns--3">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="stats-block">
-          <SkeletonBlock height="1rem" width="40%" radius={4} />
-          <SkeletonBars rows={5} />
-        </div>
-      ))}
-    </div>
-  </div>
-);
+    </LoadingRegion>
+  );
+};
 
 const SummaryGrid = ({ stats }: { stats: StatsResponse }) => {
   const { t, locale } = useI18n();

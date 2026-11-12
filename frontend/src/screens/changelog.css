@@ -6,9 +6,6 @@
 .filter-row .changelog-filter input[type="date"] { flex: 0 0 auto; color-scheme: dark; }
 .changelog-count { margin-left: auto; color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
-.changelog-results { transition: opacity var(--dur-short) var(--ease-out); }
-.changelog-results.is-loading { opacity: 0.5; pointer-events: none; }
-
 .changelog-table { font-size: var(--text-sm); }
 .changelog-table th { color: var(--color-muted); }
 .changelog-table th:first-child,
@@ -94,7 +91,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .changelog-results,
   .changelog-toggle svg,
   .changelog-change-chevron { transition: none; }
 }

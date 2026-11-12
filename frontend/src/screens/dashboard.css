@@ -12,7 +12,6 @@
 .dashboard-search-input::placeholder { font-family: var(--font-body); }
 .dashboard-search-input:disabled { cursor: progress; }
 .dashboard-search-clear { position: absolute; top: 0; right: 0; }
-.dashboard-search-status { color: var(--color-muted); font-size: var(--text-sm); }
 .dashboard-search-notice { font-size: var(--text-sm); }
 .dashboard-search-notice-row { display: flex; align-items: flex-start; gap: var(--space-sm); }
 .dashboard-search-notice-icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: var(--space-3xs); color: var(--color-info); }
@@ -20,9 +19,6 @@
 .dashboard-search-notice-title { font-weight: 600; }
 .dashboard-search-notice-text { margin-top: var(--space-2xs); color: var(--color-muted); }
 .dashboard-search-notice-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-sm); }
-
-.dashboard-spinner { display: inline-block; flex-shrink: 0; width: 16px; height: 16px; border: 2px solid var(--color-rule-strong); border-top-color: var(--color-ink); border-radius: 50%; animation: dashboard-spin 800ms linear infinite; }
-@keyframes dashboard-spin { to { transform: rotate(360deg); } }
 
 /* Day navigation */
 .dashboard-date-nav { display: flex; align-items: center; gap: var(--space-2xs); }
@@ -154,7 +150,6 @@ details[open] > summary .dashboard-disclosure-icon { transform: rotate(90deg); }
 .dashboard-copy--done { color: var(--color-success); }
 .dashboard-copy--done:hover { color: var(--color-success); }
 .dashboard-copy:active { background: var(--overlay-3); }
-.dashboard-refreshing { margin-top: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }
 
 /* Skeletons mirror the regions they stand in for */
 .dashboard-skeleton-stat { display: flex; flex-direction: column; gap: var(--space-2xs); }
@@ -228,6 +223,5 @@ details[open] > summary .dashboard-disclosure-icon { transform: rotate(90deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-spinner { animation-duration: 2400ms; }
   .dashboard-disclosure-icon, .dashboard-cve-row, .dashboard-list-item, .dashboard-triage-row, .dashboard-group-cve, .dashboard-latest-row { transition: none; }
 }

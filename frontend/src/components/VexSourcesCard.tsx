@@ -5,7 +5,7 @@ import { LuPencil, LuRefreshCw } from "react-icons/lu";
 import { applyTargetVexSources, setTargetVexSources } from "../api/scans";
 import { useI18n } from "../i18n/context";
 import type { ScanTarget, VexSourceResult } from "../types";
-import { ExternalLink, Section } from "../ui/primitives";
+import { BusyLabel, ExternalLink, Section } from "../ui/primitives";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
 
@@ -96,9 +96,17 @@ export const VexSourcesCard = ({
         !editing ? (
           <span className="scan-target-vex-actions">
             {sources.length > 0 && (
-              <button type="button" className="btn-secondary" disabled={busy !== null} onClick={apply}>
-                <LuRefreshCw aria-hidden="true" />
-                {busy === "apply" ? t("Applying…", "Wird angewendet…") : t("Apply now", "Jetzt anwenden")}
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy !== null}
+                aria-busy={busy === "apply" || undefined}
+                onClick={apply}
+              >
+                <BusyLabel busy={busy === "apply"}>
+                  {busy !== "apply" && <LuRefreshCw aria-hidden="true" />}
+                  {t("Apply now", "Jetzt anwenden")}
+                </BusyLabel>
               </button>
             )}
             <button type="button" className="btn-secondary" disabled={busy !== null} onClick={startEditing}>
@@ -133,8 +141,14 @@ export const VexSourcesCard = ({
             placeholder="https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json"
           />
           <div className="scan-target-vex-actions">
-            <button type="button" className="btn-primary" disabled={busy !== null} onClick={save}>
-              {busy === "save" ? t("Saving…", "Speichert…") : t("Save and apply", "Speichern und anwenden")}
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy !== null}
+              aria-busy={busy === "save" || undefined}
+              onClick={save}
+            >
+              <BusyLabel busy={busy === "save"}>{t("Save and apply", "Speichern und anwenden")}</BusyLabel>
             </button>
             <button type="button" className="btn-secondary" disabled={busy !== null} onClick={() => setEditing(false)}>
               {t("Cancel", "Abbrechen")}

@@ -11,8 +11,7 @@ import type {
 } from "../types";
 import { EmptyState, ErrorState } from "../ui/primitives";
 import { AttackPathGraphView } from "./AttackPathGraph";
-import { AILoadingIndicator } from "./AILoadingIndicator";
-import { SkeletonBlock } from "./Skeleton";
+import { LoadingRegion, SkeletonBlock } from "./Skeleton";
 
 interface ScanAttackChainViewProps {
   scanId: string;
@@ -161,11 +160,11 @@ export function ScanAttackChainView({
 
   if (loading && !response) {
     return (
-      <div className="scan-detail-skeleton" role="status" aria-label={t("Loading attack chain…", "Angriffskette wird geladen…")}>
-        <SkeletonBlock height="1.25rem" width="240px" radius={4} />
-        <SkeletonBlock height={36} width="60%" radius={4} />
-        <SkeletonBlock height={240} radius={4} />
-      </div>
+      <LoadingRegion label={t("Loading attack chain", "Angriffskette wird geladen")} className="scan-detail-skeleton">
+        <SkeletonBlock height="1.25rem" width="240px" />
+        <SkeletonBlock height={36} width="60%" />
+        <SkeletonBlock height={240} />
+      </LoadingRegion>
     );
   }
   if (!response) {
@@ -185,7 +184,7 @@ export function ScanAttackChainView({
   }
 
   return (
-    <div className="attack-chain">
+    <div className={`attack-chain${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
       <div className="scan-detail-chain-head">
         <div>
           <h2>{t("Cross-CVE Attack Chain", "Angriffskette über mehrere CVEs")}</h2>
@@ -220,12 +219,6 @@ export function ScanAttackChainView({
         loadingStartedAt={narrativeStartedAt}
         error={error}
       />
-
-      {narrativeLoading && !error ? (
-        <div className="scan-detail-chain-loading">
-          <AILoadingIndicator compact startedAt={narrativeStartedAt ?? undefined} />
-        </div>
-      ) : null}
     </div>
   );
 }
