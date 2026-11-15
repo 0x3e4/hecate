@@ -7,7 +7,7 @@
 #
 #   hecate.example.com          -> your domain
 #   admin@example.com           -> your ACME contact e-mail (optional block below)
-#   hecate-frontend:4173        -> frontend service:port
+#   hecate-frontend:8080        -> frontend service:port
 #
 # The frontend container is the gateway (it forwards /api and /mcp to the
 # backend), so it is the only upstream. It sets no security headers, so all of
@@ -47,5 +47,5 @@ hecate.example.com {
     # It serves the SPA and forwards /api, /mcp and /.well-known/oauth-* to the
     # backend, which needs no port of its own. Caddy sets X-Forwarded-For/Proto,
     # preserves the Host and streams SSE (/api/v1/events) and MCP on its own.
-    reverse_proxy hecate-frontend:4173
+    reverse_proxy hecate-frontend:8080
 }

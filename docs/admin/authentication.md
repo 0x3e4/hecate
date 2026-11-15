@@ -166,7 +166,7 @@ anonymous readers who did something by name and role, without the e-mail address
 
 - Set `AUTH_PUBLIC_URL` to the browser-facing URL. It fixes the redirect URI the IdP must accept and
   makes the cookie `Secure`.
-- Keep `TRUSTED_PROXY_IPS=frontend` (the gateway is the backend's proxy) and make sure your reverse
+- Keep `TRUSTED_PROXY_IPS=hecate-frontend` (the gateway is the backend's proxy) and make sure your reverse
   proxy's address is in the frontend's `TRUSTED_PROXIES`; the audit log and the password throttle then
   see the real client address.
 - Send every route to the frontend container (the templates in `deploy/reverse-proxy/` do). Do not

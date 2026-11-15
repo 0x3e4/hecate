@@ -6,13 +6,18 @@ services:
     # issuer URL (docs/admin/authentication.md).
     # No published port: the frontend container forwards /api, /mcp and the OAuth
     # discovery documents to it, so nothing outside Compose reaches the backend
-    # directly. TRUSTED_PROXY_IPS=frontend in .env lets it read the client IP the
-    # frontend passes on. To reach the API from the host for debugging, add
+    # directly. TRUSTED_PROXY_IPS=hecate-frontend in .env lets it read the client IP
+    # the frontend passes on. To reach the API from the host for debugging, add
     #   ports: ["127.0.0.1:8000:8000"]
     env_file: ".env"
     networks:
-      - default
-      - db
+      default:
+        # A name only Hecate's containers carry. The service names "backend" and
+        # "frontend" resolve to every container of that name on a shared network
+        # (one your reverse proxy also joins), so the gateway would send /api to
+        # another project's backend and the backend would trust its frontends.
+        aliases: [hecate-backend]
+      db: {}
     depends_on:
       mongo:
         condition: service_healthy
@@ -32,12 +37,17 @@ services:
       # Who may tell nginx the client IP: your reverse proxy's address or network.
       # "none" when nothing sits in front. Defaults, shown for reference:
       # TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7
-      # BACKEND_UPSTREAM: http://backend:8000
       # MAX_UPLOAD_MB: 100     # SBOM uploads, source archives for scans, backups
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      # The backend's alias below, not the service name "backend" (image default),
+      # which is ambiguous on a network other projects share.
+      BACKEND_UPSTREAM: http://hecate-backend:8000
+    networks:
+      default:
+        aliases: [hecate-frontend]
     ports:
       # Bind to 127.0.0.1 when the reverse proxy runs on the same host.
-      - "4173:4173"
+      - "8080:8080"
     depends_on:
       backend:
         condition: service_started

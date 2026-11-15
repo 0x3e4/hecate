@@ -17,7 +17,7 @@ map $http_x_forwarded_proto $forwarded_proto {
 }
 
 server {
-    listen 4173;
+    listen 8080;
     root /usr/share/nginx/html;
     index index.html;
     charset utf-8;
@@ -37,12 +37,12 @@ server {
     set $backend_upstream ${BACKEND_UPSTREAM};
 
     # Shared by every backend location. X-Forwarded-For carries only the address
-    # real_ip settled on, so the backend (TRUSTED_PROXY_IPS=frontend) reads one
+    # real_ip settled on, so the backend (TRUSTED_PROXY_IPS=hecate-frontend) reads one
     # trustworthy hop instead of whatever the client prepended.
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     # $http_host keeps the port ($host drops it), so a gateway reached directly on
-    # :4173 still gets correct OIDC redirect and MCP URLs from the backend.
+    # :8080 still gets correct OIDC redirect and MCP URLs from the backend.
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Real-IP $remote_addr;

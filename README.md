@@ -119,9 +119,9 @@ docker compose up --build
 
 | Service | URL |
 | --- | --- |
-| Frontend + gateway | <http://localhost:4173> |
-| Backend API (through the gateway) | <http://localhost:4173/api/v1> |
-| Health check | <http://localhost:4173/api/v1/status/health> |
+| Frontend + gateway | <http://localhost:8080> |
+| Backend API (through the gateway) | <http://localhost:8080/api/v1> |
+| Health check | <http://localhost:8080/api/v1/status/health> |
 | MongoDB | `mongodb://localhost:27017` |
 | OpenSearch | <https://localhost:9200> |
 | Scanner sidecar | <http://localhost:8080> |
@@ -143,7 +143,7 @@ flowchart TB
     User([User / Browser])
     CICD([CI/CD pipelines])
 
-    subgraph Frontend["Frontend + gateway · nginx :4173"]
+    subgraph Frontend["Frontend + gateway · nginx :8080"]
         SPA[Dark-theme SPA]
     end
 

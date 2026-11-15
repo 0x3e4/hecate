@@ -184,7 +184,7 @@ deployment, pair it with:
 - **No direct path to the backend.** The frontend container is the gateway for `/api` and `/mcp`,
   so the backend publishes no port in the shipped compose file. Keep it that way: a published
   backend port bypasses the reverse proxy's TLS and headers. The backend trusts forwarded client
-  addresses only from the gateway (`TRUSTED_PROXY_IPS=frontend`), not from the scanner or other
+  addresses only from the gateway (`TRUSTED_PROXY_IPS=hecate-frontend`), not from the scanner or other
   containers on the same network.
 - **Network ACLs** / VPN to limit who can reach the API at all.
 - **Scoped CORS** via `CORS_ORIGINS` (see [Configuration](configuration.md)). Reads are open by

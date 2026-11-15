@@ -54,7 +54,7 @@ Content-Security-Policy, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-
 
 The frontend container is Hecate's gateway: it forwards `/api`, `/mcp` and the OAuth discovery
 documents to the backend itself, so the backend publishes no port and the proxy needs only one
-upstream. Keep `TRUSTED_PROXY_IPS=frontend` in `.env` so the backend sees real client addresses.
+upstream. Keep `TRUSTED_PROXY_IPS=hecate-frontend` in `.env` so the backend sees real client addresses.
 
 Copy the template for your proxy, replace the placeholder domain and upstream hostname, and
 reload. Pair it with scoped `CORS_ORIGINS` and, on a shared instance, a `SYSTEM_PASSWORD`

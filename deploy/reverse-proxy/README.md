@@ -10,7 +10,7 @@ headers in front of Hecate. Pick **one** proxy:
 | [`traefik-static.yml.example`](traefik-static.yml.example) + [`traefik-dynamic.yml.example`](traefik-dynamic.yml.example) | Traefik | Automatic (ACME resolver in the static file) |
 
 They all deliver the same header set and send **every** request to the
-**frontend** container (`:4173`). That container is Hecate's gateway: it serves
+**frontend** container (`:8080`). That container is Hecate's gateway: it serves
 the SPA and forwards `/api`, `/mcp` and `/.well-known/oauth-*` to the backend
 itself, so the backend publishes no port and is not reachable from outside
 Compose. The proxy only treats two paths specially:
@@ -20,18 +20,18 @@ Compose. The proxy only treats two paths specially:
 
 **Client IP:** the gateway trusts `X-Forwarded-For` from private networks by
 default (`TRUSTED_PROXIES`), and the backend trusts the gateway
-(`TRUSTED_PROXY_IPS=frontend`). If your proxy reaches the frontend from a public
+(`TRUSTED_PROXY_IPS=hecate-frontend`). If your proxy reaches the frontend from a public
 address, set `TRUSTED_PROXIES` on the frontend service to that address.
 
 **Upgrading from a setup that sent `/api` to the backend:** that still works as
 long as the backend keeps a port, but the point of the gateway is that it no
 longer needs one. Point every route at the frontend, drop the backend's `ports:`
-and set `TRUSTED_PROXY_IPS=frontend` in `.env` (your old value named the reverse
+and set `TRUSTED_PROXY_IPS=hecate-frontend` in `.env` (your old value named the reverse
 proxy, which no longer talks to the backend).
 
 ## Why the headers live in the proxy
 
-The frontend image is nginx on `:4173` and sets **no** security headers of its
+The frontend image is nginx on `:8080` and sets **no** security headers of its
 own (only `Cache-Control`), so the proxy is the only place to add them. Everything the SPA loads is
 bundled and same-origin (no CDN), which is why the Content-Security-Policy can
 stay strict (`script-src 'self'`, `connect-src 'self'`).
@@ -39,7 +39,7 @@ stay strict (`script-src 'self'`, `connect-src 'self'`).
 ## Before you deploy — replace the placeholders
 
 - `hecate.example.com` → your domain
-- `hecate-frontend:4173` → the frontend's host:port
+- `hecate-frontend:8080` → the frontend's host:port
   (Docker Compose service name shown; use a container name or IP as needed)
 - nginx: the `/etc/letsencrypt/live/hecate.example.com/...` cert paths
 - Caddy / Traefik: the ACME e-mail (`admin@example.com`)

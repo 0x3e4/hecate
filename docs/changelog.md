@@ -13,6 +13,15 @@ generated from it on every semver tag. The format follows
 
 ## [Unreleased]
 
+> **Existing instances: the frontend port and the routing changed. Update Compose, `.env` and your reverse proxy before you start this version.**
+>
+> - The frontend container listens on **8080** instead of 4173 (it is nginx now, and 4173 was only the port of the old Node server). Point your reverse proxy at `hecate-frontend:8080` and change a published `"4173:4173"` to `"8080:8080"`. The image advertises only 8080; the `80/tcp` the nginx base image declared is gone.
+> - The frontend is the gateway: send **everything**, including `/api`, `/mcp` and `/.well-known/oauth-*`, to the frontend. The backend publishes no port any more, and a proxy that still talks to `backend:8000` makes every client share one address for the brute-force throttle.
+> - Take the network aliases `hecate-backend` / `hecate-frontend` and `BACKEND_UPSTREAM: http://hecate-backend:8000` from `docker-compose.yml.example`, and set `TRUSTED_PROXY_IPS=hecate-frontend` in `.env`. On a Docker network other projects share, the plain names `backend` and `frontend` also resolve to their containers.
+> - Set `TRUSTED_PROXIES` on the frontend to your reverse proxy's address or network (`none` when nothing sits in front), and `MAX_UPLOAD_MB` (default 100). The frontend container reads no `.env` any more.
+>
+> Templates for nginx, Caddy and Traefik are in `deploy/reverse-proxy/`; details in the configuration reference under "Frontend gateway".
+
 ### Added
 
 - **Import VEX** on the Findings tab and `POST /scans/vex/import` read OpenVEX as well as CycloneDX VEX; the format is detected. OpenVEX statements match by vulnerability and its aliases, and where a document gives one vulnerability different statuses per package, each statement only reaches the packages it names. A file in neither format is refused with a message instead of importing nothing.
@@ -84,6 +93,7 @@ generated from it on every semver tag. The format follows
 - The AI analysis password stays required for everyone when it is set, and viewers cannot start AI analyses.
 - When the audit log is public (sign-in optional), it hides e-mail addresses and IdP subjects from visitors who are not signed in.
 - The backend is no longer reachable from outside Docker Compose in the shipped setup, and it believes forwarded client addresses only from the frontend gateway, not from the scanner or other containers on the same network.
+- The Compose example gives the backend and the frontend the network aliases `hecate-backend` and `hecate-frontend`, and the gateway and `TRUSTED_PROXY_IPS` use them. When Hecate's containers also joined a network other projects share, `backend` and `frontend` resolved to those projects' containers too: `/api` went to another backend in turn, and the backend trusted forwarded client addresses from every `frontend` on that network. Existing installs: set `BACKEND_UPSTREAM` on the frontend and `TRUSTED_PROXY_IPS` in `.env` to these aliases, or to the container names.
 - An SBOM upload with a blank `targetName` (only spaces) is authorized against the target the file names, the one the import writes into. The gate used to check the default "SBOM Import" target, so its password, or no password on an install without `SYSTEM_PASSWORD` and OIDC, could overwrite any other password-protected SBOM-import target.
 - An imported SBOM may carry at most `SCA_SBOM_IMPORT_MAX_COMPONENTS` (25,000) components. The dashboard's scan coverage keeps at most 64 versions of one package per scan and stops after a one-second budget. An SBOM with thousands of versions of one package had stalled the backend on every search suggestion and dashboard load.
 - The package check and the supply-chain signals of a scan now see a new release within 15 minutes. The answer to "which version is latest" and "this version is not published yet" used to be cached for a day, so a takeover release went unflagged by an unpinned check, and by a scan after someone had checked that version in advance.

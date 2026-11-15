@@ -6,7 +6,7 @@
 # Replace the placeholders:
 #
 #   hecate.example.com     -> your domain
-#   hecate-frontend:4173   -> frontend service:port
+#   hecate-frontend:8080   -> frontend service:port
 #   letsencrypt            -> your certResolver name (must match the static config)
 #
 # Higher router priority wins, so the docs router (relaxed CSP) is evaluated
@@ -51,7 +51,7 @@ http:
     hecate-frontend:
       loadBalancer:
         servers:
-          - url: "http://hecate-frontend:4173"
+          - url: "http://hecate-frontend:8080"
 
   middlewares:
     hecate-security-headers:

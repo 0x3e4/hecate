@@ -29,7 +29,7 @@ flowchart TB
     User([User / Browser])
     CICD([CI/CD])
 
-    subgraph FE["Frontend + gateway :4173 — nginx, React 19 SPA"]
+    subgraph FE["Frontend + gateway :8080 — nginx, React 19 SPA"]
         SPA[Dark-theme SPA]
     end
 
@@ -67,7 +67,7 @@ The frontend container is the gateway: its nginx serves the SPA and forwards `/a
 `/.well-known/oauth-*` to the backend (unbuffered for the SSE stream and MCP). The backend publishes
 no port, so nothing outside Compose reaches it directly, and the web app and the API share one origin,
 which the sign-in cookie needs. The backend learns the client IP from the gateway
-(`TRUSTED_PROXY_IPS=frontend`), the gateway from the reverse proxy (`TRUSTED_PROXIES`).
+(`TRUSTED_PROXY_IPS=hecate-frontend`), the gateway from the reverse proxy (`TRUSTED_PROXIES`).
 
 For a live deployment the stack sits behind a TLS-terminating reverse proxy. The
 `deploy/reverse-proxy/` folder provides ready-to-adapt nginx, Caddy and Traefik templates that
