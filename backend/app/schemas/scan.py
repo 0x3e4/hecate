@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 from app.schemas._utc import UtcDatetime
 
 VALID_SCANNERS = frozenset(
-    {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
+    {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim",
+     "govulncheck"}
 )
 
 
@@ -257,6 +258,59 @@ class ScanTargetGroupListResponse(BaseModel):
     items: list[ScanTargetGroupSchema]
 
 
+class ScanReleaseSchema(BaseModel):
+    """Release marker on a completed scan (see app/services/scan_release.py)."""
+
+    label: str
+    note: str | None = None
+    marked_at: UtcDatetime | None = Field(default=None, alias="markedAt", serialization_alias="markedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class ScanReleaseRequest(BaseModel):
+    label: str = Field(max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ScanReleaseEntry(BaseModel):
+    """One release of a target, for the target page's Releases list."""
+
+    scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+    label: str
+    note: str | None = None
+    marked_at: UtcDatetime | None = Field(default=None, alias="markedAt", serialization_alias="markedAt")
+    status: str | None = None
+    started_at: UtcDatetime | None = Field(default=None, alias="startedAt", serialization_alias="startedAt")
+    finished_at: UtcDatetime | None = Field(default=None, alias="finishedAt", serialization_alias="finishedAt")
+    commit_sha: str | None = Field(default=None, alias="commitSha", serialization_alias="commitSha")
+    image_ref: str | None = Field(default=None, alias="imageRef", serialization_alias="imageRef")
+    branch: str | None = None
+    summary: ScanSummarySchema = Field(default_factory=ScanSummarySchema)
+    sbom_component_count: int | None = Field(
+        default=None, alias="sbomComponentCount", serialization_alias="sbomComponentCount"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ScanReleaseListResponse(BaseModel):
+    items: list[ScanReleaseEntry]
+
+
+class SupplyChainSummarySchema(BaseModel):
+    """Outcome of the release-age / publisher lookups that follow a scan."""
+
+    state: str = Field(description="running, done or failed")
+    checked: int = 0
+    fresh_release: int = Field(default=0, alias="freshRelease", serialization_alias="freshRelease")
+    unmaintained: int = 0
+    publisher_changed: int = Field(default=0, alias="publisherChanged", serialization_alias="publisherChanged")
+    finished_at: UtcDatetime | None = Field(default=None, alias="finishedAt", serialization_alias="finishedAt")
+
+    model_config = {"populate_by_name": True}
+
+
 class ScanResponse(BaseModel):
     """Scan detail."""
 
@@ -312,6 +366,13 @@ class ScanResponse(BaseModel):
     )
     scanner_breakdown: list[dict[str, Any]] | None = Field(
         default=None, alias="scannerBreakdown", serialization_alias="scannerBreakdown"
+    )
+    release: ScanReleaseSchema | None = Field(
+        default=None, description="Set when this scan is marked as a release"
+    )
+    supply_chain_summary: SupplyChainSummarySchema | None = Field(
+        default=None, alias="supplyChainSummary", serialization_alias="supplyChainSummary",
+        description="Release-age / publisher lookups on the SBOM, filled in after the scan",
     )
 
     model_config = {"populate_by_name": True}
@@ -382,6 +443,31 @@ class ScanFindingResponse(BaseModel):
     vex_updated_at: UtcDatetime | None = Field(
         default=None, alias="vexUpdatedAt", serialization_alias="vexUpdatedAt"
     )
+    vex_updated_by: str | None = Field(
+        default=None, alias="vexUpdatedBy", serialization_alias="vexUpdatedBy",
+        description="Who set the status: user, '<client> - MCP', vex-import, vex-source, vex-rule:<id>, "
+        "reachability:<tool>, carry-forward",
+    )
+    vex_assessed_version: str | None = Field(
+        default=None, alias="vexAssessedVersion", serialization_alias="vexAssessedVersion",
+        description="Package version a person assessed the VEX status at",
+    )
+    vex_review_due: str | None = Field(
+        default=None, alias="vexReviewDue", serialization_alias="vexReviewDue",
+        description="Re-review date (YYYY-MM-DD)",
+    )
+    vex_needs_review: bool = Field(
+        default=False, alias="vexNeedsReview", serialization_alias="vexNeedsReview",
+        description="The version changed since the assessment, or the re-review date has passed",
+    )
+    vex_review_reason: str | None = Field(
+        default=None, alias="vexReviewReason", serialization_alias="vexReviewReason",
+        description="version_changed or review_due when vexNeedsReview is set",
+    )
+    dependency_scope: str | None = Field(
+        default=None, alias="dependencyScope", serialization_alias="dependencyScope",
+        description="runtime, dev or optional; null when the source does not say",
+    )
     dismissed: bool = False
     dismissed_reason: str | None = Field(
         default=None, alias="dismissedReason", serialization_alias="dismissedReason"
@@ -428,6 +514,35 @@ class SbomComponentResponse(BaseModel):
     )
     provenance_attestation_type: str | None = Field(
         default=None, alias="provenanceAttestationType", serialization_alias="provenanceAttestationType"
+    )
+    scope: str | None = Field(
+        default=None, description="Dependency scope: runtime, dev or optional; null when unknown"
+    )
+    published_at: UtcDatetime | None = Field(
+        default=None, alias="publishedAt", serialization_alias="publishedAt",
+        description="When the registry published this version",
+    )
+    latest_version: str | None = Field(default=None, alias="latestVersion", serialization_alias="latestVersion")
+    latest_published_at: UtcDatetime | None = Field(
+        default=None, alias="latestPublishedAt", serialization_alias="latestPublishedAt"
+    )
+    publisher: str | None = Field(default=None, description="npm account that published this version")
+    previous_publishers: list[str] | None = Field(
+        default=None, alias="previousPublishers", serialization_alias="previousPublishers"
+    )
+    new_maintainers: list[str] | None = Field(
+        default=None, alias="newMaintainers", serialization_alias="newMaintainers"
+    )
+    fresh_release: bool | None = Field(
+        default=None, alias="freshRelease", serialization_alias="freshRelease",
+        description="Published less than SCA_FRESH_RELEASE_DAYS ago",
+    )
+    unmaintained: bool | None = Field(
+        default=None, description="Latest release older than SCA_UNMAINTAINED_DAYS"
+    )
+    publisher_changed: bool | None = Field(
+        default=None, alias="publisherChanged", serialization_alias="publisherChanged",
+        description="npm: published by an account that published none of the previous versions",
     )
 
     model_config = {"populate_by_name": True}
@@ -573,6 +688,9 @@ class ConsolidatedFindingResponse(BaseModel):
     package_path: str | None = Field(
         default=None, alias="packagePath", serialization_alias="packagePath"
     )
+    dependency_scope: str | None = Field(
+        default=None, alias="dependencyScope", serialization_alias="dependencyScope"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -615,6 +733,7 @@ class ConsolidatedSbomResponse(BaseModel):
     provenance_verified: bool | None = Field(
         default=None, alias="provenanceVerified", serialization_alias="provenanceVerified"
     )
+    scope: str | None = None
     targets: list[ConsolidatedTargetSchema] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}

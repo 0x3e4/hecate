@@ -7,7 +7,7 @@ import { LuArrowDown, LuMinus, LuPlus, LuMaximize2 } from "react-icons/lu";
 import "../screens/vulnerability-detail.css";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { BusyLabel, ExternalLink, IconButton, severityLevel } from "../ui/primitives";
-import { stripAiSummaryFooter } from "../utils/aiSummary";
+import { aiMadeBy, stripAiSummaryFooter } from "../utils/aiSummary";
 import type {
   AttackPathExploitMaturity,
   AttackPathGraph,
@@ -794,7 +794,7 @@ export function AttackPathGraphView({
           <div className="well vulnerability-detail-path-narrative-body">
             <div className="vulnerability-detail-meta-line">
               <span>
-                {t("Provider", "Anbieter")}: {narrative.provider}
+                {t("Provider", "Anbieter")}: {aiMadeBy(narrative.provider, narrative.model, t("model not recorded", "Modell nicht erfasst"))}
               </span>
               {narrative.triggeredBy ? <span>{narrative.triggeredBy}</span> : null}
               <span>{new Date(narrative.generatedAt).toLocaleString(language === "de" ? "de-DE" : "en-US")}</span>

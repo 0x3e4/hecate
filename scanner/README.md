@@ -16,6 +16,7 @@
 | [Grype](https://github.com/anchore/grype) | Vulnerability scan | `grype-json` |
 | [Syft](https://github.com/anchore/syft) | SBOM generation | `cyclonedx-json` |
 | [OSV Scanner](https://github.com/google/osv-scanner) | Vulnerability scan (OSV DB) | `osv-json` |
+| [govulncheck](https://go.dev/doc/security/vuln/) | Go reachability: per `go.mod`, which Go vulnerabilities reach a vulnerable function (source repos only; needs the Go toolchain, see below) | `govulncheck-json` |
 | Hecate Analyzer | SBOM extraction (28 parsers, 12 ecosystems) + malware detection | `hecate-json` |
 | [Dockle](https://github.com/goodwithtech/dockle) | CIS Docker Benchmark linter (container images only) | `dockle-json` |
 | [Dive](https://github.com/wagoodman/dive) | Docker image-layer analysis (container images only) | `dive-json` |
@@ -23,10 +24,10 @@
 | [TruffleHog](https://github.com/trufflesecurity/trufflehog) | Secret scanner (source repos only) | `trufflehog-json` |
 | [DevSkim](https://github.com/microsoft/DevSkim) | Microsoft SAST scanner with strong .NET / ASP.NET coverage (source repos only, no build required) | `devskim-sarif` |
 
-Trivy, Grype and Syft are copied from their official images, TruffleHog comes in as a GitHub release. Dive, Dockle, OSV Scanner and skopeo are built in a `golang:1.27.3` stage from their release tag (checked against the commit): Dive and Dockle have had no release since early 2025 and their binaries carried Go 1.24.1 / 1.22.10 plus old `x/net`, `klauspost/compress` and `xz` modules, so the build also raises those to fixed versions. skopeo is built statically (pure-Go OpenPGP, no btrfs / devicemapper drivers) instead of coming from Debian, whose 1.18 package was built with Go 1.24.4 and pulled in gpgme, gnupg and the CNI plugins; the image writes the default `/etc/containers/policy.json` it needs. The curl and unzip programs only serve the build downloads and are purged afterwards; git keeps its libcurl. Semgrep is installed via pip into its own virtualenv (`/opt/semgrep`), so its pinned dependencies can't collide with the sidecar's own. Poetry runs from a throwaway venv during the build; it, virtualenv and pip (system and Semgrep venv) are not in the final image, since nothing installs packages at runtime. DevSkim comes from the `Microsoft.CST.DevSkim.CLI` NuGet package (GitHub releases after v1.0.59 ship no binaries): the image extracts its framework-dependent `net10.0` build, verifies the package against a pinned SHA-256 and runs it through a `devskim` wrapper on the .NET 10 runtime, copied in from `mcr.microsoft.com/dotnet/runtime:10.0-noble` as a multi-stage build, in globalization-invariant mode (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`). The Hecate Analyzer is a native Python scanner with no external dependencies.
+Trivy, Grype and Syft are copied from their official images, TruffleHog comes in as a GitHub release. Dive, Dockle, OSV Scanner, govulncheck and skopeo are built in a `golang:1.27.3` stage from their release tag (checked against the commit). govulncheck's source mode runs `go list`, so the image also carries that stage's Go toolchain in `/usr/local/go`, trimmed to what `go list` needs, with `GOTOOLCHAIN=local`; govulncheck downloads modules through `GOPROXY` (default `https://proxy.golang.org`, no `direct`) into a per-run directory under `/tmp`. Dive and Dockle have had no release since early 2025 and their binaries carried Go 1.24.1 / 1.22.10 plus old `x/net`, `klauspost/compress` and `xz` modules, so the build also raises those to fixed versions. skopeo is built statically (pure-Go OpenPGP, no btrfs / devicemapper drivers) instead of coming from Debian, whose 1.18 package was built with Go 1.24.4 and pulled in gpgme, gnupg and the CNI plugins; the image writes the default `/etc/containers/policy.json` it needs. The curl and unzip programs only serve the build downloads and are purged afterwards; git keeps its libcurl. Semgrep is installed via pip into its own virtualenv (`/opt/semgrep`), so its pinned dependencies can't collide with the sidecar's own. Poetry runs from a throwaway venv during the build; it, virtualenv and pip (system and Semgrep venv) are not in the final image, since nothing installs packages at runtime. DevSkim comes from the `Microsoft.CST.DevSkim.CLI` NuGet package (GitHub releases after v1.0.59 ship no binaries): the image extracts its framework-dependent `net10.0` build, verifies the package against a pinned SHA-256 and runs it through a `devskim` wrapper on the .NET 10 runtime, copied in from `mcr.microsoft.com/dotnet/runtime:10.0-noble` as a multi-stage build, in globalization-invariant mode (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`). The Hecate Analyzer is a native Python scanner with no external dependencies.
 
 > [!NOTE]
-> Dockle and Dive are container-image-only. Semgrep, TruffleHog, DevSkim, OSV Scanner, and the Hecate Analyzer are source-repo-only.
+> Dockle and Dive are container-image-only. Semgrep, TruffleHog, DevSkim, govulncheck, OSV Scanner, and the Hecate Analyzer are source-repo-only.
 
 ### Enhanced detection
 
@@ -83,7 +84,7 @@ Run one or more scanners against a target.
 | --- | --- | --- |
 | `target` | string | Container-image reference or source-repo URL. Validated before any subprocess runs — the scheme must be `https`/`http`/`git`/`ssh` for repos, and targets containing `::` (git transport helpers such as `ext::`) or starting with `-` are rejected (`400`). |
 | `type` | string | `container_image` or `source_repo` |
-| `scanners` | string[] | Scanners to run (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`, `semgrep`, `trufflehog`, `devskim`) |
+| `scanners` | string[] | Scanners to run (`trivy`, `grype`, `syft`, `osv-scanner`, `hecate`, `dockle`, `dive`, `semgrep`, `trufflehog`, `devskim`, `govulncheck`) |
 
 **Response:**
 

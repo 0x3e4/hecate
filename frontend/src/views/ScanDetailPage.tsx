@@ -2,7 +2,7 @@ import "../screens/scan-detail.css";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AiMarkdown } from "../components/AiMarkdown";
 import {
   LuArrowLeft,
@@ -21,14 +21,16 @@ import {
   LuX,
 } from "react-icons/lu";
 
-import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, exportVex, importVex, bulkUpdateVexByIds, dismissFindings, triggerScanAiAnalysis } from "../api/scans";
+import { fetchScan, fetchScanFindings, fetchScanSbom, fetchScanLayers, fetchScans, fetchTargetHistory, compareScans, exportScanSbom, updateFindingVex, importVex, bulkUpdateVexByIds, dismissFindings, triggerScanAiAnalysis } from "../api/scans";
 import { getAiProviders } from "../api/vulnerabilities";
 import type { AIProviderInfo } from "../types";
 import { TriggeredByBadge } from "../ui/TriggeredByBadge";
 import { TabPill } from "../ui/TabPill";
 import { BusyLabel, EmptyState, ErrorState, IconButton, LoadingState, PageHeader, SeverityTag, Stat, severityLevel, severityVar } from "../ui/primitives";
 import { describeError } from "../utils/apiError";
-import { stripAiSummaryFooter } from "../utils/aiSummary";
+import { aiMadeBy, stripAiSummaryFooter } from "../utils/aiSummary";
+import { eventForRun, runIdOf } from "../utils/aiRun";
+import { useSSE } from "../hooks/useSSE";
 import { cleanAdvisoryText } from "../utils/advisoryText";
 import { fetchScanLicenseCompliance, fetchLicensePolicies } from "../api/licensePolicy";
 import { AILoadingIndicator } from "../components/AILoadingIndicator";
@@ -37,12 +39,33 @@ import { useI18n } from "../i18n/context";
 import { useServerConfig } from "../server-config/context";
 import { ScanFindingAttackPath } from "../components/ScanFindingAttackPath";
 import { ScanAttackChainView } from "../components/ScanAttackChainView";
+import { ScanReleaseActions } from "../components/ScanReleaseActions";
+import { VexExportMenu } from "../components/VexExportMenu";
+import { SupplyChainChips, SupplyChainFacet, SupplyChainSummaryLine } from "../components/SupplyChainSignals";
+import { hasSignal, type SupplyChainSignal } from "../utils/supplyChain";
 import { Toast, useToast } from "../components/Toast";
 import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { downloadText } from "../utils/download";
 import { findingsExportFilename, findingsToCsv, findingsToJson } from "../utils/findingsExport";
+import {
+  SCOPE_FILTER_VALUES,
+  VEX_FILTER_VALUES,
+  VEX_SET_BY_VALUES,
+  compareVex,
+  hasActiveFindingFilters,
+  matchesFindingFilters,
+  mergeScope,
+  scopeOf,
+  toggleValue,
+  vexRuleId,
+  vexSetBy,
+  type ScopeFilterValue,
+  type VexFilterValue,
+  type VexSetBy,
+} from "../utils/findingFilters";
+import { fetchVexRules } from "../api/vexRules";
 import { safeHref } from "../utils/safeHref";
 import { getCurrentTimezone } from "../timezone/storage";
 import {
@@ -207,6 +230,12 @@ interface MergedFinding {
   vexStatus: string | null;
   vexJustification: string | null;
   vexDetail: string | null;
+  vexUpdatedBy: string | null;
+  vexAssessedVersion: string | null;
+  vexReviewDue: string | null;
+  vexNeedsReview: boolean;
+  vexReviewReason: string | null;
+  dependencyScope: string | null;
   dismissed: boolean;
   dismissedReason: string | null;
 }
@@ -251,7 +280,15 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
       existing.vexStatus = f.vexStatus;
       existing.vexJustification = f.vexJustification ?? null;
       existing.vexDetail = f.vexDetail ?? null;
+      existing.vexUpdatedBy = f.vexUpdatedBy ?? null;
+      existing.vexAssessedVersion = f.vexAssessedVersion ?? null;
+      existing.vexReviewDue = f.vexReviewDue ?? null;
     }
+    if (f.vexStatus && f.vexNeedsReview && !existing.vexNeedsReview) {
+      existing.vexNeedsReview = true;
+      existing.vexReviewReason = f.vexReviewReason ?? null;
+    }
+    existing.dependencyScope = mergeScope(existing.dependencyScope, f.dependencyScope);
     // Dismissed: any sub-finding dismissed → merged row counted as dismissed
     if (f.dismissed) {
       existing.dismissed = true;
@@ -329,6 +366,12 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
           vexStatus: f.vexStatus ?? null,
           vexJustification: f.vexJustification ?? null,
           vexDetail: f.vexDetail ?? null,
+          vexUpdatedBy: f.vexUpdatedBy ?? null,
+          vexAssessedVersion: f.vexAssessedVersion ?? null,
+          vexReviewDue: f.vexReviewDue ?? null,
+          vexNeedsReview: !!(f.vexStatus && f.vexNeedsReview),
+          vexReviewReason: f.vexStatus && f.vexNeedsReview ? f.vexReviewReason ?? null : null,
+          dependencyScope: f.dependencyScope ?? null,
           dismissed: f.dismissed ?? false,
           dismissedReason: f.dismissedReason ?? null,
           _fixCandidates: f.fixVersion ? [normalizeVersion(f.fixVersion)] : [],
@@ -364,7 +407,12 @@ export const ScanDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorCause, setErrorCause] = useState<unknown>(null);
-  const [severityFilter, setSeverityFilter] = useState<string | undefined>();
+  // ?severity=high (from the target page's figures) opens the findings filtered to it
+  const [searchParams] = useSearchParams();
+  const [severityFilter, setSeverityFilter] = useState<string | undefined>(() => {
+    const wanted = searchParams.get("severity")?.toLowerCase();
+    return wanted && ["critical", "high", "medium", "low", "negligible", "unknown"].includes(wanted) ? wanted : undefined;
+  });
   const [findingsSearch, setFindingsSearch] = useState("");
   const [findingsSort, setFindingsSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "severity", dir: "asc" });
   const [sbomSearch, setSbomSearch] = useState("");
@@ -373,8 +421,20 @@ export const ScanDetailPage = () => {
   const [sbomFilterLicense, setSbomFilterLicense] = useState<string | null>(null);
   const [sbomFilterType, setSbomFilterType] = useState<string | null>(null);
   const [sbomFilterProvenance, setSbomFilterProvenance] = useState<string | null>(null);
+  const [sbomFilterScope, setSbomFilterScope] = useState<ScopeFilterValue | null>(null);
+  // Findings filters on scope and VEX, remembered like "show dismissed"
+  const [scopeFilter, setScopeFilter] = usePersistentState<ScopeFilterValue[]>("hecate.scan.scopeFilter", []);
+  const [vexFilter, setVexFilter] = usePersistentState<VexFilterValue[]>("hecate.scan.vexFilter", []);
+  const [vexSetByFilter, setVexSetByFilter] = usePersistentState<VexSetBy[]>("hecate.scan.vexSetByFilter", []);
+  const [needsReviewFilter, setNeedsReviewFilter] = usePersistentState<boolean>("hecate.scan.needsReviewFilter", false);
+  const findingFilters = useMemo(
+    () => ({ scopes: scopeFilter, vex: vexFilter, setBy: vexSetByFilter, needsReview: needsReviewFilter }),
+    [scopeFilter, vexFilter, vexSetByFilter, needsReviewFilter],
+  );
+  // Rule id -> name, for the chip on statuses a VEX rule set
+  const [vexRuleNames, setVexRuleNames] = useState<Record<string, string>>({});
+  const [sbomFilterSignal, setSbomFilterSignal] = useState<SupplyChainSignal | null>(null);
   const [sbomExporting, setSbomExporting] = useState<string | null>(null);
-  const [vexExporting, setVexExporting] = useState(false);
   const { toast, showToast, dismiss } = useToast();
   // Adapter so existing setToast({type,message}) / setToast(null) call sites keep working.
   const setToast = (next: { message: string; type: "success" | "error" } | null) =>
@@ -384,6 +444,16 @@ export const ScanDetailPage = () => {
   const [licenseCompliance, setLicenseCompliance] = useState<LicenseComplianceResult | null>(null);
   const [licenseComplianceLoading, setLicenseComplianceLoading] = useState(false);
   const [hasLicensePolicy, setHasLicensePolicy] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchVexRules()
+      .then(res => {
+        if (!cancelled) setVexRuleNames(Object.fromEntries(res.items.map(r => [r.id, r.name])));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -404,6 +474,7 @@ export const ScanDetailPage = () => {
   const [vexEditStatus, setVexEditStatus] = useState("");
   const [vexEditJustification, setVexEditJustification] = useState("");
   const [vexEditDetail, setVexEditDetail] = useState("");
+  const [vexEditReviewDue, setVexEditReviewDue] = useState("");
   const [vexSaving, setVexSaving] = useState(false);
 
   // Multi-select bulk edit + dismiss
@@ -411,6 +482,7 @@ export const ScanDetailPage = () => {
   const [bulkVexStatus, setBulkVexStatus] = useState<string>("not_affected");
   const [bulkVexJustification, setBulkVexJustification] = useState("");
   const [bulkVexDetail, setBulkVexDetail] = useState("");
+  const [bulkVexReviewDue, setBulkVexReviewDue] = useState("");
   const [bulkAction, setBulkAction] = useState<"vex" | "dismiss" | null>(null);
   const bulkBusy = bulkAction !== null;
   const [showDismissed, setShowDismissed] = usePersistentState<boolean>("hecate.scan.showDismissed", false);
@@ -485,6 +557,7 @@ export const ScanDetailPage = () => {
         f.scanners.some(s => s.toLowerCase().includes(q))
       );
     }
+    if (hasActiveFindingFilters(findingFilters)) result = result.filter(f => matchesFindingFilters(f, findingFilters));
     // Sort
     const { col, dir } = findingsSort;
     const mult = dir === "asc" ? 1 : -1;
@@ -495,10 +568,14 @@ export const ScanDetailPage = () => {
       if (col === "version") return mult * (a.packageVersion ?? "").localeCompare(b.packageVersion ?? "");
       if (col === "fix") return mult * (a.fixVersion ?? "").localeCompare(b.fixVersion ?? "");
       if (col === "scanner") return mult * a.scanners.join(",").localeCompare(b.scanners.join(","));
+      if (col === "vex") {
+        return mult * (compareVex(a.vexStatus, b.vexStatus)
+          || (SEVERITY_ORDER[a.severity] ?? 4) - (SEVERITY_ORDER[b.severity] ?? 4));
+      }
       return 0;
     });
     return result;
-  }, [vulnFindings, severityFilter, findingsSearch, findingsSort]);
+  }, [vulnFindings, severityFilter, findingsSearch, findingsSort, findingFilters]);
 
   /** Summary computed from CVE-deduplicated vulnerability findings (excludes alerts).
    *  Same CVE across multiple packages counts as 1 vulnerability (highest severity wins). */
@@ -575,6 +652,10 @@ export const ScanDetailPage = () => {
     } else if (sbomFilterProvenance === "unknown") {
       items = items.filter(c => c.provenanceVerified == null);
     }
+    if (sbomFilterScope) items = items.filter(c => scopeOf(c.scope) === sbomFilterScope);
+    if (sbomFilterSignal) {
+      items = items.filter(c => hasSignal(c, sbomFilterSignal));
+    }
     const sorted = [...items];
     const dir = sbomSort.dir === "asc" ? 1 : -1;
     sorted.sort((a, b) => {
@@ -583,6 +664,10 @@ export const ScanDetailPage = () => {
         case "version": av = a.version || ""; bv = b.version || ""; break;
         case "type": av = a.type || ""; bv = b.type || ""; break;
         case "licenses": av = a.licenses[0] || ""; bv = b.licenses[0] || ""; break;
+        case "scope": {
+          const rank = (v: string | null | undefined) => String(SCOPE_FILTER_VALUES.indexOf(scopeOf(v)));
+          av = rank(a.scope); bv = rank(b.scope); break;
+        }
         case "provenance": {
           const pv = (v: boolean | null | undefined) => v === true ? "a" : v === false ? "b" : "c";
           av = pv(a.provenanceVerified); bv = pv(b.provenanceVerified); break;
@@ -592,7 +677,8 @@ export const ScanDetailPage = () => {
       return av.localeCompare(bv) * dir;
     });
     return sorted;
-  }, [sbomComponents, sbomSort, sbomFilterEco, sbomFilterLicense, sbomFilterType, sbomFilterProvenance]);
+  }, [sbomComponents, sbomSort, sbomFilterEco, sbomFilterLicense, sbomFilterType, sbomFilterProvenance, sbomFilterSignal, sbomFilterScope]);
+  const hasAnyScope = useMemo(() => sbomComponents.some(c => !!c.scope), [sbomComponents]);
 
   const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json") => {
     if (!scanId || sbomExporting) return;
@@ -795,6 +881,7 @@ export const ScanDetailPage = () => {
     { col: "name", label: t("Component", "Komponente"), show: true },
     { col: "version", label: t("Version", "Version"), show: true },
     { col: "type", label: t("Type", "Typ"), show: true },
+    { col: "scope", label: t("Scope", "Scope"), show: hasAnyScope },
     { col: "provenance", label: t("Provenance", "Provenienz"), show: hasAnyProvenance },
     { col: "licenses", label: t("Licenses", "Lizenzen"), show: true },
   ] as const).filter(h => h.show);
@@ -840,6 +927,7 @@ export const ScanDetailPage = () => {
             )}
           </span>
         }
+        actions={<ScanReleaseActions scan={scan} onChange={setScan} />}
       />
 
       <div className="scan-detail-overview">
@@ -903,6 +991,17 @@ export const ScanDetailPage = () => {
           {scan.branch && <MetaItem label={t("Branch", "Branch")}><span className="mono">{scan.branch}</span></MetaItem>}
           {scan.source === "ci_cd" && <MetaItem label={t("Source", "Quelle")}>CI/CD</MetaItem>}
           {scan.source === "scheduled" && <MetaItem label={t("Source", "Quelle")}>Auto</MetaItem>}
+          {scan.supplyChainSummary && (scan.supplyChainSummary.state === "running" || scan.supplyChainSummary.state === "done") && (
+            <MetaItem label={t("Supply chain", "Lieferkette")}>
+              <SupplyChainSummaryLine
+                summary={scan.supplyChainSummary}
+                onPick={signal => {
+                  setSbomFilterSignal(signal);
+                  setTab("sbom");
+                }}
+              />
+            </MetaItem>
+          )}
         </dl>
 
         {scan.error && (
@@ -1044,6 +1143,14 @@ export const ScanDetailPage = () => {
               />
               {t("Show dismissed", "Verworfene anzeigen")}
             </label>
+            <label className="scan-detail-toggle">
+              <input
+                type="checkbox"
+                checked={needsReviewFilter}
+                onChange={e => setNeedsReviewFilter(e.target.checked)}
+              />
+              {t("Needs re-review", "Erneut prüfen")}
+            </label>
             <input
               ref={vexImportRef}
               type="file"
@@ -1121,6 +1228,65 @@ export const ScanDetailPage = () => {
             })()}
           </div>
 
+          <div className="filter-row scan-detail-filter-groups">
+            <div className="scan-detail-filter-group" role="group" aria-label={t("Dependency scope", "Abhängigkeits-Scope")}>
+              <span className="scan-detail-filter-label">{t("Scope", "Scope")}</span>
+              {SCOPE_FILTER_VALUES.map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  className="scan-detail-filter"
+                  aria-pressed={scopeFilter.includes(value)}
+                  onClick={() => setScopeFilter(toggleValue(scopeFilter, value, SCOPE_FILTER_VALUES))}
+                >
+                  {scopeLabel(value, t)}
+                </button>
+              ))}
+            </div>
+            <div className="scan-detail-filter-group" role="group" aria-label={t("VEX status", "VEX-Status")}>
+              <span className="scan-detail-filter-label">VEX</span>
+              {VEX_FILTER_VALUES.map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  className="scan-detail-filter"
+                  aria-pressed={vexFilter.includes(value)}
+                  onClick={() => setVexFilter(toggleValue(vexFilter, value, VEX_FILTER_VALUES))}
+                >
+                  {value === "none" ? t("No status", "Kein Status") : vexStatusLabel(value, t)}
+                </button>
+              ))}
+            </div>
+            <div className="scan-detail-filter-group" role="group" aria-label={t("VEX set by", "VEX gesetzt von")}>
+              <span className="scan-detail-filter-label">{t("Set by", "Gesetzt von")}</span>
+              {VEX_SET_BY_VALUES.map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  className="scan-detail-filter"
+                  aria-pressed={vexSetByFilter.includes(value)}
+                  onClick={() => setVexSetByFilter(toggleValue(vexSetByFilter, value, VEX_SET_BY_VALUES))}
+                >
+                  {vexSetByLabel(value, t)}
+                </button>
+              ))}
+            </div>
+            {hasActiveFindingFilters(findingFilters) && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setScopeFilter([]);
+                  setVexFilter([]);
+                  setVexSetByFilter([]);
+                  setNeedsReviewFilter(false);
+                }}
+              >
+                {t("Clear filters", "Filter zurücksetzen")}
+              </button>
+            )}
+          </div>
+
           {selectedKeys.size > 0 && (() => {
             // Collect raw finding IDs across all selected merged rows
             const selectedRows = filteredMerged.filter(f => selectedKeys.has(f.key));
@@ -1166,6 +1332,15 @@ export const ScanDetailPage = () => {
                   aria-label={t("Detail (optional)", "Detail (optional)")}
                   disabled={bulkBusy}
                 />
+                <input
+                  type="date"
+                  className="scan-detail-toolbar-input scan-detail-toolbar-date"
+                  value={bulkVexReviewDue}
+                  onChange={e => setBulkVexReviewDue(e.target.value)}
+                  title={t("Re-review by (optional)", "Erneut prüfen bis (optional)")}
+                  aria-label={t("Re-review by (optional)", "Erneut prüfen bis (optional)")}
+                  disabled={bulkBusy}
+                />
                 <button
                   type="button"
                   className="btn-primary"
@@ -1179,11 +1354,13 @@ export const ScanDetailPage = () => {
                         vexStatus: bulkVexStatus,
                         vexJustification: bulkVexJustification || undefined,
                         vexDetail: bulkVexDetail || undefined,
+                        vexReviewDue: bulkVexReviewDue || undefined,
                       });
                       setToast({ type: "success", message: t(`Updated ${res.updated} findings`, `${res.updated} Ergebnisse aktualisiert`) });
                       setSelectedKeys(new Set());
                       setBulkVexJustification("");
                       setBulkVexDetail("");
+                      setBulkVexReviewDue("");
                       await refetch();
                     } catch (err) {
                       console.error("Bulk VEX update failed", err);
@@ -1236,7 +1413,7 @@ export const ScanDetailPage = () => {
             <div className={`table-scroll${findingsRefreshing ? " is-refreshing" : ""}`} aria-busy={findingsRefreshing || undefined}>
               <PhoneSortBar
                 id="scan-detail-sort-findings"
-                columns={[...findingSortColumns, ["scanner", t("Scanner", "Scanner")]]}
+                columns={[...findingSortColumns, ["vex", "VEX"], ["scanner", t("Scanner", "Scanner")]]}
                 sort={findingsSort}
                 onSort={setFindingsSort}
               >
@@ -1269,7 +1446,12 @@ export const ScanDetailPage = () => {
                         onClick={() => setFindingsSort(prev => prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })}
                       />
                     ))}
-                    <th>VEX</th>
+                    <SortHeader
+                      label="VEX"
+                      active={findingsSort.col === "vex"}
+                      dir={findingsSort.dir}
+                      onClick={() => setFindingsSort(prev => prev.col === "vex" ? { col: "vex", dir: prev.dir === "asc" ? "desc" : "asc" } : { col: "vex", dir: "asc" })}
+                    />
                     <SortHeader
                       label={t("Scanner", "Scanner")}
                       active={findingsSort.col === "scanner"}
@@ -1317,6 +1499,16 @@ export const ScanDetailPage = () => {
                           >
                             {f.packageName}
                           </button>
+                          {(f.dependencyScope === "dev" || f.dependencyScope === "optional") && (
+                            <span
+                              className="chip scan-detail-scope-chip"
+                              title={f.dependencyScope === "dev"
+                                ? t("Development, test or build dependency (from the lockfile or manifest)", "Entwicklungs-, Test- oder Build-Abhängigkeit (aus Lockfile oder Manifest)")
+                                : t("Optional dependency (from the lockfile or manifest)", "Optionale Abhängigkeit (aus Lockfile oder Manifest)")}
+                            >
+                              {scopeLabel(f.dependencyScope, t)}
+                            </span>
+                          )}
                         </td>
                         <td className="scan-detail-cell-version" data-label={t("Version", "Version")}>
                           {f.packageVersion ? <span className="mono">{f.packageVersion}</span> : <NotAvailable />}
@@ -1380,6 +1572,7 @@ export const ScanDetailPage = () => {
                                 setVexEditStatus(f.vexStatus || "");
                                 setVexEditJustification(f.vexJustification || "");
                                 setVexEditDetail(f.vexDetail || "");
+                                setVexEditReviewDue(f.vexReviewDue || "");
                               }
                             }}
                             title={f.vexJustification || t("Click to set VEX status", "Klicken um VEX-Status zu setzen")}
@@ -1387,6 +1580,49 @@ export const ScanDetailPage = () => {
                             {f.vexStatus ? <span className="chip">{vexStatusLabel(f.vexStatus, t)}</span> : null}
                             {isVexExpanded ? <LuChevronUp aria-hidden="true" /> : <LuChevronDown aria-hidden="true" />}
                           </button>
+                          {f.vexStatus && vexSetBy(f.vexUpdatedBy, f.vexStatus) === "rule" && (() => {
+                            const ruleId = vexRuleId(f.vexUpdatedBy) ?? "";
+                            const ruleName = vexRuleNames[ruleId] ?? ruleId;
+                            return (
+                              <Link
+                                to="/system?tab=policies"
+                                className="chip scan-detail-vex-origin"
+                                title={t(`Set by the VEX rule “${ruleName}”`, `Gesetzt von der VEX-Regel „${ruleName}“`)}
+                              >
+                                {t("rule", "Regel")}: {ruleName}
+                              </Link>
+                            );
+                          })()}
+                          {f.vexStatus && vexSetBy(f.vexUpdatedBy, f.vexStatus) === "reachability" && (
+                            <span
+                              className="chip scan-detail-vex-origin"
+                              title={f.vexDetail || t(
+                                "Set by the reachability analysis (govulncheck): the vulnerable code is not reachable from this code base",
+                                "Von der Erreichbarkeitsanalyse (govulncheck) gesetzt: Der verwundbare Code ist aus dieser Codebasis nicht erreichbar",
+                              )}
+                            >
+                              {t("reachability", "Erreichbarkeit")}: {(f.vexUpdatedBy ?? "").slice("reachability:".length) || "govulncheck"}
+                            </span>
+                          )}
+                          {f.vexStatus && f.vexNeedsReview && (
+                            <span
+                              className="chip scan-detail-review-chip"
+                              title={f.vexReviewReason === "review_due"
+                                ? t(`Re-review was due on ${f.vexReviewDue ?? ""}`, `Erneute Prüfung war fällig am ${f.vexReviewDue ?? ""}`)
+                                : t("The package version changed since the VEX status was assessed", "Die Paketversion hat sich seit der VEX-Bewertung geändert")}
+                            >
+                              {f.vexReviewReason === "review_due" ? (
+                                t("review due", "Prüfung fällig")
+                              ) : (
+                                <>
+                                  {t("version changed", "Version geändert")}
+                                  {f.vexAssessedVersion && (
+                                    <span className="mono">&nbsp;{f.vexAssessedVersion} → {f.packageVersion}</span>
+                                  )}
+                                </>
+                              )}
+                            </span>
+                          )}
                         </td>
                         <td className="scan-detail-cell-scanner" data-label={t("Scanner", "Scanner")}>{f.scanners.join(", ")}</td>
                       </tr>
@@ -1501,6 +1737,22 @@ export const ScanDetailPage = () => {
                                 rows={3}
                                 placeholder={t("Longer explanation (optional)", "Längere Erläuterung (optional)")}
                               />
+                              <label htmlFor="scan-detail-vex-review-due">{t("Re-review by", "Erneut prüfen bis")}</label>
+                              <input
+                                id="scan-detail-vex-review-due"
+                                type="date"
+                                value={vexEditReviewDue}
+                                onChange={e => setVexEditReviewDue(e.target.value)}
+                              />
+                              {f.vexStatus && (
+                                <p className="scan-detail-vex-evidence muted">
+                                  {[
+                                    f.vexUpdatedBy && t(`Set by ${f.vexUpdatedBy}`, `Gesetzt von ${f.vexUpdatedBy}`),
+                                    f.vexAssessedVersion && t(`assessed at version ${f.vexAssessedVersion}`, `bewertet bei Version ${f.vexAssessedVersion}`),
+                                  ].filter(Boolean).join(", ")}
+                                  {f.vexNeedsReview && ` · ${t("saving confirms it for the current version", "Speichern bestätigt sie für die aktuelle Version")}`}
+                                </p>
+                              )}
                               <div className="scan-detail-form-actions">
                                 <button type="button" className="btn" disabled={vexSaving} aria-busy={vexSaving || undefined} onClick={async () => {
                                   setVexSaving(true);
@@ -1510,6 +1762,7 @@ export const ScanDetailPage = () => {
                                       vexStatus: vexEditStatus || null,
                                       vexJustification: vexEditJustification || undefined,
                                       vexDetail: vexEditDetail || undefined,
+                                      vexReviewDue: vexEditReviewDue || undefined,
                                     })));
                                     setVexEditingId(null);
                                     if (scanId) {
@@ -1567,6 +1820,18 @@ export const ScanDetailPage = () => {
                 <option value="unknown">{t("Unknown", "Unbekannt")}</option>
               </select>
             )}
+            {hasAnyScope && (
+              <select
+                value={sbomFilterScope || ""}
+                onChange={e => setSbomFilterScope((e.target.value || null) as ScopeFilterValue | null)}
+                aria-label={t("All scopes", "Alle Scopes")}
+              >
+                <option value="">{t("All scopes", "Alle Scopes")}</option>
+                {SCOPE_FILTER_VALUES.map(value => (
+                  <option key={value} value={value}>{scopeLabel(value, t)}</option>
+                ))}
+              </select>
+            )}
             <span className="scan-detail-count">
               {filteredSortedSbom.length !== sbomComponents.length
                 ? `${filteredSortedSbom.length} / ${sbomComponents.length}`
@@ -1593,31 +1858,7 @@ export const ScanDetailPage = () => {
               >
                 <BusyLabel busy={sbomExporting === "spdx-json"}>SPDX</BusyLabel>
               </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={async () => {
-                  if (!scanId || vexExporting) return;
-                  setVexExporting(true);
-                  try {
-                    const blob = await exportVex(scanId);
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `vex-${scanId}.cdx.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  } catch {
-                    setToast({ type: "error", message: t("No VEX data available. Set VEX statuses on findings first.", "Keine VEX-Daten vorhanden. Setzen Sie zuerst VEX-Status bei den Findings.") });
-                  } finally {
-                    setVexExporting(false);
-                  }
-                }}
-                disabled={vexExporting}
-                aria-busy={vexExporting || undefined}
-              >
-                <BusyLabel busy={vexExporting}>VEX</BusyLabel>
-              </button>
+              {scanId && <VexExportMenu scanId={scanId} />}
             </div>
           </div>
 
@@ -1671,6 +1912,7 @@ export const ScanDetailPage = () => {
                   </div>
                 </div>
               ))}
+              <SupplyChainFacet components={sbomComponents} active={sbomFilterSignal} onChange={setSbomFilterSignal} />
             </div>
           )}
 
@@ -1707,9 +1949,15 @@ export const ScanDetailPage = () => {
                         <td className="scan-detail-cell-full">
                           <div>{c.name}</div>
                           {c.purl && <div className="scan-detail-purl mono">{c.purl}</div>}
+                          <SupplyChainChips component={c} />
                         </td>
                         <td data-label={t("Version", "Version")}>{c.version ? <span className="mono">{c.version}</span> : <NotAvailable />}</td>
                         <td data-label={t("Type", "Typ")}>{c.type ? <span className="chip">{c.type}</span> : <NotAvailable />}</td>
+                        {hasAnyScope && (
+                          <td data-label={t("Scope", "Scope")}>
+                            {c.scope ? <span className="chip">{scopeLabel(c.scope, t)}</span> : <span className="muted">{scopeLabel("unknown", t)}</span>}
+                          </td>
+                        )}
                         {hasAnyProvenance && (
                           <td data-label={t("Provenance", "Provenienz")}>
                             {c.provenanceVerified === true ? (
@@ -2325,6 +2573,25 @@ const FINDING_COLUMNS = 8;
 
 const sentenceCase = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
 
+const scopeLabel = (scope: string, t: (english: string, german: string) => string): string => {
+  switch (scope) {
+    case "runtime": return t("Runtime", "Laufzeit");
+    case "dev": return t("Dev", "Dev");
+    case "optional": return t("Optional", "Optional");
+    default: return t("Unknown", "Unbekannt");
+  }
+};
+
+const vexSetByLabel = (value: VexSetBy, t: (english: string, german: string) => string): string => {
+  switch (value) {
+    case "manual": return t("Manual", "Manuell");
+    case "imported": return t("Imported", "Importiert");
+    case "source": return t("VEX source", "VEX-Quelle");
+    case "rule": return t("Rule", "Regel");
+    default: return t("Reachability", "Erreichbarkeit");
+  }
+};
+
 const vexStatusLabel = (status: string, t: (english: string, german: string) => string): string => {
   const labels: Record<string, string> = {
     not_affected: t("Not Affected", "Nicht betroffen"),
@@ -2783,6 +3050,59 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
   const [additionalContext, setAdditionalContext] = useState<string>("");
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [aiStartedAt, setAiStartedAt] = useState<number | undefined>(undefined);
+  // The run this page waits for; its SSE events say when it ends or fails.
+  const [aiRunId, setAiRunId] = useState<string | null>(null);
+  // How many analyses the scan had when the run started: the polling fallback
+  // treats one more as "done" in case the stream misses the end.
+  const analysesAtStartRef = useRef(0);
+  const { jobs: sseJobs } = useSSE();
+  const jobName = `ai_scan_analysis_${scan.id}`;
+  const knownAnalyses = scan.aiAnalyses?.length ?? (scan.aiAnalysis ? 1 : 0);
+
+  const finishRun = useCallback(() => {
+    setAiLoading(false);
+    setAiRunId(null);
+    onRefresh();
+  }, [onRefresh]);
+
+  // Follow the run over SSE, and pick up a run that is already going when the
+  // page opens (the stream's snapshot lists it).
+  useEffect(() => {
+    const latest = sseJobs.get(jobName);
+    if (!aiLoading) {
+      if (latest?.status === "running") {
+        analysesAtStartRef.current = knownAnalyses;
+        setAiLoading(true);
+        setAiRunId(runIdOf(latest));
+        setAiStartedAt(latest.startedAt ? new Date(latest.startedAt).getTime() : Date.now());
+      }
+      return;
+    }
+    const job = eventForRun(sseJobs, jobName, aiRunId);
+    if (job?.status === "completed") {
+      finishRun();
+    } else if (job?.status === "failed") {
+      showToast(job.error ?? t("AI analysis failed.", "AI-Analyse fehlgeschlagen."), "error");
+      setAiLoading(false);
+      setAiRunId(null);
+    }
+  }, [sseJobs, jobName, aiLoading, aiRunId, knownAnalyses, finishRun, showToast, t]);
+
+  // Fallback when the stream is down: look for the new analysis every few seconds.
+  useEffect(() => {
+    if (!aiLoading) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const fresh = await fetchScan(scan.id);
+        if (!cancelled && (fresh.aiAnalyses?.length ?? 0) > analysesAtStartRef.current) finishRun();
+      } catch { /* the next tick tries again */ }
+    }, 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [aiLoading, scan.id, finishRun]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2798,30 +3118,15 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
 
   const handleStart = async () => {
     if (!selectedProvider) return;
+    analysesAtStartRef.current = knownAnalyses;
     setAiLoading(true);
     setAiStartedAt(Date.now());
     try {
-      await triggerScanAiAnalysis(scan.id, {
+      const submitted = await triggerScanAiAnalysis(scan.id, {
         provider: selectedProvider,
         additionalContext: additionalContext.trim() || undefined,
       }, aiAnalysisPassword.trim() || undefined);
-      // Background task: poll the scan a couple times to catch the result
-      const poll = async (attempt: number) => {
-        if (attempt > 30) { setAiLoading(false); return; }
-        await new Promise(r => setTimeout(r, 4000));
-        try {
-          const fresh = await fetchScan(scan.id);
-          const before = scan.aiAnalyses?.length ?? 0;
-          const after = fresh.aiAnalyses?.length ?? 0;
-          if (after > before) {
-            setAiLoading(false);
-            onRefresh();
-            return;
-          }
-        } catch { /* ignore */ }
-        poll(attempt + 1);
-      };
-      void poll(0);
+      setAiRunId(submitted.runId ?? null);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -2932,6 +3237,11 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
                 </span>
                 <span className="chip">{originChipLabel}</span>
               </div>
+              <p className="scan-detail-ai-byline">
+                {[aiMadeBy(analysis.provider, analysis.model, t("model not recorded", "Modell nicht erfasst")), analysis.generatedAt ? formatDateTime(analysis.generatedAt) : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
               {cleanedSummary ? (
                 <div className="scan-detail-ai-text">
                   <AiMarkdown>{cleanedSummary}</AiMarkdown>
@@ -2939,11 +3249,9 @@ const ScanAiAnalysisTab = ({ scan, onRefresh }: { scan: Scan; onRefresh: () => v
               ) : (
                 <p className="scan-detail-note">{t("No summary available.", "Keine Zusammenfassung verfügbar.")}</p>
               )}
-              {(analysis.provider || analysis.language || analysis.generatedAt || analysis.tokenUsage) && (
+              {(analysis.language || analysis.tokenUsage) && (
                 <div className="scan-detail-ai-meta">
-                  {analysis.provider && <span>{analysis.provider}</span>}
                   {analysis.language && <span>{t("Language", "Sprache")}: {analysis.language.toUpperCase()}</span>}
-                  {analysis.generatedAt && <span>{formatDateTime(analysis.generatedAt)}</span>}
                   {analysis.tokenUsage && analysis.tokenUsage.inputTokens !== undefined && (
                     <span>{t("Tokens", "Tokens")}: {analysis.tokenUsage.inputTokens.toLocaleString()} in / {(analysis.tokenUsage.outputTokens ?? 0).toLocaleString()} out</span>
                   )}

@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.mcp.audit import log_tool_invocation
 from app.mcp.auth import mcp_client_id, mcp_dcr_client_id, require_write_scope
 from app.mcp.oauth import get_dcr_client_name
-from app.mcp.security import sanitize_search_input
+from app.mcp.security import clean_model_name, sanitize_search_input
 from app.mcp.server import get_rate_limiter
 
 
@@ -118,7 +118,7 @@ def register(mcp: FastMCP) -> None:
                 return {"error": "Invalid target."}
 
             # Validate scanners
-            valid_scanners = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
+            from app.schemas.scan import VALID_SCANNERS as valid_scanners
             if scanners:
                 invalid = [s for s in scanners if s not in valid_scanners]
                 if invalid:
@@ -378,12 +378,14 @@ def register(mcp: FastMCP) -> None:
             _, findings = await service.finding_repo.list_by_scan(
                 sid, limit=500, include_dismissed=False
             )
+            from app.services.ai_history import previous_scan_analyses
 
             system_prompt, user_prompt = build_scan_prompts(
                 {**scan, "_id": sid},
                 findings,
                 language=language,
                 additional_context=additional_context,
+                previous_analyses=await previous_scan_analyses(service.scan_repo, sid, scan),
             )
 
             output = {
@@ -394,6 +396,7 @@ def register(mcp: FastMCP) -> None:
                 "instructions": (
                     "Read the systemPrompt and userPrompt, generate the scan triage analysis using "
                     "your own model, then call save_scan_ai_analysis(scan_id, summary) to persist it."
+                    " Pass your own model name as `model` to the save tool so the stored analysis shows which model wrote it."
                 ),
                 "saveTool": "save_scan_ai_analysis",
             }
@@ -416,11 +419,15 @@ def register(mcp: FastMCP) -> None:
         summary: str,
         language: str | None = None,
         client_name: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Persist an AI scan triage produced by the calling assistant onto the scan document.
 
         Use this after `prepare_scan_ai_analysis`. Requires write scope. The server attaches a
         triggeredBy attribution like "Claude Code - MCP" and appends it as a footer in the summary.
+
+        `model`: the model that wrote the analysis (e.g. "claude-opus-5-5"); stored and shown next to
+        the attribution. Optional, but without it the analysis shows no model.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {"scan_id": scan_id, "language": language, "client_name": client_name}
@@ -460,6 +467,7 @@ def register(mcp: FastMCP) -> None:
             assessment = {
                 "scanId": sid,
                 "provider": "mcp-client",
+                "model": clean_model_name(model),
                 "language": _normalize_language(language),
                 "summary": stored_summary,
                 "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
@@ -1213,6 +1221,7 @@ def register(mcp: FastMCP) -> None:
                     "produce a chained attacker narrative locally (≤350 words), then call "
                     "save_scan_attack_chain_analysis(scan_id, summary). Do NOT cite CVE/CAPEC IDs "
                     "absent from `stages` or `graph['nodes']`."
+                    " Pass your own model name as `model` to the save tool so the stored analysis shows which model wrote it."
                 ),
                 "saveTool": "save_scan_attack_chain_analysis",
             }
@@ -1235,12 +1244,16 @@ def register(mcp: FastMCP) -> None:
         summary: str,
         language: str | None = None,
         client_name: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Persist a Cross-CVE Attack Chain narrative produced by the calling assistant.
 
         Use this after `prepare_scan_attack_chain_analysis`. Appends the narrative to the
         scan's `attack_chains[]` array and mirrors it on `attack_chain` (latest). Stamps a
         triggeredBy attribution like "Claude - MCP". Requires write scope.
+
+        `model`: the model that wrote the analysis (e.g. "claude-opus-5-5"); stored and shown next to
+        the attribution. Optional, but without it the analysis shows no model.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {"scan_id": scan_id, "language": language, "client_name": client_name}
@@ -1279,6 +1292,7 @@ def register(mcp: FastMCP) -> None:
 
             narrative = {
                 "provider": "mcp-client",
+                "model": clean_model_name(model),
                 "language": _normalize_language(language),
                 "summary": stored_summary,
                 "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
@@ -1335,6 +1349,9 @@ def _serialize_scan(scan: dict[str, Any]) -> dict[str, Any]:
 
 def _serialize_finding(finding: dict[str, Any]) -> dict[str, Any]:
     """Serialize a scan finding to a compact dict for MCP output."""
+    from app.services.vex_review import review_state
+
+    needs_review, review_reason = review_state(finding)
     return {
         "id": finding.get("_id") or finding.get("id"),
         "vulnerabilityId": finding.get("vulnerabilityId") or finding.get("vulnerability_id"),
@@ -1350,6 +1367,11 @@ def _serialize_finding(finding: dict[str, Any]) -> dict[str, Any]:
         "vexStatus": finding.get("vexStatus") or finding.get("vex_status"),
         "vexJustification": finding.get("vexJustification") or finding.get("vex_justification"),
         "vexUpdatedBy": finding.get("vexUpdatedBy") or finding.get("vex_updated_by"),
+        "vexAssessedVersion": finding.get("vex_assessed_version"),
+        "vexReviewDue": finding.get("vex_review_due"),
+        "vexNeedsReview": needs_review,
+        "vexReviewReason": review_reason,
+        "dependencyScope": finding.get("dependencyScope") or finding.get("dependency_scope"),
         "dismissed": bool(finding.get("dismissed")),
     }
 
@@ -1390,6 +1412,7 @@ def _serialize_sbom_component(component: dict[str, Any]) -> dict[str, Any]:
         "supplier": component.get("supplier"),
         "licenses": licenses,
         "provenanceVerified": component.get("provenance_verified") or component.get("provenanceVerified"),
+        "scope": component.get("scope"),
         "filePaths": file_paths[:5],
         "scanId": str(component.get("scan_id") or component.get("scanId") or "") or None,
         "targetId": component.get("target_id") or component.get("targetId"),

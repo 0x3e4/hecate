@@ -313,6 +313,34 @@ TOTAL_SEVERE=$((CRITICAL + HIGH))
 echo "Security gate passed."`} />
       </Section>
 
+      {/* Supply-chain gate */}
+      <Section title={t("Supply-chain gate", "Supply-Chain-Gate")} className="info-section">
+        <p>
+          {t(
+            "After a scan, Hecate looks up every registry package of the SBOM: how old the installed release is, whether the package still gets releases, and for npm whether the version came from a different account than the versions before it. The lookups run behind the scan; supplyChainSummary.state turns done when they finished.",
+            "Nach einem Scan schlägt Hecate jedes Registry-Paket der SBOM nach: wie alt das installierte Release ist, ob das Paket noch Releases bekommt und bei npm, ob die Version von einem anderen Konto kam als die Versionen davor. Die Abfragen laufen nach dem Scan; supplyChainSummary.state wird done, wenn sie fertig sind.",
+          )}
+        </p>
+        <InfoCodeBlock code={`for i in $(seq 1 30); do
+  SUMMARY=$(curl -sS "\${HECATE_URL}/api/v1/scans/\${SCAN_ID}" -H "X-API-Key: \${API_KEY}" | jq '.supplyChainSummary')
+  [ "$(echo "\${SUMMARY}" | jq -r '.state')" = "done" ] && break
+  sleep 10
+done
+
+# Fail on releases younger than SCA_FRESH_RELEASE_DAYS or a new npm publisher
+[ "$(echo "\${SUMMARY}" | jq '.freshRelease + .publisherChanged')" -gt 0 ] && exit 1
+
+# Which components: GET /api/v1/scans/{id}/sbom carries freshRelease, unmaintained, publisherChanged per row`} />
+        <p>
+          {t(
+            "Before a dependency gets installed at all, ask the package check. It answers block, warn or ok with reasons (malicious, vulnerable, fresh release, new publisher, unmaintained, unknown package):",
+            "Bevor eine Abhängigkeit überhaupt installiert wird, fragen Sie den Paket-Check. Er antwortet block, warn oder ok mit Gründen (bösartig, verwundbar, frisches Release, neuer Publisher, unbetreut, unbekanntes Paket):",
+          )}
+        </p>
+        <InfoCodeBlock code={`VERDICT=$(curl -sS "\${HECATE_URL}/api/v1/packages/check?ecosystem=npm&name=left-pad&version=1.3.0" | jq -r '.verdict')
+[ "\${VERDICT}" = "block" ] && exit 1`} />
+      </Section>
+
       {/* Available Scanners */}
       <Section title={t("Available scanners", "Verfügbare Scanner")} className="info-section">
         <div className="table-scroll">
@@ -344,6 +372,14 @@ echo "Security gate passed."`} />
                 <td><code>osv-scanner</code></td>
                 <td>{t("Vulnerability", "Schwachstellen")}</td>
                 <td>{t("Google OSV database scanner", "Google-OSV-Datenbank-Scanner")}</td>
+              </tr>
+              <tr>
+                <td><code>govulncheck</code></td>
+                <td>{t("Vulnerability + reachability", "Schwachstellen + Erreichbarkeit")}</td>
+                <td>{t(
+                  "Go only, source repos only: reports a Go vulnerability only when the vulnerable function is reachable from your code, and marks the other scanners' findings for imported-but-never-called code as VEX not_affected",
+                  "Nur Go, nur Source-Repos: meldet eine Go-Schwachstelle nur, wenn die verwundbare Funktion aus deinem Code erreichbar ist, und markiert die Funde der anderen Scanner für importierten, aber nie aufgerufenen Code als VEX not_affected",
+                )}</td>
               </tr>
               <tr>
                 <td><code>hecate</code></td>

@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     mongo_malware_intel_collection: str = "malware_intel"
     mongo_app_settings_collection: str = "app_settings"
     mongo_api_tokens_collection: str = "api_tokens"
+    mongo_vex_rules_collection: str = "vex_rules"
+    mongo_package_releases_collection: str = "package_releases"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
@@ -264,11 +266,23 @@ class Settings(BaseSettings):
     # subprocess budget doesn't require also bumping this in lock-step.
     sca_scanner_timeout_seconds: int = 2060
     sca_source_archive_max_bytes: int = 50 * 1024 * 1024
+    # Most components one imported SBOM may carry. Imports land in the shared
+    # coverage index that the dashboard and the search suggestions read.
+    sca_sbom_import_max_components: int = 25000
     # VEX sources: URLs a target owner attaches to a scan target, fetched and
     # applied after every scan. Public https hosts only unless allowed here.
     sca_vex_source_timeout_seconds: int = 20
     sca_vex_source_max_bytes: int = 10 * 1024 * 1024
     sca_vex_sources_allow_private_hosts: bool = False
+    # Publisher of exported VEX documents (CSAF document.publisher, OpenVEX
+    # author). Set them to your organisation: a CSAF consumer reads the
+    # namespace as the issuer's identity. The defaults mark an unconfigured
+    # instance (.invalid is a reserved TLD).
+    csaf_publisher_name: str = "Hecate"
+    csaf_publisher_namespace: str = "https://hecate.invalid"
+    # One of: vendor, coordinator, discoverer, other, translator, user.
+    csaf_publisher_category: str = "vendor"
+    csaf_publisher_contact: str | None = None
     sca_auto_scan_enabled: bool = False
     sca_auto_scan_interval_minutes: int = 1440
     sca_max_concurrent_scans: int = 2
@@ -277,6 +291,28 @@ class Settings(BaseSettings):
     sca_scan_max_runtime_seconds: int = 0
     sca_min_free_memory_mb: int = 1024
     sca_min_free_disk_mb: int = 2048
+    # Supply-chain signals on SBOM components (release age, unmaintained,
+    # npm publisher change), looked up after every scan from deps.dev and the
+    # registries and cached per (ecosystem, name, version). See
+    # app/services/supply_chain_service.py.
+    sca_release_info_enabled: bool = True
+    sca_fresh_release_days: int = 7
+    sca_unmaintained_days: int = 730
+    sca_release_info_cache_ttl_hours: int = 24
+    sca_release_info_max_components: int = 3000
+    sca_release_info_concurrency: int = 8
+    sca_release_info_timeout_seconds: int = 900
+    # GET /packages/check: the registry lookup of one check gives up after this
+    # (the verdict then comes from local advisory data), and a client without a
+    # session gets this many checks per minute (0 = no limit). Every uncached
+    # check queues on the one deps.dev rate limit all users share.
+    package_check_release_timeout_seconds: float = 5.0
+    package_check_rate_per_minute: int = 120
+    # npm only: compare the installed version's publisher with the previous
+    # versions' when the installed version is at most this old (takeovers
+    # publish new versions; every check costs registry requests).
+    sca_publisher_check_max_age_days: int = 365
+    sca_publisher_history: int = 3
 
     # Support page (Ko-fi donate, GitHub star, version-update indicator)
     support_page_enabled: bool = True
@@ -319,6 +355,39 @@ class Settings(BaseSettings):
     mcp_public_url: str = ""  # e.g. "https://sec.is.ankoe.loc" — pins OAuth issuer/resource URL
     mcp_auth_disabled: bool = False  # DEV ONLY: bypass OAuth, grant synthetic mcp:read mcp:write token
 
+    # OIDC login for the web app (backend-for-frontend, Authorization Code + PKCE).
+    # Off until OIDC_ISSUER and OIDC_CLIENT_ID are set; without it every gate
+    # behaves as before (passwords, fail-open). See docs/admin/authentication.md.
+    oidc_issuer: str = ""  # e.g. https://id.example.com/realms/hecate (discovery is <issuer>/.well-known/openid-configuration)
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""  # empty = public client (PKCE only)
+    oidc_scopes: str = "openid profile email"
+    oidc_provider_label: str = "Single sign-on"  # shown on the "Sign in with …" button
+    # Claim holding groups / roles. Dotted paths reach nested claims
+    # (Keycloak: realm_access.roles, resource_access.<client>.roles).
+    oidc_roles_claim: str = "groups"
+    oidc_admin_groups: str = ""  # CSV of group / role names granting admin
+    oidc_editor_groups: str = ""  # CSV granting editor
+    oidc_viewer_groups: str = ""  # CSV granting viewer; empty = any signed-in user is a viewer
+    # Asymmetric algorithms accepted for ID token signatures; "none" and HS* are never accepted.
+    oidc_allowed_algs: str = "RS256,RS384,RS512,PS256,PS384,PS512,ES256,ES384,ES512,EdDSA"
+    oidc_clock_skew_seconds: int = 60
+    oidc_timeout_seconds: int = 10
+    # Read the userinfo endpoint for claims the ID token lacks (Authelia sends groups only there).
+    oidc_use_userinfo: bool = True
+    # Send the browser to the IdP's end_session_endpoint on sign-out when it has one.
+    oidc_rp_initiated_logout: bool = True
+    # true: every /api/v1 read needs a session or another credential. Empty = true when OIDC is configured.
+    auth_require_login: Annotated[bool | None, BeforeValidator(_empty_string_to_none)] = None
+    # Public base URL of the web app (what the browser shows), used for the OIDC
+    # redirect URI <url>/api/v1/auth/callback and the cookie's Secure flag. Empty =
+    # derived from the request (X-Forwarded-Proto/-Host only from TRUSTED_PROXY_IPS).
+    auth_public_url: str = ""
+    auth_session_lifetime_hours: int = 12
+    auth_session_idle_minutes: int = 120
+    auth_cookie_name: str = "hecate_session"
+    mongo_auth_sessions_collection: str = "auth_sessions"
+
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"
     trusted_proxy_real_ip_header: str | None = "x-real-ip"
@@ -336,6 +405,22 @@ class Settings(BaseSettings):
             return []
         items = [item.strip() for item in value.split(",")]
         return [item for item in items if item]
+
+    @property
+    def oidc_enabled(self) -> bool:
+        """OIDC login is on once an issuer and a client id are configured."""
+        return bool(self.oidc_issuer.strip() and self.oidc_client_id.strip())
+
+    @property
+    def auth_login_required(self) -> bool:
+        """Whether every API read needs a session (or another credential).
+
+        Only meaningful with OIDC: without a way to sign in, requiring it would
+        lock everyone out, so it is off then whatever the variable says.
+        """
+        if not self.oidc_enabled:
+            return False
+        return True if self.auth_require_login is None else self.auth_require_login
 
     def is_production_like(self) -> bool:
         """True for any ENVIRONMENT that isn't a local/dev/test label."""
@@ -384,6 +469,7 @@ class Settings(BaseSettings):
             "AI_ANALYSIS_PASSWORD": self.ai_analysis_password,
             "SCA_API_KEY": self.sca_api_key,
             "SCA_SCANNER_SECRET": self.sca_scanner_secret,
+            "OIDC_CLIENT_SECRET": self.oidc_client_secret,
         }
         return [
             name

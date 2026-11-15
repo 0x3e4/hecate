@@ -67,6 +67,8 @@ export const ApiInfoPage = () => {
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/findings</code></td><td>{t("List scan findings", "Scan-Findings auflisten")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/sbom</code></td><td>{t("List SBOM components", "SBOM-Komponenten auflisten")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/sbom/export</code></td><td>{t("Export SBOM (CycloneDX / SPDX)", "SBOM exportieren (CycloneDX / SPDX)")}</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/vex/export?format=cyclonedx|openvex|csaf</code></td><td>{t("Export VEX (CycloneDX / OpenVEX / CSAF 2.0)", "VEX exportieren (CycloneDX / OpenVEX / CSAF 2.0)")}</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/evidence-bundle</code></td><td>{t("Evidence bundle (ZIP: SBOM, VEX, findings summary, manifest)", "Nachweis-Paket (ZIP: SBOM, VEX, Findings-Übersicht, Manifest)")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/changelog</code></td><td>{t("Vulnerability changelog", "Schwachstellen-Changelog")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/audit</code></td><td>{t("Audit log", "Audit-Log")}</td></tr>
             </tbody>

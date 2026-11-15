@@ -17,7 +17,7 @@ results Hecate computes on its own.
 Hecate sits between the raw vulnerability world and your environment. On the **intake** side it
 continuously ingests EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV and CERT advisories, reconciles
 duplicates across sources, and keeps a change history. On the **output** side it scans your software
-with ten scanners, matches findings against your declared inventory, and surfaces the handful of
+with eleven scanners, matches findings against your declared inventory, and surfaces the handful of
 issues that genuinely matter — enriched with EPSS, known-exploited status, attack paths, and
 optional AI triage.
 
@@ -30,7 +30,7 @@ optional AI triage.
 
 -   :material-shield-search: **SCA scanning**
 
-    Ten scanners in a hardened sidecar produce findings, SBOMs, secrets, SAST results and malware
+    Eleven scanners in a hardened sidecar produce findings, SBOMs, secrets, SAST results and malware
     indicators for images and repos. → [SCA Scanning](sca-scanning.md)
 
 -   :material-bug-outline: **Malware watch**

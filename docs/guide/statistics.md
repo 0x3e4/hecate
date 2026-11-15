@@ -21,9 +21,10 @@ in, and which source wrote it?"
 
 ![Hecate statistics page with the summary grid and trend charts](../img/hecate-stats.png)
 
-The Statistics page loads a single overview snapshot of the index and renders it as a summary grid
+The Statistics page loads an overview snapshot of the index and renders it as a summary grid
 followed by a column of charts. Everything is computed server-side and refreshed each time you open
-the page; there are no filters or controls — it is a dashboard you read, not one you drive.
+the page. There are no filters: the only controls pick the period of the two timelines and open the
+vulnerability list for a vendor or product.
 
 ### The summary grid
 
@@ -45,20 +46,59 @@ or point for an exact count.
 | **Severity** | Record counts bucketed Critical → High → Medium → Low → Unknown, colour-coded |
 | **Top 5 CWEs** | The most frequently assigned weakness types (the `NVD-CWE-noinfo` / `NVD-CWE-Other` placeholders are filtered out) |
 | **EPSS Score** | How records spread across exploit-probability bands (0–10 %, 10–30 %, 30–50 %, 50–70 %, 70–100 %), green for low risk through red for high |
-| **Publication trend (last 30 days)** | A smoothed daily line of how many CVEs were published over the past month |
+| **Publication trend** | A smoothed line of how many CVEs were published per day, week or month; the last 30 days by default, up to the whole history |
 | **Historical overview** | A cumulative running total of published vulnerabilities across the whole timeline |
 | **Most named vendors / products** | Ranked bar lists of the vendors and products that appear most across the index |
 | **Top reference domains / assigners** | Ranked lists of the most common reference hostnames and CNA assigners |
 
-A final pair of cards at the bottom, **Asset Vendors** and **Asset Products**, samples the derived
-asset catalogue and shows representative entries with their known aliases — a quick way to confirm
-that vendor and product normalisation is producing the names you expect.
+A final pair of cards at the bottom, **Asset vendors** and **Asset products**, ranks the entries of the
+derived asset catalogue that the most vulnerabilities name: the top eight show, **Show all 15** opens
+the rest. Each row gives the catalogue name, its count and share of all vulnerabilities, and a second
+line with what the catalogue knows about it: how many products a vendor has in the catalogue, how
+many versions are known for a product and which vendor it belongs to, plus aliases that differ from
+the name. Package registries and placeholders such as `npm` or `n/a` are left out of the vendor
+ranking, since they don't name a maker.
 
-!!! tip "Day buckets follow your timezone"
-    The publication trend and historical overview compute calendar-day and month boundaries in the
-    timezone you set under **System → General**, not in UTC. Set the right zone there and the trend
-    charts will line up with your local calendar rather than shifting by your offset. See
-    [System Settings](../admin/system.md).
+Select a name to open the vulnerability list filtered on it (for example
+`vendorSlugs:"microsoft"` in DQL mode). The ranking counts the same field the filter uses, so the list
+shows the number you clicked. Under each list, **Search all vendors** / **Search all products** looks
+through the whole catalogue and links every hit the same way.
+
+### Time ranges and zooming
+
+The quick-range buttons above each chart pick a period: the publication trend offers 7 days, 30 days
+(its default), 90 days, 1 year, 5 years and **All**; the historical overview 1 year, 5, 10 and **All**
+(its default). Drag across either chart, with the mouse or one finger, to zoom into that period, and
+drag again inside the zoomed chart to go further in.
+
+The granularity follows the period, so a zoom shows more detail instead of fewer points. Up to about
+four months the charts count per day, up to about three years per week, and beyond that per month.
+The label in front of the range says which one you're looking at (**Daily**, **Weekly** or
+**Monthly**). Zoom from the monthly history into a few months and it switches to weeks, then to days.
+While the finer data loads, the chart keeps showing the coarser points dimmed; a period you have
+already looked at comes back at once.
+
+The axis rescales to the window, and the cumulative chart keeps its absolute running total: its axis
+starts at the number published before the window. **Reset zoom**, Escape or a double-click go back to
+the chart's default period. A tap still shows the value of one point, and the arrow keys move through
+the points when the chart has focus.
+
+The same data is available as an API: `GET /api/v1/stats/timeline?from=2026-01-01&to=2026-04-01&tz=Europe/Vienna`
+returns the buckets (`interval=auto|day|week|month`), the chosen interval and the count published
+before `from`. Try it on [hecate.pw](https://hecate.pw/api/v1/stats/timeline?from=2026-01-01&tz=Europe/Vienna).
+
+### Shares
+
+Every bar shows its share in percent, and hovering a bar shows its count and share. A note under each
+chart says what the share is of: severity and EPSS split one group, so their shares add up to 100 %;
+sources, CWEs, vendors, products and assigners are shares of all vulnerabilities, and since one
+vulnerability can name several of them, those don't add up to 100 %.
+
+!!! note "Days follow your timezone"
+    The publication trend and historical overview count vulnerabilities per day, week (starting
+    Monday) and month in the timezone you set under **System → General**, and label them that way, so
+    a day on the chart is the same day as on the dashboard's **Today** card. An unknown timezone falls
+    back to UTC.
 
 ## Changelog (in-app data changes)
 

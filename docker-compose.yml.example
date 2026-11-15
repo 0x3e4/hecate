@@ -2,9 +2,14 @@ services:
   backend:
     image: ghcr.io/0x3e4/hecate-backend:latest
     restart: unless-stopped
+    # OIDC sign-in (OIDC_* / AUTH_* in .env) needs the backend to reach your IdP's
+    # issuer URL (docs/admin/authentication.md).
+    # No published port: the frontend container forwards /api, /mcp and the OAuth
+    # discovery documents to it, so nothing outside Compose reaches the backend
+    # directly. TRUSTED_PROXY_IPS=frontend in .env lets it read the client IP the
+    # frontend passes on. To reach the API from the host for debugging, add
+    #   ports: ["127.0.0.1:8000:8000"]
     env_file: ".env"
-    ports:
-      - "8000:8000"
     networks:
       - default
       - db
@@ -17,11 +22,21 @@ services:
     # volumes:
     #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro
 
+  # The gateway: serves the web app and forwards /api, /mcp and /.well-known/oauth-*
+  # to the backend, so your reverse proxy (TLS, security headers; deploy/reverse-proxy/)
+  # only needs this container. It reads no .env: the backend's secrets stay out of it.
   frontend:
     image: ghcr.io/0x3e4/hecate-frontend:latest
     restart: unless-stopped
-    env_file: ".env"
+    environment:
+      # Who may tell nginx the client IP: your reverse proxy's address or network.
+      # "none" when nothing sits in front. Defaults, shown for reference:
+      # TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7
+      # BACKEND_UPSTREAM: http://backend:8000
+      # MAX_UPLOAD_MB: 100     # SBOM uploads, source archives for scans, backups
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
     ports:
+      # Bind to 127.0.0.1 when the reverse proxy runs on the same host.
       - "4173:4173"
     depends_on:
       backend:

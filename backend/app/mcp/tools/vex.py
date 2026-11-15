@@ -21,6 +21,7 @@ from app.mcp.audit import log_tool_invocation
 from app.mcp.auth import mcp_client_id, mcp_dcr_client_id, require_write_scope
 from app.mcp.oauth import get_dcr_client_name
 from app.mcp.server import get_rate_limiter
+from app.schemas.vex import _review_due as parse_review_due
 
 VEX_STATUSES = ("not_affected", "affected", "fixed", "under_investigation")
 MAX_FINDING_IDS = 500
@@ -100,6 +101,7 @@ def register(mcp: FastMCP) -> None:
         vulnerability_id: str | None = None,
         justification: str | None = None,
         detail: str | None = None,
+        review_due: str | None = None,
         client_name: str | None = None,
     ) -> dict[str, Any]:
         """Set the VEX status of scan findings. Requires write scope.
@@ -111,13 +113,15 @@ def register(mcp: FastMCP) -> None:
         every finding of that vulnerability on all scans of the target (and is carried forward to
         later scans). `justification` is the short reason shown in the findings table (for
         not_affected use a CISA justification such as 'vulnerable_code_not_in_execute_path');
-        `detail` is the longer explanation. A status set here counts as set by hand: a VEX source
-        never overwrites it.
+        `detail` is the longer explanation. `review_due` is an optional re-review date
+        (YYYY-MM-DD); once it has passed the finding shows "review due" in Hecate. A status set
+        here counts as set by hand: a VEX source never overwrites it, and Hecate records the
+        package version it was assessed at.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {
             "status": status, "finding_count": len(finding_ids or []), "target_id": target_id,
-            "vulnerability_id": vulnerability_id, "client_name": client_name,
+            "vulnerability_id": vulnerability_id, "review_due": review_due, "client_name": client_name,
         }
         denied = await _gate("set_finding_vex", tool_inputs, started_at, write=True)
         if denied:
@@ -128,6 +132,10 @@ def register(mcp: FastMCP) -> None:
                 return {"error": f"Invalid status. Allowed: {list(VEX_STATUSES)} or null to clear."}
             if bool(finding_ids) == bool(target_id or vulnerability_id):
                 return {"error": "Give either finding_ids, or target_id together with vulnerability_id."}
+            try:
+                review_due_date = parse_review_due(review_due)
+            except ValueError:
+                return {"error": "review_due must be a date (YYYY-MM-DD)."}
             actor = _actor(client_name)
             justification_text = _text(justification)
             detail_text = _text(detail)
@@ -145,6 +153,7 @@ def register(mcp: FastMCP) -> None:
                     vex_justification=justification_text if status else None,
                     vex_detail=detail_text if status else None,
                     vex_updated_by=actor if status else None,
+                    vex_review_due=review_due_date if status else None,
                 )
                 output: dict[str, Any] = {"updated": updated, "requested": len(ids)}
             else:
@@ -165,10 +174,15 @@ def register(mcp: FastMCP) -> None:
                     vex_justification=justification_text or detail_text,
                     vex_updated_by=actor,
                     vex_detail=detail_text,
+                    vex_review_due=review_due_date,
                 )
                 output = {"updated": updated, "targetId": tid, "vulnerabilityId": vid}
 
-            output.update({"status": status, "updatedBy": actor if status else None})
+            output.update({
+                "status": status,
+                "updatedBy": actor if status else None,
+                "reviewDue": review_due_date if status else None,
+            })
             await log_tool_invocation(
                 tool_name="set_finding_vex", inputs=tool_inputs,
                 result_count=output["updated"], started_at=started_at,
@@ -372,13 +386,17 @@ def register(mcp: FastMCP) -> None:
             return {"error": f"Apply failed: {str(exc)[:200]}"}
 
     @mcp.tool()
-    async def export_scan_vex(scan_id: str) -> dict[str, Any]:
-        """Export the VEX statuses of a scan's findings as a CycloneDX 1.5 VEX document.
+    async def export_scan_vex(scan_id: str, format: str = "cyclonedx") -> dict[str, Any]:
+        """Export the VEX statements of a scan's findings.
 
-        Returns an empty `document` when no finding of the scan has a VEX status.
+        `format`: `cyclonedx` (CycloneDX 1.5 VEX, default: findings with a VEX
+        status only), `openvex` (OpenVEX 0.2.0) or `csaf` (CSAF 2.0, profile
+        VEX). OpenVEX and CSAF list every vulnerability finding; one nobody has
+        assessed yet is `under_investigation`. Returns an empty `document` when
+        there is nothing to state.
         """
         started_at = datetime.now(tz=UTC)
-        tool_inputs = {"scan_id": scan_id}
+        tool_inputs = {"scan_id": scan_id, "format": format}
         denied = await _gate("export_scan_vex", tool_inputs, started_at, write=False)
         if denied:
             return denied
@@ -387,20 +405,28 @@ def register(mcp: FastMCP) -> None:
             sid = (scan_id or "").strip()
             if not sid or len(sid) > 100:
                 return {"error": "Invalid scan_id."}
+            fmt = (format or "cyclonedx").strip().lower()
+            from app.services.vex_export import VEX_FORMATS, export_vex_document
+
+            if fmt not in VEX_FORMATS:
+                return {"error": f"Unknown format '{fmt[:20]}'. Use one of: {', '.join(VEX_FORMATS)}."}
 
             from app.services.scan_service import get_scan_service
-            from app.services.vex_service import VexService
 
             service = await get_scan_service()
-            if await service.get_scan(sid) is None:
+            result = await export_vex_document(service, sid, fmt)
+            if result is None:
                 return {"error": f"Scan '{sid}' not found."}
-            document = await VexService(service.finding_repo, service.scan_repo).export_cyclonedx_vex(sid)
-            count = len(document.get("vulnerabilities") or [])
+            document, filename = result
+            if fmt == "openvex":
+                count = len(document.get("statements") or [])
+            else:
+                count = len(document.get("vulnerabilities") or [])
             await log_tool_invocation(
                 tool_name="export_scan_vex", inputs=tool_inputs,
                 result_count=count, started_at=started_at,
             )
-            return {"scanId": sid, "statements": count, "document": document}
+            return {"scanId": sid, "format": fmt, "filename": filename, "statements": count, "document": document}
         except Exception as exc:
             await log_tool_invocation(
                 tool_name="export_scan_vex", inputs=tool_inputs,

@@ -27,8 +27,19 @@ RUN pnpm run build
 # minimatch, compression, ip-address, …), none of which the page needs, and
 # every one of them a scan finding. Same port as before.
 FROM nginx:1.31.8-alpine AS runtime
-RUN apk upgrade --no-cache
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+RUN apk upgrade --no-cache  && rm -f /etc/nginx/conf.d/default.conf
+# The frontend is also the gateway to the backend (nginx.conf.template). The nginx
+# image fills in the ${...} placeholders from these variables on start (envsubst on
+# /etc/nginx/templates); nginx's own $variables are left alone.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+# real_ip settings from TRUSTED_PROXIES, written before the templates are rendered.
+COPY --chmod=755 docker-entrypoint.d/15-real-ip.sh /docker-entrypoint.d/15-real-ip.sh
+RUN sed -i 's/$//' /docker-entrypoint.d/15-real-ip.sh
+# BACKEND_UPSTREAM: the backend as the frontend reaches it (Compose service name).
+# UPSTREAM_RESOLVER: Docker's embedded DNS; set your cluster DNS outside Docker.
+# MAX_UPLOAD_MB: request body limit for /api and /mcp (SBOMs, source archives, backups).
+# TRUSTED_PROXIES: who may tell nginx the client IP (the reverse proxy in front).
+ENV BACKEND_UPSTREAM=http://backend:8000     UPSTREAM_RESOLVER=127.0.0.11     MAX_UPLOAD_MB=100     TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 4173

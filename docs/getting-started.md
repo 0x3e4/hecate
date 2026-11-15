@@ -48,12 +48,15 @@ way to get oriented:
 
 For anything beyond a local trial, put Hecate behind a TLS-terminating reverse proxy. The
 `deploy/reverse-proxy/` folder ships ready-to-adapt templates for **nginx**, **Caddy**, and
-**Traefik** that terminate HTTPS, route `/api`, `/mcp` and the SSE stream to the backend and
-everything else to the frontend, and set a hardened HTTP security-header set (HSTS, a strict
+**Traefik** that terminate HTTPS, send every request to the frontend container, and set a hardened HTTP security-header set (HSTS, a strict
 Content-Security-Policy, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
 `Permissions-Policy`, and the cross-origin isolation headers).
 
-Copy the template for your proxy, replace the placeholder domain and upstream hostnames, and
+The frontend container is Hecate's gateway: it forwards `/api`, `/mcp` and the OAuth discovery
+documents to the backend itself, so the backend publishes no port and the proxy needs only one
+upstream. Keep `TRUSTED_PROXY_IPS=frontend` in `.env` so the backend sees real client addresses.
+
+Copy the template for your proxy, replace the placeholder domain and upstream hostname, and
 reload. Pair it with scoped `CORS_ORIGINS` and, on a shared instance, a `SYSTEM_PASSWORD`
 (see [Security & Access Control](security-access-control.md)).
 

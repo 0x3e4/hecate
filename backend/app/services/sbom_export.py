@@ -27,6 +27,32 @@ def _extract_group_and_name(purl: str | None, name: str) -> tuple[str, str]:
     return "", name
 
 
+def _iso(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return value if isinstance(value, str) and value else None
+
+
+def supply_chain_properties(comp: dict[str, Any]) -> list[dict[str, str]]:
+    """CycloneDX ``properties`` for the release-age / publisher signals (``hecate:`` namespace)."""
+    props: list[dict[str, str]] = []
+
+    def add(name: str, value: Any) -> None:
+        if value is not None and value != "" and value != []:
+            props.append({"name": f"hecate:{name}", "value": value if isinstance(value, str) else str(value).lower()})
+
+    add("release:publishedAt", _iso(comp.get("published_at")))
+    add("release:latestVersion", comp.get("latest_version"))
+    add("release:latestPublishedAt", _iso(comp.get("latest_published_at")))
+    add("release:fresh", comp.get("fresh_release"))
+    add("release:unmaintained", comp.get("unmaintained"))
+    add("npm:publisher", comp.get("publisher"))
+    add("npm:publisherChanged", comp.get("publisher_changed"))
+    return props
+
+
 def build_cyclonedx_json(
     scan: dict[str, Any],
     target: dict[str, Any] | None,
@@ -64,6 +90,10 @@ def build_cyclonedx_json(
 
         if comp.get("cpe"):
             c["cpe"] = comp["cpe"]
+
+        properties = supply_chain_properties(comp)
+        if properties:
+            c["properties"] = properties
 
         cdx_components.append(c)
 

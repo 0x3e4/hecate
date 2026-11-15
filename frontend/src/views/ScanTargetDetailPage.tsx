@@ -28,6 +28,7 @@ import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skelet
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
 import { VexSourcesCard } from "../components/VexSourcesCard";
+import { TargetReleases } from "../components/TargetReleases";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
 import type { ConsolidatedFinding, ScanHistoryEntry, ScanSummary, ScanTarget, TargetSbomDiff } from "../types";
@@ -482,7 +483,14 @@ export const ScanTargetDetailPage = () => {
               </span>
             )}
             {target.hasRunningScan && (
-              <span className="chip scan-target-tone-info">{t("Scan running", "Scan läuft")}</span>
+              target.runningScanId ? (
+                <Link className="chip scan-target-tone-info scan-target-chip-link" to={`/scans/${target.runningScanId}`}>
+                  {t("Scan running", "Scan läuft")}
+                  <LuArrowRight aria-hidden="true" />
+                </Link>
+              ) : (
+                <span className="chip scan-target-tone-info">{t("Scan running", "Scan läuft")}</span>
+              )
             )}
             <span className="chip">{typeLabel}</span>
             {target.group && <span className="chip">{t("App", "App")}: {target.group}</span>}
@@ -490,7 +498,15 @@ export const ScanTargetDetailPage = () => {
           </span>
         }
         actions={
-          !isImport ? (
+          <>
+            {/* What most visits are for: the latest scan, one click from the top. */}
+            {target.latestScanId && (
+              <Link className="btn-secondary" to={`/scans/${target.latestScanId}`}>
+                {t("Open latest scan", "Neuesten Scan öffnen")}
+                <LuArrowRight aria-hidden="true" />
+              </Link>
+            )}
+            {!isImport ? (
             <>
               <button
                 type="button"
@@ -539,7 +555,8 @@ export const ScanTargetDetailPage = () => {
                 {t("Delete target", "Ziel löschen")}
               </button>
             </>
-          ) : undefined
+            ) : null}
+          </>
         }
       />
 
@@ -557,21 +574,39 @@ export const ScanTargetDetailPage = () => {
             ) : (
               <span>{t("never", "nie")}</span>
             )}
-            {target.latestScanId && (
-              <Link className="scan-target-link" to={`/scans/${target.latestScanId}`}>
-                {t("View latest scan", "Neuesten Scan ansehen")}
-              </Link>
-            )}
           </span>
         }
       >
         <dl className="stat-row scan-target-rollup">
-          <Stat label={t("in latest scan", "im letzten Scan")} value={summary?.total ?? 0} />
+          <Stat
+            label={t("in latest scan", "im letzten Scan")}
+            value={
+              target.latestScanId ? (
+                <Link className="scan-target-stat-link" to={`/scans/${target.latestScanId}`} title={t("Open the latest scan", "Neuesten Scan öffnen")}>
+                  {summary?.total ?? 0}
+                </Link>
+              ) : (
+                summary?.total ?? 0
+              )
+            }
+          />
           {rollup.map((s) => (
             <Stat
               key={String(s.key)}
               label={t(s.en, s.de)}
-              value={s.n}
+              value={
+                s.n > 0 && target.latestScanId ? (
+                  <Link
+                    className="scan-target-stat-link"
+                    to={`/scans/${target.latestScanId}?severity=${encodeURIComponent(String(s.key))}`}
+                    title={t(`Open the latest scan's ${s.en.toLowerCase()} findings`, `${s.de}-Findings des neuesten Scans öffnen`)}
+                  >
+                    {s.n}
+                  </Link>
+                ) : (
+                  s.n
+                )
+              }
               tone={s.n > 0 ? severityLevel(String(s.key)) : undefined}
             />
           ))}
@@ -632,6 +667,9 @@ export const ScanTargetDetailPage = () => {
       {/* SBOM changes */}
       {!isImport && sbomDiff && sbomDiff.latestScanId && <SbomChangesCard diff={sbomDiff} />}
 
+      {/* Releases: scans marked as shipped versions, with their evidence */}
+      <TargetReleases targetId={target.id} />
+
       {/* VEX sources: the vendor's statements, applied after every scan */}
       <VexSourcesCard target={target} onUpdated={setTarget} notify={showToast} />
 
@@ -666,7 +704,7 @@ export const ScanTargetDetailPage = () => {
                   {history.map((h) => (
                     <tr key={h.scanId}>
                       <td className="scan-target-nowrap" title={formatDateTime(h.startedAt)}>
-                        {formatDateTime(h.startedAt)}
+                        <Link className="row-link" to={`/scans/${h.scanId}`}>{formatDateTime(h.startedAt)}</Link>
                       </td>
                       <td>
                         <StatusLabel status={h.status} />

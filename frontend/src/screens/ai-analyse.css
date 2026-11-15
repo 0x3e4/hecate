@@ -88,7 +88,7 @@
 .ai-analyse-meta dd { min-width: 0; margin: 0; color: var(--color-ink-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 /* Rendered report body */
-.ai-analyse-prose { max-width: 72ch; overflow-wrap: anywhere; }
+.ai-analyse-prose { max-width: 100ch; overflow-wrap: anywhere; }
 .ai-analyse-prose > :first-child { margin-top: 0; }
 .ai-analyse-prose > :last-child { margin-bottom: 0; }
 .ai-analyse-prose p { max-width: none; margin-block: var(--space-sm); }
@@ -119,3 +119,9 @@
   .ai-analyse-report { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-sm); }
   .ai-analyse-report-rail .ai-analyse-meta { flex-direction: row; flex-wrap: wrap; gap: var(--space-3xs) var(--space-md); }
 }
+
+/* AI reports are long reading: a wider measure than the 65ch base paragraph, still a measure
+   (same steps as the vulnerability summary). The markdown paragraphs carry no class, so the
+   base p:not([class]) cap is lifted inside. */
+@media (min-width: 120rem) { .ai-analyse-prose { max-width: 120ch; } }
+@media (min-width: 160rem) { .ai-analyse-prose { max-width: 140ch; } }

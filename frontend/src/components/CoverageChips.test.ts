@@ -1,40 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { productScanHit, resolveCveScanId } from "./CoverageChips";
+import { resolveCveScanId, scanChip } from "./CoverageChips";
 
-// Shape of /v1/scans/coverage: OS / binary packages by name, registry packages per vendor.
-const productScan = {
-  node: "scan-os",
-  "npm|console": "scan-npm",
-  "console|console": "scan-npm",
-  "npm|lodash": "scan-npm",
-};
+describe("resolveCveScanId", () => {
+  const cveScan = { "CVE-1": "scan-finding" };
 
-describe("productScanHit", () => {
-  it("does not let npm's console cover Citrix NetScaler Console", () => {
-    expect(productScanHit(["citrix-netscaler"], "console", productScan)).toBeUndefined();
+  it("prefers a finding on the CVE id", () => {
+    expect(resolveCveScanId({ vulnId: "CVE-1", sbomScanId: "scan-sbom" }, cveScan)).toBe("scan-finding");
   });
 
-  it("matches a registry package through its vendor", () => {
-    expect(productScanHit(["npm"], "lodash", productScan)).toBe("scan-npm");
-    expect(productScanHit(["console"], "console", productScan)).toBe("scan-npm");
+  it("falls back to the version-checked SBOM hit from the backend", () => {
+    expect(resolveCveScanId({ vulnId: "CVE-2", sbomScanId: "scan-sbom" }, cveScan)).toBe("scan-sbom");
   });
 
-  it("matches an OS or binary package by name alone", () => {
-    expect(productScanHit(["nodejs"], "node", productScan)).toBe("scan-os");
-    expect(productScanHit(undefined, "node", productScan)).toBe("scan-os");
+  it("does not match on a product name alone", () => {
+    // A CVE naming a product some SBOM ships, but outside its version range: no sbomScanId.
+    expect(
+      resolveCveScanId({ vulnId: "CVE-3", vendorSlugs: ["npm"], productSlugs: ["lodash"], sbomScanId: null }, cveScan),
+    ).toBeUndefined();
+    expect(resolveCveScanId({ vulnId: "CVE-4", productSlugs: ["node"] }, {})).toBeUndefined();
   });
 });
 
-describe("resolveCveScanId", () => {
-  it("prefers a finding, then a fitting SBOM package", () => {
-    const cveScan = { "CVE-1": "scan-finding" };
-    expect(resolveCveScanId({ vulnId: "CVE-1", productSlugs: ["console"] }, cveScan, productScan)).toBe("scan-finding");
-    expect(
-      resolveCveScanId({ vulnId: "CVE-2", vendorSlugs: ["citrix-netscaler"], productSlugs: ["console"] }, cveScan, productScan),
-    ).toBeUndefined();
-    expect(
-      resolveCveScanId({ vulnId: "CVE-3", vendorSlugs: ["npm"], productSlugs: ["lodash"] }, cveScan, productScan),
-    ).toBe("scan-npm");
+describe("scanChip", () => {
+  it("labels the chip with the target name and links to the scan", () => {
+    expect(scanChip("s1", { s1: "web" }, "SCA scan")).toEqual({ label: "web", href: "/scans/s1", scan: true, title: "web" });
+    expect(scanChip("s2", {}, "SCA scan").label).toBe("SCA scan");
   });
 });

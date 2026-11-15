@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.routes import api_router
 from app.core.config import settings
 from app.core.logging_config import configure_logging
+from app.core.request_audit import RequestAuditMiddleware
 from app.services.scheduling.manager import get_scheduler
 from app.services.ingestion.startup_cleanup import cleanup_stale_jobs
 from app.services.stats_service import get_stats_service
@@ -30,6 +31,25 @@ def _warn_on_insecure_default_secrets() -> None:
             secrets=insecure,
             environment=settings.environment,
             hint="These secrets use a known example/placeholder value — change them before exposing this instance.",
+        )
+
+
+def _warn_on_auth_misconfiguration() -> None:
+    """Point out OIDC settings that work in a lab but not behind a proxy or for an admin."""
+    if not settings.oidc_enabled:
+        return
+    import structlog
+
+    log = structlog.get_logger()
+    if not settings.oidc_admin_groups.strip():
+        log.warning(
+            "auth.no_admin_groups",
+            hint="OIDC_ADMIN_GROUPS is empty, so nobody can sign in as admin; the system password still works.",
+        )
+    if settings.is_production_like() and not settings.auth_public_url.strip():
+        log.warning(
+            "auth.public_url_unset",
+            hint="Set AUTH_PUBLIC_URL to the browser-facing URL so the OIDC redirect URI and Secure cookie are right.",
         )
 
 
@@ -60,9 +80,12 @@ def create_app() -> FastAPI:
         allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
-        # So the SPA can read the write-gate marker on 401s in cross-origin setups.
-        expose_headers=["X-Write-Auth-Required"],
+        # So the SPA can read the write-gate and sign-in markers in cross-origin setups.
+        expose_headers=["X-Write-Auth-Required", "X-Auth-Required", "X-Auth-Role-Required"],
     )
+    # Added last, so it wraps CORS: binds the caller for the gates and records
+    # every API write, including the ones refused before reaching a route.
+    app.add_middleware(RequestAuditMiddleware)
 
     app.include_router(api_router, prefix=settings.api_prefix)
 
@@ -102,6 +125,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def _startup_scheduler() -> None:  # pragma: no cover - wiring code
         _warn_on_insecure_default_secrets()
+        _warn_on_auth_misconfiguration()
         await cleanup_stale_jobs()
         await _cancel_scans_left_by_restart()
         await get_scheduler().start()

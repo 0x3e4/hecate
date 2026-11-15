@@ -43,6 +43,7 @@ def create_mcp_server() -> FastMCP:
     from app.mcp.tools.scans import register as register_scans
     from app.mcp.tools.inventory import register as register_inventory
     from app.mcp.tools.vex import register as register_vex
+    from app.mcp.tools.packages import register as register_packages
 
     register_vulnerabilities(mcp)
     register_cpe(mcp)
@@ -52,6 +53,7 @@ def create_mcp_server() -> FastMCP:
     register_scans(mcp)
     register_inventory(mcp)
     register_vex(mcp)
+    register_packages(mcp)
 
     return mcp
 

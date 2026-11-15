@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import UTC, datetime
 from typing import Any, Iterable
@@ -320,3 +321,19 @@ class AssetRepository:
             {"$sample": {"size": limit}},
         ]
         return await self.products.aggregate(pipeline).to_list(length=limit)
+
+    async def count_products_by_vendor(self, vendor_slugs: Iterable[str], *, max_time_ms: int) -> dict[str, int]:
+        """Catalogue products per vendor (``vendorSlugs`` multikey index, COUNT_SCAN), bounded server-side."""
+        slugs = list(dict.fromkeys(slug for slug in vendor_slugs if slug))
+        counts = await asyncio.gather(
+            *(self.products.count_documents({"vendorSlugs": slug}, maxTimeMS=max_time_ms) for slug in slugs)
+        )
+        return {slug: int(count) for slug, count in zip(slugs, counts)}
+
+    async def count_versions_by_product(self, product_slugs: Iterable[str], *, max_time_ms: int) -> dict[str, int]:
+        """Known versions per product (prefix of the ``productSlug, displayName`` index), bounded server-side."""
+        slugs = list(dict.fromkeys(slug for slug in product_slugs if slug))
+        counts = await asyncio.gather(
+            *(self.versions.count_documents({"productSlug": slug}, maxTimeMS=max_time_ms) for slug in slugs)
+        )
+        return {slug: int(count) for slug, count in zip(slugs, counts)}

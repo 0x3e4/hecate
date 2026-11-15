@@ -30,6 +30,12 @@ touching an admin password. Prefer tokens: each pipeline gets its own, and revok
 others working. Store it as a pipeline secret (for example a repository secret in GitHub Actions or
 a masked CI/CD variable in GitLab) and never commit it.
 
+!!! note "Instances that require sign-in"
+    With [OIDC sign-in](../admin/authentication.md) and `AUTH_REQUIRE_LOGIN=true`, every API read
+    needs a credential too. The same `X-API-Key` (a token of any scope, or `SCA_API_KEY`) is accepted
+    for reads, so the polling calls below work unchanged as long as they send the header, as these
+    examples do.
+
 !!! warning "Keep the key secret and scoped"
     A key grants the ability to submit scans against your Hecate instance. Treat it like any other
     deployment credential: store it in your CI secret store, rotate it if it leaks, and serve Hecate
@@ -50,7 +56,7 @@ the image-capable scanners against it.
 
 For a **source repository** set `type` to `source_repo` and pass the repository URL as `target`.
 Hecate clones the repository and runs the source-capable scanners, which additionally include static
-analysis (`semgrep`, `devskim`) and secret detection (`trufflehog`). When the repository is private
+analysis (`semgrep`, `devskim`), secret detection (`trufflehog`) and Go reachability (`govulncheck`). When the repository is private
 or you want to scan local working-tree code that is not yet pushed, attach a base64-encoded ZIP of
 the source as `sourceArchiveBase64` instead of relying on a clone (`.git` is skipped on extraction, so pass `commitSha` yourself); the archive must be a valid ZIP
 and at most 50 MB, with up to 200,000 members and 4 GiB once extracted (`SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES`).
@@ -65,6 +71,7 @@ clearly attributed in the UI). The available scanners are:
 | `grype` | Vulnerability | image + repo |
 | `syft` | SBOM | image + repo |
 | `osv-scanner` | Vulnerability | image + repo |
+| `govulncheck` | Vulnerability + Go reachability | source repos only |
 | `hecate` | Malware + SBOM | image + repo |
 | `semgrep` | SAST | source repos only |
 | `devskim` | SAST | source repos only |
@@ -155,6 +162,36 @@ The severity counts in `summary` are deduplicated by CVE, so the same CVE appear
 packages counts once toward your gate — the threshold you set reflects distinct vulnerabilities, not
 repeated rows.
 
+### Supply-chain gate
+
+The repository has no Hecate GitHub Action of its own, so a gate on the
+[supply-chain signals](../sca-scanning.md#supply-chain-signals) is a few lines of `curl` + `jq` like the
+severity gate. The release lookups run behind the scan, so wait for `supplyChainSummary.state` to turn
+`done` first:
+
+```bash
+for i in $(seq 1 30); do
+  SUMMARY=$(curl -sS "${HECATE_URL}/api/v1/scans/${SCAN_ID}" -H "X-API-Key: ${API_KEY}" | jq '.supplyChainSummary')
+  [ "$(echo "${SUMMARY}" | jq -r '.state')" = "done" ] && break
+  sleep 10
+done
+
+# Fail on releases younger than SCA_FRESH_RELEASE_DAYS or an npm version from a new publisher
+[ "$(echo "${SUMMARY}" | jq '.freshRelease + .publisherChanged')" -gt 0 ] && exit 1
+```
+
+`GET /api/v1/scans/{scanId}/sbom` names the components: every row carries `freshRelease`,
+`unmaintained`, `publisherChanged`, `publishedAt`, `latestVersion` and (npm) `publisher` /
+`previousPublishers`:
+
+```bash
+curl -sS "${HECATE_URL}/api/v1/scans/${SCAN_ID}/sbom?limit=500" -H "X-API-Key: ${API_KEY}" \
+  | jq -r '.items[] | select(.freshRelease or .publisherChanged) | "\(.name)@\(.version) published \(.publishedAt)"'
+```
+
+To stop a risky dependency before it is installed at all, use the
+[package check](package-check.md) in the job that adds or updates dependencies.
+
 ## Reporting deployed versions
 
 After a rollout, a pipeline can tell Hecate which version now runs, so the [environment inventory](../guide/inventory.md) and its CVE matches stay current. The endpoint takes an [API token](../security-access-control.md#api-tokens) with the `inventory:report` scope as `X-API-Key`; the system password works too. `SCA_API_KEY` does not open it, because a version report can make CVE matches disappear. The token opens this route only, not the rest of the inventory API.
@@ -226,3 +263,4 @@ snippet for that target.
 - [SCA Scanning](../sca-scanning.md) — registering targets, the scanner reference, and how findings
   are produced and ranked.
 - [REST API](./api.md) — the full endpoint reference and the embedded Swagger UI.
+- [Package check](./package-check.md) — the pre-install check for agents and CI.

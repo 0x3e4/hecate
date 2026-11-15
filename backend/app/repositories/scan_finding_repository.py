@@ -5,7 +5,9 @@ from typing import Any
 
 import structlog
 from bson import ObjectId
+from bson.errors import InvalidId
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo import UpdateMany, UpdateOne
 from pymongo.errors import PyMongoError
 
 from app.core.config import settings
@@ -18,6 +20,47 @@ log = structlog.get_logger()
 # vex_updated_by of a status applied from a target's VEX source. Such statuses
 # are the source's to change; every other one belongs to whoever set it.
 VEX_SOURCE_ACTOR = "vex-source"
+# vex_updated_by of a status set by an automatic VEX triage rule:
+# ``vex-rule:<rule id>``. Rules only fill findings without a status or with
+# one the same rule set (see vex_rule_service.py).
+VEX_RULE_ACTOR_PREFIX = "vex-rule:"
+# Automated reachability analysis (e.g. ``reachability:govulncheck``) follows
+# the same "only empty or own" rule; carry-forward keeps its actor too.
+REACHABILITY_ACTOR_PREFIX = "reachability:"
+VEX_IMPORT_ACTOR = "vex-import"
+CARRY_FORWARD_ACTOR = "carry-forward"
+
+# Fields that describe a person's review of a VEX status.
+_REVIEW_CLEARED: dict[str, Any] = {
+    "vex_assessed_version": None,
+    "vex_review_due": None,
+    "vex_needs_review": False,
+}
+
+
+def vex_rule_actor(rule_id: str) -> str:
+    return f"{VEX_RULE_ACTOR_PREFIX}{rule_id}"
+
+
+def is_automated_vex_actor(actor: str | None) -> bool:
+    """Statuses an automated writer owns and may update or remove again."""
+    return bool(actor) and (
+        actor == VEX_SOURCE_ACTOR
+        or actor.startswith(VEX_RULE_ACTOR_PREFIX)
+        or actor.startswith(REACHABILITY_ACTOR_PREFIX)
+    )
+
+
+def records_assessment(actor: str | None) -> bool:
+    """A person (web UI, MCP client) assessed the status, not a feed or rule."""
+    return bool(actor) and not is_automated_vex_actor(actor) and actor != VEX_IMPORT_ACTOR
+
+
+def _same_version(a: str | None, b: str | None) -> bool:
+    def norm(v: str | None) -> str:
+        v = (v or "").strip()
+        return v[1:] if v[:1] in ("v", "V") and v[1:2].isdigit() else v
+    return norm(a) == norm(b)
 
 
 class ScanFindingRepository:
@@ -34,6 +77,9 @@ class ScanFindingRepository:
         await collection.create_index("severity")
         await collection.create_index("vex_status", sparse=True)
         await collection.create_index("dismissed", sparse=True)
+        # Clearing a VEX rule's statuses looks findings up by their actor.
+        await collection.create_index("vex_updated_by", sparse=True)
+        await collection.create_index("dismissed_by", sparse=True)
         # Partial unique index for the retroactive MAL-* watcher. Only applies
         # to rows the watcher itself wrote (``scanner='mal-watch'``) so it
         # doesn't conflict with the standard scanner inserts where the same
@@ -373,6 +419,8 @@ class ScanFindingRepository:
                 "targets": {"$addToSet": {"target_id": "$target_id", "scan_id": "$scan_id"}},
                 "cvss_score": {"$max": "$cvss_score"},
                 "urls": {"$first": "$urls"},
+                # "runtime" > "optional" > "dev": $max is the runtime-wins rule.
+                "dependency_scope": {"$max": "$dependency_scope"},
                 # package_type and package_path come from arbitrary per-finding
                 # rows within the group; $first is fine since TYPE_ALIASES
                 # normalizes scanner-specific labels ("node-pkg" -> "npm").
@@ -408,6 +456,7 @@ class ScanFindingRepository:
                     "urls": item.get("urls", []),
                     "package_type": item.get("package_type"),
                     "package_path": item.get("package_path"),
+                    "dependency_scope": item.get("dependency_scope"),
                 })
             return total, items
         except PyMongoError as exc:
@@ -600,31 +649,71 @@ class ScanFindingRepository:
 
     # --- VEX methods ---
 
+    async def _write_vex(
+        self,
+        query: dict[str, Any],
+        update: dict[str, Any],
+        actor: str,
+        *,
+        review_due: str | None = None,
+        single: bool = False,
+    ) -> int:
+        """Write a VEX status to the findings matching ``query``.
+
+        A status a person set records the package version it was assessed at
+        (each finding's own) and clears the re-review flag; any other writer
+        clears the review fields, since they describe a person's review.
+        """
+        update = {**update, "vex_updated_at": datetime.now(tz=UTC), "vex_updated_by": actor}
+        if not update.get("vex_status") or not records_assessment(actor):
+            update.update(_REVIEW_CLEARED)
+            result = await (
+                self.collection.update_one(query, {"$set": update})
+                if single else self.collection.update_many(query, {"$set": update})
+            )
+            return result.modified_count
+        update["vex_review_due"] = review_due
+        update["vex_needs_review"] = False
+        cursor = self.collection.find(query, {"package_version": 1})
+        if single:
+            cursor = cursor.limit(1)
+        ops = [
+            UpdateOne(
+                {"_id": doc["_id"]},
+                {"$set": {**update, "vex_assessed_version": doc.get("package_version") or None}},
+            )
+            async for doc in cursor
+        ]
+        if not ops:
+            return 0
+        result = await self.collection.bulk_write(ops, ordered=False)
+        # A re-save of the same status still counts: the assessment is new.
+        return max(result.modified_count, result.matched_count)
+
     async def update_vex_status(
         self,
         finding_id: str,
-        vex_status: str,
+        vex_status: str | None,
         vex_justification: str | None = None,
         vex_detail: str | None = None,
         vex_response: list[str] | None = None,
         vex_updated_by: str = "user",
+        vex_review_due: str | None = None,
     ) -> bool:
-        """Update VEX status on a single finding."""
+        """Update VEX status on a single finding (``None`` clears it)."""
         try:
             update: dict[str, Any] = {
                 "vex_status": vex_status,
                 "vex_justification": vex_justification,
                 "vex_detail": vex_detail,
                 "vex_response": vex_response,
-                "vex_updated_at": datetime.now(tz=UTC),
-                "vex_updated_by": vex_updated_by,
             }
-            result = await self.collection.update_one(
-                {"_id": ObjectId(finding_id)},
-                {"$set": update},
+            count = await self._write_vex(
+                {"_id": ObjectId(finding_id)}, update, vex_updated_by,
+                review_due=vex_review_due, single=True,
             )
-            return result.modified_count > 0
-        except PyMongoError as exc:
+            return count > 0
+        except (PyMongoError, InvalidId) as exc:
             log.warning("scan_finding_repository.update_vex_failed", finding_id=finding_id, error=str(exc))
             return False
 
@@ -636,6 +725,7 @@ class ScanFindingRepository:
         vex_justification: str | None = None,
         vex_updated_by: str = "user",
         vex_detail: str | None = None,
+        vex_review_due: str | None = None,
     ) -> int:
         """Apply VEX status to all findings matching vulnerability+target across scans.
 
@@ -646,16 +736,13 @@ class ScanFindingRepository:
             update: dict[str, Any] = {
                 "vex_status": vex_status,
                 "vex_justification": vex_justification,
-                "vex_updated_at": datetime.now(tz=UTC),
-                "vex_updated_by": vex_updated_by,
             }
             if vex_detail is not None:
                 update["vex_detail"] = vex_detail
-            result = await self.collection.update_many(
+            return await self._write_vex(
                 {"target_id": target_id, "vulnerability_id": vulnerability_id},
-                {"$set": update},
+                update, vex_updated_by, review_due=vex_review_due,
             )
-            return result.modified_count
         except PyMongoError as exc:
             log.warning("scan_finding_repository.bulk_update_vex_failed", error=str(exc))
             return 0
@@ -669,7 +756,7 @@ class ScanFindingRepository:
         package_names: list[str] | None = None,
         vex_justification: str | None = None,
         vex_detail: str | None = None,
-        vex_updated_by: str = "vex-import",
+        vex_updated_by: str = VEX_IMPORT_ACTOR,
     ) -> int:
         """Apply one imported statement (any of its ids) to the target's findings.
 
@@ -683,14 +770,11 @@ class ScanFindingRepository:
         update: dict[str, Any] = {
             "vex_status": vex_status,
             "vex_justification": vex_justification,
-            "vex_updated_at": datetime.now(tz=UTC),
-            "vex_updated_by": vex_updated_by,
         }
         if vex_detail is not None:
             update["vex_detail"] = vex_detail
         try:
-            result = await self.collection.update_many(query, {"$set": update})
-            return result.modified_count
+            return await self._write_vex(query, update, vex_updated_by)
         except PyMongoError as exc:
             log.warning("scan_finding_repository.bulk_update_vex_ids_failed", target_id=target_id, error=str(exc))
             return 0
@@ -698,10 +782,11 @@ class ScanFindingRepository:
     async def bulk_update_vex_by_ids(
         self,
         finding_ids: list[str],
-        vex_status: str,
+        vex_status: str | None,
         vex_justification: str | None = None,
         vex_detail: str | None = None,
         vex_updated_by: str = "user",
+        vex_review_due: str | None = None,
     ) -> int:
         """Apply VEX status to a specific list of finding IDs (multi-select)."""
         if not finding_ids:
@@ -716,14 +801,10 @@ class ScanFindingRepository:
                 "vex_status": vex_status,
                 "vex_justification": vex_justification,
                 "vex_detail": vex_detail,
-                "vex_updated_at": datetime.now(tz=UTC),
-                "vex_updated_by": vex_updated_by,
             }
-            result = await self.collection.update_many(
-                {"_id": {"$in": object_ids}},
-                {"$set": update},
+            return await self._write_vex(
+                {"_id": {"$in": object_ids}}, update, vex_updated_by, review_due=vex_review_due,
             )
-            return result.modified_count
         except PyMongoError as exc:
             log.warning("scan_finding_repository.bulk_update_vex_by_ids_failed", error=str(exc))
             return 0
@@ -799,13 +880,18 @@ class ScanFindingRepository:
                     if old_finding.get("title"):
                         match["title"] = old_finding.get("title")
 
+                # A rule's dismissal stays the rule's (like its carried VEX
+                # status), so retiring the rule or a finding that stops
+                # matching still un-hides it. Only a person's becomes
+                # "carry-forward".
+                old_by = old_finding.get("dismissed_by")
                 result = await self.collection.update_many(
                     match,
                     {"$set": {
                         "dismissed": True,
                         "dismissed_reason": old_finding.get("dismissed_reason"),
                         "dismissed_at": old_finding.get("dismissed_at"),
-                        "dismissed_by": "carry-forward",
+                        "dismissed_by": old_by if is_automated_vex_actor(old_by) else CARRY_FORWARD_ACTOR,
                     }},
                 )
                 carried += result.modified_count
@@ -830,43 +916,38 @@ class ScanFindingRepository:
             return []
 
     async def carry_forward_vex(self, old_scan_id: str, new_scan_id: str) -> int:
-        """Copy VEX annotations from old scan findings to matching new scan findings."""
+        """Copy VEX annotations from old scan findings to matching new scan findings.
+
+        Matches on vulnerability + package name. An automated writer's status
+        (VEX source, VEX rule, reachability) keeps its actor so that writer
+        may update or remove it later; every other status becomes
+        ``carry-forward``. A status a person assessed at another version than
+        the new finding's is carried but flagged ``vex_needs_review``.
+        """
         try:
             old_vex = await self.get_vex_findings_by_scan(old_scan_id)
             if not old_vex:
                 return 0
+            targets: dict[tuple[str, str], list[dict[str, Any]]] = {}
+            cursor = self.collection.find(
+                {"scan_id": new_scan_id, "vex_status": None, "vulnerability_id": {"$ne": None}},
+                {"vulnerability_id": 1, "package_name": 1, "package_version": 1},
+            )
+            async for doc in cursor:
+                key = (doc.get("vulnerability_id") or "", doc.get("package_name") or "")
+                targets.setdefault(key, []).append(doc)
 
-            carried = 0
-            for old_finding in old_vex:
-                vuln_id = old_finding.get("vulnerability_id")
-                pkg_name = old_finding.get("package_name")
-                if not vuln_id or not pkg_name:
+            ops: list[UpdateOne] = []
+            for old in old_vex:
+                key = (old.get("vulnerability_id") or "", old.get("package_name") or "")
+                if not key[0] or not key[1]:
                     continue
-
-                result = await self.collection.update_many(
-                    {
-                        "scan_id": new_scan_id,
-                        "vulnerability_id": vuln_id,
-                        "package_name": pkg_name,
-                        "vex_status": None,
-                    },
-                    {"$set": {
-                        "vex_status": old_finding.get("vex_status"),
-                        "vex_justification": old_finding.get("vex_justification"),
-                        "vex_detail": old_finding.get("vex_detail"),
-                        "vex_response": old_finding.get("vex_response"),
-                        "vex_updated_at": old_finding.get("vex_updated_at"),
-                        # A status from a VEX source stays one, so the next
-                        # fetch of that source may still update or remove it.
-                        "vex_updated_by": (
-                            VEX_SOURCE_ACTOR
-                            if old_finding.get("vex_updated_by") == VEX_SOURCE_ACTOR
-                            else "carry-forward"
-                        ),
-                    }},
-                )
-                carried += result.modified_count
-            return carried
+                for new in targets.pop(key, []):
+                    ops.append(UpdateOne({"_id": new["_id"]}, {"$set": carried_vex_fields(old, new)}))
+            if not ops:
+                return 0
+            result = await self.collection.bulk_write(ops, ordered=False)
+            return result.modified_count
         except PyMongoError as exc:
             log.warning("scan_finding_repository.carry_forward_vex_failed", error=str(exc))
             return 0
@@ -887,10 +968,18 @@ class ScanFindingRepository:
         source, are touched: a status someone set by hand or imported stays.
         ``package_names`` narrows the statement to those packages.
         """
+        # A source also replaces a VEX rule's or a reachability analysis's
+        # status: a statement about this product beats a generic triage rule
+        # and a tool's inference.
         query: dict[str, Any] = {
             "target_id": target_id,
             "vulnerability_id": {"$in": vulnerability_ids},
-            "$or": [{"vex_status": None}, {"vex_updated_by": VEX_SOURCE_ACTOR}],
+            "$or": [
+                {"vex_status": None},
+                {"vex_updated_by": VEX_SOURCE_ACTOR},
+                {"vex_updated_by": {"$regex": f"^{VEX_RULE_ACTOR_PREFIX}"}},
+                {"vex_updated_by": {"$regex": f"^{REACHABILITY_ACTOR_PREFIX}"}},
+            ],
         }
         if package_names:
             query["package_name"] = {"$in": package_names}
@@ -900,6 +989,7 @@ class ScanFindingRepository:
             "vex_detail": vex_detail,
             "vex_updated_at": datetime.now(tz=UTC),
             "vex_updated_by": VEX_SOURCE_ACTOR,
+            **_REVIEW_CLEARED,
         }
         try:
             result = await self.collection.update_many(query, {"$set": update})
@@ -913,16 +1003,123 @@ class ScanFindingRepository:
         try:
             result = await self.collection.update_many(
                 {"target_id": target_id, "vex_updated_by": VEX_SOURCE_ACTOR, "vulnerability_id": {"$nin": keep_ids}},
-                {"$set": {
-                    "vex_status": None,
-                    "vex_justification": None,
-                    "vex_detail": None,
-                    "vex_response": None,
-                    "vex_updated_at": datetime.now(tz=UTC),
-                    "vex_updated_by": None,
-                }},
+                {"$set": {**_VEX_CLEARED, "vex_updated_at": datetime.now(tz=UTC)}},
             )
             return result.modified_count
         except PyMongoError as exc:
             log.warning("scan_finding_repository.clear_vex_source_statuses_failed", target_id=target_id, error=str(exc))
             return 0
+
+    # --- dependency scope ---
+
+    async def apply_dependency_scopes(self, scan_id: str, scopes: dict[tuple[str, str], str]) -> int:
+        """Set ``dependency_scope`` per (package_name, package_version) of a scan."""
+        if not scopes:
+            return 0
+        ops = [
+            UpdateMany(
+                {"scan_id": scan_id, "package_name": name, "package_version": version,
+                 "dependency_scope": {"$ne": scope}},
+                {"$set": {"dependency_scope": scope}},
+            )
+            for (name, version), scope in scopes.items()
+        ]
+        try:
+            result = await self.collection.bulk_write(ops, ordered=False)
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.apply_dependency_scopes_failed", scan_id=scan_id, error=str(exc))
+            return 0
+
+    # --- VEX rules ---
+
+    async def list_for_vex_rules(self, scan_id: str) -> list[dict[str, Any]]:
+        """The scan's vulnerability findings with the fields rule matching reads."""
+        try:
+            cursor = self.collection.find(
+                {
+                    "scan_id": scan_id,
+                    "vulnerability_id": {"$ne": None},
+                    "package_type": {"$nin": list(_NON_VULN_TYPES)},
+                },
+                {
+                    "vulnerability_id": 1, "package_name": 1, "package_version": 1,
+                    "package_type": 1, "severity": 1, "dependency_scope": 1,
+                    "vex_status": 1, "vex_justification": 1, "vex_detail": 1,
+                    "vex_updated_by": 1, "dismissed": 1, "dismissed_by": 1,
+                },
+            )
+            return [doc async for doc in cursor]
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.list_for_vex_rules_failed", scan_id=scan_id, error=str(exc))
+            return []
+
+    async def write_vex_rule_updates(self, updates: list[tuple[Any, dict[str, Any]]]) -> int:
+        """Apply ``(finding _id, $set)`` pairs computed by the VEX rule service."""
+        if not updates:
+            return 0
+        # The guard repeats the plan's precedence check, so a status someone set
+        # between the read and this write is not overwritten.
+        guard = {"$or": [{"vex_status": None}, {"vex_updated_by": {"$regex": f"^{VEX_RULE_ACTOR_PREFIX}"}}]}
+        ops = [UpdateOne({"_id": fid, **guard}, {"$set": fields}) for fid, fields in updates]
+        try:
+            result = await self.collection.bulk_write(ops, ordered=False)
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.write_vex_rule_updates_failed", error=str(exc))
+            return 0
+
+    async def clear_vex_actor(self, actor: str) -> int:
+        """Remove every status (and dismissal) the given automated actor set."""
+        now = datetime.now(tz=UTC)
+        try:
+            result = await self.collection.update_many(
+                {"vex_updated_by": actor},
+                {"$set": {**_VEX_CLEARED, "vex_updated_at": now}},
+            )
+            await self.collection.update_many(
+                {"dismissed_by": actor},
+                {"$set": {"dismissed": False, "dismissed_reason": None, "dismissed_at": None, "dismissed_by": None}},
+            )
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.clear_vex_actor_failed", actor=actor, error=str(exc))
+            return 0
+
+
+_NON_VULN_TYPES = ("malicious-indicator", "compliance-check", "sast-finding", "secret-finding")
+
+_VEX_CLEARED: dict[str, Any] = {
+    "vex_status": None,
+    "vex_justification": None,
+    "vex_detail": None,
+    "vex_response": None,
+    "vex_updated_by": None,
+    **_REVIEW_CLEARED,
+}
+
+
+def carried_vex_fields(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """The VEX fields a new finding takes over from its previous-scan twin."""
+    actor = old.get("vex_updated_by")
+    automated = is_automated_vex_actor(actor)
+    fields: dict[str, Any] = {
+        "vex_status": old.get("vex_status"),
+        "vex_justification": old.get("vex_justification"),
+        "vex_detail": old.get("vex_detail"),
+        "vex_response": old.get("vex_response"),
+        "vex_updated_at": old.get("vex_updated_at"),
+        "vex_updated_by": actor if automated else CARRY_FORWARD_ACTOR,
+    }
+    if automated or actor == VEX_IMPORT_ACTOR:
+        fields.update(_REVIEW_CLEARED)
+        return fields
+    # A person's assessment: keep its version (older statuses predate the
+    # field; their finding's version is the one they looked at) and flag it
+    # once the package moved on.
+    assessed = old.get("vex_assessed_version") or old.get("package_version") or None
+    changed = bool(assessed) and not _same_version(assessed, new.get("package_version"))
+    fields["vex_assessed_version"] = assessed
+    fields["vex_review_due"] = old.get("vex_review_due")
+    fields["vex_needs_review"] = bool(old.get("vex_needs_review")) or changed
+    return fields

@@ -52,9 +52,11 @@ import {
   resyncVulnerabilities,
 } from "../api/sync";
 import { fetchScanTargets } from "../api/scans";
-import { setAdminPassword } from "../api/writeAuth";
+import { getAdminPassword, setAdminPassword } from "../api/writeAuth";
+import { useAuth } from "../auth/context";
 import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { AdvisoryFeedsPanel } from "../components/AdvisoryFeedsPanel";
+import { VexRulesPanel } from "../components/VexRulesPanel";
 import { ApiTokenPanel } from "../components/ApiTokenPanel";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
 import { useToastContext } from "../components/ToastProvider";
@@ -209,6 +211,10 @@ export const SystemPage = () => {
     setTimezoneDraft(isBrowserDefault ? "" : timezone);
   }, [timezone, isBrowserDefault]);
   const { aiBatchMaxVulns } = useServerConfig();
+  const auth = useAuth();
+  // Signed in below admin and no system password unlocked: the page reads fine,
+  // but every change would be refused. Say so up front instead of on each save.
+  const readOnlyForRole = auth.enabled && !auth.hasRole("admin") && !getAdminPassword();
   const [aiBatchDraft, setAiBatchDraft] = useState<string>(String(aiBatchMaxVulns));
   const [aiBatchSaving, setAiBatchSaving] = useState(false);
   const navigate = useNavigate();
@@ -218,7 +224,11 @@ export const SystemPage = () => {
   const [authOk, setAuthOk] = useState(false);
   const [authPassword, setAuthPassword] = useState("");
   const [authChecking, setAuthChecking] = useState(false);
-  const [tab, setTab] = useState<SystemTab>("general");
+  // ?tab=policies (e.g. from a VEX rule chip on a scan) opens that tab
+  const [tab, setTab] = useState<SystemTab>(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    return (["general", "access", "notifications", "data", "policies"] as const).find(k => k === wanted) ?? "general";
+  });
 
   useEffect(() => {
     api.get<{ required: boolean }>("/v1/status/system-auth").then((r) => {
@@ -1329,6 +1339,27 @@ export const SystemPage = () => {
           "Systemeinstellungen, Datenquellen, Benachrichtigungen und Richtlinien verwalten."
         )}
       />
+      {readOnlyForRole && (
+        <p className="system-role-notice" role="note">
+          {auth.user
+            ? t(
+                "You can look around, but changes here require the admin role.",
+                "Du kannst dich umsehen, aber Änderungen hier erfordern die Admin-Rolle."
+              )
+            : t(
+                "Sign in as an admin to change these settings.",
+                "Melde dich als Admin an, um diese Einstellungen zu ändern."
+              )}
+          {!auth.user && (
+            <>
+              {" "}
+              <button type="button" className="btn btn-secondary" onClick={() => auth.signIn()}>
+                {t("Sign in", "Anmelden")}
+              </button>
+            </>
+          )}
+        </p>
+      )}
       <div className="tabs-scroll system-tabs">
         {([
           { key: "general" as SystemTab, label: t("General", "Allgemein") },
@@ -2618,6 +2649,7 @@ export const SystemPage = () => {
         )}
       </Section>
       )}
+      {tab === "policies" && <VexRulesPanel />}
     </div>
     )}
   </>

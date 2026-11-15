@@ -1,4 +1,4 @@
-import type { CertAdvisory, CertRoundup, CertTopic, FeedKind, FeedSource } from "../api/cert";
+import type { CertAdvisory, CertCve, CertRoundup, CertTopic, FeedKind, FeedSource } from "../api/cert";
 import type { TranslateFn } from "../i18n/context";
 
 import { severityRank } from "./cveGroups";
@@ -101,3 +101,20 @@ export const sortTopics = (topics: CertTopic[], inStack: (topic: CertTopic) => b
 /** How many CVEs of a round-up are confirmed findings in the user's scans. */
 export const roundupHits = (roundup: CertRoundup, scanCveScan: Record<string, string>): number =>
   roundup.cveIds.filter((cveId) => scanCveScan[cveId]).length;
+
+/**
+ * "Only my stack": each topic keeps just the CVEs that touch the user's stack, and its
+ * title (topicProducts), worst severity and CVE list follow from those. A topic with
+ * none is dropped; `hiddenCves` says how many it left out. The advisories stay whole:
+ * they are the sources, not the subject.
+ */
+export const narrowToStack = (topics: CertTopic[], cveInStack: (cve: CertCve) => boolean): CertTopic[] =>
+  topics.flatMap((topic) => {
+    const cves = topic.cves.filter(cveInStack);
+    if (cves.length === 0) return [];
+    if (cves.length === topic.cves.length) return [topic];
+    const worstSeverity = cves
+      .map((cve) => cve.severity)
+      .reduce((worst, severity) => (severityRank(severity) < severityRank(worst) ? severity : worst), cves[0].severity);
+    return [{ ...topic, cves, worstSeverity, hiddenCves: topic.cves.length - cves.length }];
+  });

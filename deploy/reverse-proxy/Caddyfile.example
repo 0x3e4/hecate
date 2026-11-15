@@ -7,10 +7,11 @@
 #
 #   hecate.example.com          -> your domain
 #   admin@example.com           -> your ACME contact e-mail (optional block below)
-#   hecate-backend:8000         -> backend service:port
 #   hecate-frontend:4173        -> frontend service:port
 #
-# All security headers live here (the frontend `serve` process sets none).
+# The frontend container is the gateway (it forwards /api and /mcp to the
+# backend), so it is the only upstream. It sets no security headers, so all of
+# them live here.
 # Everything the SPA loads is bundled and same-origin, so the CSP is strict.
 # =============================================================================
 
@@ -42,12 +43,9 @@ hecate.example.com {
     @docs path /api/docs /api/redoc
     header @docs Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self'"
 
-    # --- Backend: API, MCP, OAuth discovery ---
-    # Caddy sets X-Forwarded-For/Proto/Host and preserves the incoming Host.
-    # SSE (/api/v1/events) streams automatically — no extra config needed.
-    @backend path /api* /mcp* /.well-known/oauth-*
-    reverse_proxy @backend hecate-backend:8000
-
-    # --- Frontend SPA (everything else) ---
+    # --- Everything goes to the frontend gateway ---
+    # It serves the SPA and forwards /api, /mcp and /.well-known/oauth-* to the
+    # backend, which needs no port of its own. Caddy sets X-Forwarded-For/Proto,
+    # preserves the Host and streams SSE (/api/v1/events) and MCP on its own.
     reverse_proxy hecate-frontend:4173
 }

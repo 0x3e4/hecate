@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.core.auth_context import get_auth_context
 from app.core.auth_throttle import SYSTEM_SECRET, AI_SECRET, enforce_auth_throttle, record_auth_result
 from app.core.config import settings
 from app.core.passwords import secret_equals
@@ -57,8 +58,15 @@ class SystemAuthResponse(BaseModel):
 
 
 @router.get("/system-auth")
-async def system_auth_status() -> SystemAuthResponse:
-    """Check whether a system password is required."""
+async def system_auth_status(request: Request) -> SystemAuthResponse:
+    """Check whether a system password is required.
+
+    Not for a signed-in admin: the role opens everything the password does, so
+    the System and Audit pages skip their unlock dialog.
+    """
+    ctx = await get_auth_context(request)
+    if ctx.user is not None and ctx.user.has_role("admin"):
+        return SystemAuthResponse(required=False, authenticated=True)
     return SystemAuthResponse(
         required=bool(settings.system_password),
         authenticated=False,

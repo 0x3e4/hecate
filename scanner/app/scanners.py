@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import sys
 import tempfile
 import threading
@@ -228,6 +229,8 @@ async def run_scanner(
         return await _run_trufflehog(target, target_type, source_dir)
     elif scanner_name == "devskim":
         return await _run_devskim(target, target_type, source_dir)
+    elif scanner_name == "govulncheck":
+        return await _run_govulncheck(target, target_type, source_dir)
     else:
         return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Unknown scanner: {scanner_name}")
 
@@ -250,8 +253,13 @@ def _scanner_timeout(scanner: str, default: int = 600) -> int:
     return val if val > 0 else default
 
 
-async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, int]:
+async def _run_command(
+    cmd: list[str], timeout: int = 600, env: dict[str, str] | None = None,
+) -> tuple[str, str, int]:
     """Run a subprocess command and return stdout, stderr, returncode.
+
+    ``env`` replaces the inherited environment when given (govulncheck runs
+    ``go`` with its own GOPATH / GOPROXY settings); ``None`` inherits it.
 
     Logs start/end/timeout/exception so operators can see — from the scanner
     sidecar's stdout — which subprocess is running, what timeout it was
@@ -277,6 +285,7 @@ async def _run_command(cmd: list[str], timeout: int = 600) -> tuple[str, str, in
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
+            env=env,
         )
     except FileNotFoundError:
         logger.warning("subprocess.binary_missing name=%s", name)
@@ -1137,5 +1146,238 @@ async def _run_trufflehog(
     except RuntimeError as exc:
         return ScannerResult(scanner="trufflehog", format="trufflehog-json", report={}, error=str(exc))
     finally:
+        if clone_dir:
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+# --- govulncheck (Go reachability) -------------------------------------------
+#
+# govulncheck type-checks a module from source and reports, per Go
+# vulnerability-database entry, whether a vulnerable *symbol* is reachable from
+# the module's code, or only its package is imported / its module required.
+# The backend turns the second kind into VEX ``not_affected`` on the other
+# scanners' findings. Source mode drives ``go list``, so the image carries a Go
+# toolchain; everything ``go`` writes goes to a per-run directory under /tmp.
+
+# Directories the go command skips itself (vendor is used through
+# modules.txt, never as a module root), plus the usual noise.
+_GOVULNCHECK_SKIP_DIRS = frozenset({"vendor", "testdata", "node_modules"})
+# Matched line by line: with re.MULTILINE a leading \s* crossed line breaks and
+# rescanned every blank run from each line start, quadratic in a hostile go.mod.
+_GO_MODULE_LINE = re.compile(r'[ \t]*module[ \t]+"?([^\s"]+?)"?[ \t]*(?://.*)?$')
+_GO_MODULE_MAX_LINE = 4096
+_GOVULNCHECK_MAX_MESSAGES = 50_000
+
+
+def _govulncheck_max_modules() -> int:
+    raw = os.environ.get("GOVULNCHECK_MAX_MODULES", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return 25
+    return value if value > 0 else 25
+
+
+def _find_go_modules(root: str, limit: int) -> tuple[list[str], bool]:
+    """Directories (relative to ``root``, ``/``-separated) holding a ``go.mod``.
+
+    Returns ``(dirs, truncated)`` with at most ``limit`` entries. Walks without
+    following links, skips the directories the go command skips (``vendor``,
+    ``testdata``, names starting with ``.`` or ``_``) and only takes a
+    ``go.mod`` that is a regular file.
+    """
+    found: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in _GOVULNCHECK_SKIP_DIRS
+            and not d.startswith((".", "_"))
+            and not os.path.islink(os.path.join(dirpath, d))
+        )
+        if "go.mod" not in filenames:
+            continue
+        try:
+            info = os.lstat(os.path.join(dirpath, "go.mod"))
+        except OSError:
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        if len(found) >= limit:
+            return found, True
+        rel = os.path.relpath(dirpath, root)
+        found.append("." if rel in ("", ".") else rel.replace(os.sep, "/"))
+    return found, False
+
+
+def _go_module_path(go_mod: Path) -> str | None:
+    """The ``module`` line of a go.mod, read under the hostile-tree rules (linear time)."""
+    try:
+        text = read_text_limited(go_mod)
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if len(line) > _GO_MODULE_MAX_LINE:
+            continue
+        match = _GO_MODULE_LINE.match(line)
+        if match:
+            return match.group(1)[:300]
+    return None
+
+
+def _decode_json_stream(text: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Split govulncheck's ``-json`` output, a stream of indented JSON objects."""
+    decoder = json.JSONDecoder()
+    messages: list[dict[str, Any]] = []
+    idx, end = 0, len(text)
+    while idx < end:
+        while idx < end and text[idx].isspace():
+            idx += 1
+        if idx >= end:
+            break
+        try:
+            obj, idx = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError as exc:
+            return messages, f"Invalid JSON output: {exc}"
+        if isinstance(obj, dict):
+            messages.append(obj)
+            if len(messages) >= _GOVULNCHECK_MAX_MESSAGES:
+                return messages, "govulncheck output truncated"
+    return messages, None
+
+
+def _govulncheck_db() -> str | None:
+    """Vulnerability database override (``GOVULNCHECK_DB``), e.g. a mirror for
+    an offline site. Only http(s) and file URLs are passed on."""
+    raw = (os.environ.get("GOVULNCHECK_DB") or "").strip()
+    if not raw:
+        return None
+    scheme = urlparse(raw).scheme.lower()
+    if scheme not in ("https", "http", "file"):
+        logger.warning("govulncheck.db_ignored scheme=%s", scheme or "<none>")
+        return None
+    return raw
+
+
+def _govulncheck_env(work_dir: str) -> dict[str, str]:
+    """Environment for govulncheck and the ``go list`` it runs.
+
+    - Nothing lands in the 50 MB /root tmpfs: GOPATH, the module and build
+      caches and the telemetry config go below ``work_dir`` (the module cache
+      to ``GOVULNCHECK_CACHE_DIR`` when an operator keeps one).
+    - GOTOOLCHAIN=local: a ``toolchain`` line in the scanned go.mod must not
+      make go download and run another toolchain.
+    - GOPROXY without ``direct`` unless the operator set one: otherwise a
+      ``require`` of ``internal.example/x`` in the scanned tree makes the
+      sidecar fetch from whatever host that names.
+    - GOFLAGS is dropped (an inherited ``-mod=mod`` would rewrite go.mod in the
+      checkout the other scanners share); go's own default is read-only.
+    """
+    env = dict(os.environ)
+    env.pop("GOFLAGS", None)
+    gopath = os.path.join(work_dir, "gopath")
+    env.update({
+        "GOPATH": gopath,
+        "GOMODCACHE": (os.environ.get("GOVULNCHECK_CACHE_DIR") or "").strip()
+        or os.path.join(gopath, "pkg", "mod"),
+        "GOCACHE": os.path.join(work_dir, "gocache"),
+        "XDG_CONFIG_HOME": os.path.join(work_dir, "config"),
+        "GOTOOLCHAIN": "local",
+        "CGO_ENABLED": "0",
+        "GOENV": "off",
+        "GOTELEMETRY": "off",
+    })
+    env.setdefault("GOPROXY", "https://proxy.golang.org")
+    return env
+
+
+def _force_rmtree(path: str) -> None:
+    """rmtree for a Go module cache, which go writes read-only."""
+    for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
+        for name, mode in [(d, 0o755) for d in dirnames] + [(f, 0o644) for f in filenames]:
+            full = os.path.join(dirpath, name)
+            if not os.path.islink(full):
+                try:
+                    os.chmod(full, mode)
+                except OSError:
+                    pass
+    shutil.rmtree(path, ignore_errors=True)
+
+
+async def _run_govulncheck(
+    target: str,
+    target_type: str,
+    source_dir: str | None = None,
+) -> ScannerResult:
+    """Run govulncheck (symbol-level reachability) on every Go module of a source repo.
+
+    The report is ``{"modules": [{"dir", "module", "messages", "error"}],
+    "truncated": bool}``; ``messages`` are govulncheck's own JSON messages
+    (config / progress / SBOM / osv / finding). A failing module only marks
+    its own entry; the scanner error is set when every module failed.
+    """
+    fmt = "govulncheck-json"
+    if target_type == "container_image":
+        return ScannerResult(
+            scanner="govulncheck", format=fmt, report={},
+            error="govulncheck only supports source repository scanning",
+        )
+
+    clone_dir: str | None = None
+    work_dir = tempfile.mkdtemp(prefix="hecate-govulncheck-")
+    try:
+        scan_dir = source_dir
+        if not scan_dir:
+            clone_dir = await _clone_repo(target)
+            scan_dir = clone_dir
+
+        # Walking and reading the hostile tree stays off the event loop, which
+        # also serves /check, /stats and every other target's scans.
+        module_dirs, truncated = await asyncio.to_thread(_find_go_modules, scan_dir, _govulncheck_max_modules())
+        report: dict[str, Any] = {"modules": [], "truncated": truncated}
+        if not module_dirs:
+            return ScannerResult(scanner="govulncheck", format=fmt, report=report)
+
+        env = _govulncheck_env(work_dir)
+        db = _govulncheck_db()
+        deadline = time.monotonic() + _scanner_timeout("govulncheck")
+        errors: list[str] = []
+        for rel in module_dirs:
+            mod_dir = scan_dir if rel == "." else os.path.join(scan_dir, rel)
+            entry: dict[str, Any] = {
+                "dir": rel,
+                "module": await asyncio.to_thread(_go_module_path, Path(mod_dir) / "go.mod"),
+                "messages": [],
+                "error": None,
+            }
+            report["modules"].append(entry)
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 0:
+                entry["error"] = "skipped: govulncheck time budget used up"
+                errors.append(f"{rel}: {entry['error']}")
+                continue
+            # The module directory comes from the walk above, never from the
+            # target, and ``./...`` can't be read as a flag.
+            cmd = ["govulncheck", "-json"]
+            if db:
+                cmd += ["-db", db]
+            cmd += ["-C", mod_dir, "./..."]
+            stdout, stderr, rc = await _run_command(cmd, timeout=remaining, env=env)
+            messages, decode_error = _decode_json_stream(stdout)
+            entry["messages"] = messages
+            if rc != 0:
+                entry["error"] = _sanitize_error(stderr) or f"govulncheck exited with {rc}"
+            elif decode_error:
+                entry["error"] = decode_error
+            if entry["error"]:
+                errors.append(f"{rel}: {entry['error']}")
+
+        error: str | None = None
+        if errors and all(m["error"] for m in report["modules"]):
+            error = f"govulncheck failed: {errors[0]}"[:400]
+        return ScannerResult(scanner="govulncheck", format=fmt, report=report, error=error)
+    except RuntimeError as exc:
+        return ScannerResult(scanner="govulncheck", format=fmt, report={}, error=str(exc))
+    finally:
+        await asyncio.to_thread(_force_rmtree, work_dir)
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)

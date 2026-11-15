@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends
 
-from app.core.write_auth import require_admin_write, require_token_admin
+from app.core.auth_context import require_read_access
+from app.core.write_auth import require_admin_write, require_editor_write, require_token_admin
 from app.api.v1 import (
     advisory_feeds,
     api_tokens,
     app_settings,
     assets,
     audit,
+    auth,
     backup,
     capec,
     changelog,
@@ -18,16 +20,20 @@ from app.api.v1 import (
     license_policies,
     malware,
     notifications,
+    packages,
     saved_searches,
     scans,
     stats,
     status,
     sync,
     version,
+    vex_rules,
     vulnerabilities,
 )
 
-api_router = APIRouter()
+# With AUTH_REQUIRE_LOGIN every route below needs a session or another credential;
+# the gate itself lets PUBLIC_ROUTES (health, config, shields, /auth/*) through.
+api_router = APIRouter(dependencies=[Depends(require_read_access)])
 
 # Write-protection (Layer A): routers below whose every mutating endpoint is a
 # genuine admin write (no POST-as-read endpoints) get the global admin gate at
@@ -37,7 +43,11 @@ api_router = APIRouter()
 # (``POST /scans``) and per-target delegation. ``status`` is NOT gated — its
 # ``POST /status/system-auth`` must stay reachable to verify the password.
 _admin_write = [Depends(require_admin_write)]
+# Writes that are work rather than administration: an OIDC editor passes, password
+# callers still need the system password (the same secret as before).
+_editor_write = [Depends(require_editor_write)]
 
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(status.router, prefix="/status", tags=["status"])
 api_router.include_router(config.router, tags=["config"])
 api_router.include_router(app_settings.router, tags=["app-settings"], dependencies=_admin_write)
@@ -46,9 +56,11 @@ api_router.include_router(
 )
 api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["vulnerabilities"])
 api_router.include_router(
-    saved_searches.router, prefix="/saved-searches", tags=["saved-searches"], dependencies=_admin_write
+    saved_searches.router, prefix="/saved-searches", tags=["saved-searches"], dependencies=_editor_write
 )
 api_router.include_router(cpe.router, prefix="/cpe", tags=["cpe"])
+# Read-only (GET): the pre-install package check for agents and CI.
+api_router.include_router(packages.router, prefix="/packages", tags=["packages"])
 api_router.include_router(cwe.router, prefix="/cwe", tags=["cwe"])
 api_router.include_router(capec.router, prefix="/capec", tags=["capec"])
 api_router.include_router(assets.router, prefix="/assets", tags=["assets"])
@@ -67,8 +79,9 @@ api_router.include_router(
 api_router.include_router(
     license_policies.router, prefix="/license-policies", tags=["license-policies"], dependencies=_admin_write
 )
+api_router.include_router(vex_rules.router, prefix="/vex-rules", tags=["vex-rules"], dependencies=_admin_write)
 api_router.include_router(inventory.report_router, prefix="/inventory", tags=["inventory"])
-api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"], dependencies=_admin_write)
+api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"], dependencies=_editor_write)
 api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(malware.router, prefix="/malware", tags=["malware"])
 api_router.include_router(version.router, tags=["version"])

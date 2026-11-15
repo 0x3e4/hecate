@@ -25,6 +25,12 @@ class PublicConfigResponse(BaseModel):
         alias="aiBatchMaxVulns", serialization_alias="aiBatchMaxVulns"
     )
     docs_url: str | None = Field(default=None, alias="docsUrl", serialization_alias="docsUrl")
+    # OIDC sign-in: on at all, required for reads, and the button label.
+    auth_enabled: bool = Field(default=False, alias="authEnabled", serialization_alias="authEnabled")
+    auth_required: bool = Field(default=False, alias="authRequired", serialization_alias="authRequired")
+    auth_provider_label: str | None = Field(
+        default=None, alias="authProviderLabel", serialization_alias="authProviderLabel"
+    )
     model_config = {"populate_by_name": True}
 
 
@@ -74,4 +80,7 @@ async def get_public_config(
         eol_enabled=settings.endoflife_enabled,
         ai_batch_max_vulns=ai_batch_max_vulns,
         docs_url=public_docs_url(settings.docs_url),
+        auth_enabled=settings.oidc_enabled,
+        auth_required=settings.auth_login_required,
+        auth_provider_label=settings.oidc_provider_label if settings.oidc_enabled else None,
     )

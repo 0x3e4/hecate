@@ -4,6 +4,7 @@ from typing import Any
 
 import structlog
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo import UpdateMany
 from pymongo.errors import PyMongoError
 
 from app.core.config import settings
@@ -12,6 +13,12 @@ from app.models.scan import ScanSbomComponentDocument
 from app.utils.strings import contains_regex
 
 log = structlog.get_logger()
+
+# Release-age / publisher signals (app/services/supply_chain_service.py).
+_SUPPLY_CHAIN_FIELDS = (
+    "published_at", "latest_version", "latest_published_at", "publisher",
+    "previous_publishers", "new_maintainers", "fresh_release", "unmaintained", "publisher_changed",
+)
 
 
 class ScanSbomRepository:
@@ -78,9 +85,15 @@ class ScanSbomRepository:
                 "supplier": {"$first": "$supplier"},
                 "licenses": {"$addToSet": "$licenses"},
                 "provenance_verified": {"$max": "$provenance_verified"},
+                # "runtime" > "optional" > "dev" as strings, and $max skips
+                # nulls, so this is the runtime-wins merge rule.
+                "scope": {"$max": "$scope"},
                 "file_paths": {"$addToSet": "$file_path"},
                 "scan_id": {"$first": "$scan_id"},
                 "target_id": {"$first": "$target_id"},
+                # Supply-chain signals: written onto every row of a
+                # (name, version), $max skips the rows still without them.
+                **{f: {"$max": f"${f}"} for f in _SUPPLY_CHAIN_FIELDS},
             }},
             {"$sort": {"_id.name": 1, "_id.version": 1}},
             {"$facet": {
@@ -116,14 +129,34 @@ class ScanSbomRepository:
                     "supplier": item.get("supplier"),
                     "licenses": unique_licenses,
                     "provenance_verified": item.get("provenance_verified"),
+                    "scope": item.get("scope"),
                     "file_paths": file_paths,
                     "scan_id": item.get("scan_id"),
                     "target_id": item.get("target_id"),
+                    **{f: item.get(f) for f in _SUPPLY_CHAIN_FIELDS},
                 })
             return total, items
         except PyMongoError as exc:
             log.warning("scan_sbom_repository.list_by_scan_failed", scan_id=scan_id, error=str(exc))
             return 0, []
+
+    async def apply_scopes(self, scan_id: str, scopes: dict[tuple[str, str], str]) -> int:
+        """Write the merged scope onto every row of each (name, version)."""
+        if not scopes:
+            return 0
+        ops = [
+            UpdateMany(
+                {"scan_id": scan_id, "name": name, "version": version, "scope": {"$ne": scope}},
+                {"$set": {"scope": scope}},
+            )
+            for (name, version), scope in scopes.items()
+        ]
+        try:
+            result = await self.collection.bulk_write(ops, ordered=False)
+            return result.modified_count
+        except PyMongoError as exc:
+            log.warning("scan_sbom_repository.apply_scopes_failed", scan_id=scan_id, error=str(exc))
+            return 0
 
     async def count_by_scan_consolidated(self, scan_id: str) -> int:
         """Count distinct (name, version) SBOM components for a single scan."""
@@ -183,6 +216,7 @@ class ScanSbomRepository:
                 "purl": {"$first": "$purl"},
                 "licenses": {"$first": "$licenses"},
                 "provenance_verified": {"$first": "$provenance_verified"},
+                "scope": {"$max": "$scope"},
                 "targets": {"$addToSet": {"target_id": "$target_id", "scan_id": "$scan_id"}},
             }},
             {"$sort": {"_id.name": 1, "_id.version": 1}},
@@ -206,6 +240,7 @@ class ScanSbomRepository:
                     "purl": item.get("purl"),
                     "licenses": item.get("licenses", []),
                     "provenance_verified": item.get("provenance_verified"),
+                    "scope": item.get("scope"),
                     "targets": item.get("targets", []),
                 })
             return total, items

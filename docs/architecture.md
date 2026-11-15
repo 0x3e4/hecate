@@ -29,7 +29,7 @@ flowchart TB
     User([User / Browser])
     CICD([CI/CD])
 
-    subgraph FE["Frontend :4173 — React 19 / Vite / TypeScript"]
+    subgraph FE["Frontend + gateway :4173 — nginx, React 19 SPA"]
         SPA[Dark-theme SPA]
     end
 
@@ -46,9 +46,9 @@ flowchart TB
     Mongo[("MongoDB :27017<br/>persistence")]
     OS[("OpenSearch :9200<br/>full-text index")]
 
-    User -- "/api" --> FE
-    FE --> BE
-    CICD -- "POST /api/v1/scans" --> BE
+    User --> FE
+    CICD -- "POST /api/v1/scans" --> FE
+    FE -- "/api, /mcp" --> BE
     BE --> Scanner
     BE --> Apprise
     BE --> Mongo
@@ -63,10 +63,15 @@ Actions workflows drive CI/CD: `build-images.yml` builds all three images on eve
 on semver tags, while `release.yml` extracts the matching section from `CHANGELOG.md` and cuts a
 GitHub Release whenever a semver tag is pushed.
 
+The frontend container is the gateway: its nginx serves the SPA and forwards `/api`, `/mcp` and
+`/.well-known/oauth-*` to the backend (unbuffered for the SSE stream and MCP). The backend publishes
+no port, so nothing outside Compose reaches it directly, and the web app and the API share one origin,
+which the sign-in cookie needs. The backend learns the client IP from the gateway
+(`TRUSTED_PROXY_IPS=frontend`), the gateway from the reverse proxy (`TRUSTED_PROXIES`).
+
 For a live deployment the stack sits behind a TLS-terminating reverse proxy. The
 `deploy/reverse-proxy/` folder provides ready-to-adapt nginx, Caddy and Traefik templates that
-terminate HTTPS, route `/api`, `/mcp` and the SSE stream to the backend and everything else to the
-frontend, and add a hardened HTTP security-header set (HSTS, a strict Content-Security-Policy,
+terminate HTTPS, send every request to the frontend gateway, and add a hardened HTTP security-header set (HSTS, a strict Content-Security-Policy,
 `X-Frame-Options`, `Permissions-Policy` and the cross-origin isolation headers).
 
 Deployments that sit behind a corporate MITM proxy are supported through `HTTP_CA_BUNDLE`. At startup
@@ -360,7 +365,7 @@ precise matching without a rebuild, while wildcard queries keep working as befor
 
 SCA is the active half of Hecate. A request — from CI/CD or the web UI — reaches the backend, which
 calls the scanner sidecar, parses the normalised results, and stores them in MongoDB. The sidecar is a
-separate Docker container bundling ten scanners. Scanner tools pull container images directly through
+separate Docker container bundling eleven scanners. Scanner tools pull container images directly through
 registry APIs (no Docker socket); Dive uses Skopeo to fetch the image as a docker-archive. Registry
 and git authentication is supplied through the `SCANNER_AUTH` environment variable.
 
@@ -386,7 +391,9 @@ diffs two scans into added, removed and changed findings, where "changed" groups
 under a different vulnerability. **SBOM export** produces CycloneDX 1.5 and SPDX 2.3 JSON from a
 pure-function builder (no external libraries), suitable for EU Cyber Resilience Act compliance, and
 **SBOM import** accepts external CycloneDX or SPDX uploads, auto-detects the format, matches the
-components against the vulnerability DB, and creates a target and scan of type `sbom-import`. **VEX**
+components against the vulnerability DB, and creates a target and scan of type `sbom-import`. It takes at
+most `SCA_SBOM_IMPORT_MAX_COMPONENTS` (25,000) components, and the write gate resolves the target exactly
+as the import does (a blank name counts as unset, so the file names the target). **VEX**
 status annotations (`not_affected`, `affected`, `fixed`, `under_investigation`) carry justification and
 detail, are editable inline and in bulk, export and import as CycloneDX VEX, and carry forward onto
 matching findings after every scan. **Findings dismissal** is a separate personal display filter that

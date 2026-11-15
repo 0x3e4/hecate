@@ -1,5 +1,8 @@
 import axios from "axios";
 
+import { currentReturnPath, loginUrl } from "../auth/returnTo";
+import { readStoredLanguage } from "../i18n/language";
+import { emitToast } from "./toastBridge";
 import {
   extractTargetIdFromUrl,
   getAdminPassword,
@@ -20,11 +23,25 @@ declare module "axios" {
 }
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export const apiBaseURL: string = baseURL;
 
 export const api = axios.create({
   baseURL,
-  timeout: 60000  // Increased to 60s to handle long-running operations like stats
+  timeout: 60000,  // Increased to 60s to handle long-running operations like stats
+  // Proves to the backend that a cookie-authenticated write comes from these
+  // pages: a cross-site form or script cannot add a custom header.
+  headers: { "X-Hecate-Request": "1" },
 });
+
+const roleDeniedMessage = (role: string): string => {
+  const german = readStoredLanguage() === "de";
+  if (role === "admin") {
+    return german ? "Dafür ist die Admin-Rolle nötig." : "This action requires the admin role.";
+  }
+  return german ? "Dafür ist mindestens die Editor-Rolle nötig." : "This action requires the editor role.";
+};
+
+let loginRedirectStarted = false;
 
 const MUTATING = new Set(["post", "put", "patch", "delete"]);
 
@@ -63,6 +80,22 @@ api.interceptors.response.use(
   async (error) => {
     const config = error?.config;
     const status = error?.response?.status;
+    const headers = error?.response?.headers ?? {};
+    // A signed-in user whose role is too low: say so, never ask for a password.
+    if (status === 403 && headers["x-auth-role-required"]) {
+      emitToast(roleDeniedMessage(String(headers["x-auth-role-required"])), "error");
+      return Promise.reject(error);
+    }
+    // Only a sign-in helps (session expired, or a write without one): go to the
+    // identity provider and come back here. A 401 that also offers a password
+    // goes to the password prompt below, which has its own sign-in button.
+    if (status === 401 && headers["x-auth-required"] === "login" && !headers["x-write-auth-required"]) {
+      if (!loginRedirectStarted && typeof window !== "undefined") {
+        loginRedirectStarted = true;
+        window.location.assign(loginUrl(baseURL, currentReturnPath()));
+      }
+      return Promise.reject(error);
+    }
     const targetId = config
       ? writePromptTarget(error?.response?.headers?.["x-write-auth-required"], resolveTargetId(config))
       : undefined;

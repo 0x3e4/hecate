@@ -52,6 +52,20 @@ RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${SKOPEO_VERSI
     && go mod tidy && go mod vendor \
     && go build -tags "containers_image_openpgp exclude_graphdriver_btrfs exclude_graphdriver_devicemapper" \
         -ldflags "-s -w" -o /out/skopeo ./cmd/skopeo
+# govulncheck (Go reachability scanner): same tag-and-commit check. Source mode
+# type-checks the scanned module through `go list`, so the runtime image also
+# gets this stage's Go toolchain, trimmed to what `go list` needs: no docs,
+# tests, testdata or wasm, and of pkg/tool only compile / asm / cgo / link
+# (the go command asks compile for its version when it builds action IDs).
+ARG GOVULNCHECK_VERSION=1.9.0
+ARG GOVULNCHECK_COMMIT=e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5
+RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${GOVULNCHECK_VERSION} https://github.com/golang/vuln.git vuln \
+    && cd vuln && test "$(git rev-parse HEAD)" = "${GOVULNCHECK_COMMIT}" \
+    && go build -ldflags "-s -w" -o /out/govulncheck ./cmd/govulncheck \
+    && cp -a "$(go env GOROOT)" /out/goroot \
+    && cd /out/goroot && rm -rf api doc misc test lib/wasm pkg/obj \
+    && find src -type d -name testdata -prune -exec rm -rf {} + \
+    && find pkg/tool -mindepth 2 -maxdepth 2 -type f ! -name compile ! -name asm ! -name cgo ! -name link -delete
 
 # .NET 10 (LTS) has no GA Debian image; only /usr/share/dotnet (a portable,
 # distro-agnostic linux-x64 build) is copied, so the Ubuntu-based tag is fine.
@@ -73,7 +87,11 @@ COPY --from=syft /syft /usr/local/bin/syft
 # Dockle, osv-scanner, Dive (Docker image layer analysis) and skopeo (image
 # fetching for Dive and digests), built above. skopeo refuses to run without a
 # signature policy; this is the default Debian's containers-common ships.
-COPY --from=gotools /out/dockle /out/osv-scanner /out/dive /out/skopeo /usr/local/bin/
+COPY --from=gotools /out/dockle /out/osv-scanner /out/dive /out/skopeo /out/govulncheck /usr/local/bin/
+# Go toolchain for govulncheck's source mode (`go list`), see the gotools stage.
+COPY --from=gotools /out/goroot /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}" \
+    GOTOOLCHAIN=local
 RUN mkdir -p /etc/containers \
     && printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > /etc/containers/policy.json
 

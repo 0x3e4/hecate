@@ -12,6 +12,10 @@ that protected writes elsewhere in the UI — deleting a scan target, saving a n
 longer prompt you again. With no `SYSTEM_PASSWORD` configured, the page opens directly. See
 [Security & Access Control](../security-access-control.md) for how the gate works end to end.
 
+With [OIDC sign-in](authentication.md) configured, a signed-in **admin** opens the page without the
+dialog. Anyone else signed in sees the dialog when a system password exists (so whoever holds it can
+still use it), or otherwise the page with a note that changes need the admin role.
+
 ![System page — General tab](../img/hecate-system.png)
 
 ## The five tabs at a glance
@@ -25,7 +29,7 @@ linked in the last column.
 | **Access Control** | Create and revoke API tokens, and set or clear a per-target write password for each scan target. | [Security & Access Control](../security-access-control.md) |
 | **Notifications** | Manage Apprise channels, notification rules, and message templates. | [Notifications](../integrations/notifications.md) |
 | **Data** | Watch the sync status of all ten sources, trigger syncs by hand, re-sync or delete specific vulnerabilities, and manage saved searches. | this page |
-| **Policies** | Define SPDX license policies that are evaluated after every scan. | [License Compliance](../sca/licenses.md) |
+| **Policies** | Define SPDX license policies that are evaluated after every scan, and automatic VEX rules. | [License Compliance](../sca/licenses.md), [VEX rules](#vex-rules) |
 
 ## General
 
@@ -64,11 +68,11 @@ file's metadata before touching anything and reports how many rows were inserted
 
 ## Access Control
 
-**API tokens** come first on this tab: each goes to one pipeline or tool and opens only what its scopes allow. A new token is shown once. This part needs `SYSTEM_PASSWORD`, see [API tokens](../security-access-control.md#api-tokens).
+**API tokens** come first on this tab: each goes to one pipeline or tool and opens only what its scopes allow. A new token is shown once. This part needs `SYSTEM_PASSWORD` or a signed-in admin, see [API tokens](../security-access-control.md#api-tokens).
 
 Below that, the tab manages **per-target write passwords**. Hecate's write
 protection has two layers: a global admin password that can authorise any mutation, and an optional
-per-target password that authorises writes scoped to one scan target (rescans, deletes, VEX edits).
+per-target password that authorises writes scoped to one scan target (rescans, settings, VEX edits; deleting the target or its scans still takes the system password).
 Here you set or clear that per-target secret for each registered target. The admin password always
 overrides a per-target password, so this tab is about delegating narrow write access — for example,
 letting one team manage their own target without handing out the admin password.
@@ -165,3 +169,67 @@ The editor includes quick-fill buttons that populate the allowed or denied field
 groups (permissive, copyleft, weak copyleft), so you can start from a sensible baseline. For how
 policies are evaluated, what the verdicts mean, and where the results appear in scan detail, see
 [License Compliance](../sca/licenses.md).
+
+### VEX rules
+
+Below the license policies, **VEX rules** set a VEX status on findings automatically, so the same judgement
+does not have to be typed again for every target and every scan. A typical use is the noise that dependency
+scanners are known for: a regular-expression DoS in a test framework, or a Windows-only vulnerability in a Linux
+image.
+
+A rule has **conditions**, all optional and combined with AND; an unset condition matches everything, and a rule
+needs at least one:
+
+| Condition | Matches |
+| --- | --- |
+| Target | a wildcard (`*`, `?`) on the target id or name, case-insensitive |
+| Application group | the target's group |
+| Target type | container image, source repository, SBOM import |
+| Dependency scope | runtime, optional, dev, unknown (see [Dependency scope](../sca/scan-results.md#dependency-scope)) |
+| CWE ids | any of the listed CWEs on the vulnerability, read from Hecate's vulnerability database |
+| Package | a wildcard on the package name |
+| Ecosystems | purl types such as `npm`, `pypi`, `maven`, `golang`, `deb` (from the SBOM component, else the scanner's package type) |
+| Severity at or below | the finding's severity is at most this one; a finding of unknown severity never matches |
+| Windows / Apple OS only, Linux image | see below |
+
+and an **action**: a VEX status, a justification from the CycloneDX or OpenVEX vocabulary (for example
+`code_not_reachable`, `requires_environment`, `vulnerable_code_not_in_execute_path`), a detail text and,
+optionally, **also dismiss** the finding. Rules run in **priority** order (lower first, then oldest); the first
+rule that matches a finding sets its status.
+
+**When rules run.** After every scan (behind the carry-forward from the previous scan and the target's VEX
+sources), at the end of an SBOM import, after a target's VEX sources were fetched, when a rule is created,
+changed, switched on or off, or deleted, and on **Apply to latest scans**, which goes through the latest completed
+scan of every target and reports how many statuses it set and cleared. Rules work on the latest scan; older scans
+keep the statuses they had.
+
+**Who wins.** A rule only fills findings that have **no VEX status or one a rule set** (`vexUpdatedBy` =
+`vex-rule:<id>`). A status set by hand, through MCP, imported with **Import VEX**, carried forward from a manual
+one, applied from a VEX source or set by a reachability analysis is never touched, and a VEX source replaces a
+rule's status (a statement about this product beats a generic rule). A rule's dismissal only touches findings
+nobody dismissed by hand. When a finding no longer matches its rule, or the rule is switched off or deleted,
+the status and dismissal it set are removed again, and only those still carrying its actor; carry-forward keeps
+the rule as the actor of both the status and the dismissal, so the next scan can re-check it. On the scan page such a status carries a **rule: name**
+chip that links here, and the **Set by → Rule** filter finds them.
+
+**Windows / Apple OS only, Linux image.** This condition matches only when it can be shown from the data and
+fails closed otherwise. The vulnerability must have CPE configurations, and *every* configuration must be
+restricted to Windows or an Apple OS: either its vulnerable CPEs are themselves `cpe:2.3:o:microsoft:windows*`,
+`o:apple:macos` / `mac_os_x` / `mac_os` or `o:apple:iphone_os` / `ipados`, or it has a non-vulnerable
+"running on" node made only of such OS CPEs next to an explicitly vulnerable one. A configuration without an
+explicitly vulnerable match, with a negated node, or whose platform node also allows another OS (Linux, Android,
+anything else) makes the whole vulnerability not match. The target must be a **container image** whose latest
+SBOM contains Linux distribution packages (purl type `deb`, `apk`, `rpm` or `alpm`); a source repository, an
+SBOM import or an image without such packages never matches.
+
+**Presets.** Three ready-made rules can be copied into the form with **Use**; they start switched off:
+
+| Preset | Conditions | Sets |
+| --- | --- | --- |
+| DoS and ReDoS in dev dependencies | scope dev, CWE-400, 405, 407, 674, 770, 776, 834, 835, 1050, 1333 | not affected, `code_not_reachable` |
+| Dev dependencies to triage | scope dev (priority 900, so it runs after more specific rules) | under investigation |
+| Windows and Apple OS vulnerabilities in Linux images | container image, Windows / Apple OS only | not affected, `requires_environment` |
+
+The rules live in the `vex_rules` collection; the routes are `GET/POST /api/v1/vex-rules`,
+`PUT/DELETE /api/v1/vex-rules/{id}`, `GET /api/v1/vex-rules/presets` and `POST /api/v1/vex-rules/apply`. Reading
+them is open, every write goes through the same admin write gate as the license policies.

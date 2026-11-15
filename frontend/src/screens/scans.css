@@ -281,8 +281,15 @@
 @container (max-width: 40rem) {
   .scans-target-row { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-sm); }
   .scans-target-row > td { grid-column: 1 / -1; }
-  .scans-target-row > .scans-cell-target { grid-column: 1; }
-  .scans-target-row > .scans-cell-actions { grid-column: 2; }
+  /* Name and the two icon buttons share line one; type and URL get the full width below */
+  .scans-target-row > .scans-cell-target { grid-column: 1 / -1; }
+  .scans-target-row > .scans-cell-actions { position: relative; grid-column: 2; align-self: start; justify-self: end; min-height: 0; }
+  .scans-target-title { min-height: 32px; padding-right: calc(64px + 2 * var(--space-sm)); }
+  .scans-row-actions { gap: var(--space-sm); }
+  .scans-row-actions .scans-row-action { position: relative; width: 32px; min-height: 32px; height: 32px; padding: 0; }
+  .scans-row-actions .scans-row-action::after { content: ""; position: absolute; inset: -6px; }
+  .scans-row-action-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .scans-row-actions .scans-outline { width: 32px; height: 32px; }
   .scans-target-row > .scans-cell-scanners, .scans-target-row > .scans-cell-auto { grid-column: 1 / -1; grid-row: auto; }
   .scans-inline-value { flex: 1 1 auto; justify-content: space-between; }
 }

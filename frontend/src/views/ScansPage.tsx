@@ -80,6 +80,7 @@ const SCANNER_META: ScannerMeta[] = [
   { id: "trivy", category: "vulnerability" },
   { id: "grype", category: "vulnerability" },
   { id: "osv-scanner", category: "vulnerability" },
+  { id: "govulncheck", category: "vulnerability", noteEn: "Go reachability", noteDe: "Go-Erreichbarkeit" },
   { id: "syft", category: "sbom" },
   { id: "semgrep", category: "sast" },
   { id: "devskim", category: "sast", noteEn: ".NET focus", noteDe: ".NET-Fokus" },
@@ -99,7 +100,7 @@ const CATEGORY_ORDER: Array<{ key: ScannerCategory; en: string; de: string }> = 
   { key: "layer", en: "Layer Analysis", de: "Schichtanalyse" },
 ];
 
-const SOURCE_REPO_SCANNER_IDS = new Set(["trivy", "grype", "syft", "osv-scanner", "hecate", "semgrep", "trufflehog", "devskim"]);
+const SOURCE_REPO_SCANNER_IDS = new Set(["trivy", "grype", "syft", "osv-scanner", "govulncheck", "hecate", "semgrep", "trufflehog", "devskim"]);
 const CONTAINER_SCANNER_IDS = new Set(["trivy", "grype", "syft", "dockle", "dive"]);
 
 interface ScannerCheckboxGroupProps {
@@ -2329,7 +2330,7 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
                 title={t("Stop scan", "Scan stoppen")}
               >
                 <LuSquare aria-hidden="true" />
-                Stop
+                <span className="scans-row-action-label">Stop</span>
               </button>
             ) : (
               <button
@@ -2339,7 +2340,7 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
                 title={t("Rescan", "Erneut scannen")}
               >
                 <LuRefreshCw aria-hidden="true" />
-                Scan
+                <span className="scans-row-action-label">Scan</span>
               </button>
             )}
             <IconButton className="scans-outline" label={t("Delete", "Löschen")} onClick={() => onDelete(target.id)}>

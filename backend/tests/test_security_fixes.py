@@ -14,7 +14,9 @@ from starlette.datastructures import Headers
 
 from app.api.v1.notifications import _redact_channel_url
 from app.core.config import Settings
-from app.utils.request import get_security_client_ip
+import pytest
+
+from app.utils.request import get_security_client_ip, is_trusted_proxy
 from app.utils.strings import contains_regex
 
 
@@ -54,6 +56,67 @@ def test_untrusted_peer_cannot_claim_forwarded_header(monkeypatch):
     )
     req = _req("198.51.100.7", {"x-forwarded-for": "10.0.0.5"})
     assert get_security_client_ip(req) == "198.51.100.7"
+
+
+@pytest.mark.parametrize(
+    ("entries", "peer", "trusted"),
+    [
+        ("172.16.0.0/12", "172.18.0.7", True),          # Docker network, any container address
+        ("172.16.0.0/12", "172.32.0.1", False),
+        ("10.0.0.0/8,192.168.0.0/16", "192.168.1.20", True),
+        ("fd00::/8", "fd12:3456::9", True),
+        ("172.16.0.0/12", "::ffff:172.18.0.7", True),   # IPv4-mapped peer
+        ("172.18.0.2", "172.18.0.2", True),             # exact address, as before
+        ("172.18.0.2", "172.18.0.3", False),
+        ("*", "203.0.113.1", True),
+        ("unresolvable.invalid", "203.0.113.1", False),
+        ("", "172.18.0.7", False),
+    ],
+)
+def test_trusted_proxies_accept_cidr_ranges(monkeypatch, entries, peer, trusted):
+    monkeypatch.setattr("app.utils.request.settings", Settings(environment="production", trusted_proxy_ips=entries or None))
+    assert is_trusted_proxy(peer) is trusted
+
+
+def test_trusted_proxy_by_host_name_follows_the_container(monkeypatch):
+    import app.utils.request as request_utils
+
+    monkeypatch.setattr(request_utils, "settings", Settings(environment="production", trusted_proxy_ips="frontend"))
+    monkeypatch.setattr(request_utils, "_resolved_hosts", {})
+    answers = {"frontend": ["172.18.0.4"]}
+    calls = []
+
+    def fake_getaddrinfo(host, *_args, **_kwargs):
+        calls.append(host)
+        return [(2, 1, 6, "", (ip, 0)) for ip in answers[host]]
+
+    monkeypatch.setattr(request_utils.socket, "getaddrinfo", fake_getaddrinfo)
+    assert is_trusted_proxy("172.18.0.4") is True
+    assert is_trusted_proxy("172.18.0.9") is False  # a neighbour on the same network
+    assert calls == ["frontend"]  # cached between requests
+
+    # Recreated container, new address: picked up once the cache expires.
+    answers["frontend"] = ["172.18.0.7"]
+    monkeypatch.setattr(request_utils, "_resolved_hosts", {"frontend": (-1e9, frozenset({"172.18.0.4"}))})
+    assert is_trusted_proxy("172.18.0.7") is True
+
+    # A failed lookup keeps the last answer instead of trusting nobody.
+    def broken(*_args, **_kwargs):
+        raise OSError("dns down")
+
+    monkeypatch.setattr(request_utils.socket, "getaddrinfo", broken)
+    monkeypatch.setattr(request_utils, "_resolved_hosts", {"frontend": (-1e9, frozenset({"172.18.0.7"}))})
+    assert is_trusted_proxy("172.18.0.7") is True
+
+
+def test_forwarded_ip_is_read_from_a_proxy_inside_a_trusted_range(monkeypatch):
+    # The frontend gateway is recreated with a new address from its network's subnet.
+    monkeypatch.setattr(
+        "app.utils.request.settings",
+        Settings(environment="production", trusted_proxy_ips="172.16.0.0/12"),
+    )
+    req = _req("172.19.0.5", {"x-forwarded-for": "203.0.113.9"})
+    assert get_security_client_ip(req) == "203.0.113.9"
 
 
 # --------------------------------------------------------------------------

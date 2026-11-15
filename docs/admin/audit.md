@@ -17,7 +17,8 @@ started failing, and read the error message behind it without digging through co
 The header tells you how many entries exist in total, and the table is paginated 50 rows at a time
 with **Previous** / **Next** controls and a "Showing X–Y of N" counter. If your instance sets
 `SYSTEM_PASSWORD`, this page is gated: a dialog asks for the system password before any rows are
-shown, and **Cancel** (or Escape) takes you back.
+shown, and **Cancel** (or Escape) takes you back. A signed-in admin (see
+[Sign-in (OIDC) & Roles](authentication.md)) skips the dialog.
 
 ## What gets logged
 
@@ -29,8 +30,12 @@ you will see manual CVE refreshes, saved-search create/update/delete actions, SC
 MCP tool calls and OAuth events. In short, anything that touches data or runs as a tracked job leaves
 a trace.
 
-Each row carries up to six columns: the **Job** name (rendered with a friendly label such as "EUVD
-Sync" or "AI batch analysis"), the **Status** badge, the **Started** and **Finished** timestamps,
+On top of that, **every write that reaches the REST API** is recorded as an **API write** row,
+whether it was allowed or refused: creating a target, a VEX decision, an inventory edit, a deleted
+notification rule, a sync trigger. See [Who did it](#who-did-it) below.
+
+Each row carries up to seven columns: the **Job** name (rendered with a friendly label such as "EUVD
+Sync" or "AI batch analysis"), the **Actor** who triggered it, the **Status** badge, the **Started** and **Finished** timestamps,
 the **Duration** in seconds, and a **Result / Error** column. The last column is where the detail
 lives — a client IP for MCP requests, token usage for AI jobs, an expandable error message for
 failures, an "overdue" hint, or a "Show progress" / "Show details" expander with the raw JSON payload
@@ -79,6 +84,43 @@ a password, key or token show `***`, and the `user:token@` part of every URL is 
 repository URL that a scan rejected. Entries written by versions before this masking existed can be
 cleaned with `docker compose exec backend python -m app.cli scrub-audit-credentials` (add
 `--dry-run` to list them first). Rotate every token it finds.
+
+## Who did it
+
+The **Actor** column names who is behind a row:
+
+| Actor | When |
+| --- | --- |
+| A person, e.g. *Ada Lovelace (Editor)* | Signed in through OIDC. The tooltip shows the e-mail address, and the credential if they also used one (an editor writing with the system password). |
+| *System password* | The `X-System-Password` header authorized the request. |
+| *Target password* | A target's own write password; the tooltip names the target. |
+| *API token deploy* | An API token, with its name. |
+| *SCA API key* | The `SCA_API_KEY`. |
+| *AI password* | The AI analysis password, without a session. |
+| *Anonymous* | No gate was configured, so nothing had to authorize the request. |
+| *Name (session refused)* | A write carried someone's session cookie but not Hecate's `X-Hecate-Request` header, so it was refused and the person counts as not signed in. Usually a forged request from another site; the entry names whose browser sent it. |
+| An MCP identity | MCP tool calls, from the OAuth login. |
+
+Scheduled jobs (syncs, auto-scans) have no actor. Background results of a request, such as a finished
+AI analysis or an SCA scan started from the UI, carry the actor of the request that started them.
+
+An **API write** row records the method and route template (for example
+`PATCH /scans/targets/{target_id:path}`), the path parameters, the HTTP status, whether it succeeded,
+was denied (401 / 403 / 429) or failed, the server's error message, and the client IP. It never holds
+a request body, a header or a password; target ids that are URLs have their `user:token@` part masked.
+Where a handler already writes a richer entry of its own (API tokens, advisory feeds, saved
+searches), that entry gets the actor and the API write row is skipped, so nothing is logged twice.
+Routes that only read through `POST` (`/vulnerabilities/search`, `/cwe/bulk`, …) are not recorded; a
+`/vulnerabilities/lookup` is, once it fetches from upstream.
+
+Three more entry types come with sign-in: **Sign-in** (completed, or failed with the reason such as
+`no_role` or `invalid_token`), **Sign-out**, and **Password check** for the unlock dialogs on the
+System, Audit and AI pages. Audit entries are written after the response and a failure to write one
+is only logged: auditing never fails or slows down the request it describes.
+
+When sign-in is configured but `AUTH_REQUIRE_LOGIN=false`, the log stays public; visitors who are not
+signed in see names and roles but not e-mail addresses or IdP subjects. MCP entries show "MCP user" in
+place of the IdP identity (GitHub login, Microsoft UPN or OIDC subject) and no e-mail address.
 
 ## When to use it
 

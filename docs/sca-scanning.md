@@ -40,14 +40,16 @@ minutes). The scan's error says why, and the target stops showing a scan in prog
 
 ## Scanners
 
-Ten scanners run inside the sidecar. Trivy, Grype and OSV Scanner find dependency vulnerabilities; Syft
-builds the SBOM; the in-house Hecate Analyzer adds its own SBOM extractor, malware detection and
-provenance checks; and the remaining four cover specialised, opt-in surfaces. Each target remembers the
+Eleven scanners run inside the sidecar. Trivy, Grype and OSV Scanner find dependency vulnerabilities;
+govulncheck adds reachability for Go; Syft builds the SBOM; the in-house Hecate Analyzer adds its own
+SBOM extractor, malware detection and provenance checks; and the remaining four cover specialised,
+opt-in surfaces. Each target remembers the
 scanners chosen at its first scan and reuses them for later auto-scans.
 
 | Scanner | Purpose |
 | --- | --- |
 | trivy, grype, osv-scanner | Vulnerability detection |
+| govulncheck | Go only, source repositories: reports a vulnerability only when its vulnerable function is reachable, and marks the other scanners' findings for unreached code VEX `not_affected` ([Go reachability](#go-reachability-govulncheck)) |
 | syft | SBOM generation |
 | hecate | In-house SBOM extractor + malware detector + provenance |
 | dockle | CIS Docker Benchmark, container images (Best Practices tab) |
@@ -62,8 +64,10 @@ dependencies: they usually describe something else, such as the container image 
 check an SBOM, import it as its own target instead. A committed VEX file is not applied either; add
 its raw URL as a [VEX source](sca/scan-results.md#vex-sources) on the target.
 
-The image-only scanners (Dockle, Dive) and the repo-only scanners (Semgrep, DevSkim, TruffleHog) only
-produce output for the matching target type. Container images are pulled directly through registry
+Where a lockfile or manifest says whether a package is a runtime, optional or development dependency, the Hecate analyzer records it; the findings and SBOM can then be filtered by that [dependency scope](sca/scan-results.md#dependency-scope), and [VEX rules](admin/system.md#vex-rules) can act on it.
+
+The image-only scanners (Dockle, Dive) and the repo-only scanners (govulncheck, Semgrep, DevSkim,
+TruffleHog) only produce output for the matching target type. Container images are pulled directly through registry
 APIs — no Docker socket is mounted — and Dive uses Skopeo to fetch the image as an archive. Registry
 and git credentials are supplied through the `SCANNER_AUTH` environment variable.
 
@@ -72,6 +76,65 @@ across all scanners (rather than cloned once per scanner), so a scan no longer f
 concurrent `git clone` of the same repo that could contend for bandwidth and trip the clone timeout.
 The clone budget is `GIT_CLONE_TIMEOUT_SECONDS` (default 300 s); a clone failure surfaces as a single
 clean error and marks the scan failed.
+
+## Go reachability (govulncheck)
+
+Trivy, Grype and OSV Scanner compare versions: a Go module in a vulnerable range is a finding, whether
+your code ever reaches the vulnerable function or not. **govulncheck** (the Go team's own tool) type-checks
+every Go module of the repository (each `go.mod` outside `vendor/`, `testdata/` and directories starting
+with `.` or `_`, at most `GOVULNCHECK_MAX_MODULES`, default 25) and answers per Go vulnerability-database
+entry on one of three levels:
+
+| Level | Meaning | What Hecate does |
+| --- | --- | --- |
+| symbol | a vulnerable function is reachable from your code | a govulncheck finding, with the call path in its description |
+| package | the vulnerable package is imported, no vulnerable function is called | the other scanners' findings for it get VEX `not_affected`, justification `vulnerable_code_not_in_execute_path` |
+| module | the module is required, the vulnerable package is not imported | the same, justification `vulnerable_code_not_present` |
+
+The VEX statements carry the actor `reachability:govulncheck` and show a **reachability** chip next to
+the status (the tooltip names the entry and the package). A finding is matched by its CVE, GHSA or GO
+id and the module path. The reachability analysis never overwrites a status set by hand, imported, written
+over MCP or taken from a VEX source; it does replace a status a VEX rule set (evidence beats a generic rule),
+and runs before the VEX rules, which then leave its statements alone. A VEX source replaces its statement. When a later
+scan shows the function is called, or no longer reports the entry, its own statement is removed again;
+carry-forward keeps the actor. Statements are only set when every Go module was analysed without an error;
+a failed module still lets a "called" answer clear a statement. Findings from committed Go binaries are
+left alone. Standard-library entries are skipped, because govulncheck judges the standard library by the
+Go toolchain inside the scanner image, not by your project's.
+
+govulncheck needs the Go toolchain and the module sources, so the scanner image carries Go and downloads
+modules through `GOPROXY` (default `https://proxy.golang.org`, without `direct`: a `require` in the scanned
+tree must not make the sidecar fetch from arbitrary hosts). Private modules need an operator-set `GOPROXY`
+(and `GONOSUMDB` / `GOPRIVATE`). The vulnerability database is `https://vuln.go.dev`; an offline site
+points `GOVULNCHECK_DB` at a mirror (an `https://` or `file://` URL). A `toolchain` line in a scanned
+`go.mod` never downloads another Go (`GOTOOLCHAIN=local`), so a module requiring a newer Go than the
+image's fails with a clear error. Module downloads land in a per-run directory under `/tmp` (or
+`GOVULNCHECK_CACHE_DIR` for a persistent cache). Budget: `GOVULNCHECK_TIMEOUT_SECONDS` (default 600) for
+all modules of a scan. govulncheck is opt-in: tick it in the scanner selection of a source-repository scan.
+
+## Supply-chain signals
+
+After every completed scan (and SBOM import) Hecate looks up each registry package of the SBOM (npm,
+PyPI, Go, Maven, Cargo, NuGet, RubyGems through [deps.dev](https://deps.dev), Composer through Packagist,
+npm publishers through the npm registry) and flags three things on the component:
+
+| Signal | When |
+| --- | --- |
+| Fresh release | the installed version was published less than `SCA_FRESH_RELEASE_DAYS` (default 7) days ago. Worms like Shai-Hulud spread through new releases from taken-over accounts and most are pulled within days, so a short cooldown catches them. |
+| New publisher | npm only: the npm account that published the installed version published none of the `SCA_PUBLISHER_HISTORY` (3) versions before it. Maintainers added since the previous version are listed too. Checked for versions at most `SCA_PUBLISHER_CHECK_MAX_AGE_DAYS` (365) old. A switch to trusted publishing from CI also shows up here. |
+| Unmaintained | the package's latest release is older than `SCA_UNMAINTAINED_DAYS` (default 730) days. |
+
+The SBOM tab shows them as chips under the component name and as a **Supply chain** facet to filter by;
+the scan header counts them once the lookups finished. The CycloneDX export carries them as
+`hecate:release:*` / `hecate:npm:*` properties. Lookups run in the background behind the scan (at most
+`SCA_RELEASE_INFO_MAX_COMPONENTS` components, `SCA_RELEASE_INFO_CONCURRENCY` at a time,
+`SCA_RELEASE_INFO_TIMEOUT_SECONDS` in total), are cached per package version in the `package_releases`
+collection for `SCA_RELEASE_INFO_CACHE_TTL_HOURS` (24; unknown packages 6), and never fail a scan.
+Two answers change with the next publish and are kept for 15 minutes only: which version is the latest
+(an unpinned check) and "this version is not published yet", so a release published minutes ago is
+flagged by the package check and by the next scan. Only
+npm account names are stored, no e-mail addresses. `SCA_RELEASE_INFO_ENABLED=false` turns the lookups
+(and the release part of the [package check](integrations/package-check.md)) off.
 
 ## Auto-scan
 

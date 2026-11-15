@@ -3,6 +3,7 @@ import { AIBatchInvestigationResponse, VulnerabilityPreview } from "../../types"
 import { useI18n } from "../../i18n/context";
 import { AILoadingIndicator } from "../AILoadingIndicator";
 import { formatDateTime } from "../../utils/dateFormat";
+import { aiProviderName } from "../../utils/aiSummary";
 import { ReportMarkdown, ReportMeta } from "./ReportParts";
 
 interface BatchAnalysisDisplayProps {
@@ -95,7 +96,8 @@ export const BatchAnalysisDisplay = ({
   }
 
   const metaRows = [
-    { label: t("Provider", "Provider"), value: response.provider },
+    { label: t("Provider", "Provider"), value: aiProviderName(response.provider) },
+    { label: t("Model", "Modell"), value: response.model?.trim() || t("not recorded", "nicht erfasst") },
     { label: t("Language", "Sprache"), value: response.language },
     { label: t("Vulnerabilities", "Schwachstellen"), value: response.vulnerabilityCount.toLocaleString(locale) },
     { label: t("Generated", "Erstellt"), value: formatDateTime(response.generatedAt) },

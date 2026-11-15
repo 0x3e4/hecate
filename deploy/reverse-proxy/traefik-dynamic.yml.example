@@ -6,16 +6,16 @@
 # Replace the placeholders:
 #
 #   hecate.example.com     -> your domain
-#   hecate-backend:8000    -> backend service:port
 #   hecate-frontend:4173   -> frontend service:port
 #   letsencrypt            -> your certResolver name (must match the static config)
 #
-# Higher router priority wins, so the docs router (most specific) is evaluated
-# before the backend router, which is evaluated before the catch-all frontend.
-# Traefik sets X-Forwarded-* and forwards the original Host automatically; SSE
-# (/api/v1/events) streams without extra config.
+# Higher router priority wins, so the docs router (relaxed CSP) is evaluated
+# before the catch-all. Both go to the frontend container, Hecate's gateway: it
+# serves the SPA and forwards /api, /mcp and /.well-known/oauth-* to the backend,
+# which needs no port. Traefik sets X-Forwarded-* and forwards the original Host
+# automatically; SSE (/api/v1/events) streams without extra config.
 #
-# All security headers live here (the frontend `serve` process sets none).
+# All security headers live here (the frontend container sets none).
 # NOTE: style-src 'unsafe-inline' is REQUIRED (react-select/emotion + Mermaid
 # inject <style>); do not remove it.
 # =============================================================================
@@ -29,21 +29,10 @@ http:
       rule: "Host(`hecate.example.com`) && (Path(`/api/docs`) || Path(`/api/redoc`))"
       entryPoints:
         - websecure
-      service: hecate-backend
+      service: hecate-frontend
       middlewares:
         - hecate-docs-headers
       priority: 100
-      tls:
-        certResolver: letsencrypt
-
-    hecate-backend:
-      rule: "Host(`hecate.example.com`) && (PathPrefix(`/api`) || PathPrefix(`/mcp`) || PathPrefix(`/.well-known/oauth-`))"
-      entryPoints:
-        - websecure
-      service: hecate-backend
-      middlewares:
-        - hecate-security-headers
-      priority: 50
       tls:
         certResolver: letsencrypt
 
@@ -59,10 +48,6 @@ http:
         certResolver: letsencrypt
 
   services:
-    hecate-backend:
-      loadBalancer:
-        servers:
-          - url: "http://hecate-backend:8000"
     hecate-frontend:
       loadBalancer:
         servers:

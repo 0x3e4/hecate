@@ -37,6 +37,14 @@ panel) because they express their constraints directly in the query text instead
 both — operator reference, field names, worked examples and the visual field browser — lives in
 [Search & Query Builder](search.md); this page covers only how the modes behave on the list.
 
+Switching modes takes your query along. A keyword becomes the same search in DQL (the words joined
+with AND, anything with special characters quoted, so `CVE-2021-44228` stays one term) or in regex
+(the escaped text as a substring, `.*log4j.*`). Plain DQL text and a regex the switch wrote itself
+go back the same way. A query that has no safe translation, such as a DQL with fields or a
+hand-written pattern, is kept for its mode: the other mode starts empty, and switching back brings
+your query back unchanged. Each mode also remembers its last query, so flipping between modes
+without typing returns exactly what you had.
+
 !!! tip "Short keyword searches are capped"
     A keyword shorter than three characters runs a prefix search capped at a few thousand results,
     so the page stays responsive. Enter at least three characters to load the full, unbounded list —
@@ -126,6 +134,22 @@ v3.1 score from NVD and a v4.0 score from a vendor). When more than one is prese
 above the score lets you switch between them, each showing the full vector breakdown for that metric.
 The newest version is selected by default.
 
+### Severity by source
+
+Since NIST stopped enriching most CVEs, the score of a CVE often comes from its CNA alone, and where NVD, the CNA,
+GitHub and EUVD all score it, they can be far apart. **Severity by source**, above the CVSS breakdown, lists every
+score Hecate has stored for the entry: the source (NVD, the CNA as NVD reports it, the assigner score EUVD carries,
+GitHub's advisory, OSV), the CVSS version, base score, severity and vector. The row Hecate shows at the top of the
+page is marked *shown*.
+
+Which score is shown: the database set as `INGESTION_PRIORITY_VULN_DB` (NVD by default) writes the score; the
+other one only fills it while it is empty. Within a record the newest CVSS version wins, with its highest base
+score, so the shown score can be the CNA's.
+
+When two sources score the same CVSS major version **2.0 or more points apart**, or land in **different severity
+bands** (low / medium / high / critical), a note under the score row says the sources disagree and links to the
+table. Scores of different CVSS versions are not compared: v2 and v4 score the same flaw differently by design.
+
 ### Affected in your environment
 
 If the entry matches something you have declared in your [Environment Inventory](inventory.md), a
@@ -157,6 +181,20 @@ package's own name (NVD's `lodash:lodash`). npm's `console` therefore does not s
 NetScaler Console. OS and binary packages (Debian, Alpine, RPM, generic binaries such as `node`) match
 by name, because there the advisory's vendor is the project itself. The dashboard's scan chips follow
 the same rule.
+
+### Possibly affected
+
+Many advisories arrive without any version data: no affected versions, no CPE ranges, only a product name. The
+version-checked blocks above then find nothing, and stay empty on purpose. For exactly these advisories (none of
+the sources Hecate reads carries a version or a range), a dashed **Possibly affected: this advisory names no
+affected versions yet** block lists the inventory items and the packages in each target's latest SBOM whose name
+matches a product the advisory names, each linking to the inventory or the scan.
+
+A name match is a reason to look, not a finding: Hecate can neither confirm nor rule it out. The registry rule from
+above applies, and more strictly: a language-registry package only shows up when the advisory names a vendor that
+fits it, so npm's `console` never appears under Citrix NetScaler Console. These matches appear only on the detail
+page; dashboard counts, coverage chips and notifications ignore them. As soon as an advisory gains version data,
+the block disappears and the version-checked blocks take over.
 
 ### The detail tabs
 

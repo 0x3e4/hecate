@@ -203,7 +203,12 @@ def _wire(monkeypatch, repository, hits=()):
     monkeypatch.setattr(stats_service, "get_inventory_service", get_inventory)
     monkeypatch.setattr(stats_service.AssetRepository, "create", staticmethod(create_assets))
     monkeypatch.setattr(stats_service, "feed_kinds", kinds)
+    monkeypatch.setattr(StatsService, "_sbom_scan_ids", staticmethod(no_sbom_hits))
     return bodies
+
+
+async def no_sbom_hits(_sources):
+    return {}
 
 
 DOC = {

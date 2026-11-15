@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.mcp.audit import log_tool_invocation
 from app.mcp.auth import mcp_client_id, mcp_dcr_client_id, require_write_scope
 from app.mcp.oauth import get_dcr_client_name
-from app.mcp.security import sanitize_search_input
+from app.mcp.security import clean_model_name, sanitize_search_input
 from app.mcp.server import get_rate_limiter
 
 # Only allow safe vulnerability ID characters.
@@ -194,11 +194,14 @@ def register(mcp: FastMCP) -> None:
                 affected_items = []
             affected_inventory = [a.model_dump(by_alias=True) for a in affected_items]
 
+            from app.services.ai_history import previous_vulnerability_analyses
+
             system_prompt, user_prompt = await build_vulnerability_prompts(
                 vulnerability,
                 language=language,
                 additional_context=additional_context,
                 affected_inventory=affected_inventory,
+                previous_analyses=previous_vulnerability_analyses(vulnerability),
             )
 
             output = {
@@ -210,6 +213,7 @@ def register(mcp: FastMCP) -> None:
                     "Read the systemPrompt and userPrompt, generate the analysis using your own model, "
                     "then call save_vulnerability_ai_analysis(vulnerability_id, summary) to persist it. "
                     "The server will append an attribution footer identifying your client."
+                    " Pass your own model name as `model` to the save tool so the stored analysis shows which model wrote it."
                 ),
                 "saveTool": "save_vulnerability_ai_analysis",
             }
@@ -232,17 +236,21 @@ def register(mcp: FastMCP) -> None:
         summary: str,
         language: str | None = None,
         client_name: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Persist an AI analysis produced by the calling assistant onto a vulnerability document.
 
         Use this after `prepare_vulnerability_ai_analysis`. The server stamps the stored record with a
         triggeredBy attribution like "Claude Code - MCP" and appends it as a footer in the summary.
         Requires write scope. `client_name` overrides the DCR-detected client label.
+
+        `model`: the model that wrote the analysis (e.g. "claude-opus-5-5"); stored and shown next to
+        the attribution. Optional, but without it the analysis shows no model.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {
             "vulnerability_id": vulnerability_id,
-            "language": language, "client_name": client_name,
+            "language": language, "client_name": client_name, "model": model,
         }
 
         rate_limiter = get_rate_limiter()
@@ -278,6 +286,7 @@ def register(mcp: FastMCP) -> None:
 
             assessment = {
                 "provider": "mcp-client",
+                "model": clean_model_name(model),
                 "language": _normalize_language(language),
                 "summary": stored_summary,
                 "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
@@ -385,6 +394,7 @@ def register(mcp: FastMCP) -> None:
                     "the executive summary, each vulnerability gets its own labeled section "
                     "(e.g. 'CVE-2024-1234:'). Then call "
                     "save_vulnerabilities_ai_batch_analysis(vulnerability_ids, summary, individual_summaries)."
+                    " Pass your own model name as `model` to the save tool so the stored analysis shows which model wrote it."
                 ),
                 "saveTool": "save_vulnerabilities_ai_batch_analysis",
             }
@@ -409,16 +419,20 @@ def register(mcp: FastMCP) -> None:
         language: str | None = None,
         additional_context: str | None = None,
         client_name: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Persist a batch AI analysis produced by the calling assistant.
 
         Provide the executive summary and (optionally) a `individual_summaries` dict keyed by
         vulnerability ID with per-vuln text. Requires write scope.
+
+        `model`: the model that wrote the analysis (e.g. "claude-opus-5-5"); stored and shown next to
+        the attribution. Optional, but without it the analysis shows no model.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {
             "vulnerability_ids": vulnerability_ids,
-            "language": language, "client_name": client_name,
+            "language": language, "client_name": client_name, "model": model,
         }
 
         rate_limiter = get_rate_limiter()
@@ -476,6 +490,7 @@ def register(mcp: FastMCP) -> None:
             batch_id = await service.save_batch_analysis(
                 vulnerability_ids=clean_ids,
                 provider="mcp-client",
+                model=clean_model_name(model),
                 language=_normalize_language(language),
                 summary=final_summary,
                 individual_summaries=cleaned_individual,
@@ -576,6 +591,7 @@ def register(mcp: FastMCP) -> None:
                     "save_attack_path_analysis(vulnerability_id, summary). Do NOT cite CVE/CWE/CAPEC "
                     "IDs that are not present in graph['nodes']. The server stamps the stored record "
                     "with a triggeredBy attribution identifying your client."
+                    " Pass your own model name as `model` to the save tool so the stored analysis shows which model wrote it."
                 ),
                 "saveTool": "save_attack_path_analysis",
             }
@@ -598,17 +614,21 @@ def register(mcp: FastMCP) -> None:
         summary: str,
         language: str | None = None,
         client_name: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Persist an attack-path narrative produced by the calling assistant.
 
         Use this after `prepare_attack_path_analysis`. The server appends the narrative to the
         vulnerability's `attack_paths[]` array (and mirrors `attack_path` as the latest), stamping
         a triggeredBy attribution like "Claude - MCP". Requires write scope.
+
+        `model`: the model that wrote the analysis (e.g. "claude-opus-5-5"); stored and shown next to
+        the attribution. Optional, but without it the analysis shows no model.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {
             "vulnerability_id": vulnerability_id,
-            "language": language, "client_name": client_name,
+            "language": language, "client_name": client_name, "model": model,
         }
 
         rate_limiter = get_rate_limiter()
@@ -644,6 +664,7 @@ def register(mcp: FastMCP) -> None:
 
             narrative = {
                 "provider": "mcp-client",
+                "model": clean_model_name(model),
                 "language": _normalize_language(language),
                 "summary": stored_summary,
                 "generatedAt": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
@@ -768,6 +789,7 @@ def register(mcp: FastMCP) -> None:
                     "with different `assumptions` to keep exploring, or call "
                     "`save_attack_path_analysis(vulnerability_id, summary)` to persist the "
                     "narrative your model produces from this prompt set."
+                    " Pass your own model name as `model` to the save tool so the stored analysis shows which model wrote it."
                 ),
                 "saveTool": "save_attack_path_analysis",
             }

@@ -71,6 +71,23 @@ export const clearTargetPassword = (targetId: string): void => {
   }
 };
 
+// Storage key of the AI analysis password (usePersistentState in the AI views).
+export const AI_PASSWORD_KEY = "ai_analysis_password";
+
+// Every write secret this browser holds: the system password, all target
+// passwords and the AI password. Called on sign-in and sign-out, because the
+// interceptor attaches them to whoever is signed in next, and the backend
+// honours a matching system password even for a viewer session.
+export const clearWriteSecrets = (): void => {
+  for (const key of [ADMIN_KEY, TARGET_KEY, AI_PASSWORD_KEY]) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+};
+
 // Best-effort extraction of a target id from a request URL. The target id is a
 // single URL-encoded segment after /scans/targets/ (any /check or
 // /write-password suffix is a literal slash that follows it).

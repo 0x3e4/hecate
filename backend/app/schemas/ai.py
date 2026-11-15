@@ -31,6 +31,8 @@ class AIInvestigationRequest(BaseModel):
 
 class AIInvestigationResponse(BaseModel):
     provider: AIProviderLiteral
+    # The model the provider was configured with when the analysis ran.
+    model: str | None = None
     language: str
     summary: str
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
@@ -92,6 +94,8 @@ class AIBatchInvestigationRequest(BaseModel):
 
 class AIBatchInvestigationResponse(BaseModel):
     provider: AIProviderLiteral
+    # The model the provider was configured with when the analysis ran.
+    model: str | None = None
     language: str
     summary: str
     individual_summaries: dict[str, str] = Field(
@@ -131,6 +135,8 @@ class AIScanAnalysisRequest(BaseModel):
 class AIScanAnalysisResponse(BaseModel):
     scan_id: str = Field(alias="scanId", serialization_alias="scanId")
     provider: AIProviderLiteral
+    # The model the provider was configured with when the analysis ran.
+    model: str | None = None
     language: str
     summary: str
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
@@ -147,6 +153,8 @@ class AIScanAnalysisResponse(BaseModel):
 class AIScanAnalysisSubmitResponse(BaseModel):
     status: str
     scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+    # Every SSE event of this run (ai_scan_analysis_{scanId}) carries it in metadata.runId
+    run_id: str | None = Field(default=None, alias="runId", serialization_alias="runId")
 
     model_config = {"populate_by_name": True}
 

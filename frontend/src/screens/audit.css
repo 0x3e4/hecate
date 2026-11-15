@@ -21,6 +21,10 @@
 .audit-cell-time { color: var(--color-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .audit-cell-job { white-space: nowrap; }
 .audit-cell-status { white-space: nowrap; }
+/* Who did it: a person in ink, a shared credential or nobody in muted */
+.audit-cell-actor { max-width: 22ch; }
+.audit-actor { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.audit-actor--credential, .audit-actor--none { color: var(--color-muted); }
 .audit-head-duration,
 .audit-cell-duration { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .audit-cell-detail { min-width: 22rem; color: var(--color-muted); font-size: var(--text-xs); }
@@ -62,8 +66,11 @@
   .audit-cell-status { grid-column: 2; grid-row: 1; }
   .audit-cell-time,
   .audit-cell-duration,
+  .audit-cell-actor,
   .audit-cell-detail,
   .audit-cell-empty { grid-column: 1 / -1; }
+  .audit-cell-actor { max-width: none; }
   .audit-cell-time[data-label]::before,
+  .audit-cell-actor[data-label]::before,
   .audit-cell-duration[data-label]::before { content: attr(data-label) " "; color: var(--color-muted); font-size: var(--text-xs); }
 }

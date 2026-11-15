@@ -302,7 +302,7 @@ git commit -m "Update dependencies"
 corepack enable pnpm && pnpm install && pnpm run dev
 ```
 
-Dev server runs on port 3000 and proxies `/api` to `http://backend:8000` automatically.
+Dev server runs on port 3000 and proxies `/api` to `http://backend:8000` automatically. Set `VITE_PROXY_TARGET` (e.g. `VITE_PROXY_TARGET=http://127.0.0.1:8010 pnpm dev`) to use a backend running elsewhere.
 
 ### Quality checks
 

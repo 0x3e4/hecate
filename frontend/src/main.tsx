@@ -12,6 +12,7 @@ import { router } from "./router";
 import { I18nProvider } from "./i18n/context";
 import { TimezoneProvider } from "./timezone/context";
 import { ServerConfigProvider } from "./server-config/context";
+import { AuthProvider } from "./auth/context";
 
 
 document.documentElement.classList.add("js");
@@ -21,7 +22,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <I18nProvider>
       <TimezoneProvider>
         <ServerConfigProvider>
-          <RouterProvider router={router} />
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
         </ServerConfigProvider>
       </TimezoneProvider>
     </I18nProvider>

@@ -148,6 +148,8 @@ export interface SingleAnalysisItem {
   vulnerability_id: string;
   title: string;
   provider: string;
+  /** The model the provider was configured with (newer analyses only). */
+  model?: string | null;
   language: string;
   summary: string;
   timestamp: string;
@@ -216,5 +218,34 @@ export const getFieldAggregation = async (
     `/v1/vulnerabilities/dql/fields/${encodeURIComponent(fieldName)}/aggregation`,
     { params: { size } }
   );
+  return response.data;
+};
+
+/** A candidate for the dashboard search box (GET /vulnerabilities/suggest). */
+export interface VulnerabilitySuggestion {
+  vulnId: string;
+  title: string;
+  /** One line on what it is: the summary's start, else the title. */
+  info: string;
+  severity: string;
+  cvssScore: number | null;
+  epssScore: number | null;
+  exploited: boolean;
+  kevListed: boolean;
+  published?: string | null;
+  aliases: string[];
+  products: string[];
+  vendors: string[];
+  /** Inventory items the version-aware matcher found affected. */
+  inventoryMatchIds: string[];
+  /** Latest scan whose SBOM ships a package at an affected version. */
+  sbomScanId: string | null;
+}
+
+export const fetchVulnerabilitySuggestions = async (
+  query: string,
+  signal?: AbortSignal,
+): Promise<VulnerabilitySuggestion[]> => {
+  const response = await api.get<VulnerabilitySuggestion[]>("/v1/vulnerabilities/suggest", { params: { q: query }, signal });
   return response.data;
 };

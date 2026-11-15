@@ -1,0 +1,18 @@
+/* Sign-in screen (auth/context.tsx). Shown instead of the app when login is
+   required and nobody is signed in, or when a sign-in came back with an error. */
+
+.auth-splash { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+
+.auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--space-md); background: var(--color-paper); }
+
+.auth-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-sm); width: min(420px, 100%); padding: var(--space-xl) var(--space-lg); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-card); text-align: center; }
+
+.auth-title { margin: 0; font-size: var(--text-display-s); font-weight: var(--display-weight); letter-spacing: var(--tracking-display); }
+
+.auth-lead { margin: 0; color: var(--color-muted); }
+
+.auth-error { margin: 0; color: var(--color-error); }
+
+.auth-actions { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-xs); width: 100%; margin-top: var(--space-sm); }
+
+.auth-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-xs); }

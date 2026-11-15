@@ -25,6 +25,12 @@ export interface ExportableFinding {
   vexStatus: string | null;
   vexJustification: string | null;
   vexDetail: string | null;
+  /** Who set the VEX status (user, vex-import, vex-source, vex-rule:<id>, ...). */
+  vexUpdatedBy?: string | null;
+  vexAssessedVersion?: string | null;
+  vexReviewDue?: string | null;
+  vexNeedsReview?: boolean;
+  dependencyScope?: string | null;
   dismissed: boolean;
   dismissedReason: string | null;
   urls: string[];
@@ -61,6 +67,11 @@ const CSV_COLUMNS: [header: string, value: (f: ExportableFinding) => string | nu
   ["vex_status", f => f.vexStatus],
   ["vex_justification", f => f.vexJustification],
   ["vex_detail", f => f.vexDetail],
+  ["vex_set_by", f => f.vexUpdatedBy ?? null],
+  ["vex_assessed_version", f => f.vexAssessedVersion ?? null],
+  ["vex_review_due", f => f.vexReviewDue ?? null],
+  ["vex_needs_review", f => (f.vexStatus ? !!f.vexNeedsReview : null)],
+  ["dependency_scope", f => f.dependencyScope ?? null],
   ["dismissed", f => f.dismissed],
   ["dismissed_reason", f => f.dismissedReason],
   ["urls", f => f.urls.join(" ")],
@@ -125,8 +136,17 @@ export function findingsToJson(
       description: f.description,
       scanners: f.scanners,
       dataSource: f.dataSource,
+      dependencyScope: f.dependencyScope ?? null,
       vex: f.vexStatus
-        ? { status: f.vexStatus, justification: f.vexJustification, detail: f.vexDetail }
+        ? {
+          status: f.vexStatus,
+          justification: f.vexJustification,
+          detail: f.vexDetail,
+          setBy: f.vexUpdatedBy ?? null,
+          assessedVersion: f.vexAssessedVersion ?? null,
+          reviewDue: f.vexReviewDue ?? null,
+          needsReview: !!f.vexNeedsReview,
+        }
         : null,
       dismissed: f.dismissed,
       dismissedReason: f.dismissedReason,

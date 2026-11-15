@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CertAdvisory, CertCve, CertRoundup, CertTopic, FeedSource } from "../api/cert";
 
-import { applyKinds, filterTopics, kindCounts, roundupHits, sortTopics, topicProducts, voices, type TopicFilter } from "./certTopics";
+import { applyKinds, filterTopics, kindCounts, narrowToStack, roundupHits, sortTopics, topicProducts, voices, type TopicFilter } from "./certTopics";
 
 const cve = (vulnId: string, product = "PHP"): CertCve => ({
   vulnId,
@@ -155,5 +155,27 @@ describe("applyKinds", () => {
 describe("voices", () => {
   it("counts CERTs and vendors, not community posts", () => {
     expect(voices(topic("a", { sources: [cert("CERT-FR"), { name: "Cloudflare", kind: "vendor" }, { name: "@a", kind: "community" }] }))).toBe(2);
+  });
+});
+
+describe("narrowToStack", () => {
+  const mixed = topic("joomla", {
+    worstSeverity: "critical",
+    cves: [{ ...cve("CVE-1", "YOOtheme Pro"), severity: "critical" }, { ...cve("CVE-2", "Node"), severity: "high" }, cve("CVE-3", "Brotli")],
+  });
+  const mine = (item: CertCve) => item.vulnId !== "CVE-1";
+
+  it("keeps only the stack's CVEs and takes title and severity from them", () => {
+    const [narrowed] = narrowToStack([mixed], mine);
+    expect(narrowed.cves.map((item) => item.vulnId)).toEqual(["CVE-2", "CVE-3"]);
+    expect(topicProducts(narrowed)).toEqual(["Node", "Brotli"]);
+    expect(narrowed.worstSeverity).toBe("high");
+    expect(narrowed.hiddenCves).toBe(1);
+    expect(narrowed.advisories).toBe(mixed.advisories);
+  });
+
+  it("drops a topic without a stack CVE and leaves a fully matching one untouched", () => {
+    expect(narrowToStack([mixed], () => false)).toEqual([]);
+    expect(narrowToStack([mixed], () => true)[0]).toBe(mixed);
   });
 });

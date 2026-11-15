@@ -6,7 +6,7 @@
 
 **[Live demo](https://hecate.pw)** · **[Quick start](#quick-start-docker-compose)** · [Documentation](https://docs.hecate.pw) · [How Hecate compares](#how-hecate-compares)
 
-Hecate ingests **9 vulnerability data sources** (EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL, CPE, CWE, CAPEC) plus CERT, vendor and community advisory feeds, normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, and DevSkim against your container images and source repos.
+Hecate ingests **9 vulnerability data sources** (EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL, CPE, CWE, CAPEC) plus CERT, vendor and community advisory feeds, normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim, and govulncheck (Go reachability) against your container images and source repos.
 
 > [!NOTE]
 > **Works without AI.** Every core feature runs without an API key: the catalogue and its search, SCA scanning, SBOM and VEX, malware detection, inventory matching, notifications, the deterministic attack-path graph per CVE and the ATT&CK chain per scan. AI analysis stays off until a provider is configured and only adds narrative and triage text on top, with a local model (Ollama, vLLM, LM Studio) or a cloud provider.
@@ -119,9 +119,9 @@ docker compose up --build
 
 | Service | URL |
 | --- | --- |
-| Frontend | <http://localhost:4173> |
-| Backend API | <http://localhost:8000/api/v1> |
-| Health check | <http://localhost:8000/api/v1/status/health> |
+| Frontend + gateway | <http://localhost:4173> |
+| Backend API (through the gateway) | <http://localhost:4173/api/v1> |
+| Health check | <http://localhost:4173/api/v1/status/health> |
 | MongoDB | `mongodb://localhost:27017` |
 | OpenSearch | <https://localhost:9200> |
 | Scanner sidecar | <http://localhost:8080> |
@@ -143,7 +143,7 @@ flowchart TB
     User([User / Browser])
     CICD([CI/CD pipelines])
 
-    subgraph Frontend["Frontend · React 19 / Vite / TypeScript :4173"]
+    subgraph Frontend["Frontend + gateway · nginx :4173"]
         SPA[Dark-theme SPA]
     end
 
@@ -163,9 +163,9 @@ flowchart TB
     Feeds[("External feeds<br/>EUVD · NVD · KEV · CPE<br/>CWE · CAPEC · CIRCL · GHSA · OSV<br/>CERT advisories")]
     AI[("AI providers (optional)<br/>OpenAI · Anthropic · Gemini<br/>OpenAI-compatible")]
 
-    User -->|/api| Frontend
-    Frontend --> Backend
-    CICD -->|POST /api/v1/scans| Backend
+    User --> Frontend
+    CICD -->|POST /api/v1/scans| Frontend
+    Frontend -->|/api, /mcp| Backend
     Backend --> Scanner
     Backend --> Apprise
     Backend --> Mongo
@@ -203,13 +203,14 @@ flowchart TB
 | **Advisories** | Feeds of CERTs, vendors and community accounts (Mastodon, blogs) merged into topics through shared CVEs, with your stack first and round-ups kept apart. Manage the feeds on System → Data or with `CERT_FEEDS_EXTRA`. |
 | **Ingestion** | 9 vulnerability data sources (EUVD, NVD, KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV) plus CERT, vendor and community advisory feeds — normalised into a single schema with priority-gated upserts and a 3-tier cache. |
 | **Affected-version search** | `affectedVersion:7.0.1` finds advisories that cover a version inside a range, not only those that name it, per release branch and without the platforms a product runs on. The inventory uses the same decision. |
-| **Active SCA scanning** | 10 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, DevSkim) for container images and source repos. |
+| **Active SCA scanning** | 11 scanners (Trivy, Grype, Syft, OSV, Hecate, Dockle, Dive, Semgrep, TruffleHog, DevSkim, govulncheck) for container images and source repos; govulncheck marks Go findings whose vulnerable code is never reached as VEX not_affected, and every SBOM component carries release-age, unmaintained and npm publisher-change signals. A package check (REST + MCP) answers block / warn / ok before an agent or CI installs a dependency. |
 | **Supply-chain malware detection** | 35 heuristic rules informed by real attacks (Shai-Hulud, LiteLLM, Trivy v0.69.4, Glassworm, Telnyx, Axios, …) plus a continuous OSV MAL-* watcher that retroactively injects findings into the latest scan of every affected target. |
 | **Provenance verification** | npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker — Sigstore, PEP 740, Go sumdb, Cosign. |
 | **Attack-path graph** | Per-CVE deterministic Mermaid graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) with optional AI narrative. |
 | **Cross-CVE attack chain** | Per-scan ATT&CK kill-chain narrative bucketing all findings into Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact. |
 | **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type, with a change history (each change can carry a note such as a ticket or server), version reports from your deployment pipeline, and a duplicate action for the next server of the same product. |
 | **API tokens** | Named tokens with scopes (`scan:submit`, `inventory:report`) and an optional expiry, managed on System → Access Control. |
+| **Sign-in (OIDC) & audit trail** | Optional web sign-in through any OIDC provider (Keycloak, Authelia, Authentik, Zitadel, Pocket ID, Entra ID) with admin / editor / viewer roles mapped from groups, server-side sessions, an optional login requirement for reads, and every API write recorded with the person or credential behind it. Passwords and tokens keep working alongside. |
 | **MCP server** | 46 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
 | **Notifications** | Apprise integration with rules, watch queries, message templates, and per-tag channel routing. |
 | **Bilingual UI** | German + English, browser detection, no external i18n framework. |
@@ -254,7 +255,7 @@ Main sources: [Dependency-Track](https://dependencytrack.github.io/docs/next/) �
 .
 ├── backend/              FastAPI service · ingestion pipelines · scheduler · CLI
 ├── frontend/             React 19 SPA
-├── scanner/              Hardened scanner sidecar (10 scanners)
+├── scanner/              Hardened scanner sidecar (11 scanners)
 ├── docs/                 Architecture + design notes
 ├── .github/workflows/    GitHub Actions (build-images · release)
 ├── .env.example          Environment-variable template (~104 vars)
@@ -317,7 +318,7 @@ scanner/
 
 ### SCA scanning
 
-- **Scanner sidecar** running 10 scanners as a hardened Docker container (`no-new-privileges`, read-only, `cap_drop: ALL`, tmpfs).
+- **Scanner sidecar** running 11 scanners as a hardened Docker container (`no-new-privileges`, read-only, `cap_drop: ALL`, tmpfs).
 - **CI/CD or interactive triggers** via `POST /api/v1/scans` and `/scans/manual`.
 - **Auto-scan** of registered targets with the scanner set chosen at first scan, change-detection via image digest / commit SHA, and a per-target diagnostics view (`POST /v1/scans/targets/{id}/check`).
 - **Target grouping** lets you combine repos and images of one application into a single roll-up section in the UI.
@@ -642,6 +643,7 @@ Everything is driven through environment variables — see [`.env.example`](.env
 | **Frontend** | `VITE_API_BASE_URL` (feature flags are derived from backend settings and exposed via `GET /api/v1/config`) |
 | **SCA scanner** | `SCA_ENABLED`, `SCA_API_KEY`, `SCA_SCANNER_URL`, `SCA_SCANNER_SECRET`, `SCA_SCANNER_TIMEOUT_SECONDS` (default `2060` — floor; the per-call sidecar HTTP timeout auto-derives from the per-scanner overrides), `SCA_AUTO_SCAN_INTERVAL_MINUTES`, `SCA_AUTO_SCAN_ENABLED`, `SCA_MAX_CONCURRENT_SCANS`, `SCA_SCAN_MAX_RUNTIME_SECONDS` (default `0`: derived from the scanner timeouts; a running scan past it is cancelled), `SCA_MIN_FREE_MEMORY_MB`, `SCA_MIN_FREE_DISK_MB`, `SCANNER_AUTH`, `SEMGREP_RULES`, per-scanner subprocess timeouts `<SCANNER>_TIMEOUT_SECONDS` (`GRYPE_` default `1800`, `DEVSKIM_` `1500`, `TRUFFLEHOG_` `300`, others `600`) |
 | **Notifications** | `NOTIFICATIONS_ENABLED`, `NOTIFICATIONS_APPRISE_URL`, `NOTIFICATIONS_APPRISE_TAGS`, `NOTIFICATIONS_APPRISE_TIMEOUT` |
+| **Sign-in (OIDC)** | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES`, `OIDC_PROVIDER_LABEL`, `OIDC_ROLES_CLAIM`, `OIDC_ADMIN_GROUPS`, `OIDC_EDITOR_GROUPS`, `OIDC_VIEWER_GROUPS`, `AUTH_REQUIRE_LOGIN` (default `true` once OIDC is set), `AUTH_PUBLIC_URL`, `AUTH_SESSION_LIFETIME_HOURS`, `AUTH_SESSION_IDLE_MINUTES` — see `docs/admin/authentication.md` |
 | **MCP server** | `MCP_ENABLED`, `MCP_OAUTH_PROVIDER`, `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_SCOPES`, `MCP_WRITE_IP_SAFELIST`, `MCP_ALLOWED_USERS`, `MCP_ALLOWED_REDIRECT_HOSTS` (allowed OAuth redirect hosts), `MCP_RATE_LIMIT_PER_MINUTE`, `MCP_MAX_RESULTS`, `MCP_MAX_CONCURRENT_CONNECTIONS`, `MCP_PUBLIC_URL` (pin OAuth resource / issuer URL behind multi-hostname proxies), `MCP_AUTH_DISABLED` (DEV ONLY: full OAuth bypass) |
 
 > [!WARNING]
@@ -669,7 +671,7 @@ GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 | HTTP client | httpx 0.28 (async) |
 | Logging | structlog 25 |
 | AI | OpenAI, Anthropic, Google Gemini, OpenAI-compatible (Ollama / vLLM / OpenRouter / LocalAI / LM Studio) — each optional |
-| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 10 runtime), Skopeo, FastAPI |
+| Scanner sidecar | Trivy, Grype, Syft, OSV Scanner, govulncheck (Go toolchain), Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim (.NET 10 runtime), Skopeo, FastAPI |
 | Notifications | Apprise (caronc/apprise) |
 | MCP server | mcp SDK, OAuth 2.0 (PKCE), Streamable HTTP |
 | CI/CD | GitHub Actions, GitHub Container Registry (GHCR) |

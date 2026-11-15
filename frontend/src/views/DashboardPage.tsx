@@ -1,6 +1,6 @@
 import "../screens/dashboard.css";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LuCheck, LuChevronLeft, LuChevronRight, LuCopy, LuSearch, LuTriangleAlert, LuX } from "react-icons/lu";
 
@@ -21,7 +21,6 @@ import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
 import {
   ChipLinks,
   cveMatchesInventory,
-  productScanHit,
   resolveCveScanId,
   scanChip,
   uniqueChips,
@@ -30,6 +29,9 @@ import {
 } from "../components/CoverageChips";
 import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { ReservedBadge } from "../components/ReservedBadge";
+import { SuggestionList, SUGGESTION_MIN_LENGTH, useVulnerabilitySuggestions } from "../components/SearchSuggestions";
+import { rankSuggestions } from "../utils/searchSuggestions";
+import { isAdvisoryId } from "../utils/advisoryId";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
 import { useSSE } from "../hooks/useSSE";
@@ -82,7 +84,6 @@ export const DashboardPage = () => {
   // SCA scan coverage for the Today widgets (best-effort; empty → no SCA chips).
   const [scanCoverage, setScanCoverage] = useState<ScanCoverage>({
     cveScan: {},
-    productScan: {},
     scanTargets: {},
   });
   // Newly KEV-listed CVEs, independent of the selected day (best-effort; none → no panel).
@@ -317,13 +318,22 @@ export const DashboardPage = () => {
     setToast(null);
   }, []);
 
+  const attentionIds = useMemo(() => new Set((attention?.items ?? []).map((item) => item.vulnId)), [attention]);
+  const handlePickSuggestion = useCallback(
+    (vulnId: string) => {
+      setQueryInput("");
+      setQueryNotFound(null);
+      navigate(`/vulnerability/${encodeURIComponent(vulnId)}`);
+    },
+    [navigate],
+  );
+
   return (
     <div className="page dashboard">
       <TodayStats
         t={t}
         locale={locale}
         scanCveScan={scanCoverage.cveScan}
-        scanProductScan={scanCoverage.productScan}
         scanTargets={scanCoverage.scanTargets}
         refreshKey={sseRefreshKey}
         attention={
@@ -332,7 +342,6 @@ export const DashboardPage = () => {
               t={t}
               data={attention}
               scanCveScan={scanCoverage.cveScan}
-              scanProductScan={scanCoverage.productScan}
               scanTargets={scanCoverage.scanTargets}
             />
           ) : null
@@ -349,6 +358,10 @@ export const DashboardPage = () => {
             onSync={handleManualSync}
             onKeyDown={handleQueryKeyDown}
             onClear={handleClear}
+            onPick={handlePickSuggestion}
+            attentionIds={attentionIds}
+            cveScan={scanCoverage.cveScan}
+            scanTargets={scanCoverage.scanTargets}
           />
         }
       />
@@ -370,7 +383,13 @@ interface SingleVulnQueryProps {
   onSync: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onClear: () => void;
+  onPick: (vulnId: string) => void;
+  attentionIds: ReadonlySet<string>;
+  cveScan: Record<string, string>;
+  scanTargets: Record<string, string>;
 }
+
+const SUGGESTIONS_SHOWN = 8;
 
 const SingleVulnQuery = ({
   t,
@@ -382,10 +401,69 @@ const SingleVulnQuery = ({
   onSync,
   onKeyDown,
   onClear,
+  onPick,
+  attentionIds,
+  cveScan,
+  scanTargets,
 }: SingleVulnQueryProps) => {
   const isLoading = queryLoading || syncLoading;
   const showNotFound = queryNotFound && !queryLoading;
-  const placeholder = t("Enter vulnerability ID and press Enter", "Vulnerability ID eingeben und Enter drücken");
+  const placeholder = t("Search by ID, product or keyword", "Nach ID, Produkt oder Stichwort suchen");
+  const navigate = useNavigate();
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const { items, loading: suggesting } = useVulnerabilitySuggestions(queryInput, open && !isLoading);
+  // Needs attention, then your inventory or scans, then severity, KEV, EPSS (utils/searchSuggestions)
+  const ranked = useMemo(
+    () => rankSuggestions(items, { query: queryInput, attentionIds, cveScan }).slice(0, SUGGESTIONS_SHOWN),
+    [items, queryInput, attentionIds, cveScan],
+  );
+  const showList = open && !isLoading && !showNotFound && queryInput.trim().length >= SUGGESTION_MIN_LENGTH;
+  useEffect(() => setActiveIndex(-1), [ranked]);
+
+  const pick = (vulnId: string) => {
+    setOpen(false);
+    onPick(vulnId);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showList && ranked.length > 0) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        // -1 is the input itself; the arrows cycle input → first … last → input
+        setActiveIndex((current) => {
+          const next = current + step;
+          if (next < -1) return ranked.length - 1;
+          return next >= ranked.length ? -1 : next;
+        });
+        return;
+      }
+      if (event.key === "Enter" && activeIndex >= 0 && activeIndex < ranked.length) {
+        event.preventDefault();
+        pick(ranked[activeIndex].vulnId);
+        return;
+      }
+    }
+    if (event.key === "Escape" && open) {
+      setOpen(false);
+      return;
+    }
+    if (event.key === "Enter") {
+      setOpen(false);
+      const typed = queryInput.trim();
+      // Free text is no ID to look up: take the best suggestion, or the full search on the list
+      if (typed && !isAdvisoryId(typed)) {
+        event.preventDefault();
+        if (ranked.length > 0) pick(ranked[0].vulnId);
+        else navigate(`/vulnerabilities?search=${encodeURIComponent(typed)}`);
+        return;
+      }
+    }
+    // An ID: open exactly that one, or offer to fetch it from the sources, as before
+    onKeyDown(event);
+  };
 
   return (
     <div className="dashboard-search">
@@ -401,12 +479,20 @@ const SingleVulnQuery = ({
           value={queryInput}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
             setQueryInput(e.target.value);
+            setOpen(true);
           }}
-          onKeyDown={onKeyDown}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
           placeholder={placeholder}
           aria-label={placeholder}
           disabled={isLoading}
           autoComplete="off"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showList && ranked.length > 0}
+          aria-controls={listId}
+          aria-activedescendant={showList && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
         />
         {queryInput && !isLoading && (
           <IconButton
@@ -416,6 +502,20 @@ const SingleVulnQuery = ({
           >
             <LuX aria-hidden="true" />
           </IconButton>
+        )}
+        {showList && (
+          <SuggestionList
+            t={t}
+            listId={listId}
+            items={ranked}
+            loading={suggesting}
+            activeIndex={activeIndex}
+            attentionIds={attentionIds}
+            cveScan={cveScan}
+            scanTargets={scanTargets}
+            onPick={pick}
+            onHover={setActiveIndex}
+          />
         )}
       </div>
 
@@ -569,7 +669,6 @@ const TodayStats = ({
   t,
   locale,
   scanCveScan,
-  scanProductScan,
   scanTargets,
   refreshKey,
   attention,
@@ -578,7 +677,6 @@ const TodayStats = ({
   t: TranslateFn;
   locale: string;
   scanCveScan: Record<string, string>;
-  scanProductScan: Record<string, string>;
   scanTargets: Record<string, string>;
   refreshKey: number;
   attention: ReactNode;
@@ -710,21 +808,22 @@ const TodayStats = ({
     return `/vulnerabilities?search=${encodeURIComponent(q)}&mode=dql`;
   };
 
-  // SCA coverage: derive "scanned" vendor/product/CVE → most-recent scanId from
-  // the SBOM-package map (productScan) plus the CVEs whose scans found/contain
-  // them. SBOM carries no vendor, so vendor coverage is CVE-derived.
-  const hasScanCoverage =
-    Object.keys(scanCveScan).length > 0 || Object.keys(scanProductScan).length > 0;
-  const scanProductMap = new Map<string, string>(Object.entries(scanProductScan));
+  // SCA coverage: a CVE is "scanned" through a finding (cveScan) or a
+  // version-checked SBOM hit (cve.sbomScanId). Vendor and product rows take the
+  // scan of their matched CVEs (vendor|product pairs, like the inventory tag), so
+  // a package that merely shares a product's name tags nothing.
   const scanVendorMap = new Map<string, string>();
+  const scanPairMap = new Map<string, string>();
   const cveToScan = new Map<string, string>();
-  if (hasScanCoverage) {
-    for (const cve of data.cves) {
-      const sid = resolveCveScanId(cve, scanCveScan, scanProductScan);
-      if (!sid) continue;
-      cveToScan.set(cve.vulnId, sid);
-      for (const p of cve.productSlugs ?? []) if (!scanProductMap.has(p)) scanProductMap.set(p, sid);
-      for (const v of cve.vendorSlugs ?? []) if (!scanVendorMap.has(v)) scanVendorMap.set(v, sid);
+  for (const cve of data.cves) {
+    const sid = resolveCveScanId(cve, scanCveScan);
+    if (!sid) continue;
+    cveToScan.set(cve.vulnId, sid);
+    for (const v of cve.vendorSlugs ?? []) {
+      if (!scanVendorMap.has(v)) scanVendorMap.set(v, sid);
+      for (const p of cve.productSlugs ?? []) {
+        if (!scanPairMap.has(`${v}|${p}`)) scanPairMap.set(`${v}|${p}`, sid);
+      }
     }
   }
 
@@ -740,7 +839,7 @@ const TodayStats = ({
   const productChips = (p: ProductBucket): CoverageChip[] => {
     const chips: CoverageChip[] = [];
     if (p.inventoryMatch) chips.push({ label: invLabel, href: "/inventory" });
-    const sid = scanProductMap.get(p.slug) ?? productScanHit([p.vendorSlug], p.slug, scanProductScan);
+    const sid = scanPairMap.get(`${p.vendorSlug}|${p.slug}`);
     if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
     return chips;
   };
@@ -755,7 +854,7 @@ const TodayStats = ({
           (a, b) => Number(vendorChips(b).length > 0) - Number(vendorChips(a).length > 0),
         );
   const sortedProducts =
-    !anyProductInventoryMatch && scanProductMap.size === 0
+    !anyProductInventoryMatch && scanPairMap.size === 0
       ? data.products
       : [...data.products].sort(
           (a, b) => Number(productChips(b).length > 0) - Number(productChips(a).length > 0),
@@ -822,7 +921,6 @@ const TodayStats = ({
                   t={t}
                   cves={data.cves}
                   scanCveScan={scanCveScan}
-                  scanProductScan={scanProductScan}
                   scanTargets={scanTargets}
                   invLabel={invLabel}
                   scanFallback={scanFallback}
@@ -838,7 +936,6 @@ const TodayStats = ({
             t={t}
             cves={data.cves}
             scanCveScan={scanCveScan}
-            scanProductScan={scanProductScan}
             scanTargets={scanTargets}
             invLabel={invLabel}
             scanFallback={scanFallback}
@@ -962,7 +1059,6 @@ interface TodayCveTableProps {
   t: TranslateFn;
   cves: TodayCve[];
   scanCveScan: Record<string, string>;
-  scanProductScan: Record<string, string>;
   scanTargets: Record<string, string>;
   invLabel: string;
   scanFallback: string;
@@ -988,21 +1084,20 @@ const TodayLeadGroups = ({
   t,
   cves,
   scanCveScan,
-  scanProductScan,
   scanTargets,
   invLabel,
   scanFallback,
   describeCve,
 }: TodayCveTableProps) => {
-  const chipsByCve = useCveChips(cves, scanCveScan, scanProductScan, scanTargets, invLabel, scanFallback);
+  const chipsByCve = useCveChips(cves, scanCveScan, scanTargets, invLabel, scanFallback);
   const groups = useMemo(
     () =>
       groupCves(
         cves.filter((cve) => chipsByCve.has(cve.vulnId)),
-        (cve) => productKey(cve, cve.productSlugs?.find((slug) => productScanHit(cve.vendorSlugs, slug, scanProductScan))),
+        (cve) => productKey(cve),
         cveMatchesInventory,
       ),
-    [cves, chipsByCve, scanProductScan],
+    [cves, chipsByCve],
   );
 
   return (
@@ -1113,24 +1208,21 @@ const AttentionPanel = ({
   t,
   data,
   scanCveScan,
-  scanProductScan,
   scanTargets,
 }: {
   t: TranslateFn;
   data: AttentionResponse;
   scanCveScan: Record<string, string>;
-  scanProductScan: Record<string, string>;
   scanTargets: Record<string, string>;
 }) => {
   const chipsByCve = useCveChips(
     data.items,
     scanCveScan,
-    scanProductScan,
     scanTargets,
     t("in inventory", "im Inventar"),
     t("SCA scan", "SCA-Scan"),
   );
-  // A confirmed hit outranks a package that merely shares the product's name.
+  // A finding or an inventory hit outranks an SBOM package the scan never flagged.
   const stackRank = useCallback(
     (item: AttentionItem) => (cveMatchesInventory(item) || scanCveScan[item.vulnId] ? 2 : chipsByCve.has(item.vulnId) ? 1 : 0),
     [chipsByCve, scanCveScan],
@@ -1276,13 +1368,12 @@ const TodayCveList = ({
   t,
   cves,
   scanCveScan,
-  scanProductScan,
   scanTargets,
   invLabel,
   scanFallback,
   describeCve,
 }: TodayCveTableProps) => {
-  const chipsByCve = useCveChips(cves, scanCveScan, scanProductScan, scanTargets, invLabel, scanFallback);
+  const chipsByCve = useCveChips(cves, scanCveScan, scanTargets, invLabel, scanFallback);
 
   const grouped = useMemo(() => {
     const groups: Record<string, TodayCve[]> = {};

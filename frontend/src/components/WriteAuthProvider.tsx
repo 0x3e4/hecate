@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAuth } from "../auth/context";
 import { useI18n } from "../i18n/context";
 import {
   registerWritePrompt,
@@ -19,6 +20,7 @@ type PendingPrompt = {
  */
 export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) => {
   const { t } = useI18n();
+  const auth = useAuth();
   const [pending, setPending] = useState<PendingPrompt | null>(null);
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -95,6 +97,11 @@ export const WriteAuthProvider = ({ children }: { children: React.ReactNode }) =
                 <button type="button" className="btn btn-secondary" onClick={() => close(null)}>
                   {t("Cancel", "Abbrechen")}
                 </button>
+                {auth.enabled && !auth.user && (
+                  <button type="button" className="btn btn-secondary" onClick={() => auth.signIn()}>
+                    {t("Sign in instead", "Stattdessen anmelden")}
+                  </button>
+                )}
                 <button type="submit" className="btn btn-primary" disabled={!value.trim()}>
                   {t("Unlock", "Entsperren")}
                 </button>

@@ -18,6 +18,8 @@ export interface CertCve {
   vendors: NamedSlug[];
   products: NamedSlug[];
   inventoryMatchIds: string[];
+  /** Latest scan whose SBOM ships a package at a version this CVE affects (backend-checked). */
+  sbomScanId?: string | null;
 }
 
 /** `cert` and `vendor` feeds count as independent voices; `community` (Mastodon, blogs) is context only. */
@@ -46,6 +48,8 @@ export interface CertTopic {
   worstSeverity: string;
   cves: CertCve[];
   advisories: CertAdvisory[];
+  /** Set by narrowToStack: CVEs of the topic left out because they are not in the user's stack. */
+  hiddenCves?: number;
 }
 
 export interface CertRoundup extends CertAdvisory {

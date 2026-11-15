@@ -76,3 +76,11 @@ class RateLimiter:
             del self._buckets[cid]
         if stale:
             log.debug("mcp.rate_limiter.evicted_stale_buckets", count=len(stale))
+
+
+def clean_model_name(value: str | None) -> str | None:
+    """A model name an MCP client reports for its own analysis: trimmed, capped, or None."""
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.split())[:100]
+    return cleaned or None

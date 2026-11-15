@@ -45,6 +45,32 @@ after repeated failures from the same client the endpoint locks out (HTTP 429) f
 weak secret can't be brute-forced at full request rate. See
 [Security & Access Control](security-access-control.md).
 
+## Sign-in (OIDC)
+
+Optional sign-in through your identity provider, with admin / editor / viewer roles. Off until
+`OIDC_ISSUER` and `OIDC_CLIENT_ID` are set. Full description and provider walkthroughs:
+[Sign-in (OIDC) & Roles](admin/authentication.md).
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OIDC_ISSUER` | (unset) | Issuer URL; discovery is `<issuer>/.well-known/openid-configuration`. |
+| `OIDC_CLIENT_ID` | (unset) | Client ID registered at the IdP. |
+| `OIDC_CLIENT_SECRET` 🔑 | (unset) | Client secret; empty = public client with PKCE only. |
+| `OIDC_SCOPES` | `openid profile email` | Requested scopes (add `groups` for Authelia / Pocket ID). |
+| `OIDC_PROVIDER_LABEL` | `Single sign-on` | Text on the "Sign in with …" button. |
+| `OIDC_ROLES_CLAIM` | `groups` | Claim with group / role names; dotted paths reach nested claims (`realm_access.roles`). |
+| `OIDC_ADMIN_GROUPS` / `OIDC_EDITOR_GROUPS` / `OIDC_VIEWER_GROUPS` | (unset) | CSV of names per role. An empty viewer list makes every signed-in account a viewer. |
+| `AUTH_REQUIRE_LOGIN` | `true` with OIDC | Require a session (or API key / system password) for every API read. |
+| `AUTH_PUBLIC_URL` | (unset) | Browser-facing URL; redirect URI is `<url>/api/v1/auth/callback`. Set it in production. |
+| `AUTH_SESSION_LIFETIME_HOURS` | `12` | Absolute session lifetime. |
+| `AUTH_SESSION_IDLE_MINUTES` | `120` | Idle timeout (`0` = none). |
+| `AUTH_COOKIE_NAME` | `hecate_session` | Session cookie name. |
+| `OIDC_USE_USERINFO` | `true` | Fill claims the ID token lacks from the userinfo endpoint. |
+| `OIDC_RP_INITIATED_LOGOUT` | `true` | Also end the IdP session on sign-out. |
+| `OIDC_ALLOWED_ALGS` | `RS256,…,EdDSA` | Accepted ID-token algorithms; `none` / `HS*` are never accepted. |
+| `OIDC_CLOCK_SKEW_SECONDS` | `60` | Leeway for token times. |
+| `OIDC_TIMEOUT_SECONDS` | `10` | Timeout for IdP calls. |
+
 ## TLS / corporate proxy
 
 Only relevant if your network terminates outbound TLS at a MITM proxy with a private root CA. Point
@@ -147,9 +173,14 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_SCANNER_URL` | `http://scanner:8080` | Scanner sidecar URL. |
 | `SCA_SCANNER_TIMEOUT_SECONDS` | `2060` | Floor for the backend → sidecar HTTP timeout; the actual per-call value auto-derives as `max(this, max(<SCANNER>_TIMEOUT_SECONDS) + 60)`. |
 | `SCA_SOURCE_ARCHIVE_MAX_BYTES` | `52428800` | Max uploaded source archive size (50 MiB). |
+| `SCA_SBOM_IMPORT_MAX_COMPONENTS` | `25000` | Most components one imported SBOM may carry (CycloneDX `components` / SPDX `packages`); a larger one is refused with 400. |
 | `SCA_VEX_SOURCE_TIMEOUT_SECONDS` | `20` | Timeout for fetching one VEX source of a scan target. |
 | `SCA_VEX_SOURCE_MAX_BYTES` | `10485760` | Largest VEX source document read (10 MiB). |
 | `SCA_VEX_SOURCES_ALLOW_PRIVATE_HOSTS` | `false` | Let VEX source URLs point at private or internal addresses. Off, a host that resolves to one is refused. |
+| `CSAF_PUBLISHER_NAME` | `Hecate` | Publisher named in exported VEX: CSAF `document.publisher.name`, OpenVEX `author`. Set it to your organisation. |
+| `CSAF_PUBLISHER_NAMESPACE` | `https://hecate.invalid` | CSAF `document.publisher.namespace`, the issuer's identity (a URL of your organisation). The default marks an unconfigured instance. |
+| `CSAF_PUBLISHER_CATEGORY` | `vendor` | CSAF publisher category: `vendor`, `coordinator`, `discoverer`, `other`, `translator` or `user` (anything else is written as `other`). |
+| `CSAF_PUBLISHER_CONTACT` | (empty) | Optional CSAF `publisher.contact_details`, e.g. a security mailbox. |
 | `SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES` | `4294967296` | Max total size of an archive once extracted, checked by the scanner (4 GiB). An archive is also refused while it doesn't fit into the free `/tmp` space left after the extractions already running. |
 | `SCA_AUTO_SCAN_ENABLED` | `false` | Enable the auto-scan scheduler. |
 | `SCA_AUTO_SCAN_INTERVAL_MINUTES` | `1440` | How often auto-scan checks each target for changes. |
@@ -157,12 +188,27 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_SCAN_MAX_RUNTIME_SECONDS` | `0` | A running scan older than this is cancelled. `0` derives the limit per scan from the resource wait, the clone timeout and the slowest selected scanner's timeout. |
 | `SCA_MIN_FREE_MEMORY_MB` | `1024` | Pre-scan resource gate: min free memory. |
 | `SCA_MIN_FREE_DISK_MB` | `2048` | Pre-scan resource gate: min free disk. |
+| `SCA_RELEASE_INFO_ENABLED` | `true` | Look up release age, latest release and npm publisher of every registry package after a scan ([supply-chain signals](sca-scanning.md#supply-chain-signals)); also the release part of the [package check](integrations/package-check.md). |
+| `SCA_FRESH_RELEASE_DAYS` | `7` | A release younger than this is a "fresh release" (cooldown). |
+| `SCA_UNMAINTAINED_DAYS` | `730` | A package whose latest release is older than this is "unmaintained". |
+| `SCA_PUBLISHER_CHECK_MAX_AGE_DAYS` | `365` | npm: compare the publisher only for versions at most this old. |
+| `SCA_PUBLISHER_HISTORY` | `3` | npm: how many earlier versions the publisher is compared with. |
+| `SCA_RELEASE_INFO_CACHE_TTL_HOURS` | `24` | Cache lifetime of release data per package version (`package_releases`; unknown packages 6 h; the latest-version answer and a version not published yet 15 min). |
+| `SCA_RELEASE_INFO_MAX_COMPONENTS` | `3000` | Most components looked up per scan. |
+| `SCA_RELEASE_INFO_CONCURRENCY` | `8` | Packages looked up at once (deps.dev keeps its own `DEPS_DEV_RATE_LIMIT_SECONDS`). |
+| `SCA_RELEASE_INFO_TIMEOUT_SECONDS` | `900` | Time budget of the lookups after one scan. |
+| `PACKAGE_CHECK_RELEASE_TIMEOUT_SECONDS` | `5` | `GET /packages/check`: longest wait for registry data; past it the verdict rests on the advisories. |
+| `PACKAGE_CHECK_RATE_PER_MINUTE` | `120` | `GET /packages/check`: checks per minute per client without a session (429 beyond; `0` = no limit). |
 
 ### Scanner sidecar (scanner-side)
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `<SCANNER>_TIMEOUT_SECONDS` | grype `1800`, devskim `1500`, trufflehog `300`, others `600` | Per-scanner subprocess timeout. Hyphenated names use underscores (`osv-scanner` → `OSV_SCANNER_TIMEOUT_SECONDS`). The backend's HTTP timeout auto-derives from these. |
+| `<SCANNER>_TIMEOUT_SECONDS` | grype `1800`, devskim `1500`, trufflehog `300`, others `600` | Per-scanner subprocess timeout. Hyphenated names use underscores (`osv-scanner` → `OSV_SCANNER_TIMEOUT_SECONDS`). The backend's HTTP timeout auto-derives from these. For `govulncheck` it is the budget for all Go modules of a scan. |
+| `GOVULNCHECK_MAX_MODULES` | `25` | Most Go modules (`go.mod` files) govulncheck analyses per repository. More make the run incomplete, and then it sets no VEX statements. |
+| `GOVULNCHECK_DB` | (vuln.go.dev) | Go vulnerability database for govulncheck, e.g. a mirror for an offline site (`https://` or `file://`). |
+| `GOVULNCHECK_CACHE_DIR` | (per run) | Persistent Go module cache for govulncheck; unset, modules are downloaded into a per-run directory under `/tmp` and removed afterwards. |
+| `GOPROXY` | `https://proxy.golang.org` | Module proxy govulncheck's `go list` uses. The default has no `direct`, so a scanned `go.mod` cannot make the sidecar fetch from arbitrary hosts; set it (plus `GOPRIVATE` / `GONOSUMDB`) for private modules. |
 | `GIT_CLONE_TIMEOUT_SECONDS` | `300` | `git clone` timeout for source-repo scans. The repo is cloned once per scan (sidecar `/prepare-source`) and shared across all scanners. The backend widens the `/prepare-source` HTTP timeout to `max(SCA_SCANNER_TIMEOUT_SECONDS, this + 60)`. |
 | `SOURCE_CHECKOUT_TTL_SECONDS` | `7200` | Idle TTL after which the sidecar reaps a leaked shared checkout (crash-leak backstop; a checkout with live scanners is never reaped). |
 | `SCANNER_MAX_CONCURRENT_SCANS` | `20` | How many `/scan` calls the sidecar works on at once; further calls wait. The backend sends one per scanner of `SCA_MAX_CONCURRENT_SCANS` scans, so the default never queues its own traffic. |
@@ -256,9 +302,22 @@ Annotates [Environment Inventory](guide/inventory.md) items with support / end-o
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `TRUSTED_PROXY_IPS` | (unset) | CSV of proxy IPs whose forwarded headers we trust. **Required behind a reverse proxy**: without it every client shares the proxy's address, so ten wrong passwords lock the write gates for everyone. The backend logs `request.forwarded_header_from_untrusted_peer` once when it sees this. |
+| `TRUSTED_PROXY_IPS` | (unset; `.env.example`: `frontend`) | CSV of proxies whose forwarded headers the backend trusts: addresses, CIDR ranges (`172.16.0.0/12`) or host names, which are resolved every 30 s and trust exactly the addresses they point at. In Docker Compose the frontend gateway is the backend's only proxy, so `frontend` is the right value; it follows the container across restarts without trusting its neighbours (the scanner shares the network). **Required behind any proxy**: without it every client shares the proxy's address, so ten wrong passwords lock the write gates for everyone. The backend logs `request.forwarded_header_from_untrusted_peer` once when it sees this. |
 | `TRUSTED_PROXY_FORWARD_HEADER` | `x-forwarded-for` | Header carrying the client-IP chain. |
 | `TRUSTED_PROXY_REAL_IP_HEADER` | `x-real-ip` | Header carrying the originating client IP. |
 
-Ready-to-adapt nginx / Caddy / Traefik templates that terminate TLS, forward these client-IP
-headers, and set a hardened HTTP security-header set live in `deploy/reverse-proxy/`.
+### Frontend gateway
+
+The frontend container serves the web app and forwards `/api`, `/mcp` and `/.well-known/oauth-*` to
+the backend, so the backend publishes no port. Its settings are environment variables of the
+`frontend` service (it reads no `.env`):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TRUSTED_PROXIES` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7` | Addresses or CIDRs allowed to tell the gateway the client IP (`X-Forwarded-For`, right-most hop). Your reverse proxy must be among them; `none` when nothing sits in front. |
+| `BACKEND_UPSTREAM` | `http://backend:8000` | The backend as the gateway reaches it. |
+| `UPSTREAM_RESOLVER` | `127.0.0.11` | DNS server for the upstream name, looked up per request (Docker's embedded DNS; set your cluster DNS elsewhere). |
+| `MAX_UPLOAD_MB` | `100` | Request body limit for `/api` and `/mcp` (SBOM uploads, base64 source archives, backups). Keep it above `SCA_SOURCE_ARCHIVE_MAX_BYTES` × 1.4. |
+
+Ready-to-adapt nginx / Caddy / Traefik templates that terminate TLS, send every request to the
+gateway, and set a hardened HTTP security-header set live in `deploy/reverse-proxy/`.

@@ -66,8 +66,29 @@ describe("findingsToJson", () => {
     ));
     expect(parsed.metadata).toMatchObject({ scope: "selected", count: 1, exportedAt: "2026-11-10T12:00:00.000Z" });
     expect(parsed.metadata.scan.targetName).toBe("acme/app");
-    expect(parsed.findings[0].vex).toEqual({ status: "not_affected", justification: "code_not_reachable", detail: null });
+    expect(parsed.findings[0].vex).toEqual({
+      status: "not_affected", justification: "code_not_reachable", detail: null,
+      setBy: null, assessedVersion: null, reviewDue: null, needsReview: false,
+    });
     expect(parsed.findings[0].findingIds).toEqual(["f1", "f2"]);
+  });
+});
+
+describe("review evidence in the export", () => {
+  it("adds who set the status, the assessed version and the scope", () => {
+    const row = finding({
+      vexStatus: "not_affected", vexUpdatedBy: "vex-rule:abc", vexAssessedVersion: "4.17.19",
+      vexReviewDue: "2027-01-31", vexNeedsReview: true, dependencyScope: "dev", description: null,
+    });
+    const [header, line] = findingsToCsv([row]).trimEnd().split(/\r\n/);
+    const cells = Object.fromEntries(header.split(",").map((h, i) => [h, line.split(",")[i]]));
+    expect(cells).toMatchObject({
+      vex_set_by: "vex-rule:abc", vex_assessed_version: "4.17.19", vex_review_due: "2027-01-31",
+      vex_needs_review: "true", dependency_scope: "dev",
+    });
+    const parsed = JSON.parse(findingsToJson([row], scan, "filtered"));
+    expect(parsed.findings[0].dependencyScope).toBe("dev");
+    expect(parsed.findings[0].vex.needsReview).toBe(true);
   });
 });
 

@@ -129,7 +129,7 @@ app = FastAPI(
     openapi_url=None,
 )
 
-VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim"}
+VALID_SCANNERS = {"trivy", "grype", "syft", "osv-scanner", "hecate", "dockle", "dive", "semgrep", "trufflehog", "devskim", "govulncheck"}
 
 
 def _max_concurrent_scans() -> int:

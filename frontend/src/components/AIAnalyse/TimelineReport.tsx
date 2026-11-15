@@ -7,6 +7,8 @@ interface TimelineReportProps {
   date?: string | null;
   kind: string;
   provider?: string | null;
+  /** The model that wrote it; older analyses have none recorded. */
+  model?: string | null;
   triggeredBy?: string | null;
   language?: string | null;
   tokenUsage?: { inputTokens: number; outputTokens: number } | null;
@@ -20,6 +22,7 @@ export const TimelineReport = ({
   date,
   kind,
   provider,
+  model,
   triggeredBy,
   language,
   tokenUsage,
@@ -31,6 +34,10 @@ export const TimelineReport = ({
 
   const rows: { label: string; value: ReactNode }[] = [];
   if (provider) rows.push({ label: t("Provider", "Provider"), value: provider });
+  rows.push({
+    label: t("Model", "Modell"),
+    value: model?.trim() || <span className="muted">{t("not recorded", "nicht erfasst")}</span>,
+  });
   // Web UI runs carry no trigger; everything with one came in through MCP.
   rows.push({ label: t("Triggered by", "Ausgelöst von"), value: (triggeredBy || "").trim() || "API" });
   if (language) rows.push({ label: t("Language", "Sprache"), value: language.toUpperCase() });

@@ -81,11 +81,13 @@ nav:
   - Integrations:
       - MCP Server: integrations/mcp.md
       - CI/CD: integrations/cicd.md
+      - Package Check: integrations/package-check.md
       - REST API: integrations/api.md
       - Notifications: integrations/notifications.md
   - Administration:
       - System Settings: admin/system.md
       - Security & Access Control: security-access-control.md
+      - Sign-in (OIDC) & Roles: admin/authentication.md
       - VEX for Hecate's Images: admin/vex.md
       - Audit & Observability: admin/audit.md
   - Reference:

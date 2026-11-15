@@ -121,3 +121,6 @@
   .system-detail-row > td { padding: 0; }
 }
 .system-gate-title { max-width: none; margin-bottom: var(--space-sm); font-size: var(--text-section); }
+
+/* Signed in below admin: say once that changes will be refused */
+.system-role-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); max-width: 75ch; margin: 0 0 var(--space-md); padding: var(--space-xs) var(--space-sm); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); color: var(--color-ink-2); font-size: var(--text-sm); }

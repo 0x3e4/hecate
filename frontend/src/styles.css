@@ -92,6 +92,18 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .sidebar-recent-remove { display: inline-flex; visibility: hidden; align-items: center; justify-content: center; flex-shrink: 0; padding: var(--space-3xs); border: 0; border-radius: var(--radius-control); background: none; color: var(--color-muted); cursor: pointer; font-size: var(--text-xs); line-height: 1; }
 .sidebar-recent-item:hover .sidebar-recent-remove, .sidebar-recent-remove:focus-visible { visibility: visible; }
 .sidebar-recent-remove:hover { background: var(--overlay-3); color: var(--color-ink); }
+/* Signed-in user (OIDC): name, role, sign-out; or a sign-in button when login is optional */
+.sidebar-user { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs); border-top: var(--rule-hair) solid var(--color-rule); }
+.sidebar-user-who { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; padding: 0 var(--space-xs); }
+.sidebar-user-icon { flex-shrink: 0; color: var(--color-muted); }
+.sidebar-user-text { display: flex; flex-direction: column; min-width: 0; }
+.sidebar-user-name { overflow: hidden; color: var(--color-ink); font-size: var(--text-sm); white-space: nowrap; text-overflow: ellipsis; }
+.sidebar-user-role { color: var(--color-muted); font-size: var(--text-xs); }
+.sidebar-user-action { display: inline-flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; min-height: var(--control-height); padding: 0 var(--space-xs); border: 0; border-radius: var(--radius-control); background: none; color: var(--color-muted); font-size: var(--text-sm); cursor: pointer; transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
+.sidebar-user-action:hover { background: var(--overlay-2); color: var(--color-ink); }
+.sidebar-user-who + .sidebar-user-action .sidebar-user-action-label { display: none; }
+.app-sidebar.collapsed .sidebar-user { flex-direction: column; padding-inline: 0; }
+.app-sidebar.collapsed .sidebar-user-text, .app-sidebar.collapsed .sidebar-user-action-label { display: none; }
 /* Pinned under the scrolling list: a rule marks the seam, so a clipped link reads as more to scroll */
 .sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs) 0; border-top: var(--rule-hair) solid var(--color-rule); }
 .sidebar-version { padding: 0 var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
@@ -117,6 +129,8 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .app-sidebar.collapsed .sidebar-link { justify-content: flex-start; padding: 0 var(--space-xs); }
   .app-sidebar.collapsed .sidebar-link-text, .app-sidebar.collapsed .sidebar-brand-name { display: inline; }
   .app-sidebar.collapsed .sidebar-subnav { display: flex; }
+  .app-sidebar.collapsed .sidebar-user { flex-direction: row; padding-inline: var(--space-xs); }
+  .app-sidebar.collapsed .sidebar-user-text { display: flex; }
   .sidebar-collapse-button { display: none; }
   .sidebar-link { min-height: 44px; }
 }

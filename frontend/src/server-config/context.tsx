@@ -12,6 +12,12 @@ export interface ServerConfig {
   aiBatchMaxVulns: number;
   /** Target of the sidebar's Documentation link; null hides it. */
   docsUrl: string | null;
+  /** OIDC sign-in is configured. */
+  authEnabled?: boolean;
+  /** Every page needs a session (AUTH_REQUIRE_LOGIN). */
+  authRequired?: boolean;
+  /** Label of the "Sign in with …" button. */
+  authProviderLabel?: string | null;
 }
 
 const PESSIMISTIC_DEFAULTS: ServerConfig = {
@@ -22,6 +28,9 @@ const PESSIMISTIC_DEFAULTS: ServerConfig = {
   eolEnabled: false,
   aiBatchMaxVulns: 10,
   docsUrl: null,
+  authEnabled: false,
+  authRequired: false,
+  authProviderLabel: null,
 };
 
 const ServerConfigContext = createContext<ServerConfig | null>(null);

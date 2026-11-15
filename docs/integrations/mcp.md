@@ -6,7 +6,7 @@ language. Instead of opening the web UI to look something up, you ask your assis
 by any vulnerabilities in OpenClaw 2026.02.24?*" and it queries Hecate directly, joins the answer to
 whatever else you are working on, and writes the result back where useful.
 
-The server is mounted at `/mcp` on the same host as the rest of Hecate and exposes 46 tools spanning
+The server is mounted at `/mcp` on the same host as the rest of Hecate and exposes 47 tools spanning
 CVE search and detail lookups, CPE and asset catalogues, CWE/CAPEC weakness data, database
 statistics, and a large set of SCA queries (findings, SBOMs, scan history, comparisons, security
 alerts). A handful of write tools can trigger scans and syncs, manage the environment inventory
@@ -129,11 +129,12 @@ question — you never name a tool by hand.
 | Reference catalogues | read | `search_cpe`, `search_vendors`, `search_products`, `get_cwe`, `get_capec`, `get_vulnerability_stats`. |
 | SCA findings & SBOM | read | `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`. |
 | Scans & history | read | `list_scan_targets`, `list_target_groups`, `list_scans`, `get_sca_scan`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `find_findings_by_cve`. |
+| Package check | read | `check_package(ecosystem, name, version?)` — before an install: verdict `block` / `warn` / `ok` for malicious, vulnerable, freshly released, taken-over or unmaintained packages, with reasons and a recommended version. See [Package check](package-check.md). |
 | Attack-path & chain | read | `prepare_attack_path_analysis`, `refine_attack_path_analysis`, `prepare_scan_attack_chain_analysis`. |
 | AI analysis (prepare) | read | `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`. |
 | Environment inventory | read + **write** | `list_inventory_items`, `get_inventory_item` (read; each item carries its endoflife.date status); `create_inventory_item`, `update_inventory_item`, `delete_inventory_item` (**write**). |
-| VEX | read + **write** | `get_target_vex_sources`, `export_scan_vex` (read); `set_finding_vex` (by finding ids, or target + vulnerability; `null` clears), `import_vex` (CycloneDX VEX or OpenVEX, as object or JSON string), `set_target_vex_sources`, `apply_target_vex_sources` (**write**). A status set over MCP counts as set by hand (`vex_updated_by` = `<client> - MCP`), so a VEX source never overwrites it. Like the other write tools they need only the `mcp:write` scope, not the target password. |
-| Actions & persistence | **write** | `trigger_scan`, `trigger_sync`, and every `save_*` analysis tool. |
+| VEX | read + **write** | `get_target_vex_sources`, `export_scan_vex` (read; `format` = `cyclonedx` (default), `openvex` or `csaf`, see [Exporting VEX](../sca/scan-results.md#exporting-vex)); `set_finding_vex` (by finding ids, or target + vulnerability; `null` clears; optional `review_due` re-review date `YYYY-MM-DD`), `import_vex` (CycloneDX VEX or OpenVEX, as object or JSON string), `set_target_vex_sources`, `apply_target_vex_sources` (**write**). A status set over MCP counts as set by hand (`vex_updated_by` = `<client> - MCP`), so a VEX source or VEX rule never overwrites it, and records the assessed package version (findings from `get_scan_findings_by_scan` carry `vexUpdatedBy`, `vexAssessedVersion`, `vexReviewDue`, `vexNeedsReview` / `vexReviewReason` and `dependencyScope`; SBOM components carry `scope`). Like the other write tools they need only the `mcp:write` scope, not the target password. |
+| Actions & persistence | **write** | `trigger_scan`, `trigger_sync`, and every `save_*` analysis tool. The `save_*` tools take an optional `model` (the assistant's own model name, trimmed to 100 characters), stored with the analysis and shown next to the client's name; the `prepare_*` instructions ask for it. |
 
 Every OAuth event and tool invocation is recorded with the caller's identity, email, source IP, and
 granted scope. See [Security & Access Control](../security-access-control.md) for how this fits the
@@ -170,6 +171,7 @@ Once connected, you simply ask in natural language and let the assistant choose 
 - *Show me all critical Apache Tomcat vulnerabilities.*
 - *Are there any actively exploited vulnerabilities right now?*
 - *Which of my scanned images are affected by CVE-2024-1234?*
+- *Before you add it: is the npm package left-pad safe to install?*
 - *Compare the two latest scans of target hecate-backend and highlight regressions.*
 - *Analyze CVE-2024-1234 with your own reasoning and save the result to Hecate.*
 - *Triage the latest scan of target frontend and write the summary back to the scan.*

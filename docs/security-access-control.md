@@ -1,13 +1,15 @@
 # Security & Access Control
 
-Hecate is a single-operator-friendly tool. It does not (yet) have user accounts or an identity
-service; access is gated by **shared-secret passwords** sent as HTTP headers. This is an interim
-model — proportionate for a locked-down internal instance — and is designed to be replaced cleanly
-by a real identity service later.
+Out of the box, Hecate gates writes with **shared-secret passwords** sent as HTTP headers —
+proportionate for a single operator or a locked-down internal instance. For a team, connect your
+identity provider: [Sign-in (OIDC) & Roles](admin/authentication.md) gives every person an admin,
+editor or viewer role, can require a sign-in for reading too, and names the person behind every write
+in the audit log. The passwords described here keep working alongside it.
 
-!!! info "Reads are always open"
-    Only mutating requests (`POST` / `PUT` / `PATCH` / `DELETE`) are gated. Browsing, searching,
-    viewing scans, findings, SBOMs and reports never requires a password.
+!!! info "Reads are open unless sign-in requires otherwise"
+    Without OIDC, only mutating requests (`POST` / `PUT` / `PATCH` / `DELETE`) are gated. Browsing,
+    searching, viewing scans, findings, SBOMs and reports never requires a password. With OIDC and
+    `AUTH_REQUIRE_LOGIN=true` (its default), reads need a session, an API key or the system password.
 
 ## The three secrets
 
@@ -22,7 +24,8 @@ by a real identity service later.
 
 The password gates are **fail-open**: if the corresponding secret is unset, that gate is a no-op. The
 exceptions are `POST /api/v1/scans`, which answers `503` with neither a key nor a token, and token
-management, which needs `SYSTEM_PASSWORD`.
+management, which needs `SYSTEM_PASSWORD` (or a signed-in admin). Once OIDC sign-in is configured,
+no gate opens on its own any more: a write needs a sufficient role or a configured password.
 
 ### Comparison & brute-force protection
 
@@ -42,7 +45,7 @@ ACLs.
 ## Layer A — global admin gate
 
 When `SYSTEM_PASSWORD` is set, every mutating REST endpoint requires `X-System-Password` to match.
-This covers targets, scans, findings/VEX, inventory, notifications, license policies, saved
+This covers targets, scans, findings/VEX, inventory, notifications, license policies, VEX rules, saved
 searches, data sync/resync, backup-restore, manual refresh, and AI writes. Exceptions that
 self-authorize: `POST /api/v1/scans` (CI key) and `POST /api/v1/status/system-auth` (the password
 check itself).
@@ -62,17 +65,22 @@ You can give an individual SCA target its **own** write password so a target own
 
 A target owner can:
 
-- switch auto-scan, choose its scanners and set the application group, run/cancel/delete its scans,
+- switch auto-scan, choose its scanners and set the application group, run and cancel its scans,
   trigger a `/check`
 - import an SBOM into an existing SBOM-import target (a new one needs the admin). The target is
   the one the import writes to: with no `targetName` that is the name inside the SBOM itself, so
   an SBOM naming another target needs that target's password
 - change or remove the target's own password
 - set VEX status and dismiss its findings
+- mark a completed scan as a release and remove the marker (`PUT` / `DELETE /api/v1/scans/{scanId}/release`)
 - run scan-scoped AI analysis, unless an AI password is set: then that password decides
 
-A target owner **cannot** touch other targets or admin-only resources (inventory, notifications,
-policies, sync, backups). Per-target passwords are stored **hashed** (PBKDF2) in MongoDB and are
+A target owner **cannot** delete the target or any of its scans: deleting takes the system password,
+since it throws away the history the target password is meant to protect. A scan marked as a release is
+refused (`409`) even with the system password until its marker is removed.
+The evidence bundle (`GET /api/v1/scans/{scanId}/evidence-bundle`) and the VEX exports are reads, open like
+the SBOM export. Nor can an owner touch
+other targets or admin-only resources (inventory, notifications, policies, sync, backups). Per-target passwords are stored **hashed** (PBKDF2) in MongoDB and are
 never returned by the API — the target only exposes a boolean `writePasswordSet`.
 
 ### Managing per-target passwords
@@ -167,11 +175,17 @@ scanner is already running in, so use a different value per deployment.
 
 ## What this is not
 
-This is a shared-secret gate, **not** user-level authentication, and it does **not** encrypt
-traffic. For a live deployment, pair it with:
+The passwords are a shared-secret gate, **not** user-level authentication (that is what
+[OIDC sign-in](admin/authentication.md) adds), and none of it encrypts traffic. For a live
+deployment, pair it with:
 
 - **TLS** at the reverse proxy — ready-to-adapt nginx / Caddy / Traefik templates (with a
   hardened security-header set) live in `deploy/reverse-proxy/`.
+- **No direct path to the backend.** The frontend container is the gateway for `/api` and `/mcp`,
+  so the backend publishes no port in the shipped compose file. Keep it that way: a published
+  backend port bypasses the reverse proxy's TLS and headers. The backend trusts forwarded client
+  addresses only from the gateway (`TRUSTED_PROXY_IPS=frontend`), not from the scanner or other
+  containers on the same network.
 - **Network ACLs** / VPN to limit who can reach the API at all.
 - **Scoped CORS** via `CORS_ORIGINS` (see [Configuration](configuration.md)). Reads are open by
   design, so the `*` default lets any browser origin read the API; set explicit origin(s) to keep

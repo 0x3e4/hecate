@@ -40,6 +40,11 @@ class _Targets:
         self.docs = {
             "sbom-import-mine": {"target_id": "sbom-import-mine", "write_password_hash": hash_password(MINE, iterations=10)},
             "sbom-import-victim": {"target_id": "sbom-import-victim", "write_password_hash": hash_password(VICTIM, iterations=10)},
+            # The default target an unnamed import falls back to, owned by the attacker.
+            "sbom-import-sbom-import": {
+                "target_id": "sbom-import-sbom-import",
+                "write_password_hash": hash_password(MINE, iterations=10),
+            },
         }
 
     async def get(self, target_id: str) -> dict[str, Any] | None:
@@ -101,6 +106,36 @@ def test_an_upload_named_by_its_file_takes_that_targets_password(gated: TestClie
     response = gated.post("/upload", files=files, headers={"X-Target-Password": VICTIM})
     assert response.status_code == 200
     assert response.json() == {"name": "victim"}
+
+
+@pytest.mark.parametrize("blank", [" ", "\t", "  \t "])
+def test_a_blank_upload_name_is_gated_on_the_target_the_file_names(gated: TestClient, blank: str) -> None:
+    # The resolver treats a blank name as unset and takes the file's name; the
+    # gate used to authorize the default "SBOM Import" target instead.
+    files = {"file": ("bom.json", json.dumps(_cyclonedx("victim")), "application/json")}
+    params = {"targetName": blank}
+    assert gated.post("/upload", params=params, files=files, headers={"X-Target-Password": MINE}).status_code == 401
+    assert gated.post("/upload", params=params, files=files, headers={"X-Target-Password": VICTIM}).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("sbom", "key"),
+    [
+        ({"bomFormat": "CycloneDX", "specVersion": "1.5"}, "components"),
+        ({"spdxVersion": "SPDX-2.3", "name": "x"}, "packages"),
+    ],
+)
+async def test_an_sbom_over_the_component_limit_is_refused_before_anything_is_written(
+    monkeypatch: pytest.MonkeyPatch, sbom: dict[str, Any], key: str
+) -> None:
+    monkeypatch.setattr(settings, "sca_sbom_import_max_components", 3)
+    # No repositories: the refusal must come before the first write.
+    service = ScanService(
+        target_repo=None, scan_repo=None, finding_repo=None, sbom_repo=None, layer_repo=None, audit_service=None
+    )
+    entries = [{"name": f"p{i}", "version": "1.0.0"} for i in range(4)]
+    with pytest.raises(ValueError, match="limit is 3"):
+        await service.import_sbom(sbom_data={**sbom, key: entries})
 
 
 def test_the_gate_and_the_import_resolve_the_same_target() -> None:

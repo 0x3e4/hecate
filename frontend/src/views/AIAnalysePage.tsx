@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../screens/ai-analyse.css";
-import { stripAiSummaryFooter } from "../utils/aiSummary";
+import { aiProviderName, stripAiSummaryFooter } from "../utils/aiSummary";
 import {
   getAiProviders,
   getBatchAnalysis,
@@ -579,7 +579,8 @@ export const AIAnalysePage = () => {
                 return timeB - timeA;
               })
               .map((item) => {
-                const providerLabel = providerLabelMap.get(item.provider as AIProviderId) ?? item.provider;
+                const providerLabel = providerLabelMap.get(item.provider as AIProviderId) ?? aiProviderName(item.provider);
+                const itemModel = "model" in item ? item.model : null;
 
                 if (item.type === "scan") {
                   const scan = item as ScanAiAnalysisHistoryItem;
@@ -594,6 +595,7 @@ export const AIAnalysePage = () => {
                       date={scan.timestamp}
                       kind={t("Scan", "Scan")}
                       provider={providerLabel}
+                      model={itemModel}
                       triggeredBy={scan.triggeredBy}
                       language={scan.language}
                       tokenUsage={scan.tokenUsage}
@@ -620,6 +622,7 @@ export const AIAnalysePage = () => {
                       date={batch.generatedAt}
                       kind={t("Batch", "Batch")}
                       provider={providerLabel}
+                      model={itemModel}
                       triggeredBy={batch.triggeredBy}
                       language={batch.language}
                       tokenUsage={batch.tokenUsage}
@@ -644,6 +647,7 @@ export const AIAnalysePage = () => {
                       date={single.timestamp}
                       kind={t("Single", "Einzeln")}
                       provider={providerLabel}
+                      model={itemModel}
                       triggeredBy={single.triggeredBy}
                       language={single.language}
                       tokenUsage={single.token_usage}

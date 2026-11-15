@@ -20,6 +20,15 @@ a write scoped to one SCA target passes if the global admin password matches
 (admin override) **or** the target's own ``write_password_hash`` verifies against
 ``X-Target-Password``. Applied to the target-scoped routes in
 ``app/api/v1/scans.py``.
+
+OIDC roles sit in front of both layers (``app/core/auth_context.py``): a
+signed-in ``admin`` passes every gate here, an ``editor`` passes the target
+gates and the editor gates (AI fallback, refresh, inventory, saved searches,
+creating targets), a ``viewer`` passes none. The password headers are still
+checked after the role, so scripts and installs without OIDC are unaffected.
+With OIDC configured the gates are no longer fail-open for anonymous callers:
+the sign-in is what protects them then. A signed-in user whose role is too low
+gets a 403 (``X-Auth-Role-Required``), never a password prompt.
 """
 
 from __future__ import annotations
@@ -29,6 +38,14 @@ import json
 
 from fastapi import Depends, Header, Query, HTTPException, Request
 
+from app.core.auth_context import (
+    SessionUser,
+    current_user,
+    login_required_error,
+    note_credential,
+    role_error,
+    with_login_hint,
+)
 from app.core.auth_throttle import (
     AI_SECRET,
     API_KEY_SECRET,
@@ -60,29 +77,67 @@ def _admin_matches(provided: str | None) -> bool:
     return secret_equals(provided, settings.system_password)
 
 
+def _denied(user: SessionUser | None, role: str) -> HTTPException:
+    """No credential fits: a signed-in user lacks the role, anyone else has to sign in."""
+    return role_error(role) if user is not None else login_required_error()
+
+
+async def _require_write(request: Request, x_system_password: str | None, role: str) -> None:
+    """A mutating request needs a session of ``role`` or the system password.
+
+    Without OIDC this is the old admin gate: fail-open when no system password
+    is set. With OIDC an anonymous caller must sign in (or send the password).
+    """
+    if request.method not in _MUTATING_METHODS:
+        return
+    user = await current_user(request)
+    if user is not None and user.has_role(role):
+        note_credential(request, "session")
+        return
+    if not settings.system_password:
+        if not settings.oidc_enabled:
+            return
+        raise _denied(user, role)
+    key = enforce_auth_throttle(request, SYSTEM_SECRET)
+    if _admin_matches(x_system_password):
+        record_auth_result(key, True)
+        note_credential(request, "system_password")
+        return
+    # A signed-in user without a password header is not guessing.
+    if user is None or x_system_password:
+        record_auth_result(key, False)
+    if user is not None:
+        raise role_error(role)
+    raise HTTPException(
+        status_code=401,
+        detail="System password required for write operations.",
+        headers=with_login_hint(_ADMIN_AUTH_HEADERS),
+    )
+
+
 async def require_admin_write(
     request: Request,
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
 ) -> None:
-    """Layer A: gate mutating requests behind the global admin password.
+    """Layer A: gate mutating requests behind the admin role or the system password.
 
-    No-op for read methods and when ``SYSTEM_PASSWORD`` is unset (fail-open).
-    Safe to attach router-level: read routes pass straight through.
+    No-op for read methods; fail-open when neither OIDC nor ``SYSTEM_PASSWORD``
+    is configured. Safe to attach router-level: read routes pass straight through.
     """
-    if request.method not in _MUTATING_METHODS:
-        return
-    if not settings.system_password:
-        return
-    key = enforce_auth_throttle(request, SYSTEM_SECRET)
-    if _admin_matches(x_system_password):
-        record_auth_result(key, True)
-        return
-    record_auth_result(key, False)
-    raise HTTPException(
-        status_code=401,
-        detail="System password required for write operations.",
-        headers=_ADMIN_AUTH_HEADERS,
-    )
+    await _require_write(request, x_system_password, "admin")
+
+
+async def require_editor_write(
+    request: Request,
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> None:
+    """Like the admin gate, but the editor role is enough.
+
+    For writes that are work, not administration: AI analyses without an AI
+    password, vulnerability refreshes, inventory, saved searches, new targets.
+    Password callers still need the system password, as before.
+    """
+    await _require_write(request, x_system_password, "editor")
 
 
 async def require_token_admin(
@@ -92,28 +147,40 @@ async def require_token_admin(
     """Gate API token management, reads included.
 
     Every other list here is public, but this one describes credentials. Unlike
-    the admin gate it does not open when no system password is set.
+    the admin gate it does not open when no system password is set; a signed-in
+    admin passes either way.
     """
-    _require_configured_admin(request, x_system_password, "manage API tokens")
+    await _require_configured_admin(request, x_system_password, "manage API tokens")
 
 
-def _require_configured_admin(request: Request, x_system_password: str | None, action: str) -> None:
+async def _require_configured_admin(request: Request, x_system_password: str | None, action: str) -> None:
+    user = await current_user(request)
+    if user is not None and user.has_role("admin"):
+        note_credential(request, "session")
+        return
     if not settings.system_password:
+        if user is not None:
+            raise role_error("admin")
+        if settings.oidc_enabled:
+            raise login_required_error(f"Sign in as an admin to {action}.")
         raise HTTPException(status_code=403, detail=f"Set SYSTEM_PASSWORD to {action}.")
     key = enforce_auth_throttle(request, SYSTEM_SECRET)
     if _admin_matches(x_system_password):
         record_auth_result(key, True)
+        note_credential(request, "system_password")
         return
     if x_system_password:
         record_auth_result(key, False)
+    if user is not None:
+        raise role_error("admin")
     raise HTTPException(
         status_code=401,
         detail=f"System password required to {action}.",
-        headers=_ADMIN_AUTH_HEADERS,
+        headers=with_login_hint(_ADMIN_AUTH_HEADERS),
     )
 
 
-async def _authorize_api_token(x_api_key: str, scope: str, key: str) -> str | None:
+async def _authorize_api_token(request: Request, x_api_key: str, scope: str, key: str) -> str | None:
     """Return the name of a valid token holding ``scope``, ``None`` for an unknown one.
 
     A token without the scope is a real credential, so it gets a 403 and neither
@@ -127,6 +194,7 @@ async def _authorize_api_token(x_api_key: str, scope: str, key: str) -> str | No
     if scope not in token["scopes"]:
         raise HTTPException(status_code=403, detail=f"API token lacks the {scope} scope.")
     record_auth_result(key, True)
+    note_credential(request, "api_token", name=token["name"])
     return token["name"]
 
 
@@ -138,8 +206,9 @@ async def verify_sca_api_key(
     key = enforce_auth_throttle(request, API_KEY_SECRET)
     if secret_equals(x_api_key, settings.sca_api_key):
         record_auth_result(key, True)
+        note_credential(request, "sca_api_key")
         return
-    if await _authorize_api_token(x_api_key, SCOPE_SCAN_SUBMIT, key) is not None:
+    if await _authorize_api_token(request, x_api_key, SCOPE_SCAN_SUBMIT, key) is not None:
         return
     if not settings.sca_api_key:
         service = await get_api_token_service()
@@ -160,13 +229,13 @@ async def require_inventory_report(
     SCA API key does not open this route: a version report can make CVE matches
     disappear, which is more than submitting a scan. A wrong token fails outright
     rather than falling through to the password gate, which is fail-open when no
-    password is set.
+    password is set. A signed-in editor reports like anyone editing the inventory.
     """
     if x_api_key is None:
-        await require_admin_write(request, x_system_password=x_system_password)
+        await require_editor_write(request, x_system_password=x_system_password)
         return None
     key = enforce_auth_throttle(request, API_KEY_SECRET)
-    name = await _authorize_api_token(x_api_key, SCOPE_INVENTORY_REPORT, key)
+    name = await _authorize_api_token(request, x_api_key, SCOPE_INVENTORY_REPORT, key)
     if name is None:
         record_auth_result(key, False)
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -189,8 +258,16 @@ async def require_ai_write(
     UI shows only the AI-password prompt. The mismatch 401 deliberately carries
     NO ``X-Write-Auth-Required`` marker, so the page-level AI dialog handles it
     instead of the global write-password prompt. When no AI password is
-    configured, fall back to the global admin gate (the system-password modal).
+    configured, fall back to the editor gate (the role, else the system-password
+    modal).
+
+    With OIDC, a signed-in viewer is refused first (viewers only read); an editor
+    or admin still needs the AI password when one is set, which keeps it the
+    cost lock it is for everyone. A caller without a session keeps the old rule.
     """
+    user = await current_user(request)
+    if user is not None and not user.has_role("editor"):
+        raise role_error("editor")
     if settings.ai_analysis_password:
         key = enforce_auth_throttle(request, AI_SECRET)
         if not _ai_password_matches(x_ai_analysis_password):
@@ -200,8 +277,9 @@ async def require_ai_write(
                 detail="Invalid or missing AI analysis password.",
             )
         record_auth_result(key, True)
+        note_credential(request, "ai_password")
         return
-    await require_admin_write(request, x_system_password=x_system_password)
+    await require_editor_write(request, x_system_password=x_system_password)
 
 
 async def require_ai_target_write_scan(
@@ -216,8 +294,11 @@ async def require_ai_target_write_scan(
 
     Same precedence as ``require_ai_write``: the AI password alone authorizes
     when configured; otherwise fall back to the per-target write gate (admin
-    override or the target's own write password).
+    override or the target's own write password). A signed-in viewer is refused.
     """
+    user = await current_user(request)
+    if user is not None and not user.has_role("editor"):
+        raise role_error("editor")
     if settings.ai_analysis_password:
         key = enforce_auth_throttle(request, AI_SECRET)
         if not _ai_password_matches(x_ai_analysis_password):
@@ -228,6 +309,7 @@ async def require_ai_target_write_scan(
                 detail="Invalid or missing AI analysis password.",
             )
         record_auth_result(key, True)
+        note_credential(request, "ai_password")
         return
     await require_target_write_scan(
         request,
@@ -245,8 +327,17 @@ async def _authorize_target(
     x_system_password: str | None,
     x_target_password: str | None,
     service: ScanService,
+    role: str = "editor",
 ) -> None:
-    """Authorize a write scoped to a single target (admin override OR target pw)."""
+    """Authorize a write scoped to a single target (role, admin override OR target pw).
+
+    ``role`` is what a session needs: editor for ordinary target writes, admin
+    for managing the target's password.
+    """
+    user = await current_user(request)
+    if user is not None and user.has_role(role):
+        note_credential(request, "session")
+        return
     # Checked first: every route below answers 401 or not for a guessed admin
     # password, and the hash comparison below is deliberately slow.
     key = enforce_auth_throttle(request, SYSTEM_SECRET)
@@ -265,26 +356,32 @@ async def _authorize_target(
         and target_hash
         and await asyncio.to_thread(verify_password, x_target_password, target_hash)
     ):
+        note_credential(request, "target_password", target=target_id)
         return
 
     # Admin override.
     if _admin_matches(x_system_password):
         record_auth_result(key, True)
+        note_credential(request, "system_password")
         return
 
     # Fail-open only when neither the global admin password nor this target's
-    # own password is configured.
+    # own password is configured, and nobody can sign in.
     if not settings.system_password and not target_hash:
-        return
+        if not settings.oidc_enabled:
+            return
+        raise _denied(user, role)
 
     # No password sent is the UI about to prompt, not a guess: it fans out parallel
     # writes for one merged finding row, which would otherwise lock before the dialog.
     if x_system_password or x_target_password:
         record_auth_result(key, False)
+    if user is not None:
+        raise role_error(role)
     raise HTTPException(
         status_code=401,
         detail="Write password required for this target.",
-        headers=_WRITE_AUTH_HEADERS,
+        headers=with_login_hint(_WRITE_AUTH_HEADERS),
     )
 
 
@@ -309,16 +406,23 @@ async def _authorize_targets(
             service=service,
         )
         return
+    user = await current_user(request)
+    if user is not None and user.has_role("editor"):
+        note_credential(request, "session")
+        return
     key = enforce_auth_throttle(request, SYSTEM_SECRET)
     if _admin_matches(x_system_password):
         record_auth_result(key, True)
+        note_credential(request, "system_password")
         return
     if x_system_password:
         record_auth_result(key, False)
+    if user is not None:
+        raise role_error("editor")
     raise HTTPException(
         status_code=401,
         detail="Admin password required: selection spans multiple targets.",
-        headers=_WRITE_AUTH_HEADERS,
+        headers=with_login_hint(_WRITE_AUTH_HEADERS),
     )
 
 
@@ -399,10 +503,17 @@ async def require_target_password_change(
     The admin can, and so can the target's owner with the current password. The
     first password needs the admin, and without SYSTEM_PASSWORD there is none:
     the open admin gate would let anyone clear a password and then write to the
-    target, so that case is refused rather than left open.
+    target, so that case is refused rather than left open. A signed-in admin is
+    an admin either way; an editor is an owner only with the current password.
     """
+    user = await current_user(request)
+    if user is not None and user.has_role("admin"):
+        note_credential(request, "session")
+        return
     target = await service.target_repo.get(target_id)
     if not settings.system_password and not (target and target.get("write_password_hash")):
+        if user is not None:
+            raise role_error("admin")
         raise HTTPException(status_code=403, detail="Set SYSTEM_PASSWORD to protect a target with a password.")
     await _authorize_target(
         request,
@@ -410,6 +521,7 @@ async def require_target_password_change(
         x_system_password=x_system_password,
         x_target_password=x_target_password,
         service=service,
+        role="admin",
     )
 
 
@@ -461,11 +573,14 @@ async def require_target_write_sbom_upload(
 ) -> None:
     """An SBOM upload into an existing target takes that target's password; a new target takes the admin's.
 
-    Without ``targetName`` the file names the target, so it is read here too.
+    Without a usable ``targetName`` the file names the target, so it is read
+    here too. "Usable" is the resolver's rule: a blank name (``" "``) counts as
+    unset there, and gating it on the default target while the import writes
+    into the one the file names opened every protected target.
     Starlette caches the parsed form, and the handler reads the same upload.
     """
     sbom: dict = {}
-    if not target_name:
+    if not (target_name and target_name.strip()):
         sbom = await _uploaded_sbom(request)
     _, target_id = resolve_sbom_import_target(sbom, format, target_name, None)
     await _authorize_target(

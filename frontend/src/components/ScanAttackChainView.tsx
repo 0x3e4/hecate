@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchScanAttackChain, triggerScanAttackChainNarrative, fetchScan } from "../api/scans";
 import { getAiProviders } from "../api/vulnerabilities";
 import { useI18n } from "../i18n/context";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { useSSE } from "../hooks/useSSE";
+import { eventForRun, runIdOf } from "../utils/aiRun";
 import type {
   AIProviderInfo,
   ScanAttackChainResponse,
@@ -51,6 +53,12 @@ export function ScanAttackChainView({
   const [narrativeLoading, setNarrativeLoading] = useState<boolean>(false);
   const [narrativeStartedAt, setNarrativeStartedAt] = useState<number | null>(null);
   const [aiProviders, setAiProviders] = useState<AIProviderInfo[]>([]);
+  // The narrative run this view waits for; its SSE events say when it ends or fails.
+  const [narrativeRunId, setNarrativeRunId] = useState<string | null>(null);
+  // Stored narratives when the run started: the polling fallback waits for one more.
+  const chainsAtStartRef = useRef(0);
+  const { jobs: sseJobs } = useSSE();
+  const jobName = `scan_attack_chain_${scanId}`;
 
   useEffect(() => {
     if (!aiEnabled) return;
@@ -99,13 +107,65 @@ export function ScanAttackChainView({
   // clicks / activeStage changes. Otherwise AttackPathGraphView re-renders
   // and (in some browsers) the synthetic-event reconciliation interrupted
   // panzoom's drag-tracking, manifesting as "graph resets and freezes".
+  const finishNarrative = useCallback(async () => {
+    setNarrativeLoading(false);
+    setNarrativeStartedAt(null);
+    setNarrativeRunId(null);
+    try {
+      setResponse(await fetchScanAttackChain(scanId, { language: locale }));
+    } catch {
+      // the graph stays; the next visit loads the narrative
+    }
+    onPersistedNarrativeChange?.();
+  }, [scanId, locale, onPersistedNarrativeChange]);
+
+  // Follow the run over SSE, and pick up one already running when the tab opens.
+  useEffect(() => {
+    const latest = sseJobs.get(jobName);
+    if (!narrativeLoading) {
+      if (latest?.status === "running") {
+        setNarrativeLoading(true);
+        setNarrativeRunId(runIdOf(latest));
+        setNarrativeStartedAt(latest.startedAt ? new Date(latest.startedAt).getTime() : Date.now());
+      }
+      return;
+    }
+    const job = eventForRun(sseJobs, jobName, narrativeRunId);
+    if (job?.status === "completed") {
+      void finishNarrative();
+    } else if (job?.status === "failed") {
+      setError(job.error ?? t("Narrative generation failed.", "Beschreibungserzeugung fehlgeschlagen."));
+      setNarrativeLoading(false);
+      setNarrativeStartedAt(null);
+      setNarrativeRunId(null);
+    }
+  }, [sseJobs, jobName, narrativeLoading, narrativeRunId, finishNarrative, t]);
+
+  // Fallback when the stream is down: wait for one more stored narrative. (The old
+  // poll also accepted an existing one, so a second run "finished" at once.)
+  useEffect(() => {
+    if (!narrativeLoading) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const fresh = await fetchScan(scanId);
+        if (!cancelled && (fresh.attackChains?.length ?? 0) > chainsAtStartRef.current) void finishNarrative();
+      } catch { /* the next tick tries again */ }
+    }, 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [narrativeLoading, scanId, finishNarrative]);
+
   const handleTriggerNarrative = useCallback(
     async (provider: string, additionalContext: string) => {
       setError(null);
       setNarrativeLoading(true);
       setNarrativeStartedAt(Date.now());
       try {
-        await triggerScanAttackChainNarrative(
+        chainsAtStartRef.current = (await fetchScan(scanId)).attackChains?.length ?? 0;
+        const submitted = await triggerScanAttackChainNarrative(
           scanId,
           {
             provider,
@@ -114,34 +174,7 @@ export function ScanAttackChainView({
           },
           aiAnalysisPassword || undefined,
         );
-        // Poll the scan a few times to surface the narrative.
-        let attempts = 0;
-        const baseLength = response?.narrative ? 1 : 0;
-        const pollHandle: { id: number | null } = { id: null };
-        const tick = async () => {
-          attempts += 1;
-          if (attempts > 30) {
-            setNarrativeLoading(false);
-            setNarrativeStartedAt(null);
-            return;
-          }
-          try {
-            const fresh = await fetchScan(scanId);
-            const freshLen = (fresh.attackChains?.length ?? 0);
-            if (freshLen > baseLength || fresh.attackChain) {
-              const updated = await fetchScanAttackChain(scanId, { language: locale });
-              setResponse(updated);
-              setNarrativeLoading(false);
-              setNarrativeStartedAt(null);
-              onPersistedNarrativeChange?.();
-              return;
-            }
-          } catch {
-            // fall through to retry
-          }
-          pollHandle.id = window.setTimeout(tick, 4000);
-        };
-        pollHandle.id = window.setTimeout(tick, 4000);
+        setNarrativeRunId(submitted.runId ?? null);
       } catch (err: unknown) {
         const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
         const detail = (err as { response?: { data?: { detail?: string } } } | undefined)?.response?.data?.detail;
@@ -155,7 +188,7 @@ export function ScanAttackChainView({
         setNarrativeStartedAt(null);
       }
     },
-    [scanId, locale, aiAnalysisPassword, response?.narrative, onPersistedNarrativeChange, t],
+    [scanId, locale, aiAnalysisPassword, t],
   );
 
   if (loading && !response) {

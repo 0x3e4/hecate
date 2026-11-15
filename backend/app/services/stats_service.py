@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Iterable
@@ -47,6 +48,149 @@ MONGO_FALLBACK_MAX_TIME_MS = 3000
 # Feeds name hundreds of CVEs in a week. Most mentions stand alone, so the cut falls on those.
 ATTENTION_MAX_CERT_MENTIONS = 300
 CERT_OVERVIEW_MAX_CVES = 1000
+
+# Publication timeline (/stats/timeline). `auto` keeps a window between roughly
+# 20 and 200 points: up to 120 days per day, up to ~3 years per week, beyond
+# that per month (the all-time view since the late 1980s is ~470 months).
+TIMELINE_INTERVALS = ("day", "week", "month")
+TIMELINE_DAY_MAX_DAYS = 120
+TIMELINE_WEEK_MAX_DAYS = 1096
+# An explicit interval finer than this many buckets is coarsened, not served.
+TIMELINE_MAX_POINTS = 1000
+TIMELINE_MAX_SPAN = timedelta(days=366 * 80)
+TIMELINE_EARLIEST = datetime(1970, 1, 1, tzinfo=UTC)
+TIMELINE_FUTURE_SLACK = timedelta(days=366)
+TIMELINE_CACHE_SECONDS = 60
+TIMELINE_CACHE_MAX_ENTRIES = 256
+TIMELINE_EARLIEST_CACHE_SECONDS = 3600
+TIMELINE_SEARCH_TIMEOUT_SECONDS = 20.0
+_TIMELINE_CACHE: dict[tuple[int, int, str, str], tuple[float, dict[str, Any]]] = {}
+_EARLIEST_PUBLISHED: dict[str, Any] = {}
+_DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_APPROX_BUCKET_DAYS = {"day": 1.0, "week": 7.0, "month": 28.0}
+
+# Asset cards: the catalogue entries most vulnerabilities name, by slug, so the
+# count equals what the linked `vendorSlugs:"x"` list query returns.
+ASSET_RANKING_SIZE = 15
+ASSET_ALIAS_LIMIT = 4
+# Placeholders and package registries land in `vendorSlugs` without naming a
+# maker (kept in step with GENERIC_VENDORS in frontend/src/utils/catalog.ts).
+_PLACEHOLDER_SLUGS = ("n-a", "na", "unknown", "*", "-", "none")
+_REGISTRY_VENDOR_SLUGS = (
+    "cargo", "composer", "crates-io", "gem", "github", "go", "maven", "npm",
+    "nuget", "packagist", "pip", "pypi", "rubygems",
+)
+
+
+class TimelineRangeError(ValueError):
+    """A /stats/timeline range that can't be served (unparseable, inverted, too wide)."""
+
+
+class TimelineUnavailableError(RuntimeError):
+    """OpenSearch did not answer the timeline aggregation."""
+
+
+def timeline_zone(tz: str | None) -> tuple[ZoneInfo, str]:
+    """The bucket zone and its name; a missing or unknown IANA name falls back to UTC (fail-open)."""
+    if tz:
+        try:
+            return ZoneInfo(tz), tz
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return ZoneInfo("UTC"), "UTC"
+
+
+def choose_timeline_interval(start: datetime, end: datetime) -> str:
+    """Bucket size for a window: day up to 120 days, week up to ~3 years, else month."""
+    days = (end - start).total_seconds() / 86400
+    if days <= TIMELINE_DAY_MAX_DAYS:
+        return "day"
+    if days <= TIMELINE_WEEK_MAX_DAYS:
+        return "week"
+    return "month"
+
+
+def coarsen_timeline_interval(interval: str, start: datetime, end: datetime) -> str:
+    """The requested interval, or the next coarser one while the window would exceed TIMELINE_MAX_POINTS."""
+    days = (end - start).total_seconds() / 86400
+    index = TIMELINE_INTERVALS.index(interval)
+    while index < len(TIMELINE_INTERVALS) - 1 and days / _APPROX_BUCKET_DAYS[TIMELINE_INTERVALS[index]] > TIMELINE_MAX_POINTS:
+        index += 1
+    return TIMELINE_INTERVALS[index]
+
+
+def floor_to_interval(moment: datetime, interval: str, zone: ZoneInfo) -> datetime:
+    """Start of the bucket holding ``moment``: local midnight, Monday or the 1st, as OpenSearch rounds."""
+    day = moment.astimezone(zone).date()
+    if interval == "week":
+        day -= timedelta(days=day.weekday())
+    elif interval == "month":
+        day = day.replace(day=1)
+    return datetime(day.year, day.month, day.day, tzinfo=zone)
+
+
+def next_interval_start(start: datetime, interval: str, zone: ZoneInfo) -> datetime:
+    """Start of the bucket after the one starting at ``start`` (calendar arithmetic, DST-safe)."""
+    day = start.astimezone(zone).date()
+    if interval == "day":
+        day += timedelta(days=1)
+    elif interval == "week":
+        day += timedelta(days=7)
+    else:
+        day += relativedelta(months=1)
+    return datetime(day.year, day.month, day.day, tzinfo=zone)
+
+
+def ceil_to_interval(moment: datetime, interval: str, zone: ZoneInfo) -> datetime:
+    """End of the bucket holding the instant just before ``moment`` (``moment`` itself when on a boundary)."""
+    start = floor_to_interval(moment, interval, zone)
+    return start if start == moment else next_interval_start(start, interval, zone)
+
+
+def parse_timeline_bound(value: str, zone: ZoneInfo) -> datetime:
+    """ISO 8601 instant; a bare ``YYYY-MM-DD`` or an offset-less datetime is read in ``zone``."""
+    text = value.strip()
+    try:
+        if _DATE_ONLY.fullmatch(text):
+            day = datetime.strptime(text, "%Y-%m-%d")
+            return datetime(day.year, day.month, day.day, tzinfo=zone)
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise TimelineRangeError(f"Not an ISO 8601 date or datetime: {value!r}") from exc
+    return parsed.replace(tzinfo=zone) if parsed.tzinfo is None else parsed
+
+
+def _primary_vendor_slug(product_slug: str, vendor_slugs: list[str]) -> str | None:
+    """The vendor a catalogue product most likely belongs to (mirrors primaryVendorSlug in utils/catalog.ts)."""
+    generic = set(_REGISTRY_VENDOR_SLUGS) | set(_PLACEHOLDER_SLUGS)
+    named = [vendor for vendor in vendor_slugs if vendor and vendor not in generic]
+    for vendor in named:
+        if vendor == product_slug:
+            return vendor
+    for vendor in named:
+        if product_slug.startswith(f"{vendor}-"):
+            return vendor
+    if named:
+        return named[0]
+    return vendor_slugs[0] if vendor_slugs else None
+
+
+def _distinct_aliases(name: str, aliases: Iterable[Any], limit: int) -> list[str]:
+    """Aliases that say something new: the catalogue keeps case variants of the name itself."""
+    seen = {name.strip().lower()}
+    result: list[str] = []
+    for alias in aliases or []:
+        if not isinstance(alias, str):
+            continue
+        key = alias.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(alias.strip())
+        if len(result) >= limit:
+            break
+    return result
+
 
 def _aggregation_field_resolver(use_keyword_suffix: bool) -> Callable[[str], str]:
     """Field path for terms aggregations, taken from the live index mapping.
@@ -132,6 +276,7 @@ def _unknown_row(cve_id: str) -> dict[str, Any]:
         "vendors": [],
         "products": [],
         "inventoryMatchIds": [],
+        "sbomScanId": None,
     }
 
 
@@ -193,8 +338,8 @@ class StatsService:
                     "vendorTotal": 0,
                     "productTotal": 0,
                     "versionTotal": 0,
-                    "sampleVendors": [],
-                    "sampleProducts": [],
+                    "topVendors": [],
+                    "topProducts": [],
                 },
             }
 
@@ -602,36 +747,255 @@ class StatsService:
             vendor_total,
             product_total,
             version_total,
-            vendor_samples,
-            product_samples,
+            (vendor_buckets, product_buckets),
         ) = await asyncio.gather(
             repository.vendors.count_documents({}),
             repository.products.count_documents({}),
             repository.versions.count_documents({}),
-            repository.sample_vendors(limit=6),
-            repository.sample_products(limit=6),
+            self._top_catalog_slugs(),
         )
-
-        def _simplify_sample(item: dict[str, Any]) -> dict[str, Any]:
-            name = (
-                item.get("name")
-                or item.get("displayName")
-                or item.get("_id")
-                or "—"
-            )
-            return {
-                "slug": item.get("slug") or item.get("_id"),
-                "name": name,
-                "aliases": item.get("aliases", [])[:3],
-            }
+        top_vendors, top_products = await self._catalog_rankings(repository, vendor_buckets, product_buckets)
 
         return {
             "vendorTotal": vendor_total,
             "productTotal": product_total,
             "versionTotal": version_total,
-            "sampleVendors": [_simplify_sample(item) for item in vendor_samples],
-            "sampleProducts": [_simplify_sample(item) for item in product_samples],
+            "topVendors": top_vendors,
+            "topProducts": top_products,
         }
+
+    async def _top_catalog_slugs(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Vendor and product slugs most vulnerabilities name, from one OpenSearch terms query.
+
+        The slug fields are what the list's ``vendorSlugs:"x"`` query matches, so the
+        count shown is the count the link opens. Fail-soft: no ranking, totals stay.
+        """
+        field = _aggregation_field_resolver(False)
+        placeholders = list(_PLACEHOLDER_SLUGS)
+        body = {
+            "size": 0,
+            "track_total_hits": False,
+            "query": {"match_all": {}},
+            "aggs": {
+                "vendors": {
+                    "terms": {
+                        "field": field("vendorSlugs"),
+                        "size": ASSET_RANKING_SIZE,
+                        "exclude": placeholders + list(_REGISTRY_VENDOR_SLUGS),
+                    }
+                },
+                "products": {
+                    "terms": {"field": field("productSlugs"), "size": ASSET_RANKING_SIZE, "exclude": placeholders}
+                },
+            },
+        }
+        try:
+            response = await async_search(settings.opensearch_index, body, suppress_exceptions=False)
+        except (OSConnectionError, OpenSearchException) as exc:
+            log.warning("stats.asset_ranking_failed", error=str(exc))
+            return [], []
+        aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
+        return (
+            self._map_terms_aggregation(aggregations.get("vendors"), limit=ASSET_RANKING_SIZE),
+            self._map_terms_aggregation(aggregations.get("products"), limit=ASSET_RANKING_SIZE),
+        )
+
+    async def _catalog_rankings(
+        self,
+        repository: AssetRepository,
+        vendor_buckets: list[dict[str, Any]],
+        product_buckets: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Top slugs dressed with catalogue names, aliases and breadth (indexed lookups only)."""
+        vendor_slugs = [str(bucket["key"]) for bucket in vendor_buckets]
+        product_slugs = [str(bucket["key"]) for bucket in product_buckets]
+        if not vendor_slugs and not product_slugs:
+            return [], []
+        try:
+            vendor_docs, product_docs, product_counts, version_counts = await asyncio.gather(
+                repository.find_vendors_by_slugs(vendor_slugs),
+                repository.find_products_by_slugs(product_slugs),
+                repository.count_products_by_vendor(vendor_slugs, max_time_ms=MONGO_FALLBACK_MAX_TIME_MS),
+                repository.count_versions_by_product(product_slugs, max_time_ms=MONGO_FALLBACK_MAX_TIME_MS),
+            )
+        except PyMongoError as exc:
+            log.warning("stats.asset_catalog_lookup_failed", error=str(exc))
+            vendor_docs, product_docs, product_counts, version_counts = [], [], {}, {}
+
+        vendors_by_slug = {doc.get("_id"): doc for doc in vendor_docs}
+        products_by_slug = {doc.get("_id"): doc for doc in product_docs}
+
+        owner_slugs = {
+            slug: _primary_vendor_slug(slug, list(products_by_slug.get(slug, {}).get("vendorSlugs") or []))
+            for slug in product_slugs
+        }
+        missing_owners = sorted({owner for owner in owner_slugs.values() if owner and owner not in vendors_by_slug})
+        if missing_owners:
+            try:
+                for doc in await repository.find_vendors_by_slugs(missing_owners):
+                    vendors_by_slug[doc.get("_id")] = doc
+            except PyMongoError as exc:
+                log.warning("stats.asset_owner_lookup_failed", error=str(exc))
+
+        def display(doc: dict[str, Any] | None, slug: str) -> str:
+            return str((doc or {}).get("displayName") or slug)
+
+        top_vendors = []
+        for bucket in vendor_buckets:
+            slug = str(bucket["key"])
+            doc = vendors_by_slug.get(slug)
+            name = display(doc, slug)
+            top_vendors.append({
+                "slug": slug,
+                "name": name,
+                "aliases": _distinct_aliases(name, (doc or {}).get("aliases") or [], ASSET_ALIAS_LIMIT),
+                "vulnerabilityCount": int(bucket["doc_count"]),
+                "productCount": product_counts.get(slug),
+                "inCatalog": doc is not None,
+            })
+
+        top_products = []
+        for bucket in product_buckets:
+            slug = str(bucket["key"])
+            doc = products_by_slug.get(slug)
+            name = display(doc, slug)
+            owner = owner_slugs.get(slug)
+            top_products.append({
+                "slug": slug,
+                "name": name,
+                "aliases": _distinct_aliases(name, (doc or {}).get("aliases") or [], ASSET_ALIAS_LIMIT),
+                "vulnerabilityCount": int(bucket["doc_count"]),
+                "versionCount": version_counts.get(slug),
+                "vendor": {"slug": owner, "name": display(vendors_by_slug.get(owner), owner)} if owner else None,
+                "inCatalog": doc is not None,
+            })
+        return top_vendors, top_products
+
+    async def get_timeline(
+        self,
+        *,
+        from_: str | None = None,
+        to: str | None = None,
+        interval: str = "auto",
+        tz: str | None = None,
+    ) -> dict[str, Any]:
+        """Publications per day / week / month between ``from_`` and ``to`` in the zone ``tz``.
+
+        Buckets are aligned to the chosen interval in ``tz`` (the first bucket starts
+        at the local midnight, Monday or 1st on or before ``from_``, the last one holds
+        the instant before ``to``), empty buckets are included, and ``totalBefore``
+        counts what was published before the first bucket, so a cumulative chart
+        of the window stays absolute. ``from_`` omitted = the earliest publication.
+        """
+        zone, tz_name = timeline_zone(tz)
+        if interval not in ("auto", *TIMELINE_INTERVALS):
+            raise TimelineRangeError(f"Unknown interval {interval!r}")
+        now = datetime.now(UTC)
+        end_raw = parse_timeline_bound(to, zone) if to else now
+        if end_raw > now + TIMELINE_FUTURE_SLACK:
+            raise TimelineRangeError("'to' lies more than a year in the future")
+        if from_:
+            start_raw = parse_timeline_bound(from_, zone)
+            if start_raw < TIMELINE_EARLIEST:
+                raise TimelineRangeError("'from' lies before 1970")
+            if end_raw - start_raw > TIMELINE_MAX_SPAN:
+                raise TimelineRangeError("The range is wider than 80 years")
+        else:
+            earliest = await self._earliest_published()
+            start_raw = max(earliest or end_raw - timedelta(days=30), TIMELINE_EARLIEST, end_raw - TIMELINE_MAX_SPAN)
+        if start_raw >= end_raw:
+            raise TimelineRangeError("'from' must lie before 'to'")
+
+        chosen = choose_timeline_interval(start_raw, end_raw) if interval == "auto" else interval
+        chosen = coarsen_timeline_interval(chosen, start_raw, end_raw)
+        start = floor_to_interval(start_raw, chosen, zone)
+        end = ceil_to_interval(end_raw, chosen, zone)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+
+        key = (start_ms, end_ms, chosen, tz_name)
+        cached = _TIMELINE_CACHE.get(key)
+        if cached is not None and time.monotonic() - cached[0] < TIMELINE_CACHE_SECONDS:
+            return cached[1]
+
+        body = self._build_timeline_query(start_ms=start_ms, end_ms=end_ms, interval=chosen, tz_name=tz_name)
+        try:
+            response = await asyncio.wait_for(
+                async_search(settings.opensearch_index, body, suppress_exceptions=False),
+                timeout=TIMELINE_SEARCH_TIMEOUT_SECONDS,
+            )
+        except (OSConnectionError, OpenSearchException, asyncio.TimeoutError) as exc:
+            log.warning("stats.timeline_failed", error=str(exc))
+            raise TimelineUnavailableError("The publication timeline is unavailable right now.") from exc
+
+        aggregations = response.get("aggregations", {}) if isinstance(response, dict) else {}
+        before = aggregations.get("before")
+        window = aggregations.get("window")
+        points = self._map_daily_histogram(window.get("buckets") if isinstance(window, dict) else None)
+        # extended_bounds only widens; drop anything a clock skew put outside the window.
+        points = [point for point in points if start_ms <= point["timestamp"] < end_ms]
+        result = {
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "tz": tz_name,
+            "interval": chosen,
+            "totalBefore": int(before.get("doc_count", 0)) if isinstance(before, dict) else 0,
+            "total": sum(point["count"] for point in points),
+            "points": points,
+        }
+        if len(_TIMELINE_CACHE) >= TIMELINE_CACHE_MAX_ENTRIES:
+            _TIMELINE_CACHE.clear()
+        _TIMELINE_CACHE[key] = (time.monotonic(), result)
+        return result
+
+    @staticmethod
+    def _build_timeline_query(*, start_ms: int, end_ms: int, interval: str, tz_name: str) -> dict[str, Any]:
+        return {
+            "size": 0,
+            "track_total_hits": False,
+            "query": {"match_all": {}},
+            "aggs": {
+                "before": {"filter": {"range": {"published": {"lt": start_ms}}}},
+                "window": {
+                    "filter": {"range": {"published": {"gte": start_ms, "lt": end_ms}}},
+                    "aggs": {
+                        "buckets": {
+                            "date_histogram": {
+                                "field": "published",
+                                "calendar_interval": interval,
+                                "time_zone": tz_name,
+                                "min_doc_count": 0,
+                                "extended_bounds": {"min": start_ms, "max": end_ms - 1},
+                                "format": "yyyy-MM" if interval == "month" else "yyyy-MM-dd",
+                            }
+                        }
+                    },
+                },
+            },
+        }
+
+    @staticmethod
+    async def _earliest_published() -> datetime | None:
+        """First publication date in the index (an hour's cache); None when unknown."""
+        cached = _EARLIEST_PUBLISHED.get("value")
+        if cached is not None and time.monotonic() - _EARLIEST_PUBLISHED["at"] < TIMELINE_EARLIEST_CACHE_SECONDS:
+            return cached
+        body = {"size": 0, "track_total_hits": False, "aggs": {"first": {"min": {"field": "published"}}}}
+        try:
+            response = await asyncio.wait_for(
+                async_search(settings.opensearch_index, body, suppress_exceptions=False),
+                timeout=TIMELINE_SEARCH_TIMEOUT_SECONDS,
+            )
+        except (OSConnectionError, OpenSearchException, asyncio.TimeoutError) as exc:
+            log.warning("stats.timeline_failed", error=str(exc))
+            raise TimelineUnavailableError("The publication timeline is unavailable right now.") from exc
+        first = (response.get("aggregations") or {}).get("first") if isinstance(response, dict) else None
+        value = first.get("value") if isinstance(first, dict) else None
+        if not isinstance(value, (int, float)):
+            return None
+        earliest = datetime.fromtimestamp(value / 1000, tz=UTC)
+        _EARLIEST_PUBLISHED.update(value=earliest, at=time.monotonic())
+        return earliest
 
     @staticmethod
     def _map_terms_aggregation(
@@ -1013,6 +1377,12 @@ class StatsService:
                 "inventoryMatchIds": inventory_match_ids,
             })
 
+        sbom_hits = await self._sbom_scan_ids(
+            [hit.get("_source") for hit in hits if isinstance(hit.get("_source"), dict)]
+        )
+        for cve in cves:
+            cve["sbomScanId"] = sbom_hits.get(cve["vulnId"])
+
         vendors: list[dict[str, Any]] = []
         products: list[dict[str, Any]] = []
         for vb in (vendors_agg.get("buckets") or []):
@@ -1226,7 +1596,37 @@ class StatsService:
                 "products": [{"slug": s, "name": product_names.get(s, s)} for s in product_slugs],
                 "inventoryMatchIds": self._inventory_match_ids(source, vuln_id, raw_inventory_items),
             }))
+        sbom_hits = await self._sbom_scan_ids(sources)
+        for _, row in rows:
+            row["sbomScanId"] = sbom_hits.get(row["vulnId"])
         return rows
+
+    @staticmethod
+    async def _sbom_scan_ids(sources: list[dict[str, Any]]) -> dict[str, str]:
+        """vuln_id -> latest scan whose SBOM ships a package at a version the CVE affects.
+
+        A package name alone is no hit: the installed version is checked against
+        the CVE's impacted products, the same rule as "Affected in your scans" on
+        the detail page (``ScanService.sbom_version_hits``). Runs after the
+        inventory match because building the products cleans their version
+        strings in place. Fail-soft: any error means no SBOM hits.
+        """
+        if not settings.sca_enabled or not sources:
+            return {}
+        try:
+            from app.services.scan_service import get_scan_service
+            from app.services.vulnerability_service import _get_impacted_products_or_build
+
+            docs = [
+                {"vuln_id": source["vuln_id"], "impactedProducts": _get_impacted_products_or_build(source)}
+                for source in sources
+                if source.get("vuln_id")
+            ]
+            service = await get_scan_service()
+            return await service.sbom_version_hits(docs)
+        except Exception as exc:  # noqa: BLE001 - the dashboard renders without it
+            log.warning("stats.sbom_version_hits_failed", error=str(exc))
+            return {}
 
     @staticmethod
     def _window_start(days: int, tz: str | None) -> datetime:

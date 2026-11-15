@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.core.auth_context import current_auth_context
 from app.core.write_auth import require_inventory_report
 from app.schemas.inventory import (
     AffectedVulnerabilitiesResponse,
@@ -21,6 +22,14 @@ from app.services.inventory_service import InventoryService, get_inventory_servi
 router = APIRouter()
 # Mounted without the admin gate: pipelines hold an inventory:report token.
 report_router = APIRouter()
+
+
+def _web_actor() -> str | None:
+    """Who to name in the item history: the signed-in user, else nobody (as before)."""
+    ctx = current_auth_context()
+    if ctx is None or ctx.user is None:
+        return None
+    return ctx.user.email or ctx.user.name
 
 
 @report_router.post("/report", response_model=InventoryReportResponse)
@@ -72,7 +81,7 @@ async def create_inventory_item(
     request: InventoryItemCreateRequest,
     service: InventoryService = Depends(get_inventory_service),
 ) -> InventoryItemResponse:
-    return await service.create_item(request)
+    return await service.create_item(request, actor=_web_actor())
 
 
 @router.get("/{item_id}", response_model=InventoryItemResponse)
@@ -92,7 +101,7 @@ async def update_inventory_item(
     request: InventoryItemUpdateRequest,
     service: InventoryService = Depends(get_inventory_service),
 ) -> InventoryItemResponse:
-    updated = await service.update_item(item_id, request)
+    updated = await service.update_item(item_id, request, actor=_web_actor())
     if updated is None:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     return updated
@@ -103,7 +112,7 @@ async def delete_inventory_item(
     item_id: str,
     service: InventoryService = Depends(get_inventory_service),
 ) -> None:
-    deleted = await service.delete_item(item_id)
+    deleted = await service.delete_item(item_id, actor=_web_actor())
     if not deleted:
         raise HTTPException(status_code=404, detail="Inventory item not found")
 

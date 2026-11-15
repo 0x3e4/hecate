@@ -124,3 +124,10 @@
 .scan-target-vex-form textarea { width: 100%; font-family: var(--font-outlier); font-size: var(--text-sm); }
 .scan-target-vex-list { display: grid; gap: var(--space-xs); margin: 0 0 var(--space-xs); padding: 0; list-style: none; }
 .scan-target-vex-url { font-size: var(--text-sm); overflow-wrap: anywhere; }
+/* The figures open the latest scan (filtered to that severity): they keep their colour and
+   look like figures, the underline appears on hover and focus only. */
+.scan-target-stat-link { color: inherit; text-decoration: none; }
+.scan-target-stat-link:hover, .scan-target-stat-link:focus-visible { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.18em; }
+.scan-target-chip-link { gap: var(--space-2xs); text-decoration: none; }
+.scan-target-chip-link:hover { text-decoration: underline; }
+.scan-target-chip-link svg { flex-shrink: 0; }

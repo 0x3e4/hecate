@@ -87,6 +87,8 @@ class AttackPathGraph(BaseModel):
 
 class AttackPathNarrative(BaseModel):
     provider: AIProviderLiteral | str
+    # The model the provider was configured with when the analysis ran.
+    model: str | None = None
     language: str
     summary: str
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")

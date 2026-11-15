@@ -5,6 +5,7 @@ from typing import Any
 
 from bson.objectid import ObjectId
 
+from app.core.auth_context import current_auth_context
 from app.core.config import settings
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.schemas.audit import IngestionLogEntry, IngestionLogResponse
@@ -34,6 +35,14 @@ class AuditService:
         started_at: datetime | None = None,
         finished_at: datetime | None = None,
     ) -> None:
+        # Inside a request (or a task it started), name who did it. The request
+        # audit middleware then skips its own line for this request.
+        auth_ctx = current_auth_context()
+        if auth_ctx is not None:
+            metadata = dict(metadata or {})
+            metadata.setdefault("actor", auth_ctx.actor())
+            auth_ctx.explicit_audit = True
+
         now = datetime.now(tz=UTC)
         start_time = (started_at or now).astimezone(UTC)
 

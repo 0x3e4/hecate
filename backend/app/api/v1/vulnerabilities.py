@@ -35,6 +35,7 @@ from app.schemas.vulnerability import (
     VulnerabilityRefreshRequest,
     VulnerabilityRefreshResponse,
 )
+from app.services.ai_history import previous_vulnerability_analyses
 from app.services.ai_service import AIClient, get_ai_client
 from app.services.app_settings_service import AppSettingsService, get_app_settings_service
 from app.services.attack_path_service import AttackPathService, get_attack_path_service
@@ -45,7 +46,8 @@ from app.services.vulnerability_service import VulnerabilityService, get_vulnera
 from app.services.audit_service import AuditService, get_audit_service
 from app.core.auth_throttle import AI_SECRET, enforce_auth_throttle, record_auth_result
 from app.core.passwords import secret_equals
-from app.core.write_auth import require_admin_write, require_ai_write
+from app.core.auth_context import current_auth_context
+from app.core.write_auth import require_ai_write, require_editor_write
 from app.utils.request import get_client_ip
 
 logger = structlog.get_logger()
@@ -86,7 +88,7 @@ async def search_vulnerabilities(
 )
 async def trigger_refresh(
     payload: VulnerabilityRefreshRequest,
-    _write: None = Depends(require_admin_write),
+    _write: None = Depends(require_editor_write),
     service: VulnerabilityService = Depends(get_vulnerability_service),
 ) -> VulnerabilityRefreshResponse:
     """Trigger a vulnerability feed refresh asynchronously.
@@ -211,7 +213,11 @@ async def lookup_vulnerability(
             message="Vulnerability not found locally. Set autoSync=true to fetch from NVD/EUVD.",
         )
 
-    await require_admin_write(request, x_system_password=x_system_password)
+    await require_editor_write(request, x_system_password=x_system_password)
+    # A lookup is a read the audit trail skips, until it writes.
+    auth_ctx = current_auth_context()
+    if auth_ctx is not None:
+        auth_ctx.force_audit = True
 
     # Attempt to sync from NVD/EUVD
     is_cve = identifier.upper().startswith("CVE-")
@@ -407,6 +413,20 @@ async def list_ai_providers(
     return ai_client.get_available_providers()
 
 
+# Declared before /{identifier}, which would otherwise take "suggest" as an id.
+@router.get("/suggest", response_model=list[dict[str, Any]])
+async def suggest_vulnerabilities(
+    q: str = Query(default="", max_length=200, description="What the user has typed so far"),
+) -> list[dict[str, Any]]:
+    """Candidates for the dashboard search box, each with its inventory and SBOM hits.
+
+    A public read like the rest of the search; the dashboard ranks the result.
+    """
+    from app.services.search_suggestions import suggest
+
+    return await suggest(q)
+
+
 @router.get("/{identifier}", response_model=VulnerabilityDetail)
 async def get_vulnerability(
     identifier: str,
@@ -450,6 +470,22 @@ async def get_vulnerability(
         affected_targets = []
     if affected_targets:
         result.affected_scan_targets = affected_targets
+
+    # "Possibly affected": name-only matches, only for an advisory that names no
+    # affected versions at all. Kept apart from the version-confirmed blocks.
+    try:
+        from app.services.possibly_affected import possibly_affected_for_vuln
+
+        possibly = await possibly_affected_for_vuln(
+            result,
+            inventory=await inventory_service.list_all_cached(),
+            scan_service=scan_service,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("vulnerability.possibly_affected_failed", vuln_id=identifier, error=str(exc))
+        possibly = []
+    if possibly:
+        result.possibly_affected = possibly
     return result
 
 
@@ -544,6 +580,8 @@ async def _run_ai_investigation_background(
             additional_context=additional_context,
             triggered_by=triggered_by,
             affected_inventory=affected_inventory,
+            # The last analysis, so the new one can say what changed since then
+            previous_analyses=previous_vulnerability_analyses(vulnerability),
         )
 
         assessment_payload = result.model_dump(by_alias=True)
@@ -691,6 +729,7 @@ async def _run_batch_ai_investigation_background(
             additional_context=additional_context,
             token_usage=result.token_usage,
             triggered_by=triggered_by,
+            model=result.model,
         )
 
         metadata: dict[str, Any] = {

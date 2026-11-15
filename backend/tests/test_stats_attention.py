@@ -26,7 +26,7 @@ class _Assets:
         return [{"_id": slug, "displayName": slug.upper()} for slug in slugs]
 
 
-def _wire(monkeypatch, *, hits=(), total=None, inventory=(), error=None, certs=None):
+def _wire(monkeypatch, *, hits=(), total=None, inventory=(), error=None, certs=None, sbom_hits=None):
     certs = certs or {}
     bodies: list[dict] = []
 
@@ -50,10 +50,14 @@ def _wire(monkeypatch, *, hits=(), total=None, inventory=(), error=None, certs=N
     async def mentions(_since):
         return dict(certs)
 
+    async def sbom_scan_ids(_sources):
+        return dict(sbom_hits or {})
+
     monkeypatch.setattr(StatsService, "_cert_mentions", staticmethod(mentions))
     monkeypatch.setattr(stats_service, "async_search", search)
     monkeypatch.setattr(stats_service, "get_inventory_service", get_inventory)
     monkeypatch.setattr(stats_service.AssetRepository, "create", staticmethod(create_assets))
+    monkeypatch.setattr(StatsService, "_sbom_scan_ids", staticmethod(sbom_scan_ids))
     return bodies
 
 
@@ -225,3 +229,50 @@ async def test_day_summary_is_not_capped_at_two_hundred(monkeypatch):
     await StatsService().get_today_summary(date="2026-10-29")
 
     assert bodies[0]["size"] >= 2000
+
+
+async def test_attention_and_day_summary_carry_the_version_checked_sbom_hit(monkeypatch):
+    other = {**KEV_DOC, "vuln_id": "CVE-2026-2000"}
+    _wire(monkeypatch, hits=[KEV_DOC, other], sbom_hits={"CVE-2026-1000": "scan-1"})
+
+    attention = await StatsService().get_attention()
+    today = await StatsService().get_today_summary(date="2026-10-29")
+
+    assert [item["sbomScanId"] for item in attention["items"]] == ["scan-1", None]
+    assert [cve["sbomScanId"] for cve in today["cves"]] == ["scan-1", None]
+    # The products only feed the version check; the rows stay lean.
+    assert "impactedProducts" not in attention["items"][0]
+
+
+async def test_sbom_scan_ids_hands_the_impacted_products_to_the_scan_service(monkeypatch):
+    from app.services import scan_service as scan_service_module
+
+    seen: list[list[dict]] = []
+
+    class _Scans:
+        async def sbom_version_hits(self, docs):
+            seen.append(list(docs))
+            return {"CVE-1": "scan-1"}
+
+    async def get_scan_service():
+        return _Scans()
+
+    monkeypatch.setattr(scan_service_module, "get_scan_service", get_scan_service)
+    impacted = [{"vendor": {"slug": "npm"}, "product": {"slug": "lodash"}, "versions": ["< 4.17.21"]}]
+
+    hits = await StatsService._sbom_scan_ids([{"vuln_id": "CVE-1", "impactedProducts": impacted}])
+
+    assert hits == {"CVE-1": "scan-1"}
+    assert seen[0][0]["vuln_id"] == "CVE-1"
+    assert seen[0][0]["impactedProducts"][0]["versions"] == ["< 4.17.21"]
+
+
+async def test_sbom_scan_ids_is_fail_soft(monkeypatch):
+    from app.services import scan_service as scan_service_module
+
+    async def broken():
+        raise RuntimeError("mongo down")
+
+    monkeypatch.setattr(scan_service_module, "get_scan_service", broken)
+
+    assert await StatsService._sbom_scan_ids([{"vuln_id": "CVE-1", "impactedProducts": []}]) == {}

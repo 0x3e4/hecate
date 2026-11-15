@@ -7,6 +7,7 @@ import structlog
 
 from app.repositories.scan_finding_repository import ScanFindingRepository
 from app.repositories.scan_repository import ScanRepository
+from app.services.vex_export import cyclonedx_justification
 
 log = structlog.get_logger()
 
@@ -86,12 +87,34 @@ class VexService:
                 }],
             }
 
-            if finding.get("vex_justification"):
-                entry["analysis"]["justification"] = finding["vex_justification"]
-            if finding.get("vex_detail"):
-                entry["analysis"]["detail"] = finding["vex_detail"]
+            # CycloneDX only accepts its own justification enum: map labels,
+            # and carry free text in detail rather than as an invalid value.
+            justification = finding.get("vex_justification")
+            cdx_justification = cyclonedx_justification(justification)
+            if cdx_justification:
+                entry["analysis"]["justification"] = cdx_justification
+            detail = finding.get("vex_detail")
+            if not cdx_justification and isinstance(justification, str) and justification.strip():
+                detail = f"{justification.strip()}\n\n{detail}" if detail else justification.strip()
+            if detail:
+                entry["analysis"]["detail"] = detail
             if finding.get("vex_response"):
                 entry["analysis"]["response"] = finding["vex_response"]
+            updated_at = finding.get("vex_updated_at")
+            if isinstance(updated_at, datetime):
+                entry["analysis"]["lastUpdated"] = updated_at.isoformat()
+            # Review evidence: who set the status, at which version, re-review date.
+            properties = [
+                {"name": name, "value": str(finding[key])}
+                for name, key in (
+                    ("hecate:vex:updated-by", "vex_updated_by"),
+                    ("hecate:vex:assessed-version", "vex_assessed_version"),
+                    ("hecate:vex:review-due", "vex_review_due"),
+                )
+                if finding.get(key)
+            ]
+            if properties:
+                entry["properties"] = properties
 
             vulnerabilities.append(entry)
 

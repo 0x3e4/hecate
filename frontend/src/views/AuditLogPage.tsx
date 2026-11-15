@@ -8,6 +8,7 @@ import { SkeletonBlock } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
+import { describeAuditActor } from "../utils/auditActor";
 import { BusyLabel, EmptyState, LoadingState, PageHeader } from "../ui/primitives";
 import "../screens/audit.css";
 
@@ -46,6 +47,10 @@ const JOB_LABELS: Record<string, string> = {
   mal_enrichment_backfill: "MAL-* deps.dev Enrichment",
   mcp: "MCP",
   mcp_oauth: "MCP",
+  api_request: "API write",
+  auth_login: "Sign-in",
+  auth_logout: "Sign-out",
+  auth_password_check: "Password check",
 };
 
 /** An outcome wears its outcome colour; everything else is neutral state. Never a severity colour. */
@@ -136,6 +141,10 @@ export const AuditLogPage = () => {
         return t("AI analysis", "AI-Analyse");
       case "ai_batch_investigation":
         return t("AI batch analysis", "AI Batch-Analyse");
+      case "auth_login":
+        return t("Sign-in", "Anmeldung");
+      case "auth_logout":
+        return t("Sign-out", "Abmeldung");
       default:
         return fallbackLabel;
     }
@@ -214,6 +223,9 @@ export const AuditLogPage = () => {
         const metaLabel =
           typeof metadata.label === "string" && metadata.label.trim().length > 0 ? (metadata.label as string) : undefined;
         const isMcpJob = entry.jobName === "mcp" || entry.jobName === "mcp_oauth";
+        // Request and sign-in events carry their facts in metadata: show it whole.
+        const isJsonDetailJob = isMcpJob || entry.jobName === "api_request" || entry.jobName.startsWith("auth_");
+        const actorView = describeAuditActor(metadata, t);
 
         const isAiJob = entry.jobName === "ai_investigation" || entry.jobName === "ai_batch_investigation";
         const tokenUsage =
@@ -229,7 +241,7 @@ export const AuditLogPage = () => {
             : undefined;
 
         const detailElements: ReactNode[] = [];
-        if (isMcpJob) {
+        if (isJsonDetailJob) {
           // Render MCP rows like every other audit job: a single JSON blob
           // under a "Show details" expander. Merges metadata and result so
           // both tool inputs and the returned shape are visible.
@@ -238,7 +250,7 @@ export const AuditLogPage = () => {
             mcpBlob.result = entry.result;
           }
           detailElements.push(
-            <details key="mcp-details" className="audit-details">
+            <details key="meta-details" className="audit-details">
               <summary>{t("Show details", "Details anzeigen")}</summary>
               <pre className="audit-pre">{JSON.stringify(mcpBlob, null, 2)}</pre>
             </details>,
@@ -294,7 +306,7 @@ export const AuditLogPage = () => {
               <pre className="audit-pre">{progressJson}</pre>
             </details>,
           );
-        } else if (resultJson && !isMcpJob) {
+        } else if (resultJson && !isJsonDetailJob) {
           detailElements.push(
             <details className="audit-details">
               <summary>{t("Show details", "Details anzeigen")}</summary>
@@ -320,6 +332,13 @@ export const AuditLogPage = () => {
           <tr key={entry.id}>
             <td className="audit-cell-time" data-label={t("Started", "Gestartet")}>{started}</td>
             <td className="audit-cell-job">{jobLabel}</td>
+            <td className="audit-cell-actor" data-label={t("Actor", "Akteur")}>
+              {actorView ? (
+                <span className={`audit-actor audit-actor--${actorView.kind}`} title={actorView.title}>
+                  {actorView.label}
+                </span>
+              ) : null}
+            </td>
             <td className="audit-cell-status">
               <span className={`audit-status${statusTone ? ` audit-status--${statusTone}` : ""}`}>{statusLabel}</span>
             </td>
@@ -446,6 +465,10 @@ export const AuditLogPage = () => {
             <option value="osv_initial_sync">OSV Initial Sync</option>
             <option value="mal_enrichment_backfill">MAL-* deps.dev Enrichment</option>
             <option value="mcp">MCP</option>
+            <option value="api_request">{t("API write", "API-Schreibzugriff")}</option>
+            <option value="auth_login">{t("Sign-in", "Anmeldung")}</option>
+            <option value="auth_logout">{t("Sign-out", "Abmeldung")}</option>
+            <option value="auth_password_check">{t("Password check", "Passwortprüfung")}</option>
           </select>
         </label>
         <label className="audit-filter">
@@ -496,6 +519,7 @@ export const AuditLogPage = () => {
             <tr>
               <th>{t("Started", "Gestartet")}</th>
               <th>{t("Job", "Job")}</th>
+              <th>{t("Actor", "Akteur")}</th>
               <th>{t("Status", "Status")}</th>
               <th>{t("Finished", "Beendet")}</th>
               <th className="audit-head-duration">{t("Duration", "Dauer")}</th>
@@ -507,7 +531,7 @@ export const AuditLogPage = () => {
             {!showSkeleton && rows}
             {isEmptyState && (
               <tr>
-                <td colSpan={6} className="audit-cell-empty">
+                <td colSpan={7} className="audit-cell-empty">
                   <EmptyState title={t("No entries available.", "Keine Einträge vorhanden.")} />
                 </td>
               </tr>
@@ -530,6 +554,9 @@ const AuditSkeletonRows = ({ rows }: { rows: number }) => (
         </td>
         <td className="audit-cell-job">
           <SkeletonBlock height="0.85rem" width="75%" radius={4} />
+        </td>
+        <td className="audit-cell-actor">
+          <SkeletonBlock height="0.85rem" width="60%" radius={4} />
         </td>
         <td className="audit-cell-status">
           <SkeletonBlock height="0.85rem" width="72px" radius={4} />

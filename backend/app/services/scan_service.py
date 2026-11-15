@@ -4,8 +4,10 @@ import asyncio
 import os
 import re
 import time
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
@@ -34,6 +36,7 @@ from app.services.scan_parser import (
     parse_cyclonedx_sbom,
     parse_dockle_json,
     parse_dive_json,
+    parse_govulncheck_json,
     parse_grype_json,
     parse_hecate_json,
     parse_osv_json,
@@ -68,6 +71,8 @@ def _as_utc(value: Any, fallback: datetime) -> datetime:
 # Module-level set to hold strong references to background target-cleanup tasks
 # (asyncio.create_task's return value must be referenced somewhere to avoid GC).
 _target_cleanup_tasks: set[asyncio.Task[Any]] = set()
+# Same for the release-age / publisher lookups that follow a scan.
+_release_info_tasks: set[asyncio.Task[Any]] = set()
 
 # Lazy-initialised semaphore to limit concurrent scans
 _scan_semaphore: asyncio.Semaphore | None = None
@@ -78,6 +83,49 @@ def _get_scan_semaphore() -> asyncio.Semaphore:
     if _scan_semaphore is None:
         _scan_semaphore = asyncio.Semaphore(settings.sca_max_concurrent_scans)
     return _scan_semaphore
+
+
+# Dashboard / advisories SCA coverage: findings by CVE id plus a version-checkable
+# SBOM index of the latest completed scan per target. Module-level because a
+# ScanService is built per request; see ScanService._load_coverage_state.
+COVERAGE_CACHE_SECONDS = 300
+# One scan's SBOM rarely ships more than a handful of versions of a package; an
+# imported SBOM with thousands made every suggest / dashboard request walk them
+# all on the event loop. Versions past this per (package slug, scan) are left
+# out of the index (a missed chip, logged), and one sbom_version_hits call stops
+# after its time budget.
+COVERAGE_MAX_VERSIONS_PER_SLUG_SCAN = 64
+SBOM_HITS_BUDGET_SECONDS = 1.0
+_EPOCH = datetime.min.replace(tzinfo=UTC)
+
+
+class IndexedComponent(NamedTuple):
+    name: str
+    version: str
+    # allowed_vendor_slugs() of the component, None = any vendor (OS / binary).
+    allowed: frozenset[str] | None
+    scan_id: str
+
+
+@dataclass
+class CoverageState:
+    cve_scan: dict[str, str] = field(default_factory=dict)
+    scan_targets: dict[str, str] = field(default_factory=dict)
+    created: dict[str, datetime] = field(default_factory=dict)
+    sbom_by_slug: dict[str, list[IndexedComponent]] = field(default_factory=dict)
+
+    def newer(self, existing: str | None, candidate: str) -> str:
+        """The more recently created of two scans."""
+        if existing is None:
+            return candidate
+        if self.created.get(candidate, _EPOCH) > self.created.get(existing, _EPOCH):
+            return candidate
+        return existing
+
+
+_coverage_state: CoverageState | None = None
+_coverage_state_at: float = 0.0
+_coverage_lock = asyncio.Lock()
 
 
 # Target ids are URLs stored verbatim as the Mongo _id, so a pasted detail-page
@@ -258,10 +306,6 @@ class ScanService:
         # within the per-request timeout.
         self._last_stats: dict[str, Any] | None = None
         self._last_stats_at: float | None = None
-        # Dashboard SCA-coverage maps (cveScan / productScan), cached briefly
-        # since scans change infrequently relative to dashboard loads.
-        self._coverage_cache: dict[str, dict[str, str]] | None = None
-        self._coverage_cache_at: float = 0.0
 
     async def backfill_target_scan_state(self) -> int:
         """One-time migration: populate denormalized scan state on all targets."""
@@ -526,14 +570,98 @@ class ScanService:
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
     async def apply_vex_sources(self, target_id: str) -> dict[str, Any] | None:
-        """Fetch and apply the target's VEX sources; never fails the caller."""
+        """Fetch and apply the target's VEX sources, then its VEX rules; never fails the caller.
+
+        Rules run behind the sources: a source's statement beats a generic
+        rule, and a rule may fill what the sources left empty or cleared.
+        """
         from app.services.vex_source_service import VexSourceService
 
+        result: dict[str, Any] | None = None
         try:
-            return await VexSourceService(self.target_repo, self.finding_repo).apply_target_sources(target_id)
+            result = await VexSourceService(self.target_repo, self.finding_repo).apply_target_sources(target_id)
         except Exception:
             log.warning("scan_service.vex_sources_failed", target_id=target_id, exc_info=True)
+        await self.apply_vex_rules(target_id)
+        return result
+
+    async def apply_vex_rules(self, target_id: str) -> dict[str, int] | None:
+        """Apply the automatic VEX rules to the target's latest scan; never fails the caller."""
+        from app.repositories.vex_rule_repository import VexRuleRepository
+        from app.services.vex_rule_service import VexRuleService
+
+        try:
+            service = VexRuleService(
+                await VexRuleRepository.create(), self.finding_repo, self.scan_repo, self.target_repo, self.sbom_repo,
+            )
+            return await service.apply_to_target(target_id)
+        except Exception:
+            log.warning("scan_service.vex_rules_failed", target_id=target_id, exc_info=True)
             return None
+
+    async def _apply_dependency_scopes(
+        self,
+        scan_id: str,
+        components: list[ScanSbomComponentDocument],
+        findings: list[ScanFindingDocument],
+    ) -> None:
+        """Merge the scope per (name, version) and copy it to the scan's findings."""
+        from app.services.dependency_scope import ScopeIndex, purl_type
+        from app.services.vex_rule_service import finding_ecosystem
+
+        try:
+            index = ScopeIndex((c.name, c.version, c.scope, purl_type(c.purl)) for c in components)
+            if not index:
+                return
+            await self.sbom_repo.apply_scopes(scan_id, index.by_component)
+            # A finding's ecosystem: its SBOM row's purl type, else its package type.
+            purl_types = {(c.name, c.version): t for c in components if (t := purl_type(c.purl))}
+            finding_scopes: dict[tuple[str, str], str] = {}
+            for f in findings:
+                ecosystem = finding_ecosystem(
+                    {"package_name": f.package_name, "package_version": f.package_version,
+                     "package_type": f.package_type},
+                    purl_types,
+                )
+                scope = index.for_package(f.package_name, f.package_version, ecosystem)
+                if scope:
+                    f.dependency_scope = scope
+                    finding_scopes[(f.package_name, f.package_version)] = scope
+            await self.finding_repo.apply_dependency_scopes(scan_id, finding_scopes)
+        except Exception:
+            log.warning("scan_service.dependency_scope_failed", scan_id=scan_id, exc_info=True)
+
+    def _schedule_release_info(self, scan_id: str) -> None:
+        """Start the supply-chain lookups for a scan's SBOM in the background."""
+        if not settings.sca_release_info_enabled:
+            return
+        from app.services.supply_chain_service import run_scan_enrichment
+
+        try:
+            task = asyncio.create_task(run_scan_enrichment(scan_id, self.sbom_repo.collection, self.scan_repo))
+        except Exception:
+            log.warning("scan_service.release_info_schedule_failed", scan_id=scan_id, exc_info=True)
+            return
+        _release_info_tasks.add(task)
+        task.add_done_callback(_release_info_tasks.discard)
+
+    async def _apply_govulncheck_reachability(self, scan_id: str, reports: list[dict[str, Any]]) -> None:
+        """Turn govulncheck's "imported, never called" entries into VEX; never fails the caller."""
+        if not reports:
+            return
+        from app.services.reachability import GovulncheckSummary, apply_reachability_vex, summarize_govulncheck
+
+        try:
+            merged = GovulncheckSummary()
+            for report in reports:
+                part = summarize_govulncheck(report)
+                merged.entries.update(part.entries)
+                merged.module_errors.extend(part.module_errors)
+                merged.truncated = merged.truncated or part.truncated
+                merged.modules_scanned += part.modules_scanned
+            await apply_reachability_vex(self.finding_repo.collection, scan_id, merged)
+        except Exception:
+            log.warning("scan_service.reachability_vex_failed", scan_id=scan_id, exc_info=True)
 
     async def import_sbom(
         self,
@@ -548,6 +676,12 @@ class ScanService:
         format = format or detect_sbom_format(sbom_data)
         if not format:
             raise ValueError("Cannot auto-detect SBOM format. Provide 'format' parameter.")
+        # Checked before anything is written: the body limit alone admits about
+        # a million minimal components.
+        raw = sbom_data.get("components" if format == "cyclonedx-json" else "packages")
+        limit = settings.sca_sbom_import_max_components
+        if isinstance(raw, list) and len(raw) > limit:
+            raise ValueError(f"SBOM has {len(raw)} components; the limit is {limit} (SCA_SBOM_IMPORT_MAX_COMPONENTS).")
 
         # Create or reuse target (the write gate resolved the same one)
         target_name, target_id = resolve_sbom_import_target(sbom_data, format, target_name, target_id)
@@ -598,6 +732,7 @@ class ScanService:
                 all_findings = findings
         except Exception:
             log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
+        await self._apply_dependency_scopes(scan_id_val, components, all_findings)
 
         # Compute summary
         summary = self._compute_summary(all_findings)
@@ -636,6 +771,7 @@ class ScanService:
             has_running_scan=False,
         )
         await self.apply_vex_sources(target_id)
+        self._schedule_release_info(scan_id_val)
 
         return {
             "scan_id": scan_id_val,
@@ -720,6 +856,10 @@ class ScanService:
         # across all scanner fan-out calls. Read by the _run_single_scanner
         # closure; stays None for container images and uploaded-archive scans.
         source_token: str | None = None
+        # govulncheck reports of this scan: their package / module level
+        # entries become reachability VEX once every scanner has stored its
+        # findings (see app/services/reachability.py).
+        govulncheck_reports: list[dict[str, Any]] = []
 
         def _record_scanner_error(scanner_name: str, message: str) -> None:
             errors.append(f"{scanner_name}: {message}")
@@ -790,6 +930,12 @@ class ScanService:
                         findings, _ = parse_sarif(report, scan_id, target_id, scanner_name="devskim")
                     elif fmt == "trufflehog-json":
                         findings, _ = parse_trufflehog_json(report, scan_id, target_id)
+                    elif fmt == "govulncheck-json":
+                        findings, _ = parse_govulncheck_json(report, scan_id, target_id)
+                        govulncheck_reports.append(report)
+                        for module in (report.get("modules") or [])[:3]:
+                            if isinstance(module, dict) and module.get("error"):
+                                _record_scanner_error(scanner_name, f"{module.get('dir') or '.'}: {module['error']}")
                     elif fmt == "dive-json":
                         layer_doc = parse_dive_json(report, scan_id, target_id)
                         await self.layer_repo.insert(layer_doc)
@@ -860,6 +1006,9 @@ class ScanService:
 
         # Severity override: prefer local vuln DB severity over scanner-reported severity
         await self._override_severity_from_vuln_db(scan_id, all_findings)
+
+        # Dependency scope (runtime / dev / optional) from the SBOM onto the findings
+        await self._apply_dependency_scopes(scan_id, all_components, all_findings)
 
         # Final dedup pass: remove cross-scanner duplicates from DB
         # (findings dedup happens at display time via frontend merge; SBOM needs cleanup)
@@ -979,9 +1128,21 @@ class ScanService:
         except Exception:
             log.warning("scan_service.vex_carry_forward_failed", scan_id=scan_id, exc_info=True)
 
+        # Reachability between carry-forward and the VEX sources: govulncheck's
+        # evidence fills empty findings and replaces its own or a VEX rule's
+        # status (rules run inside apply_vex_sources and only fill empty or
+        # rule-set ones, so they can't undo it); a VEX source may still
+        # replace it, and hand-set / imported / MCP statuses always win.
+        await self._apply_govulncheck_reachability(scan_id, govulncheck_reports)
+
         # VEX sources come after the carry-forward: they may update what it
         # copied from the previous scan, and fill in the new findings.
         await self.apply_vex_sources(target_id)
+
+        # Release age / unmaintained / npm publisher change on the SBOM
+        # components: registry lookups, so they run behind the scan.
+        if status == "completed":
+            self._schedule_release_info(scan_id)
 
         # Evaluate license compliance if a default policy exists
         try:
@@ -1460,6 +1621,7 @@ class ScanService:
                     "commit_sha": doc.get("commit_sha"),
                     "image_ref": doc.get("image_ref"),
                     "provider": ai.get("provider"),
+                    "model": ai.get("model"),
                     "language": ai.get("language"),
                     "summary": ai.get("summary", ""),
                     "timestamp": ai.get("generatedAt"),
@@ -1686,35 +1848,36 @@ class ScanService:
         """Get the latest completed scan ID for each target."""
         return await self.scan_repo.get_latest_completed_scan_ids(target_id=target_id)
 
-    async def get_dashboard_coverage(self) -> dict[str, dict[str, str]]:
-        """Compact cross-reference maps for the dashboard "Today" SCA highlight.
+    async def _load_coverage_state(self) -> CoverageState:
+        """The latest completed scan per target, read once and cached.
 
-        Returns ``{"cveScan": {cve_id: scanId}, "productScan": {productSlug: scanId}}``
-        where each value is the **most-recent** scan (across targets) that covers
-        the key: ``cveScan`` from the latest scans' findings (by ``vulnerability_id``),
-        ``productScan`` from the latest scans' SBOM components (keyed on
-        ``slugify(package name)`` so it lines up with the vuln index's product
-        slugs; a language-registry package as ``vendor|product`` for each vendor
-        that may name it, see ``sbom_ecosystem``). Cached for 5 min — scans change
-        rarely relative to dashboard loads.
+        Module-level and shared by every ``ScanService`` (one is built per
+        request): the dashboard asks for the coverage maps, the today summary,
+        the attention panel and the advisories page at the same time, and all
+        of them read the same state. A lock keeps a cold cache from being built
+        by each of them.
         """
+        global _coverage_state, _coverage_state_at
+        if _coverage_state is not None and time.monotonic() - _coverage_state_at < COVERAGE_CACHE_SECONDS:
+            return _coverage_state
+        async with _coverage_lock:
+            if _coverage_state is not None and time.monotonic() - _coverage_state_at < COVERAGE_CACHE_SECONDS:
+                return _coverage_state
+            state = await self._build_coverage_state()
+            _coverage_state, _coverage_state_at = state, time.monotonic()
+            return state
+
+    async def _build_coverage_state(self) -> CoverageState:
+        from app.services.inventory_matcher import _slug
         from app.services.sbom_ecosystem import allowed_vendor_slugs
-        from app.utils.strings import slugify
 
-        now = time.monotonic()
-        if self._coverage_cache is not None and now - self._coverage_cache_at < 300:
-            return self._coverage_cache
-
-        empty = {"cveScan": {}, "productScan": {}, "scanTargets": {}}
+        state = CoverageState()
         scan_ids = await self.scan_repo.get_latest_completed_scan_ids()
         if not scan_ids:
-            self._coverage_cache, self._coverage_cache_at = empty, now
-            return empty
+            return state
 
         # created_at + target name per scan, for "most recent" selection and the
         # target-name label on each chip.
-        created: dict[str, datetime] = {}
-        scan_targets: dict[str, str] = {}
         try:
             object_ids = [ObjectId(s) for s in scan_ids if ObjectId.is_valid(s)]
             async for doc in self.scan_repo.collection.find(
@@ -1722,22 +1885,13 @@ class ScanService:
                 {"created_at": 1, "target_name": 1, "target_id": 1},
             ):
                 sid = str(doc["_id"])
-                created[sid] = doc.get("created_at") or datetime.min.replace(tzinfo=UTC)
+                state.created[sid] = doc.get("created_at") or _EPOCH
                 label = doc.get("target_name") or doc.get("target_id")
                 if isinstance(label, str) and label:
-                    scan_targets[sid] = label
+                    state.scan_targets[sid] = label
         except Exception as exc:  # noqa: BLE001 - coverage is best-effort
             log.warning("scan_service.coverage_created_lookup_failed", error=str(exc))
 
-        def _newer(existing: str | None, candidate: str) -> str:
-            if existing is None:
-                return candidate
-            return candidate if created.get(candidate, datetime.min.replace(tzinfo=UTC)) > created.get(
-                existing, datetime.min.replace(tzinfo=UTC)
-            ) else existing
-
-        cve_scan: dict[str, str] = {}
-        product_scan: dict[str, str] = {}
         try:
             async for f in self.finding_repo.collection.find(
                 {"scan_id": {"$in": scan_ids}, "vulnerability_id": {"$ne": None}},
@@ -1746,32 +1900,122 @@ class ScanService:
                 vid = f.get("vulnerability_id")
                 sid = f.get("scan_id")
                 if isinstance(vid, str) and vid and isinstance(sid, str):
-                    cve_scan[vid] = _newer(cve_scan.get(vid), sid)
+                    state.cve_scan[vid] = state.newer(state.cve_scan.get(vid), sid)
         except Exception as exc:  # noqa: BLE001
             log.warning("scan_service.coverage_findings_failed", error=str(exc))
+
+        # SBOM components keyed by package slug, with what the version check
+        # needs. Several scanners report the same package: one entry per
+        # (slug, name, version, purl, scan).
         try:
+            seen: set[tuple[str, str, str, str, str]] = set()
+            versions_per: dict[tuple[str, str], set[str]] = {}
+            capped: set[tuple[str, str]] = set()
             async for c in self.sbom_repo.collection.find(
-                {"scan_id": {"$in": scan_ids}}, {"name": 1, "scan_id": 1, "purl": 1}
+                {"scan_id": {"$in": scan_ids}},
+                {"name": 1, "version": 1, "scan_id": 1, "purl": 1},
             ):
                 name = c.get("name")
+                version = c.get("version")
                 sid = c.get("scan_id")
-                if isinstance(name, str) and name and isinstance(sid, str):
-                    slug = slugify(name)
-                    if not slug:
-                        continue
-                    # A registry package only covers a CVE whose vendor fits it
-                    # (sbom_ecosystem): it is keyed "vendor|product" once per
-                    # allowed vendor, an OS / binary package by its name alone.
-                    allowed = allowed_vendor_slugs(c.get("purl"), name)
-                    keys = [slug] if allowed is None else [f"{v}|{slug}" for v in allowed]
-                    for key in keys:
-                        product_scan[key] = _newer(product_scan.get(key), sid)
+                if not (isinstance(name, str) and name and isinstance(version, str) and version
+                        and isinstance(sid, str)):
+                    continue
+                slug = _slug(name)
+                if not slug:
+                    continue
+                purl = c.get("purl") if isinstance(c.get("purl"), str) else ""
+                key = (slug, name, version, purl, sid)
+                if key in seen:
+                    continue
+                versions = versions_per.setdefault((slug, sid), set())
+                if version not in versions and len(versions) >= COVERAGE_MAX_VERSIONS_PER_SLUG_SCAN:
+                    capped.add((slug, sid))
+                    continue
+                versions.add(version)
+                seen.add(key)
+                state.sbom_by_slug.setdefault(slug, []).append(IndexedComponent(
+                    name=name,
+                    version=version,
+                    allowed=allowed_vendor_slugs(purl or None, name),
+                    scan_id=sid,
+                ))
+            if capped:
+                log.warning(
+                    "scan_service.coverage_versions_capped",
+                    count=len(capped),
+                    limit=COVERAGE_MAX_VERSIONS_PER_SLUG_SCAN,
+                    sample=sorted(capped)[:5],
+                )
         except Exception as exc:  # noqa: BLE001
             log.warning("scan_service.coverage_sbom_failed", error=str(exc))
+        return state
 
-        result = {"cveScan": cve_scan, "productScan": product_scan, "scanTargets": scan_targets}
-        self._coverage_cache, self._coverage_cache_at = result, now
-        return result
+    async def get_dashboard_coverage(self) -> dict[str, dict[str, str]]:
+        """Compact cross-reference maps for the dashboard / advisories SCA highlight.
+
+        Returns ``{"cveScan": {cve_id: scanId}, "scanTargets": {scanId: targetName}}``:
+        ``cveScan`` maps each finding's ``vulnerability_id`` in the latest
+        completed scan per target to the **most-recent** scan that found it. SBOM
+        hits are not in here: a package name says nothing about the version, so
+        the CVE rows carry a version-checked ``sbomScanId`` instead
+        (:meth:`sbom_version_hits`). Cached for 5 min.
+        """
+        state = await self._load_coverage_state()
+        return {"cveScan": state.cve_scan, "scanTargets": state.scan_targets}
+
+    async def sbom_version_hits(self, vuln_docs: Iterable[Mapping[str, Any]]) -> dict[str, str]:
+        """vuln_id -> most-recent scan whose SBOM ships a package at an affected version.
+
+        Each document needs ``vuln_id`` and its impacted products
+        (``impactedProducts``, else ``impacted_products``). Same rule as the sbom
+        pass of :meth:`affected_scan_targets_for_vuln` (version inside the
+        advisory's range, registry packages only for a fitting vendor), run
+        against the cached SBOM index of the latest completed scan per target:
+        no MongoDB query per CVE. Fail-soft: any error means no hits.
+        """
+        from app.services.sbom_ecosystem import affected_entries_by_slug, component_in_affected_range
+
+        try:
+            state = await self._load_coverage_state()
+            if not state.sbom_by_slug:
+                return {}
+            hits: dict[str, str] = {}
+            memo: dict[tuple[str, tuple[str, ...]], bool] = {}
+            deadline = time.monotonic() + SBOM_HITS_BUDGET_SECONDS
+            for doc in vuln_docs:
+                if time.monotonic() > deadline:
+                    # Runs on the event loop: past the budget the remaining
+                    # rows get no SBOM chip instead of stalling every request.
+                    log.warning("scan_service.sbom_version_hits_budget_exceeded", hits=len(hits))
+                    break
+                vuln_id = doc.get("vuln_id") or doc.get("vulnId")
+                if not isinstance(vuln_id, str) or not vuln_id:
+                    continue
+                impacted = doc.get("impactedProducts") or doc.get("impacted_products")
+                if not isinstance(impacted, list) or not impacted:
+                    continue
+                entries_by_slug, _ = affected_entries_by_slug(impacted)
+                best: str | None = None
+                for slug in entries_by_slug.keys() & state.sbom_by_slug.keys():
+                    for comp in state.sbom_by_slug[slug]:
+                        if comp.scan_id == best:
+                            continue
+                        if component_in_affected_range(
+                            entries_by_slug,
+                            name=comp.name,
+                            version=comp.version,
+                            slug=slug,
+                            allowed=comp.allowed,
+                            memo=memo,
+                        ):
+                            best = state.newer(best, comp.scan_id)
+                if best:
+                    hits[vuln_id] = best
+            return hits
+        except Exception as exc:  # noqa: BLE001 - never break the dashboard
+            log.warning("scan_service.sbom_version_hits_failed", error=str(exc))
+            return {}
 
     async def get_badge_counts(self) -> dict[str, int]:
         """Return lightweight counts for tab badges (findings, SBOM, licenses, alerts).
@@ -2124,12 +2368,8 @@ class ScanService:
         Resolves each target's name from the (denormalised) scan document,
         falling back to the target document.
         """
-        from app.services.inventory_matcher import (
-            _slug,
-            is_marked_not_vulnerable,
-            version_in_ranges,
-        )
-        from app.services.sbom_ecosystem import allowed_vendor_slugs, vendor_names_component
+        from app.services.inventory_matcher import _slug
+        from app.services.sbom_ecosystem import affected_entries_by_slug, component_in_affected_range
 
         scan_name_cache: dict[str, str | None] = {}
         target_name_cache: dict[str, str | None] = {}
@@ -2189,38 +2429,7 @@ class ScanService:
         if not impacted_products:
             return results
 
-        # product-slug -> [(vendor values, affected version-range strings)]; candidate SBOM names.
-        # The vendor stays with its ranges: a name shared across ecosystems
-        # (npm "console" vs. Citrix NetScaler Console) must not borrow another
-        # product's ranges, see sbom_ecosystem.
-        entries_by_slug: dict[str, list[tuple[tuple[str, ...], list[str]]]] = {}
-        candidate_names: set[str] = set()
-        for entry in impacted_products:
-            # ``vulnerable: false`` = the platform the vulnerable product runs on.
-            if not isinstance(entry, dict) or is_marked_not_vulnerable(entry):
-                continue
-            product = entry.get("product") or {}
-            prod_slug = product.get("slug") if isinstance(product, dict) else None
-            prod_name = product.get("name") if isinstance(product, dict) else None
-            vendor = entry.get("vendor") or {}
-            vendor_values = tuple(
-                str(v) for v in ((vendor.get("slug"), vendor.get("name")) if isinstance(vendor, dict) else ())
-                if v
-            )
-            ranges = [str(v) for v in (entry.get("versions") or []) if str(v).strip()]
-            if not ranges:
-                continue
-            slugs_for_entry: set[str] = set()
-            for raw in (prod_slug, prod_name):
-                if raw:
-                    candidate_names.add(str(raw))
-                    candidate_names.add(str(raw).lower())
-                    slug = _slug(raw)
-                    if slug:
-                        candidate_names.add(slug)
-                        slugs_for_entry.add(slug)
-            for slug in slugs_for_entry:
-                entries_by_slug.setdefault(slug, []).append((vendor_values, ranges))
+        entries_by_slug, candidate_names = affected_entries_by_slug(impacted_products)
         if not entries_by_slug:
             return results
 
@@ -2233,19 +2442,9 @@ class ScanService:
             name = comp.get("name") or ""
             version = comp.get("version") or ""
             slug = _slug(name)
-            if not version or slug not in entries_by_slug:
-                continue
-            allowed = allowed_vendor_slugs(comp.get("purl"), name)
-            ranges = [
-                r
-                for vendor_values, entry_ranges in entries_by_slug[slug]
-                if vendor_names_component(allowed, vendor_values)
-                for r in entry_ranges
-            ]
-            if not ranges:
-                continue
-            # Whole list at once, so the release-branch rule applies.
-            if not version_in_ranges(version, ranges):
+            if not component_in_affected_range(
+                entries_by_slug, name=name, version=version, purl=comp.get("purl"), slug=slug
+            ):
                 continue
             target_id = comp.get("target_id") or ""
             if (target_id, slug) in covered:

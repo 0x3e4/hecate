@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _review_due(value: Any) -> str | None:
+    """A re-review date as ISO ``YYYY-MM-DD``; blank means none."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, date):
+        return value.isoformat()[:10]
+    if not isinstance(value, str):
+        raise ValueError("vexReviewDue must be a date (YYYY-MM-DD)")
+    try:
+        return date.fromisoformat(value.strip()[:10]).isoformat()
+    except ValueError as exc:
+        raise ValueError("vexReviewDue must be a date (YYYY-MM-DD)") from exc
 
 
 class VexUpdateRequest(BaseModel):
@@ -23,8 +38,14 @@ class VexUpdateRequest(BaseModel):
     vex_response: list[str] | None = Field(
         default=None, alias="vexResponse", serialization_alias="vexResponse"
     )
+    vex_review_due: str | None = Field(
+        default=None, alias="vexReviewDue", serialization_alias="vexReviewDue",
+        description="Optional re-review date (YYYY-MM-DD)",
+    )
 
     model_config = {"populate_by_name": True}
+
+    _check_review_due = field_validator("vex_review_due", mode="before")(_review_due)
 
 
 class VexBulkUpdateRequest(BaseModel):
@@ -59,8 +80,14 @@ class VexBulkUpdateByIdsRequest(BaseModel):
     vex_detail: str | None = Field(
         default=None, alias="vexDetail", serialization_alias="vexDetail"
     )
+    vex_review_due: str | None = Field(
+        default=None, alias="vexReviewDue", serialization_alias="vexReviewDue",
+        description="Optional re-review date (YYYY-MM-DD)",
+    )
 
     model_config = {"populate_by_name": True}
+
+    _check_review_due = field_validator("vex_review_due", mode="before")(_review_due)
 
 
 class FindingsDismissRequest(BaseModel):

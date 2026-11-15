@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuRadioTower,
-  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart } from "react-icons/lu";
+  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart, LuLogIn, LuLogOut, LuUser } from "react-icons/lu";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { version } from "../../package.json";
@@ -10,6 +10,7 @@ import { useI18n } from "../i18n/context";
 import { useSSE } from "../hooks/useSSE";
 import { useServerConfig } from "../server-config/context";
 import { api } from "../api/client";
+import { useAuth } from "../auth/context";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -91,6 +92,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const location = useLocation();
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
   const { jobs, snapshotSeq } = useSSE();
+  const auth = useAuth();
   const { aiEnabled, scaEnabled, supportPageEnabled, docsUrl } = useServerConfig();
   const navSections = useMemo(
     () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled, docsUrl),
@@ -102,6 +104,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
       if (
         name.startsWith("ai_investigation_") || name === "ai_batch_investigation"
         || name.startsWith("ai_scan_analysis_") || name.startsWith("attack_path_")
+        || name.startsWith("scan_attack_chain_")
       ) {
         if (job.status === "running") return true;
       }
@@ -317,6 +320,42 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
           </div>
         ))}
       </nav>
+      {auth.enabled && (
+        <div className="sidebar-user">
+          {auth.user ? (
+            <>
+              <span className="sidebar-user-who" title={auth.user.email ?? auth.user.name}>
+                <LuUser aria-hidden="true" className="sidebar-user-icon" />
+                <span className="sidebar-user-text">
+                  <span className="sidebar-user-name">{auth.user.name}</span>
+                  <span className="sidebar-user-role">{roleLabel(auth.user.role, t)}</span>
+                </span>
+              </span>
+              <button
+                type="button"
+                className="sidebar-user-action"
+                onClick={() => void auth.signOut()}
+                title={t("Sign out", "Abmelden")}
+                aria-label={t("Sign out", "Abmelden")}
+              >
+                <LuLogOut aria-hidden="true" />
+                <span className="sidebar-user-action-label">{t("Sign out", "Abmelden")}</span>
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="sidebar-user-action"
+              onClick={() => auth.signIn()}
+              title={t(`Sign in with ${auth.providerLabel}`, `Mit ${auth.providerLabel} anmelden`)}
+              aria-label={t("Sign in", "Anmelden")}
+            >
+              <LuLogIn aria-hidden="true" />
+              <span className="sidebar-user-action-label">{t("Sign in", "Anmelden")}</span>
+            </button>
+          )}
+        </div>
+      )}
       <div className="sidebar-footer">
         <div className="sidebar-version">{collapsed ? `v${version}` : `Hecate v${version}`}</div>
         <button
@@ -334,6 +373,19 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
       </div>
     </aside>
   );
+};
+
+const roleLabel = (role: string, t: (english: string, german: string) => string): string => {
+  switch (role) {
+    case "admin":
+      return t("Admin", "Admin");
+    case "editor":
+      return t("Editor", "Editor");
+    case "viewer":
+      return t("Viewer", "Leser");
+    default:
+      return role;
+  }
 };
 
 const normalizeSearchParams = (raw: string): string => {

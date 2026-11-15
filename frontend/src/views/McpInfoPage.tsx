@@ -27,7 +27,7 @@ export const McpInfoPage = () => {
         )}
       />
       <div className="info-tags">
-        <span className="tag">{t("46 tools", "46 Tools")}</span>
+        <span className="tag">{t("47 tools", "47 Tools")}</span>
         <span className="tag">OAuth 2.0 + PKCE</span>
         <span className="tag">{t("Rate limited", "Rate-limitiert")}</span>
         <span className="tag">{t("Audit logged", "Audit-protokolliert")}</span>
@@ -273,6 +273,7 @@ claude mcp get hecate`} />
               <tr><td><code>list_scan_targets</code></td><td>{t("List registered scan targets, used to discover target_ids for other tools", "Registrierte Scan-Targets auflisten, zum Auffinden von target_ids für andere Tools")}</td></tr>
               <tr><td><code>list_target_groups</code></td><td>{t("List application groups with rolled-up severity totals", "Anwendungs-Gruppen mit aufsummierten Severity-Totals auflisten")}</td></tr>
               <tr><td><code>list_scans</code></td><td>{t("List recent scans (newest first), optionally filtered by target or status", "Aktuelle Scans auflisten (neueste zuerst), optional gefiltert nach Target oder Status")}</td></tr>
+              <tr><td><code>check_package</code></td><td>{t("Pre-install check of a package (npm, PyPI, Go, Maven, Cargo, NuGet, RubyGems, Packagist): verdict block / warn / ok for malicious, vulnerable, freshly released, taken-over or unmaintained packages", "Prüfung eines Pakets vor der Installation (npm, PyPI, Go, Maven, Cargo, NuGet, RubyGems, Packagist): Urteil block / warn / ok für bösartige, verwundbare, frisch veröffentlichte, übernommene oder unbetreute Pakete")}</td></tr>
               <tr><td><code>find_findings_by_cve</code></td><td>{t("Find scan findings tied to a specific CVE/GHSA/OSV ID across all scans", "Scan-Findings zu einer bestimmten CVE/GHSA/OSV-ID über alle Scans finden")}</td></tr>
               <tr><td><code>trigger_scan</code></td><td>{t("Submit an SCA scan (write scope: source IP must be in MCP_WRITE_IP_SAFELIST)", "SCA-Scan starten (Schreib-Scope: Quell-IP muss in MCP_WRITE_IP_SAFELIST sein)")}</td></tr>
               <tr><td><code>trigger_sync</code></td><td>{t("Trigger data sync from upstream source (write scope: source IP must be in MCP_WRITE_IP_SAFELIST)", "Daten-Sync von Upstream-Quelle auslösen (Schreib-Scope: Quell-IP muss in MCP_WRITE_IP_SAFELIST sein)")}</td></tr>
@@ -288,7 +289,7 @@ claude mcp get hecate`} />
               <tr><td><code>create_inventory_item</code></td><td>{t("Create an inventory item (write scope)", "Inventar-Eintrag anlegen (Schreib-Scope)")}</td></tr>
               <tr><td><code>update_inventory_item</code></td><td>{t("Update an inventory item (write scope)", "Inventar-Eintrag aktualisieren (Schreib-Scope)")}</td></tr>
               <tr><td><code>delete_inventory_item</code></td><td>{t("Delete an inventory item (write scope)", "Inventar-Eintrag löschen (Schreib-Scope)")}</td></tr>
-              <tr><td><code>set_finding_vex</code></td><td>{t("Set or clear the VEX status of findings, by finding ids or target + vulnerability (write scope)", "VEX-Status von Ergebnissen setzen oder entfernen, per Ergebnis-IDs oder Target + Schwachstelle (Schreib-Scope)")}</td></tr>
+              <tr><td><code>set_finding_vex</code></td><td>{t("Set or clear the VEX status of findings, by finding ids or target + vulnerability, with an optional re-review date (write scope)", "VEX-Status von Ergebnissen setzen oder entfernen, per Ergebnis-IDs oder Target + Schwachstelle, optional mit Wiedervorlage-Datum (Schreib-Scope)")}</td></tr>
               <tr><td><code>import_vex</code></td><td>{t("Import a CycloneDX VEX or OpenVEX document into a target (write scope)", "CycloneDX-VEX- oder OpenVEX-Dokument in ein Target importieren (Schreib-Scope)")}</td></tr>
               <tr><td><code>get_target_vex_sources</code></td><td>{t("A target's VEX source URLs and the result of their last fetch", "VEX-Quellen eines Targets und das Ergebnis ihres letzten Abrufs")}</td></tr>
               <tr><td><code>set_target_vex_sources</code></td><td>{t("Set a target's VEX source URLs; applied now and after every scan (write scope)", "VEX-Quellen eines Targets setzen; sofort und nach jedem Scan angewendet (Schreib-Scope)")}</td></tr>
@@ -317,6 +318,7 @@ claude mcp get hecate`} />
             { en: "I use OpenClaw version 2026.02.24, am I affected by any vulnerabilities?", de: "Ich benutze OpenClaw Version 2026.02.24, bin ich von Schwachstellen betroffen?" },
             { en: "Show me all critical Apache Tomcat vulnerabilities", de: "Zeig mir alle kritischen Apache Tomcat Schwachstellen" },
             { en: "What is CVE-2024-1234?", de: "Was ist CVE-2024-1234?" },
+            { en: "Before you add it: is the npm package left-pad safe to install?", de: "Bevor du es hinzufügst: Kann ich das npm-Paket left-pad bedenkenlos installieren?" },
             { en: "Are there any actively exploited vulnerabilities right now?", de: "Gibt es gerade aktiv ausgenutzte Schwachstellen?" },
             { en: "Explain CWE-79 and its attack patterns", de: "Erkläre CWE-79 und die zugehörigen Angriffsmuster" },
             { en: "How many vulnerabilities are in the database?", de: "Wie viele Schwachstellen sind in der Datenbank?" },

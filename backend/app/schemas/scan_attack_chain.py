@@ -58,6 +58,8 @@ class ScanAttackChainStage(BaseModel):
 
 class ScanAttackChainNarrative(BaseModel):
     provider: AIProviderLiteral | str
+    # The model the provider was configured with when the analysis ran.
+    model: str | None = None
     language: str
     summary: str
     generated_at: str = Field(alias="generatedAt", serialization_alias="generatedAt")
@@ -94,5 +96,7 @@ class ScanAttackChainRequest(BaseModel):
 class ScanAttackChainSubmitResponse(BaseModel):
     status: str
     scan_id: str = Field(alias="scanId", serialization_alias="scanId")
+    # Every SSE event of this run (scan_attack_chain_{scanId}) carries it in metadata.runId
+    run_id: str | None = Field(default=None, alias="runId", serialization_alias="runId")
 
     model_config = {"populate_by_name": True}

@@ -3,7 +3,8 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from datetime import datetime
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -41,6 +42,10 @@ from app.schemas.scan import (
     ScanLayerAnalysisResponse,
     ScanLayerDetailSchema,
     ScanListResponse,
+    ScanReleaseEntry,
+    ScanReleaseListResponse,
+    ScanReleaseRequest,
+    ScanReleaseSchema,
     ScanResponse,
     ScanSummarySchema,
     ScanTargetCreateRequest,
@@ -50,6 +55,7 @@ from app.schemas.scan import (
     ScanTargetResponse,
     SubmitScanRequest,
     SubmitScanResponse,
+    SupplyChainSummarySchema,
     TargetSbomDiffResponse,
     TargetVexSourcesRequest,
     TargetWritePasswordRequest,
@@ -67,6 +73,7 @@ from app.schemas.vex import (
 from app.core.write_auth import (
     require_admin_write,
     require_ai_target_write_scan,
+    require_editor_write,
     require_target_password_change,
     require_target_write_body_finding_ids,
     require_target_write_body_target,
@@ -85,7 +92,9 @@ from app.schemas.scan_attack_chain import (
     ScanAttackChainResponse,
     ScanAttackChainSubmitResponse,
 )
+from app.services.ai_history import previous_scan_analyses
 from app.services.ai_service import AIClient, get_ai_client
+from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
 from app.services.scan_attack_chain_service import (
     ScanAttackChainService,
     get_scan_attack_chain_service,
@@ -93,6 +102,7 @@ from app.services.scan_attack_chain_service import (
 from app.services.license_compliance_service import LicenseComplianceService
 from app.services.scan_service import ScanService, get_scan_service
 from app.services.vex_service import VexService
+from app.services.vex_review import review_state
 
 import asyncio
 
@@ -297,6 +307,36 @@ async def get_target_sbom_diff(
     return TargetSbomDiffResponse(**diff)
 
 
+# Declared before the bare ``/targets/{target_id:path}`` GET (greedy path converter).
+@router.get("/targets/{target_id:path}/releases", response_model=ScanReleaseListResponse)
+async def list_target_releases(
+    target_id: str = Depends(resolve_target_id_path),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanReleaseListResponse:
+    """Scans of a target marked as releases, newest marker first."""
+    from app.services.scan_release import list_releases
+
+    items = []
+    for doc in await list_releases(service.scan_repo, target_id):
+        release = doc.get("release") or {}
+        summary = doc.get("summary")
+        items.append(ScanReleaseEntry(
+            scan_id=str(doc.get("_id", "")),
+            label=str(release.get("label") or ""),
+            note=release.get("note"),
+            marked_at=release.get("marked_at"),
+            status=doc.get("status"),
+            started_at=doc.get("started_at"),
+            finished_at=doc.get("finished_at"),
+            commit_sha=doc.get("commit_sha"),
+            image_ref=doc.get("image_ref"),
+            branch=doc.get("branch"),
+            summary=ScanSummarySchema(**summary) if isinstance(summary, dict) else ScanSummarySchema(),
+            sbom_component_count=doc.get("sbom_component_count"),
+        ))
+    return ScanReleaseListResponse(items=items)
+
+
 # Write-password management: the admin, or the owner with the current target password. Declared before the
 # bare ``/targets/{target_id:path}`` routes so the greedy path converter on the
 # bare DELETE doesn't swallow ``/write-password`` as part of the target id.
@@ -387,7 +427,8 @@ async def get_target(
 @router.post("/targets", response_model=ScanTargetResponse, status_code=201)
 async def create_target(
     request: ScanTargetCreateRequest,
-    _auth: None = Depends(require_admin_write),
+    # A new target: the system password, or a signed-in editor.
+    _auth: None = Depends(require_editor_write),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
     """Register a scan target manually."""
@@ -439,7 +480,10 @@ async def update_target(
 @router.delete("/targets/{target_id:path}", status_code=204)
 async def delete_target(
     target_id: str = Depends(resolve_target_id_path),
-    _auth: None = Depends(require_target_write_path),
+    # Deleting takes the system password, not the target's: a target password
+    # opens every other write on the target, but losing its whole history is
+    # the admin's call.
+    _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
     deleted = await service.delete_target(target_id)
@@ -627,9 +671,11 @@ async def get_dashboard_coverage(
 ) -> dict[str, dict[str, str]]:
     """Compact cross-reference maps for the dashboard "Today" SCA highlight.
 
-    ``{"cveScan": {cveId: scanId}, "productScan": {productSlug: scanId}}`` —
-    each value is the most-recent scan (across targets) covering the key,
-    from the latest completed scan of every target. Cached server-side.
+    ``{"cveScan": {cveId: scanId}, "scanTargets": {scanId: targetName}}`` —
+    each ``cveScan`` value is the most-recent scan (across targets) with a
+    finding for the CVE, from the latest completed scan of every target.
+    Version-checked SBOM hits ride on the CVE rows (``sbomScanId``). Cached
+    server-side.
     """
     return await service.get_dashboard_coverage()
 
@@ -744,6 +790,7 @@ async def update_finding_vex(
         vex_justification=request.vex_justification if request.vex_status else None,
         vex_detail=request.vex_detail if request.vex_status else None,
         vex_response=request.vex_response if request.vex_status else None,
+        vex_review_due=request.vex_review_due if request.vex_status else None,
     )
     if not success:
         raise HTTPException(status_code=404, detail="Finding not found")
@@ -788,6 +835,7 @@ async def bulk_update_vex_by_ids(
         vex_status=request.vex_status,
         vex_justification=request.vex_justification,
         vex_detail=request.vex_detail,
+        vex_review_due=request.vex_review_due,
     )
     return VexBulkUpdateResponse(updated=count)
 
@@ -844,9 +892,17 @@ async def cancel_scan(
 @router.delete("/{scan_id}", status_code=204)
 async def delete_scan(
     scan_id: str,
-    _auth: None = Depends(require_target_write_scan),
+    # Like deleting a target: system password only (see delete_target).
+    _auth: None = Depends(require_admin_write),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
+    scan = await service.get_scan(scan_id)
+    if scan and scan.get("release"):
+        # Release evidence is kept until someone removes the marker on purpose.
+        raise HTTPException(
+            status_code=409,
+            detail="This scan is marked as a release. Remove the release marker before deleting it.",
+        )
     deleted = await service.delete_scan(scan_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -962,12 +1018,19 @@ async def create_scan_ai_analysis(
         raise HTTPException(status_code=400, detail="Anthropic provider is not configured.")
     if payload.provider == "gemini" and not settings.google_gemini_api_key:
         raise HTTPException(status_code=400, detail="Gemini provider is not configured.")
+    if payload.provider == "openai-compatible" and (
+        not settings.openai_compatible_base_url or not settings.openai_compatible_model
+    ):
+        raise HTTPException(status_code=400, detail="OpenAI-compatible provider is not configured.")
 
     _, findings = await service.finding_repo.list_by_scan(scan_id, limit=500, include_dismissed=False)
+    previous = await previous_scan_analyses(service.scan_repo, scan_id, scan)
+    run_id = uuid.uuid4().hex
 
     task = asyncio.create_task(
         _run_scan_ai_analysis_background(
             scan_id=scan_id,
+            run_id=run_id,
             scan=scan,
             findings=findings,
             provider=payload.provider,
@@ -976,13 +1039,14 @@ async def create_scan_ai_analysis(
             triggered_by=payload.triggered_by,
             ai_client=ai_client,
             service=service,
+            previous_analyses=previous,
         )
     )
     # Keep a reference on the task set to prevent GC
     _scan_ai_tasks.add(task)
     task.add_done_callback(_scan_ai_tasks.discard)
 
-    return AIScanAnalysisSubmitResponse(status="running", scanId=scan_id)
+    return AIScanAnalysisSubmitResponse(status="running", scanId=scan_id, runId=run_id)
 
 
 _scan_ai_tasks: set[asyncio.Task[Any]] = set()
@@ -991,6 +1055,7 @@ _scan_ai_tasks: set[asyncio.Task[Any]] = set()
 async def _run_scan_ai_analysis_background(
     *,
     scan_id: str,
+    run_id: str,
     scan: dict[str, Any],
     findings: list[dict[str, Any]],
     provider: str,
@@ -999,7 +1064,13 @@ async def _run_scan_ai_analysis_background(
     triggered_by: str | None,
     ai_client: AIClient,
     service: ScanService,
+    previous_analyses: list[dict[str, Any]] | None = None,
 ) -> None:
+    # Like the vulnerability AI jobs: the sidebar dot and the scan page follow
+    # these events, and a failure reaches the page instead of a silent timeout.
+    job_name = f"ai_scan_analysis_{scan_id}"
+    started_at = datetime.now(tz=UTC)
+    publish_job_started(job_name, started_at, provider=provider, scanId=scan_id, runId=run_id)
     try:
         result = await ai_client.analyze_scan(
             provider,  # type: ignore[arg-type]
@@ -1008,10 +1079,13 @@ async def _run_scan_ai_analysis_background(
             language=language,
             additional_context=additional_context,
             triggered_by=triggered_by,
+            previous_analyses=previous_analyses,
         )
         await service.save_scan_ai_analysis(scan_id, result.model_dump(by_alias=True))
+        publish_job_completed(job_name, started_at, datetime.now(tz=UTC), scanId=scan_id, runId=run_id)
     except Exception as exc:
         _ai_scan_logger.error("scan_ai_analysis_failed", scan_id=scan_id, error=str(exc))
+        publish_job_failed(job_name, started_at, datetime.now(tz=UTC), error=str(exc)[:500], scanId=scan_id, runId=run_id)
 
 
 _scan_attack_chain_tasks: set[asyncio.Task[Any]] = set()
@@ -1075,7 +1149,7 @@ async def create_scan_attack_chain_analysis(
     chain_service: ScanAttackChainService = Depends(get_scan_attack_chain_service),
 ) -> ScanAttackChainSubmitResponse:
     """Kick off AI-narrative generation for the Cross-CVE Attack Chain. HTTP 202.
-    Mirrors `create_scan_ai_analysis` (poll-based, no SSE event)."""
+    Mirrors `create_scan_ai_analysis`: SSE `scan_attack_chain_{scanId}` with the returned runId."""
     scan = await service.get_scan(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -1094,10 +1168,12 @@ async def create_scan_attack_chain_analysis(
     _, findings = await service.finding_repo.list_by_scan(
         scan_id, limit=2000, include_dismissed=False
     )
+    run_id = uuid.uuid4().hex
 
     task = asyncio.create_task(
         _run_scan_attack_chain_background(
             scan_id=scan_id,
+            run_id=run_id,
             scan=scan,
             findings=findings,
             provider=payload.provider,
@@ -1112,12 +1188,13 @@ async def create_scan_attack_chain_analysis(
     _scan_attack_chain_tasks.add(task)
     task.add_done_callback(_scan_attack_chain_tasks.discard)
 
-    return ScanAttackChainSubmitResponse(status="running", scanId=scan_id)
+    return ScanAttackChainSubmitResponse(status="running", scanId=scan_id, runId=run_id)
 
 
 async def _run_scan_attack_chain_background(
     *,
     scan_id: str,
+    run_id: str,
     scan: dict[str, Any],
     findings: list[dict[str, Any]],
     provider: str,
@@ -1128,6 +1205,9 @@ async def _run_scan_attack_chain_background(
     service: ScanService,
     chain_service: ScanAttackChainService,
 ) -> None:
+    job_name = f"scan_attack_chain_{scan_id}"
+    started_at = datetime.now(tz=UTC)
+    publish_job_started(job_name, started_at, provider=provider, scanId=scan_id, runId=run_id)
     try:
         graph, stages = await chain_service.build_chain(
             {**scan, "_id": scan_id}, findings, language=language or "en"
@@ -1142,8 +1222,10 @@ async def _run_scan_attack_chain_background(
             triggered_by=triggered_by,
         )
         await service.save_attack_chain(scan_id, narrative.model_dump(by_alias=True))
+        publish_job_completed(job_name, started_at, datetime.now(tz=UTC), scanId=scan_id, runId=run_id)
     except Exception as exc:
         _ai_scan_logger.error("scan_attack_chain_failed", scan_id=scan_id, error=str(exc))
+        publish_job_failed(job_name, started_at, datetime.now(tz=UTC), error=str(exc)[:500], scanId=scan_id, runId=run_id)
 
 
 @router.get("/{scan_id}/findings", response_model=ScanFindingListResponse)
@@ -1250,27 +1332,91 @@ async def get_scan_license_compliance(
     return LicenseComplianceResultResponse(**result)
 
 
-@router.get("/{scan_id}/vex/export")
-async def export_vex(
+@router.put("/{scan_id}/release", response_model=ScanResponse)
+async def mark_scan_release(
+    scan_id: str,
+    body: ScanReleaseRequest,
+    _auth: None = Depends(require_target_write_scan),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanResponse:
+    """Mark a completed scan as a release (version label + optional note)."""
+    from app.services.scan_release import ReleaseError, mark_release
+
+    try:
+        scan = await mark_release(service.scan_repo, scan_id, body.label, body.note)
+    except ReleaseError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    return _map_scan(scan)
+
+
+@router.delete("/{scan_id}/release", response_model=ScanResponse)
+async def clear_scan_release(
+    scan_id: str,
+    _auth: None = Depends(require_target_write_scan),
+    service: ScanService = Depends(get_scan_service),
+) -> ScanResponse:
+    """Remove the release marker of a scan."""
+    from app.services.scan_release import ReleaseError, clear_release
+
+    try:
+        scan = await clear_release(service.scan_repo, scan_id)
+    except ReleaseError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    return _map_scan(scan)
+
+
+@router.get("/{scan_id}/evidence-bundle")
+async def download_evidence_bundle(
     scan_id: str,
     service: ScanService = Depends(get_scan_service),
 ) -> Response:
-    """Export CycloneDX VEX document for a scan."""
-    scan = await service.get_scan(scan_id)
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
+    """ZIP with SBOM (CycloneDX + SPDX), VEX (CycloneDX, OpenVEX, CSAF), a findings
+    summary and a manifest with the SHA-256 of every file."""
+    from app.services.evidence_bundle import BundleTooLarge, build_evidence_bundle
 
-    finding_repo = await ScanFindingRepository.create()
-    scan_repo = await ScanRepository.create()
-    vex_service = VexService(finding_repo, scan_repo)
-    vex_doc = await vex_service.export_cyclonedx_vex(scan_id)
+    try:
+        result = await build_evidence_bundle(service, scan_id)
+    except BundleTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    data, filename = result
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{scan_id}/vex/export")
+async def export_vex(
+    scan_id: str,
+    format: str = Query(
+        default="cyclonedx",
+        alias="format",
+        pattern=r"^(cyclonedx|openvex|csaf)$",
+        description="cyclonedx (CycloneDX 1.5 VEX, default), openvex (OpenVEX 0.2.0) or csaf (CSAF 2.0 VEX)",
+    ),
+    service: ScanService = Depends(get_scan_service),
+) -> Response:
+    """Export the VEX statements of a scan.
+
+    CycloneDX lists the findings that carry a VEX status; OpenVEX and CSAF list
+    every vulnerability finding, unassessed ones as under investigation.
+    """
+    from app.services.vex_export import export_vex_document
+
+    result = await export_vex_document(service, scan_id, format)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    vex_doc, filename = result
     if not vex_doc:
         raise HTTPException(status_code=404, detail="No VEX data available for this scan")
 
     return Response(
-        content=json.dumps(vex_doc, default=str, indent=2),
+        content=json.dumps(vex_doc, default=str, indent=2, ensure_ascii=False),
         media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename=vex-{scan_id}.cdx.json"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -1364,10 +1510,32 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         ai_analysis=doc.get("ai_analysis"),
         ai_analyses=doc.get("ai_analyses"),
         scanner_breakdown=doc.get("scanner_breakdown"),
+        release=_map_release(doc.get("release")),
+        supply_chain_summary=_map_supply_chain_summary(doc.get("supply_chain_summary")),
     )
 
 
+def _map_supply_chain_summary(raw: Any) -> SupplyChainSummarySchema | None:
+    if not isinstance(raw, dict) or not raw.get("state"):
+        return None
+    return SupplyChainSummarySchema(
+        state=str(raw["state"]),
+        checked=int(raw.get("checked") or 0),
+        fresh_release=int(raw.get("fresh_release") or 0),
+        unmaintained=int(raw.get("unmaintained") or 0),
+        publisher_changed=int(raw.get("publisher_changed") or 0),
+        finished_at=raw.get("finished_at"),
+    )
+
+
+def _map_release(raw: Any) -> ScanReleaseSchema | None:
+    if not isinstance(raw, dict) or not raw.get("label"):
+        return None
+    return ScanReleaseSchema(label=str(raw["label"]), note=raw.get("note"), marked_at=raw.get("marked_at"))
+
+
 def _map_finding(doc: dict[str, Any]) -> ScanFindingResponse:
+    needs_review, review_reason = review_state(doc)
     return ScanFindingResponse(
         id=str(doc.get("_id", "")),
         scan_id=str(doc.get("scan_id", "")),
@@ -1393,6 +1561,12 @@ def _map_finding(doc: dict[str, Any]) -> ScanFindingResponse:
         vex_justification=doc.get("vex_justification"),
         vex_detail=doc.get("vex_detail"),
         vex_updated_at=doc.get("vex_updated_at"),
+        vex_updated_by=doc.get("vex_updated_by"),
+        vex_assessed_version=doc.get("vex_assessed_version"),
+        vex_review_due=doc.get("vex_review_due"),
+        vex_needs_review=needs_review,
+        vex_review_reason=review_reason,
+        dependency_scope=doc.get("dependency_scope"),
         dismissed=bool(doc.get("dismissed", False)),
         dismissed_reason=doc.get("dismissed_reason"),
         dismissed_at=doc.get("dismissed_at"),
@@ -1428,6 +1602,16 @@ def _map_sbom_component(doc: dict[str, Any]) -> SbomComponentResponse:
         provenance_source_repo=doc.get("provenance_source_repo"),
         provenance_build_system=doc.get("provenance_build_system"),
         provenance_attestation_type=doc.get("provenance_attestation_type"),
+        scope=doc.get("scope"),
+        published_at=doc.get("published_at"),
+        latest_version=doc.get("latest_version"),
+        latest_published_at=doc.get("latest_published_at"),
+        publisher=doc.get("publisher"),
+        previous_publishers=doc.get("previous_publishers"),
+        new_maintainers=doc.get("new_maintainers"),
+        fresh_release=doc.get("fresh_release"),
+        unmaintained=doc.get("unmaintained"),
+        publisher_changed=doc.get("publisher_changed"),
     )
 
 
@@ -1449,6 +1633,7 @@ def _map_consolidated_finding(doc: dict[str, Any]) -> ConsolidatedFindingRespons
         urls=doc.get("urls", []),
         package_type=doc.get("package_type"),
         package_path=doc.get("package_path"),
+        dependency_scope=doc.get("dependency_scope"),
     )
 
 
@@ -1476,6 +1661,7 @@ def _map_consolidated_sbom(doc: dict[str, Any]) -> ConsolidatedSbomResponse:
         purl=doc.get("purl"),
         licenses=doc.get("licenses", []),
         provenance_verified=doc.get("provenance_verified"),
+        scope=doc.get("scope"),
         targets=[
             ConsolidatedTargetSchema(target_id=t["target_id"], scan_id=t["scan_id"])
             for t in doc.get("targets", [])

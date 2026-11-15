@@ -14,6 +14,7 @@ from app.models.scan import (
     ScanSbomComponentDocument,
     ScanSummary,
 )
+from app.services.dependency_scope import cyclonedx_component_scope, merge_scope
 
 log = structlog.get_logger()
 
@@ -133,6 +134,8 @@ def parse_trivy_json(
                 purl=pkg.get("PURL"),
                 licenses=[lic for lic in (pkg.get("Licenses") or []) if isinstance(lic, str)],
                 file_path=target_name or None,
+                # Trivy flags dev dependencies; its absence says nothing.
+                scope="dev" if pkg.get("Dev") is True else None,
             ))
 
     # Filter out "file" type entries and merge duplicates
@@ -318,6 +321,7 @@ def parse_cyclonedx_sbom(
             cpe=cpe,
             licenses=licenses,
             supplier=supplier,
+            scope=cyclonedx_component_scope(comp),
         ))
 
     # Filter out "file" type entries and deduplicate
@@ -432,6 +436,7 @@ def _filter_and_merge_sbom(
             # Prefer more specific type over generic
             if comp.type and (not existing.type or existing.type == "library"):
                 existing.type = comp.type
+            existing.scope = merge_scope(existing.scope, comp.scope)
         else:
             merged[key] = comp
     return list(merged.values())
@@ -1067,4 +1072,48 @@ def parse_trufflehog_json(
             data_source=f"trufflehog:{detector_name.lower()}",
         ))
 
+    return findings, _build_summary(findings)
+
+
+def parse_govulncheck_json(
+    data: dict[str, Any],
+    scan_id: str,
+    target_id: str,
+) -> tuple[list[ScanFindingDocument], ScanSummary]:
+    """Findings for the Go vulnerabilities whose vulnerable symbol is reachable.
+
+    Entries govulncheck reports only at package or module level (imported but
+    never called, or required but not imported) are no findings: they feed
+    the reachability VEX on the other scanners' findings instead (see
+    ``app.services.reachability``). ``vulnerability_id`` is the CVE alias,
+    else the GHSA alias, else the GO id; the GO id leads the title.
+    """
+    from app.services.reachability import describe_entry, summarize_govulncheck
+
+    findings: list[ScanFindingDocument] = []
+    summary = summarize_govulncheck(data)
+    for entry in summary.entries.values():
+        if entry.level != "symbol":
+            continue
+        rel_dir = sorted(entry.module_dirs)[0] if entry.module_dirs else "."
+        urls = [entry.url or f"https://pkg.go.dev/vuln/{entry.osv_id}"]
+        urls += [u for u in entry.references if u not in urls][:10]
+        title = f"{entry.osv_id}: {entry.summary}" if entry.summary else entry.osv_id
+        findings.append(ScanFindingDocument(
+            scan_id=scan_id,
+            target_id=target_id,
+            vulnerability_id=entry.primary_id,
+            scanner="govulncheck",
+            package_name=entry.module,
+            package_version=entry.version,
+            package_type="gomod",
+            package_path="go.mod" if rel_dir == "." else f"{rel_dir}/go.mod",
+            severity="unknown",
+            title=title,
+            description=describe_entry(entry),
+            fix_version=entry.fixed_version,
+            fix_state="fixed" if entry.fixed_version else "not_fixed",
+            data_source="Go Vulnerability Database (govulncheck)",
+            urls=urls,
+        ))
     return findings, _build_summary(findings)

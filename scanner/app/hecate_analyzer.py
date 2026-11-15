@@ -27,15 +27,121 @@ def _should_skip(path: Path) -> bool:
     return any(part in _SKIP_DIRS for part in path.parts)
 
 
-def _lib_component(name: str, version: str, purl: str, source_file: str) -> dict[str, Any]:
+# Dependency scope: "runtime", "optional" or "dev" where the file says so,
+# None where it does not. Written as the ``hecate:scope`` property plus the
+# CycloneDX ``scope`` (required / optional / excluded).
+_SCOPE_RANK = {"runtime": 3, "optional": 2, "dev": 1}
+_CDX_SCOPE = {"runtime": "required", "optional": "optional", "dev": "excluded"}
+
+
+def _merge_scope(current: str | None, incoming: str | None) -> str | None:
+    """Runtime wins over optional, optional over dev; None never overrides."""
+    if incoming not in _SCOPE_RANK:
+        return current
+    if current not in _SCOPE_RANK:
+        return incoming
+    return incoming if _SCOPE_RANK[incoming] > _SCOPE_RANK[current] else current
+
+
+def _component_scope(comp: dict[str, Any]) -> str | None:
+    for prop in comp.get("properties") or []:
+        if isinstance(prop, dict) and prop.get("name") == "hecate:scope":
+            return prop.get("value")
+    return None
+
+
+def _set_scope(comp: dict[str, Any], scope: str | None) -> dict[str, Any]:
+    """Record *scope* on a component, replacing what it had."""
+    props = [p for p in comp.get("properties") or [] if not (isinstance(p, dict) and p.get("name") == "hecate:scope")]
+    comp.pop("scope", None)
+    if scope in _SCOPE_RANK:
+        props.append({"name": "hecate:scope", "value": scope})
+        comp["scope"] = _CDX_SCOPE[scope]
+    comp["properties"] = props
+    return comp
+
+
+def _lib_component(
+    name: str, version: str, purl: str, source_file: str, scope: str | None = None,
+) -> dict[str, Any]:
     """Build a CycloneDX library component dict."""
-    return {
+    comp = {
         "type": "library",
         "name": name,
         "version": version,
         "purl": purl,
         "properties": [{"name": "hecate:source-file", "value": source_file}],
     }
+    return _set_scope(comp, scope) if scope else comp
+
+
+def _propagate_scopes(
+    roots: dict[str, str],
+    edges: dict[str, list[tuple[str, bool]]],
+) -> dict[str, str]:
+    """Scope of every node reachable from the direct dependencies.
+
+    ``roots`` maps a direct dependency to its scope, ``edges`` a node to its
+    ``(child, optional)`` dependencies. A child inherits its parent's scope
+    (an optional edge from a runtime parent makes it optional) and keeps the
+    best scope over all paths, so anything a runtime dependency pulls in
+    stays runtime.
+    """
+    best: dict[str, str] = {}
+    queue: list[tuple[str, str]] = list(roots.items())
+    while queue:
+        node, scope = queue.pop()
+        if node in best and _SCOPE_RANK[best[node]] >= _SCOPE_RANK[scope]:
+            continue
+        best[node] = scope
+        for child, optional in edges.get(node, ()):
+            queue.append((child, "optional" if optional and scope == "runtime" else scope))
+    return best
+
+
+def _add_scoped(
+    index: dict[tuple[str, str], dict[str, Any]],
+    components: list[dict[str, Any]],
+    comp: dict[str, Any],
+    scope: str | None,
+) -> None:
+    """Add a component once per (name, version), merging the scope of repeats."""
+    key = (comp["name"], comp.get("version", ""))
+    existing = index.get(key)
+    if existing is None:
+        index[key] = _set_scope(comp, scope)
+        components.append(comp)
+    else:
+        _set_scope(existing, _merge_scope(_component_scope(existing), scope))
+
+
+_NPM_ROOT_SECTIONS = (("dependencies", "runtime"), ("optionalDependencies", "optional"), ("devDependencies", "dev"))
+_MAX_MANIFESTS_PER_LOCK = 500
+
+
+def _npm_manifest_roots(lock_dir: Path) -> dict[str, list[tuple[str, str]]]:
+    """Direct dependencies of every package.json under a lockfile: name -> [(range, scope)]."""
+    roots: dict[str, list[tuple[str, str]]] = {}
+    read = 0
+    for pj_path in lock_dir.rglob("package.json"):
+        if _should_skip(pj_path.relative_to(lock_dir)):
+            continue
+        read += 1
+        if read > _MAX_MANIFESTS_PER_LOCK:
+            break
+        try:
+            data = json.loads(read_text_limited(pj_path))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for section, scope in _NPM_ROOT_SECTIONS:
+            deps = data.get(section)
+            if isinstance(deps, dict):
+                for dep, rng in deps.items():
+                    if isinstance(dep, str) and isinstance(rng, str):
+                        roots.setdefault(dep, []).append((rng, scope))
+    return roots
 
 
 def _extract_version(spec: str) -> str:
@@ -285,7 +391,7 @@ def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
 
         rel_path = str(pj_path.relative_to(root))
 
-        for dep_group in ("dependencies", "devDependencies"):
+        for dep_group, scope in _NPM_ROOT_SECTIONS:
             deps = data.get(dep_group)
             if not isinstance(deps, dict):
                 continue
@@ -295,7 +401,7 @@ def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
                 if not _is_registry_npm_version(dep_version):
                     continue
                 purl = f"pkg:npm/{dep_name}@{dep_version}"
-                components.append({
+                components.append(_set_scope({
                     "type": "library",
                     "name": dep_name,
                     "version": dep_version,
@@ -303,7 +409,7 @@ def parse_package_jsons(source_dir: str) -> list[dict[str, Any]]:
                     "properties": [
                         {"name": "hecate:source-file", "value": rel_path},
                     ],
-                })
+                }, scope))
 
     return components
 
@@ -327,6 +433,15 @@ def _npm_name_from_lockfile_path(path_key: str) -> str:
     return path_key[idx + len(marker):]
 
 
+def _npm_lock_scope(entry: dict[str, Any]) -> str:
+    """npm's lockfile flags: ``dev`` (dev only), ``optional`` / ``devOptional``."""
+    if entry.get("dev") is True:
+        return "dev"
+    if entry.get("optional") is True or entry.get("devOptional") is True:
+        return "optional"
+    return "runtime"
+
+
 def parse_package_lock_json(source_dir: str) -> list[dict[str, Any]]:
     """Extract resolved dependencies from package-lock.json (npm v1/v2/v3)."""
     root = Path(source_dir)
@@ -343,7 +458,7 @@ def parse_package_lock_json(source_dir: str) -> list[dict[str, Any]]:
             continue
 
         rel_path = str(pl_path.relative_to(root))
-        seen: set[tuple[str, str]] = set()
+        index: dict[tuple[str, str], dict[str, Any]] = {}
 
         # Modern format (lockfileVersion >= 2): top-level `packages` dict.
         packages = data.get("packages")
@@ -351,43 +466,43 @@ def parse_package_lock_json(source_dir: str) -> list[dict[str, Any]]:
             for key, entry in packages.items():
                 if not isinstance(entry, dict) or not key:
                     continue
-                # Skip the root project entry (key == "")
+                # Skip the root project entry (key == "") and workspace links
+                if entry.get("link") is True:
+                    continue
                 name = entry.get("name") if isinstance(entry.get("name"), str) else _npm_name_from_lockfile_path(key)
                 version = entry.get("version")
                 if not name or not isinstance(version, str) or not version:
                     continue
-                if (name, version) in seen:
-                    continue
-                seen.add((name, version))
-                components.append({
+                _add_scoped(index, components, {
                     "type": "library",
                     "name": name,
                     "version": version,
                     "purl": f"pkg:npm/{name}@{version}",
                     "properties": [{"name": "hecate:source-file", "value": rel_path}],
-                })
+                }, _npm_lock_scope(entry))
 
         # Legacy format (lockfileVersion 1): recursive `dependencies` tree.
-        def _walk_legacy(deps: dict[str, Any]) -> None:
+        def _walk_legacy(deps: dict[str, Any], depth: int = 0) -> None:
+            if depth > 64:
+                return
             for name, entry in deps.items():
                 if not isinstance(name, str) or not isinstance(entry, dict):
                     continue
                 version = entry.get("version")
-                if isinstance(version, str) and version and (name, version) not in seen:
-                    seen.add((name, version))
-                    components.append({
+                if isinstance(version, str) and version:
+                    _add_scoped(index, components, {
                         "type": "library",
                         "name": name,
                         "version": version,
                         "purl": f"pkg:npm/{name}@{version}",
                         "properties": [{"name": "hecate:source-file", "value": rel_path}],
-                    })
+                    }, _npm_lock_scope(entry))
                 nested = entry.get("dependencies")
                 if isinstance(nested, dict):
-                    _walk_legacy(nested)
+                    _walk_legacy(nested, depth + 1)
 
         legacy = data.get("dependencies")
-        if isinstance(legacy, dict):
+        if not isinstance(packages, dict) and isinstance(legacy, dict):
             _walk_legacy(legacy)
 
     return components
@@ -423,8 +538,73 @@ def _yarn_name_from_spec(spec: str) -> str:
     return first[:at] if at > 0 else first
 
 
+_YARN_DEP_RE = re.compile(r'^\s+"?([^"\s]+)"?\s+"?([^"\s]*)"?\s*$')
+
+
+def _yarn_specs(header: str) -> list[str]:
+    return [part.strip().strip('"') for part in header.split(",") if part.strip().strip('"')]
+
+
+def _yarn_entries(content: str) -> list[dict[str, Any]]:
+    """Lock entries as ``{specs, version, deps: [(name, range, optional)]}``."""
+    entries: list[dict[str, Any]] = []
+    # Yarn Berry (YAML) — starts with a "__metadata:" map.
+    if "__metadata:" in content[:200]:
+        try:
+            data = yaml.safe_load(content)
+        except yaml.YAMLError:
+            data = None
+        if isinstance(data, dict):
+            for spec, entry in data.items():
+                if spec == "__metadata" or not isinstance(entry, dict):
+                    continue
+                deps: list[tuple[str, str, bool]] = []
+                meta = entry.get("dependenciesMeta") if isinstance(entry.get("dependenciesMeta"), dict) else {}
+                for section, optional in (("dependencies", False), ("optionalDependencies", True)):
+                    block = entry.get(section)
+                    if isinstance(block, dict):
+                        for dep, rng in block.items():
+                            dep_meta = meta.get(dep) if isinstance(meta.get(dep), dict) else {}
+                            deps.append((str(dep), str(rng), optional or dep_meta.get("optional") is True))
+                entries.append({"specs": _yarn_specs(str(spec)), "version": entry.get("version"), "deps": deps})
+            return entries
+
+    # Classic v1 — header, indented fields, dependency blocks one level deeper.
+    current: dict[str, Any] | None = None
+    section: str | None = None
+    for raw in content.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#") or len(raw) > _YARN_MAX_LINE:
+            continue
+        if not raw.startswith((" ", "\t")):
+            m = _YARN_HEADER_RE.match(raw)
+            current = {"specs": _yarn_specs(m.group("spec")), "version": None, "deps": []} if m else None
+            if current is not None:
+                entries.append(current)
+            section = None
+            continue
+        if current is None:
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        stripped = raw.strip()
+        if indent <= 2:
+            section = stripped[:-1] if stripped.endswith(":") else None
+            vm = _YARN_VERSION_RE.match(raw)
+            if vm:
+                current["version"] = vm.group(1)
+        elif section in ("dependencies", "optionalDependencies"):
+            dm = _YARN_DEP_RE.match(raw)
+            if dm:
+                current["deps"].append((dm.group(1), dm.group(2), section == "optionalDependencies"))
+    return entries
+
+
 def parse_yarn_lock(source_dir: str) -> list[dict[str, Any]]:
-    """Extract resolved dependencies from yarn.lock (v1 text + Berry YAML)."""
+    """Extract resolved dependencies from yarn.lock (v1 text + Berry YAML).
+
+    yarn.lock has no dev flag: the scope comes from the package.json files
+    under the lockfile (dependencies / optionalDependencies /
+    devDependencies) and is carried down the lockfile's dependency graph.
+    """
     root = Path(source_dir)
     components: list[dict[str, Any]] = []
 
@@ -437,56 +617,47 @@ def parse_yarn_lock(source_dir: str) -> list[dict[str, Any]]:
             continue
 
         rel_path = str(yl_path.relative_to(root))
-        seen: set[tuple[str, str]] = set()
+        entries = _yarn_entries(content)
+        by_spec: dict[str, int] = {}
+        for i, entry in enumerate(entries):
+            for spec in entry["specs"]:
+                by_spec.setdefault(spec, i)
 
-        # Try Yarn Berry (YAML) first — starts with "__metadata:" map.
-        if "__metadata:" in content[:200]:
-            try:
-                data = yaml.safe_load(content)
-                if isinstance(data, dict):
-                    for spec, entry in data.items():
-                        if spec == "__metadata" or not isinstance(entry, dict):
-                            continue
-                        name = _yarn_name_from_spec(str(spec))
-                        version = entry.get("version")
-                        if name and isinstance(version, str) and version and (name, version) not in seen:
-                            seen.add((name, version))
-                            components.append({
-                                "type": "library",
-                                "name": name,
-                                "version": version,
-                                "purl": f"pkg:npm/{name}@{version}",
-                                "properties": [{"name": "hecate:source-file", "value": rel_path}],
-                            })
-                    continue
-            except yaml.YAMLError:
-                pass  # fall through to classic parser
+        def _lookup(name: str, rng: str) -> int | None:
+            for spec in (f"{name}@{rng}", f"{name}@npm:{rng}"):
+                if spec in by_spec:
+                    return by_spec[spec]
+            return None
 
-        # Classic v1 parser — block header followed by indented `version "x.y.z"`.
-        current_spec: str | None = None
-        for raw in content.splitlines():
-            if not raw.strip() or raw.lstrip().startswith("#"):
+        edges: dict[str, list[tuple[str, bool]]] = {}
+        for i, entry in enumerate(entries):
+            children = []
+            for dep, rng, optional in entry["deps"]:
+                hit = _lookup(dep, rng)
+                if hit is not None:
+                    children.append((str(hit), optional))
+            edges[str(i)] = children
+        roots: dict[str, str] = {}
+        for dep, ranges in _npm_manifest_roots(yl_path.parent).items():
+            for rng, scope in ranges:
+                hit = _lookup(dep, rng)
+                if hit is not None:
+                    roots[str(hit)] = _merge_scope(roots.get(str(hit)), scope) or scope
+        scopes = _propagate_scopes(roots, edges) if roots else {}
+
+        index: dict[tuple[str, str], dict[str, Any]] = {}
+        for i, entry in enumerate(entries):
+            version = entry.get("version")
+            name = _yarn_name_from_spec(entry["specs"][0]) if entry["specs"] else ""
+            if not name or not isinstance(version, str) or not version or version == "0.0.0-use.local":
                 continue
-            if len(raw) > _YARN_MAX_LINE:
-                continue
-            if not raw.startswith((" ", "\t")):
-                m = _YARN_HEADER_RE.match(raw)
-                current_spec = m.group("spec") if m else None
-            elif current_spec is not None:
-                vm = _YARN_VERSION_RE.match(raw)
-                if vm:
-                    name = _yarn_name_from_spec(current_spec)
-                    version = vm.group(1)
-                    if name and version and (name, version) not in seen:
-                        seen.add((name, version))
-                        components.append({
-                            "type": "library",
-                            "name": name,
-                            "version": version,
-                            "purl": f"pkg:npm/{name}@{version}",
-                            "properties": [{"name": "hecate:source-file", "value": rel_path}],
-                        })
-                    current_spec = None  # consume until next header
+            _add_scoped(index, components, {
+                "type": "library",
+                "name": name,
+                "version": version,
+                "purl": f"pkg:npm/{name}@{version}",
+                "properties": [{"name": "hecate:source-file", "value": rel_path}],
+            }, scopes.get(str(i)))
 
     return components
 
@@ -497,47 +668,105 @@ def parse_yarn_lock(source_dir: str) -> list[dict[str, Any]]:
 
 
 def _pnpm_name_and_version(key: str) -> tuple[str, str] | None:
-    """Parse a pnpm lockfile `packages` key into (name, version).
+    """Parse a pnpm lockfile `packages` / `snapshots` key into (name, version).
 
     Key formats across pnpm versions:
-      /@babel/core@7.12.3(peer)        — v9+
-      /@babel/core/7.12.3               — v6
-      /lodash@4.17.21
-      /lodash/4.17.21
+      @babel/core@7.12.3(peer)          — v9 (no leading slash)
+      /@babel/core@7.12.3(peer)         — v6
+      /@babel/core/7.12.3_peer@1.0.0    — v5
+      /lodash@4.17.21, /lodash/4.17.21
     """
-    if not key.startswith("/"):
-        return None
-    body = key[1:]
-    # Strip peer-dep suffix "(peer-a@1,peer-b@2)" or "_peer@1"
+    body = key[1:] if key.startswith("/") else key
     paren = body.find("(")
     if paren >= 0:
         body = body[:paren]
-    underscore = body.find("_")
-    if underscore >= 0:
-        body = body[:underscore]
-
-    # Try the `name@version` split first (v9+)
-    if body.startswith("@"):
-        # @scope/name@version or @scope/name/version
-        at = body.find("@", 1)
-        slash = body.rfind("/")
-        if at > 0 and (slash < 0 or at > slash):
-            return body[:at], body[at + 1:]
-        if slash > 0:
-            return body[:slash], body[slash + 1:]
+    if not body:
         return None
+    at = body.rfind("@")
+    if at > 0:
+        name, version = body[:at], body[at + 1:]
+        if version and name.count("/") == (1 if name.startswith("@") else 0):
+            return name, version
+    # v5: name/version (or @scope/name/version) with an optional _peer suffix
+    parts = body.split("/", 2) if body.startswith("@") else body.split("/", 1)
+    if len(parts) != (3 if body.startswith("@") else 2):
+        return None
+    name = "/".join(parts[:-1])
+    version = parts[-1].split("_", 1)[0]
+    return (name, version) if name and version else None
 
-    at = body.find("@")
-    slash = body.rfind("/")
-    if at > 0 and (slash < 0 or at > slash):
-        return body[:at], body[at + 1:]
-    if slash > 0:
-        return body[:slash], body[slash + 1:]
-    return None
+
+def _pnpm_dep_node(name: str, ref: Any) -> str | None:
+    """Graph node a dependency reference points at (``name@version(peers)``)."""
+    if isinstance(ref, dict):
+        ref = ref.get("version")
+    if not isinstance(ref, str) or not ref or ref.startswith(("link:", "file:", "workspace:")):
+        return None
+    if ref.startswith("/"):
+        return ref[1:]  # v5/v6 absolute reference
+    return f"{name}@{ref}"
+
+
+def _pnpm_scopes(data: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """(name, version) -> scope from pnpm's flags or, in v9, its graph."""
+    scopes: dict[tuple[str, str], str] = {}
+    packages = data.get("packages") if isinstance(data.get("packages"), dict) else {}
+    flagged = False
+    for key, entry in packages.items():
+        if not isinstance(key, str) or not isinstance(entry, dict) or "dev" not in entry:
+            continue
+        flagged = True
+        parsed = _pnpm_name_and_version(key)
+        if not parsed:
+            continue
+        if entry.get("dev") is True:
+            scope = "dev"
+        elif entry.get("optional") is True:
+            scope = "optional"
+        else:
+            scope = "runtime"
+        scopes[parsed] = _merge_scope(scopes.get(parsed), scope) or scope
+    if flagged:
+        return scopes
+
+    # v9 dropped the flags: walk from the importers' direct dependencies.
+    graph = data.get("snapshots") if isinstance(data.get("snapshots"), dict) else packages
+    edges: dict[str, list[tuple[str, bool]]] = {}
+    for key, entry in graph.items():
+        if not isinstance(key, str) or not isinstance(entry, dict):
+            continue
+        children: list[tuple[str, bool]] = []
+        for section, optional in (("dependencies", False), ("optionalDependencies", True)):
+            block = entry.get(section)
+            if isinstance(block, dict):
+                for dep, ref in block.items():
+                    node = _pnpm_dep_node(str(dep), ref)
+                    if node:
+                        children.append((node, optional))
+        edges[key.lstrip("/")] = children
+    importers = data.get("importers")
+    if not isinstance(importers, dict):
+        importers = {".": data}  # older single-project lockfiles keep them at the top
+    roots: dict[str, str] = {}
+    for importer in importers.values():
+        if not isinstance(importer, dict):
+            continue
+        for section, scope in _NPM_ROOT_SECTIONS:
+            block = importer.get(section)
+            if isinstance(block, dict):
+                for dep, ref in block.items():
+                    node = _pnpm_dep_node(str(dep), ref)
+                    if node:
+                        roots[node] = _merge_scope(roots.get(node), scope) or scope
+    for node, scope in _propagate_scopes(roots, edges).items():
+        parsed = _pnpm_name_and_version(node)
+        if parsed:
+            scopes[parsed] = _merge_scope(scopes.get(parsed), scope) or scope
+    return scopes
 
 
 def parse_pnpm_lock_yaml(source_dir: str) -> list[dict[str, Any]]:
-    """Extract resolved dependencies from pnpm-lock.yaml."""
+    """Extract resolved dependencies from pnpm-lock.yaml (scope from its dev flags or graph)."""
     root = Path(source_dir)
     components: list[dict[str, Any]] = []
 
@@ -552,7 +781,8 @@ def parse_pnpm_lock_yaml(source_dir: str) -> list[dict[str, Any]]:
             continue
 
         rel_path = str(pl_path.relative_to(root))
-        seen: set[tuple[str, str]] = set()
+        scopes = _pnpm_scopes(data)
+        index: dict[tuple[str, str], dict[str, Any]] = {}
 
         packages = data.get("packages")
         if isinstance(packages, dict):
@@ -570,16 +800,15 @@ def parse_pnpm_lock_yaml(source_dir: str) -> list[dict[str, Any]]:
                     parsed = _pnpm_name_and_version(key)
                     if parsed:
                         name, version = parsed
-                if not name or not version or (name, version) in seen:
+                if not name or not version:
                     continue
-                seen.add((name, version))
-                components.append({
+                _add_scoped(index, components, {
                     "type": "library",
                     "name": name,
                     "version": version,
                     "purl": f"pkg:npm/{name}@{version}",
                     "properties": [{"name": "hecate:source-file", "value": rel_path}],
-                })
+                }, scopes.get((name, version)))
 
     return components
 
@@ -652,7 +881,7 @@ def parse_pyproject_toml(source_dir: str) -> list[dict[str, Any]]:
                 if m:
                     name, version = m.group(1), m.group(3) or ""
                     purl = f"pkg:pypi/{name.lower()}@{version}" if version else f"pkg:pypi/{name.lower()}"
-                    components.append(_lib_component(name, version, purl, rel_path))
+                    components.append(_lib_component(name, version, purl, rel_path, "runtime"))
 
         # PEP 621: optional-dependencies
         for group_deps in (project.get("optional-dependencies") or {}).values():
@@ -663,7 +892,19 @@ def parse_pyproject_toml(source_dir: str) -> list[dict[str, Any]]:
                         if m:
                             name, version = m.group(1), m.group(3) or ""
                             purl = f"pkg:pypi/{name.lower()}@{version}" if version else f"pkg:pypi/{name.lower()}"
-                            components.append(_lib_component(name, version, purl, rel_path))
+                            components.append(_lib_component(name, version, purl, rel_path, "optional"))
+
+        # PEP 735: [dependency-groups] (dev, test, docs, ...)
+        dep_groups = data.get("dependency-groups")
+        if isinstance(dep_groups, dict):
+            for group_deps in dep_groups.values():
+                if isinstance(group_deps, list):
+                    for dep in group_deps:
+                        m = _PEP508_RE.match(dep) if isinstance(dep, str) else None
+                        if m:
+                            name, version = m.group(1), m.group(3) or ""
+                            purl = f"pkg:pypi/{name.lower()}@{version}" if version else f"pkg:pypi/{name.lower()}"
+                            components.append(_lib_component(name, version, purl, rel_path, "dev"))
 
         # Poetry: [tool.poetry.dependencies] + [tool.poetry.dev-dependencies]
         poetry = data.get("tool", {}).get("poetry", {})
@@ -672,21 +913,28 @@ def parse_pyproject_toml(source_dir: str) -> list[dict[str, Any]]:
             if isinstance(deps, dict):
                 # Handle poetry groups: [tool.poetry.group.dev.dependencies]
                 if section == "group":
-                    for group_data in deps.values():
+                    for group_name, group_data in deps.items():
                         if isinstance(group_data, dict):
+                            group_scope = "runtime" if group_name == "main" else "dev"
                             for dep_name, dep_spec in group_data.get("dependencies", {}).items():
                                 if dep_name.lower() == "python":
                                     continue
                                 version = _poetry_version(dep_spec)
                                 purl = f"pkg:pypi/{dep_name.lower()}@{version}" if version else f"pkg:pypi/{dep_name.lower()}"
-                                components.append(_lib_component(dep_name, version, purl, rel_path))
+                                components.append(_lib_component(dep_name, version, purl, rel_path, group_scope))
                 else:
                     for dep_name, dep_spec in deps.items():
                         if dep_name.lower() == "python":
                             continue
                         version = _poetry_version(dep_spec)
                         purl = f"pkg:pypi/{dep_name.lower()}@{version}" if version else f"pkg:pypi/{dep_name.lower()}"
-                        components.append(_lib_component(dep_name, version, purl, rel_path))
+                        if section == "dev-dependencies":
+                            dep_scope = "dev"
+                        elif isinstance(dep_spec, dict) and dep_spec.get("optional") is True:
+                            dep_scope = "optional"
+                        else:
+                            dep_scope = "runtime"
+                        components.append(_lib_component(dep_name, version, purl, rel_path, dep_scope))
 
     return components
 
@@ -720,6 +968,7 @@ def parse_pipfile(source_dir: str) -> list[dict[str, Any]]:
 
         rel_path = str(pf_path.relative_to(root))
         for section in ("packages", "dev-packages"):
+            scope = "runtime" if section == "packages" else "dev"
             deps = data.get(section, {})
             if not isinstance(deps, dict):
                 continue
@@ -732,7 +981,7 @@ def parse_pipfile(source_dir: str) -> list[dict[str, Any]]:
                     if v and v != "*":
                         version = _extract_version(v)
                 purl = f"pkg:pypi/{dep_name.lower()}@{version}" if version else f"pkg:pypi/{dep_name.lower()}"
-                components.append(_lib_component(dep_name, version, purl, rel_path))
+                components.append(_lib_component(dep_name, version, purl, rel_path, scope))
 
     return components
 
@@ -759,6 +1008,7 @@ def parse_pipfile_lock(source_dir: str) -> list[dict[str, Any]]:
         rel_path = str(pl_path.relative_to(root))
         seen: set[tuple[str, str]] = set()
         for section in ("default", "develop"):
+            scope = "runtime" if section == "default" else "dev"
             deps = data.get(section)
             if not isinstance(deps, dict):
                 continue
@@ -775,9 +1025,24 @@ def parse_pipfile_lock(source_dir: str) -> list[dict[str, Any]]:
                     continue
                 seen.add(key)
                 purl = f"pkg:pypi/{dep_name.lower()}@{version}"
-                components.append(_lib_component(dep_name, version, purl, rel_path))
+                components.append(_lib_component(dep_name, version, purl, rel_path, scope))
 
     return components
+
+
+def _poetry_lock_scope(pkg: dict[str, Any]) -> str | None:
+    """poetry.lock 2.x ``groups`` (main = runtime), 1.x ``category``, ``optional`` extras."""
+    groups = pkg.get("groups")
+    if isinstance(groups, list) and groups:
+        if "main" in groups:
+            return "optional" if pkg.get("optional") is True else "runtime"
+        return "dev"
+    category = pkg.get("category")
+    if category == "main":
+        return "optional" if pkg.get("optional") is True else "runtime"
+    if category == "dev":
+        return "dev"
+    return None
 
 
 def parse_poetry_lock(source_dir: str) -> list[dict[str, Any]]:
@@ -796,7 +1061,7 @@ def parse_poetry_lock(source_dir: str) -> list[dict[str, Any]]:
         packages = data.get("package")
         if not isinstance(packages, list):
             continue
-        seen: set[tuple[str, str]] = set()
+        index: dict[tuple[str, str], dict[str, Any]] = {}
         for pkg in packages:
             if not isinstance(pkg, dict):
                 continue
@@ -804,18 +1069,31 @@ def parse_poetry_lock(source_dir: str) -> list[dict[str, Any]]:
             version = pkg.get("version")
             if not isinstance(name, str) or not isinstance(version, str) or not name or not version:
                 continue
-            key = (name.lower(), version)
-            if key in seen:
-                continue
-            seen.add(key)
             purl = f"pkg:pypi/{name.lower()}@{version}"
-            components.append(_lib_component(name, version, purl, rel_path))
+            comp = _lib_component(name, version, purl, rel_path)
+            key = (name.lower(), version)
+            existing = index.get(key)
+            if existing is None:
+                index[key] = _set_scope(comp, _poetry_lock_scope(pkg))
+                components.append(comp)
+            else:
+                _set_scope(existing, _merge_scope(_component_scope(existing), _poetry_lock_scope(pkg)))
 
     return components
 
 
+def _uv_dep_names(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(d["name"]).lower() for d in value if isinstance(d, dict) and isinstance(d.get("name"), str)]
+
+
 def parse_uv_lock(source_dir: str) -> list[dict[str, Any]]:
-    """Extract resolved versions from uv.lock (astral-sh/uv, TOML; same shape as poetry.lock)."""
+    """Extract resolved versions from uv.lock (astral-sh/uv, TOML; same shape as poetry.lock).
+
+    Scope comes from the graph: the workspace members' ``dependencies`` are
+    runtime, ``optional-dependencies`` optional, ``dev-dependencies`` dev.
+    """
     root = Path(source_dir)
     components: list[dict[str, Any]] = []
 
@@ -830,6 +1108,35 @@ def parse_uv_lock(source_dir: str) -> list[dict[str, Any]]:
         packages = data.get("package")
         if not isinstance(packages, list):
             continue
+
+        edges: dict[str, list[tuple[str, bool]]] = {}
+        roots: dict[str, str] = {}
+        for pkg in packages:
+            if not isinstance(pkg, dict) or not isinstance(pkg.get("name"), str):
+                continue
+            node = pkg["name"].lower()
+            children = [(d, False) for d in _uv_dep_names(pkg.get("dependencies"))]
+            optional = pkg.get("optional-dependencies")
+            if isinstance(optional, dict):
+                for deps in optional.values():
+                    children += [(d, True) for d in _uv_dep_names(deps)]
+            edges.setdefault(node, []).extend(children)
+            source = pkg.get("source")
+            if isinstance(source, dict) and ("editable" in source or "virtual" in source):
+                # A workspace member: its own requirements are the roots.
+                for d in _uv_dep_names(pkg.get("dependencies")):
+                    roots[d] = _merge_scope(roots.get(d), "runtime") or "runtime"
+                if isinstance(optional, dict):
+                    for deps in optional.values():
+                        for d in _uv_dep_names(deps):
+                            roots[d] = _merge_scope(roots.get(d), "optional") or "optional"
+                dev = pkg.get("dev-dependencies")
+                if isinstance(dev, dict):
+                    for deps in dev.values():
+                        for d in _uv_dep_names(deps):
+                            roots[d] = _merge_scope(roots.get(d), "dev") or "dev"
+        scopes = _propagate_scopes(roots, edges) if roots else {}
+
         seen: set[tuple[str, str]] = set()
         for pkg in packages:
             if not isinstance(pkg, dict):
@@ -842,8 +1149,11 @@ def parse_uv_lock(source_dir: str) -> list[dict[str, Any]]:
             if key in seen:
                 continue
             seen.add(key)
+            source = pkg.get("source")
+            if isinstance(source, dict) and ("editable" in source or "virtual" in source):
+                continue  # the project itself, not a dependency
             purl = f"pkg:pypi/{name.lower()}@{version}"
-            components.append(_lib_component(name, version, purl, rel_path))
+            components.append(_lib_component(name, version, purl, rel_path, scopes.get(name.lower())))
 
     return components
 
@@ -942,6 +1252,7 @@ def parse_cargo_toml(source_dir: str) -> list[dict[str, Any]]:
 
         rel_path = str(ct_path.relative_to(root))
         for section in ("dependencies", "dev-dependencies", "build-dependencies"):
+            scope = "runtime" if section == "dependencies" else "dev"
             deps = data.get(section, {})
             if not isinstance(deps, dict):
                 continue
@@ -954,7 +1265,10 @@ def parse_cargo_toml(source_dir: str) -> list[dict[str, Any]]:
                     if v:
                         version = _extract_version(v)
                 purl = f"pkg:cargo/{crate_name}@{version}" if version else f"pkg:cargo/{crate_name}"
-                components.append(_lib_component(crate_name, version, purl, rel_path))
+                if scope == "runtime" and isinstance(crate_spec, dict) and crate_spec.get("optional") is True:
+                    components.append(_lib_component(crate_name, version, purl, rel_path, "optional"))
+                else:
+                    components.append(_lib_component(crate_name, version, purl, rel_path, scope))
 
     return components
 
@@ -1053,13 +1367,19 @@ def parse_composer(source_dir: str) -> list[dict[str, Any]]:
         except (OSError, json.JSONDecodeError):
             continue
         rel_path = str(cl_path.relative_to(root))
-        for pkg in data.get("packages", []) + data.get("packages-dev", []):
-            if isinstance(pkg, dict):
-                name = pkg.get("name", "")
-                version = pkg.get("version", "").lstrip("v")
-                if name:
-                    purl = f"pkg:composer/{name}@{version}" if version else f"pkg:composer/{name}"
-                    components.append(_lib_component(name, version, purl, rel_path))
+        if not isinstance(data, dict):
+            continue
+        for section, scope in (("packages", "runtime"), ("packages-dev", "dev")):
+            pkgs = data.get(section)
+            if not isinstance(pkgs, list):
+                continue
+            for pkg in pkgs:
+                if isinstance(pkg, dict):
+                    name = pkg.get("name", "")
+                    version = str(pkg.get("version", "")).lstrip("v")
+                    if name:
+                        purl = f"pkg:composer/{name}@{version}" if version else f"pkg:composer/{name}"
+                        components.append(_lib_component(name, version, purl, rel_path, scope))
 
     for cj_path in root.rglob("composer.json"):
         if _should_skip(cj_path):
@@ -1074,6 +1394,7 @@ def parse_composer(source_dir: str) -> list[dict[str, Any]]:
             continue
         rel_path = str(cj_path.relative_to(root))
         for section in ("require", "require-dev"):
+            scope = "runtime" if section == "require" else "dev"
             deps = data.get(section, {})
             if not isinstance(deps, dict):
                 continue
@@ -1082,7 +1403,7 @@ def parse_composer(source_dir: str) -> list[dict[str, Any]]:
                     continue
                 version = _extract_version(dep_ver) if isinstance(dep_ver, str) else ""
                 purl = f"pkg:composer/{dep_name}@{version}" if version else f"pkg:composer/{dep_name}"
-                components.append(_lib_component(dep_name, version, purl, rel_path))
+                components.append(_lib_component(dep_name, version, purl, rel_path, scope))
 
     return components
 
@@ -1137,7 +1458,16 @@ def parse_pom_xml(source_dir: str) -> list[dict[str, Any]]:
                 version = ""
 
             purl = f"pkg:maven/{group_id}/{artifact_id}@{version}" if version else f"pkg:maven/{group_id}/{artifact_id}"
-            components.append(_lib_component(f"{group_id}:{artifact_id}", version, purl, rel_path))
+            mvn_scope = (_xml_text(dep, "scope", _MVN_NS) or _xml_text(dep, "scope", {})).lower()
+            optional = (_xml_text(dep, "optional", _MVN_NS) or _xml_text(dep, "optional", {})).lower() == "true"
+            if mvn_scope == "test":
+                scope = "dev"
+            elif optional:
+                scope = "optional"
+            else:
+                # compile (default), runtime, provided, system: present when the code runs
+                scope = "runtime"
+            components.append(_lib_component(f"{group_id}:{artifact_id}", version, purl, rel_path, scope))
 
     return components
 
@@ -1156,9 +1486,23 @@ def _xml_text(parent: ET.Element, tag: str, ns: dict) -> str:
 # ---------------------------------------------------------------------------
 
 _GRADLE_DEP_RE = re.compile(
-    r"""(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly|annotationProcessor|kapt)\s*"""
+    r"""(implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly|annotationProcessor|kapt)\s*"""
     r"""[('"]([^:'"]+):([^:'"]+):([^'")\s]+)""",
 )
+
+# Gradle configurations that never reach the runtime classpath.
+_GRADLE_TOOLING_PREFIXES = (
+    "annotationprocessor", "kapt", "ksp", "detekt", "ktlint", "jacoco", "spotbugs", "checkstyle",
+    "pmd", "errorprone", "lint", "classpath",
+)
+
+
+def _gradle_configuration_scope(configuration: str) -> str:
+    conf = configuration.strip()
+    lower = conf.lower()
+    if lower.startswith("test") or "Test" in conf or lower.startswith(_GRADLE_TOOLING_PREFIXES):
+        return "dev"
+    return "runtime"
 
 
 def parse_gradle(source_dir: str) -> list[dict[str, Any]]:
@@ -1175,16 +1519,18 @@ def parse_gradle(source_dir: str) -> list[dict[str, Any]]:
             continue
         rel_path = str(gf_path.relative_to(root))
         for m in _GRADLE_DEP_RE.finditer(content):
-            group_id, artifact_id, version = m.group(1), m.group(2), m.group(3)
+            configuration, group_id, artifact_id, version = m.group(1), m.group(2), m.group(3), m.group(4)
             if version.startswith("$"):
                 version = ""
             purl = f"pkg:maven/{group_id}/{artifact_id}@{version}" if version else f"pkg:maven/{group_id}/{artifact_id}"
-            components.append(_lib_component(f"{group_id}:{artifact_id}", version, purl, rel_path))
+            components.append(_lib_component(
+                f"{group_id}:{artifact_id}", version, purl, rel_path, _gradle_configuration_scope(configuration),
+            ))
 
     return components
 
 
-_GRADLE_LOCK_RE = re.compile(r"^([^:\s#]+):([^:\s]+):([^=\s]+)=", re.MULTILINE)
+_GRADLE_LOCK_RE = re.compile(r"^([^:\s#]+):([^:\s]+):([^=\s]+)=([^\n]*)$", re.MULTILINE)
 
 
 def parse_gradle_lockfile(source_dir: str) -> list[dict[str, Any]]:
@@ -1200,15 +1546,15 @@ def parse_gradle_lockfile(source_dir: str) -> list[dict[str, Any]]:
         except OSError:
             continue
         rel_path = str(gl_path.relative_to(root))
-        seen: set[tuple[str, str]] = set()
+        index: dict[tuple[str, str], dict[str, Any]] = {}
         for m in _GRADLE_LOCK_RE.finditer(content):
             group_id, artifact_id, version = m.group(1), m.group(2), m.group(3)
-            key = (f"{group_id}:{artifact_id}", version)
-            if key in seen:
-                continue
-            seen.add(key)
+            configurations = [c for c in m.group(4).split(",") if c.strip()]
+            scope: str | None = None
+            for conf in configurations:
+                scope = _merge_scope(scope, _gradle_configuration_scope(conf))
             purl = f"pkg:maven/{group_id}/{artifact_id}@{version}"
-            components.append(_lib_component(f"{group_id}:{artifact_id}", version, purl, rel_path))
+            _add_scoped(index, components, _lib_component(f"{group_id}:{artifact_id}", version, purl, rel_path), scope)
 
     return components
 
@@ -1285,6 +1631,7 @@ def parse_bun_lock(source_dir: str) -> list[dict[str, Any]]:
         packages = data.get("packages")
         if not isinstance(packages, dict):
             continue
+        scopes = _bun_scopes(data, packages)
         seen: set[tuple[str, str]] = set()
         for _key, entry in packages.items():
             # Entry is a list: ["pkgname@version", "registry-url", {deps}, "integrity"]
@@ -1308,15 +1655,54 @@ def parse_bun_lock(source_dir: str) -> list[dict[str, Any]]:
                 continue
             seen.add((name, version))
             purl = f"pkg:npm/{name}@{version}"
-            components.append({
+            components.append(_set_scope({
                 "type": "library",
                 "name": name,
                 "version": version,
                 "purl": purl,
                 "properties": [{"name": "hecate:source-file", "value": rel_path}],
-            })
+            }, scopes.get(_key)))
 
     return components
+
+
+def _bun_scopes(data: dict[str, Any], packages: dict[str, Any]) -> dict[str, str]:
+    """Package key -> scope, walking from the workspaces' direct dependencies.
+
+    A dependency ``d`` of package key ``k`` resolves to ``k/d`` when bun had
+    to nest a second copy there, else to the hoisted ``d``.
+    """
+    def resolve(parent: str | None, dep: str) -> str | None:
+        if parent and f"{parent}/{dep}" in packages:
+            return f"{parent}/{dep}"
+        return dep if dep in packages else None
+
+    edges: dict[str, list[tuple[str, bool]]] = {}
+    for key, entry in packages.items():
+        info = entry[2] if isinstance(entry, list) and len(entry) > 2 and isinstance(entry[2], dict) else {}
+        children: list[tuple[str, bool]] = []
+        for section, optional in (("dependencies", False), ("optionalDependencies", True)):
+            block = info.get(section)
+            if isinstance(block, dict):
+                for dep in block:
+                    hit = resolve(key, str(dep))
+                    if hit:
+                        children.append((hit, optional))
+        edges[key] = children
+    roots: dict[str, str] = {}
+    workspaces = data.get("workspaces")
+    if isinstance(workspaces, dict):
+        for workspace in workspaces.values():
+            if not isinstance(workspace, dict):
+                continue
+            for section, scope in _NPM_ROOT_SECTIONS:
+                block = workspace.get(section)
+                if isinstance(block, dict):
+                    for dep in block:
+                        hit = resolve(None, str(dep))
+                        if hit:
+                            roots[hit] = _merge_scope(roots.get(hit), scope) or scope
+    return _propagate_scopes(roots, edges) if roots else {}
 
 
 # ---------------------------------------------------------------------------
@@ -1347,6 +1733,26 @@ def _collect_central_package_versions(root: Path) -> dict[str, str]:
     return versions
 
 
+def _is_dotnet_test_project(tree: ET.ElementTree) -> bool:
+    for el in tree.iter():
+        tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+        if tag == "IsTestProject" and (el.text or "").strip().lower() == "true":
+            return True
+        if tag == "PackageReference" and (el.get("Include") or "").lower() == "microsoft.net.test.sdk":
+            return True
+    return False
+
+
+def _dotnet_private_all(reference: ET.Element) -> bool:
+    if (reference.get("PrivateAssets") or "").strip().lower() == "all":
+        return True
+    for child in reference:
+        ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+        if ctag == "PrivateAssets" and (child.text or "").strip().lower() == "all":
+            return True
+    return False
+
+
 def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
     """Extract NuGet dependencies from *.csproj, packages.config, packages.lock.json."""
     root = Path(source_dir)
@@ -1363,6 +1769,7 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
             except (OSError, ET.ParseError):
                 continue
             rel_path = str(proj_path.relative_to(root))
+            test_project = _is_dotnet_test_project(tree)
             for pr in tree.iter():
                 tag = pr.tag.split("}")[-1] if "}" in pr.tag else pr.tag
                 if tag != "PackageReference":
@@ -1382,7 +1789,10 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
                     # Central Package Management: pull version from Directory.Packages.props
                     version = cpm_versions.get(name, "")
                 purl = f"pkg:nuget/{name}@{version}" if version else f"pkg:nuget/{name}"
-                components.append(_lib_component(name, version, purl, rel_path))
+                # PrivateAssets="all" keeps a package (analyzers, test tools) out
+                # of what the project ships; a test project ships nothing.
+                scope = "dev" if test_project or _dotnet_private_all(pr) else "runtime"
+                components.append(_lib_component(name, version, purl, rel_path, scope))
 
     # Legacy .NET: packages.config
     for pc_path in root.rglob("packages.config"):
@@ -1398,7 +1808,8 @@ def parse_dotnet(source_dir: str) -> list[dict[str, Any]]:
             version = pkg.get("version", "")
             if name:
                 purl = f"pkg:nuget/{name}@{version}" if version else f"pkg:nuget/{name}"
-                components.append(_lib_component(name, version, purl, rel_path))
+                scope = "dev" if (pkg.get("developmentDependency") or "").lower() == "true" else "runtime"
+                components.append(_lib_component(name, version, purl, rel_path, scope))
 
     # NuGet lockfile: packages.lock.json (resolved transitive dependencies).
     # Schema: {"version":1,"dependencies":{"<TFM>":{"<PkgId>":{"resolved":"x.y.z",...}}}}
@@ -1553,7 +1964,9 @@ def parse_pubspec(source_dir: str) -> list[dict[str, Any]]:
                 if isinstance(pkg_data, dict):
                     version = pkg_data.get("version", "")
                     purl = f"pkg:pub/{pkg_name}@{version}" if version else f"pkg:pub/{pkg_name}"
-                    components.append(_lib_component(pkg_name, version or "", purl, rel_path))
+                    dependency = str(pkg_data.get("dependency") or "")
+                    scope = {"direct main": "runtime", "direct dev": "dev"}.get(dependency)
+                    components.append(_lib_component(pkg_name, version or "", purl, rel_path, scope))
 
     for py_path in root.rglob("pubspec.yaml"):
         if _should_skip(py_path):
@@ -1568,6 +1981,7 @@ def parse_pubspec(source_dir: str) -> list[dict[str, Any]]:
             continue
         rel_path = str(py_path.relative_to(root))
         for section in ("dependencies", "dev_dependencies"):
+            scope = "runtime" if section == "dependencies" else "dev"
             deps = data.get(section, {})
             if not isinstance(deps, dict):
                 continue
@@ -1579,7 +1993,7 @@ def parse_pubspec(source_dir: str) -> list[dict[str, Any]]:
                 if isinstance(dep_spec, str) and dep_spec not in ("any", ""):
                     version = _extract_version(dep_spec)
                 purl = f"pkg:pub/{dep_name}@{version}" if version else f"pkg:pub/{dep_name}"
-                components.append(_lib_component(dep_name, version, purl, rel_path))
+                components.append(_lib_component(dep_name, version, purl, rel_path, scope))
 
     return components
 
@@ -1683,12 +2097,16 @@ def run_analysis(source_dir: str) -> dict[str, Any]:
     # CocoaPods
     _collect(all_components, parse_cocoapods, source_dir)
 
-    # Deduplicate by purl (more precise than name:version)
+    # Deduplicate by purl (more precise than name:version); a repeat only
+    # contributes its scope (runtime wins, unknown never overrides).
     seen: dict[str, dict[str, Any]] = {}
     for comp in all_components:
         key = comp.get("purl") or f"{comp['name']}:{comp.get('version', '')}"
         if key not in seen:
             seen[key] = comp
+        else:
+            kept = seen[key]
+            _set_scope(kept, _merge_scope(_component_scope(kept), _component_scope(comp)))
 
     return {
         "bomFormat": "CycloneDX",

@@ -28,6 +28,7 @@ import {
   kindCounts,
   roundupHits,
   sortTopics,
+  narrowToStack,
   topicProducts,
   voices,
 } from "../utils/certTopics";
@@ -54,7 +55,7 @@ export const CertPage = () => {
   const [kinds, setKinds] = usePersistentState<FeedKind[]>("hecate.advisories.kinds", DEFAULT_KINDS);
   const [severity, setSeverity] = useState("");
   const [stackOnly, setStackOnly] = useState(false);
-  const [coverage, setCoverage] = useState<ScanCoverage>({ cveScan: {}, productScan: {}, scanTargets: {} });
+  const [coverage, setCoverage] = useState<ScanCoverage>({ cveScan: {}, scanTargets: {} });
 
   useEffect(() => {
     document.title = "Hecate Cyber Defense - Advisories";
@@ -113,17 +114,20 @@ export const CertPage = () => {
   const chipsByCve = useCveChips(
     allCves,
     coverage.cveScan,
-    coverage.productScan,
     coverage.scanTargets,
     t("in inventory", "im Inventar"),
     t("SCA scan", "SCA-Scan"),
   );
 
-  // A finding or an inventory hit is confirmed; a package sharing the product's name alone is not.
-  const inStack = useCallback(
-    (topic: CertTopic) => topic.cves.some((cve) => cveMatchesInventory(cve) || coverage.cveScan[cve.vulnId]),
+  // In your stack: an inventory hit, a scan finding, or an SBOM package at a version the CVE
+  // affects (sbomScanId, checked by the backend; a bare name match never counts).
+  const cveInStack = useCallback(
+    (cve: CertCve) => cveMatchesInventory(cve) || Boolean(coverage.cveScan[cve.vulnId]) || Boolean(cve.sbomScanId),
     [coverage.cveScan],
   );
+  const inStack = useCallback((topic: CertTopic) => topic.cves.some(cveInStack), [cveInStack]);
+  // With "only my stack" a topic shows just the CVEs you use: its title, severity and table follow.
+  const stackTopics = useMemo(() => (stackOnly ? narrowToStack(topics, cveInStack) : topics), [stackOnly, topics, cveInStack]);
 
   const sources = useMemo(() => {
     const byName = new Map<string, FeedSource>();
@@ -133,8 +137,8 @@ export const CertPage = () => {
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [topics, roundups]);
   const visible = useMemo(
-    () => sortTopics(filterTopics(topics, { search, source, severity, stackOnly }, inStack), inStack),
-    [topics, search, source, severity, stackOnly, inStack],
+    () => sortTopics(filterTopics(stackTopics, { search, source, severity, stackOnly }, inStack), inStack),
+    [stackTopics, search, source, severity, stackOnly, inStack],
   );
   const visibleRoundups = useMemo(
     () =>
@@ -356,6 +360,14 @@ const TopicRow = ({ t, topic, chips }: { t: TranslateFn; topic: CertTopic; chips
               </tbody>
             </table>
           </div>
+          {topic.hiddenCves ? (
+            <p className="cert-note">
+              {t(
+                `${topic.hiddenCves} more CVE${topic.hiddenCves === 1 ? "" : "s"} in this topic not in your stack (turn off "Only my stack" to see them).`,
+                `${topic.hiddenCves} weitere CVE${topic.hiddenCves === 1 ? "" : "s"} dieses Themas betreffen Ihren Stack nicht („Nur mein Stack“ ausschalten, um sie zu sehen).`,
+              )}
+            </p>
+          ) : null}
           <ul className="cert-advisories">
             {topic.advisories.map((advisory) => (
               <li key={`${advisory.feed}|${advisory.url ?? advisory.title}`} className="cert-advisory">

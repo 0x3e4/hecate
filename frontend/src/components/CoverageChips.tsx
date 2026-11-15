@@ -7,25 +7,12 @@ export interface CoverageCve {
   vendorSlugs?: string[];
   productSlugs?: string[];
   inventoryMatchIds?: string[];
+  /** Latest scan whose SBOM ships a package at a version this CVE affects. The
+   *  backend checks the version against the CVE's ranges (and a registry
+   *  package's vendor, backend/app/services/sbom_ecosystem.py); a package name
+   *  alone never sets it. */
+  sbomScanId?: string | null;
 }
-
-// The scan whose SBOM ships this product for this CVE. An OS or binary package is
-// keyed by its name; a language-registry package (npm, PyPI, Maven, …) only as
-// "vendor|product" for the vendors that may name it (the registry, its
-// namespace, itself — backend/app/services/sbom_ecosystem.py), so npm's
-// `console` does not cover Citrix NetScaler Console.
-export const productScanHit = (
-  vendorSlugs: readonly string[] | undefined,
-  productSlug: string,
-  scanProductScan: Record<string, string>,
-): string | undefined => {
-  if (scanProductScan[productSlug]) return scanProductScan[productSlug];
-  for (const vendor of vendorSlugs ?? []) {
-    const sid = scanProductScan[`${vendor}|${productSlug}`];
-    if (sid) return sid;
-  }
-  return undefined;
-};
 
 // A highlight chip on a CVE. Inventory chips link to /inventory; scan chips link
 // to the covering scan's detail page.
@@ -43,20 +30,12 @@ export interface CoverageChip {
 export const cveMatchesInventory = (cve: CoverageCve): boolean =>
   (cve.inventoryMatchIds?.length ?? 0) > 0;
 
-// Resolve the most-recent scan covering a CVE: a finding hit on the CVE id,
-// else the first SBOM-package hit on one of its product slugs. Undefined = not scanned.
+// Resolve the most-recent scan covering a CVE: a finding hit on the CVE id, else
+// the version-checked SBOM hit the backend put on the row. Undefined = not scanned.
 export const resolveCveScanId = (
   cve: CoverageCve,
   scanCveScan: Record<string, string>,
-  scanProductScan: Record<string, string>,
-): string | undefined => {
-  if (scanCveScan[cve.vulnId]) return scanCveScan[cve.vulnId];
-  for (const p of cve.productSlugs ?? []) {
-    const sid = productScanHit(cve.vendorSlugs, p, scanProductScan);
-    if (sid) return sid;
-  }
-  return undefined;
-};
+): string | undefined => scanCveScan[cve.vulnId] || cve.sbomScanId || undefined;
 
 // An "in scans" chip labelled with the covering scan's target name (truncated),
 // linking to that scan's detail page. Falls back to a generic label.
@@ -79,28 +58,23 @@ export const scanChip = (
 export const useCveChips = (
   cves: CoverageCve[],
   scanCveScan: Record<string, string>,
-  scanProductScan: Record<string, string>,
   scanTargets: Record<string, string>,
   invLabel: string,
   scanFallback: string,
 ) =>
   useMemo(() => {
     const map = new Map<string, CoverageChip[]>();
-    const hasScan =
-      Object.keys(scanCveScan).length > 0 || Object.keys(scanProductScan).length > 0;
     for (const cve of cves) {
       const chips: CoverageChip[] = [];
       if (cveMatchesInventory(cve)) {
         chips.push({ label: invLabel, href: "/inventory" });
       }
-      if (hasScan) {
-        const sid = resolveCveScanId(cve, scanCveScan, scanProductScan);
-        if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
-      }
+      const sid = resolveCveScanId(cve, scanCveScan);
+      if (sid) chips.push(scanChip(sid, scanTargets, scanFallback));
       if (chips.length) map.set(cve.vulnId, chips);
     }
     return map;
-  }, [cves, scanCveScan, scanProductScan, scanTargets, invLabel, scanFallback]);
+  }, [cves, scanCveScan, scanTargets, invLabel, scanFallback]);
 
 // Chips of a group: one per place it matched, however many CVEs share it.
 export const uniqueChips = (chips: CoverageChip[]): CoverageChip[] => [

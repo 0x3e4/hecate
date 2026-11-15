@@ -120,6 +120,13 @@ class ScanDocument(BaseModel):
         default=None,
         description="Per-scanner audit: one entry per requested scanner with findings counts, severity buckets, SBOM rows, and error message",
     )
+    supply_chain_summary: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Release-age / publisher lookups after the scan: state (running|done|failed) plus counts "
+            "checked, fresh_release, unmaintained, publisher_changed"
+        ),
+    )
 
 
 class ScanFindingDocument(BaseModel):
@@ -151,6 +158,15 @@ class ScanFindingDocument(BaseModel):
     vex_response: list[str] | None = Field(default=None, description="e.g. will_not_fix, workaround_available")
     vex_updated_at: datetime | None = None
     vex_updated_by: str | None = Field(default=None, description="user or vex-import")
+    # Review evidence (CRA / SOC 2): the package version a person assessed the
+    # status at, an optional re-review date (ISO ``YYYY-MM-DD``), and a flag
+    # carry-forward sets when the version changed since that assessment.
+    vex_assessed_version: str | None = None
+    vex_review_due: str | None = None
+    vex_needs_review: bool = False
+    # Dependency scope of the package (runtime | dev | optional, None = unknown),
+    # copied from the scan's SBOM after the scan. See dependency_scope.py.
+    dependency_scope: str | None = None
     dismissed: bool = Field(default=False, description="Hide finding from default view (personal filter, not VEX)")
     dismissed_reason: str | None = None
     dismissed_at: datetime | None = None
@@ -198,3 +214,18 @@ class ScanSbomComponentDocument(BaseModel):
     provenance_source_repo: str | None = None
     provenance_build_system: str | None = None
     provenance_attestation_type: str | None = None
+    # runtime | dev | optional, None = unknown. Raw rows keep what their
+    # scanner said; after the scan every row of a (name, version) carries the
+    # merged value (runtime wins, unknown never overrides).
+    scope: str | None = None
+    # Supply-chain signals, written after the scan by
+    # app/services/supply_chain_service.py (None = not looked up / unknown).
+    published_at: datetime | None = None
+    latest_version: str | None = None
+    latest_published_at: datetime | None = None
+    publisher: str | None = None
+    previous_publishers: list[str] | None = None
+    new_maintainers: list[str] | None = None
+    fresh_release: bool | None = None
+    unmaintained: bool | None = None
+    publisher_changed: bool | None = None

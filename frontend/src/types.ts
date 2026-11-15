@@ -73,6 +73,8 @@ export interface AIProviderInfo {
 
 export interface AIInvestigationResponse {
   provider: AIProviderId;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language: string;
   summary: string;
   generatedAt: string;
@@ -100,6 +102,8 @@ export interface AttackPathSubmitResponse {
 export interface AIAssessment {
   summary?: string;
   provider?: string;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language?: string;
   generatedAt?: string;
   tokenUsage?: { inputTokens: number; outputTokens: number } | null;
@@ -116,6 +120,8 @@ export interface AIBatchInvestigationRequest {
 
 export interface AIBatchInvestigationResponse {
   provider: AIProviderId;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language: string;
   summary: string;
   individualSummaries: Record<string, string>;
@@ -129,6 +135,8 @@ export interface BatchAnalysisItem {
   batchId: string;
   vulnerabilityIds: string[];
   provider: string;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language: string;
   summary: string;
   individualSummaries: Record<string, string>;
@@ -340,8 +348,65 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   sources?: SourceEntry[];
   affectedInventory?: AffectedInventoryItem[];
   affectedScanTargets?: AffectedScanTarget[];
+  /** Name-only matches for an advisory that names no affected versions yet. */
+  possiblyAffected?: PossiblyAffectedEntry[];
+  severityProvenance?: SeverityProvenance | null;
   attackPath?: AttackPathNarrative | null;
 }
+
+export type SeveritySourceKind = "nvd" | "cna" | "euvd" | "ghsa" | "osv";
+
+export interface SeveritySource {
+  source: string;
+  kind: SeveritySourceKind | string;
+  type?: string | null;
+  version?: string | null;
+  baseScore?: number | null;
+  severity?: string | null;
+  vector?: string | null;
+  isPrimary: boolean;
+}
+
+export interface SeverityProvenance {
+  sources: SeveritySource[];
+  primary: {
+    version?: string | null;
+    baseScore?: number | null;
+    severity?: string | null;
+    vector?: string | null;
+    source?: string | null;
+    kind?: string | null;
+  };
+  priorityDb: string;
+  disagreement: boolean;
+  disagreementDetail?: {
+    cvssMajor: string;
+    spread: number;
+    bands: string[];
+    sources: string[];
+  } | null;
+}
+
+export type PossiblyAffectedEntry =
+  | {
+      kind: "inventory";
+      itemId: string;
+      name: string;
+      vendorSlug?: string | null;
+      productSlug?: string | null;
+      version?: string | null;
+      environment?: string | null;
+      deployment?: string | null;
+    }
+  | {
+      kind: "sbom";
+      scanId: string;
+      targetId: string;
+      targetName: string;
+      packageName: string;
+      packageVersion: string;
+      purl?: string | null;
+    };
 
 export type AttackPathNodeType =
   | "entry"
@@ -405,6 +470,8 @@ export interface AttackPathGraph {
 
 export interface AttackPathNarrative {
   provider: string;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language: string;
   summary: string;
   generatedAt: string;
@@ -444,6 +511,8 @@ export interface ScanAttackChainStage {
 
 export interface ScanAttackChainNarrative {
   provider: string;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language: string;
   summary: string;
   generatedAt: string;
@@ -801,6 +870,8 @@ export interface ScanTargetGroupListResponse {
 export interface ScanAiAnalysis {
   scanId?: string;
   provider?: string;
+  /** The model the provider was configured with when the analysis ran (newer analyses only). */
+  model?: string | null;
   language?: string;
   summary: string;
   generatedAt: string;
@@ -834,7 +905,43 @@ export interface Scan {
   attackChain?: ScanAttackChainNarrative | null;
   attackChains?: ScanAttackChainNarrative[] | null;
   scannerBreakdown?: ScannerBreakdownEntry[] | null;
+  /** Set when the scan is marked as a release. */
+  release?: ScanRelease | null;
+  /** Release-age / publisher lookups on the SBOM, filled in after the scan. */
+  supplyChainSummary?: SupplyChainSummary | null;
 }
+
+export interface SupplyChainSummary {
+  state: "running" | "done" | "failed" | string;
+  checked: number;
+  freshRelease: number;
+  unmaintained: number;
+  publisherChanged: number;
+  finishedAt?: string | null;
+}
+
+export interface ScanRelease {
+  label: string;
+  note?: string | null;
+  markedAt?: string | null;
+}
+
+export interface ScanReleaseEntry {
+  scanId: string;
+  label: string;
+  note?: string | null;
+  markedAt?: string | null;
+  status?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  commitSha?: string | null;
+  imageRef?: string | null;
+  branch?: string | null;
+  summary: ScanSummary;
+  sbomComponentCount?: number | null;
+}
+
+export type VexExportFormat = "cyclonedx" | "openvex" | "csaf";
 
 export type ScannerBreakdownStatus = "ok" | "empty" | "error";
 
@@ -898,11 +1005,23 @@ export interface ScanFinding {
   vexJustification?: string | null;
   vexDetail?: string | null;
   vexUpdatedAt?: string | null;
+  /** user, "<client> - MCP", vex-import, vex-source, vex-rule:<id>, reachability:<tool>, carry-forward */
+  vexUpdatedBy?: string | null;
+  /** Package version a person assessed the VEX status at. */
+  vexAssessedVersion?: string | null;
+  /** Re-review date, YYYY-MM-DD. */
+  vexReviewDue?: string | null;
+  vexNeedsReview?: boolean;
+  vexReviewReason?: "version_changed" | "review_due" | null;
+  dependencyScope?: DependencyScope | null;
   dismissed?: boolean;
   dismissedReason?: string | null;
   dismissedAt?: string | null;
   dismissedBy?: string | null;
 }
+
+/** Dependency scope from the lockfile / manifest; null = the source does not say. */
+export type DependencyScope = "runtime" | "dev" | "optional";
 
 export interface ScanFindingListResponse {
   total: number;
@@ -925,6 +1044,17 @@ export interface SbomComponent {
   provenanceSourceRepo?: string | null;
   provenanceBuildSystem?: string | null;
   provenanceAttestationType?: string | null;
+  scope?: DependencyScope | null;
+  /** Supply-chain signals (registry lookups after the scan); null = unknown. */
+  publishedAt?: string | null;
+  latestVersion?: string | null;
+  latestPublishedAt?: string | null;
+  publisher?: string | null;
+  previousPublishers?: string[] | null;
+  newMaintainers?: string[] | null;
+  freshRelease?: boolean | null;
+  unmaintained?: boolean | null;
+  publisherChanged?: boolean | null;
 }
 
 export interface SbomComponentListResponse {
@@ -951,6 +1081,7 @@ export interface ConsolidatedFinding {
   urls?: string[];
   packageType?: string | null;
   packagePath?: string | null;
+  dependencyScope?: DependencyScope | null;
 }
 
 export interface ConsolidatedFindingListResponse {
@@ -1308,4 +1439,70 @@ export interface ApiToken {
 
 export interface ApiTokenCreated extends ApiToken {
   token: string;
+}
+
+// --- Automatic VEX rules ---
+
+export interface VexRuleConditions {
+  targetPattern?: string | null;
+  targetGroup?: string | null;
+  targetTypes: ("container_image" | "source_repo" | "sbom-import")[];
+  dependencyScopes: (DependencyScope | "unknown")[];
+  cweIds: string[];
+  packagePattern?: string | null;
+  ecosystems: string[];
+  maxSeverity?: "critical" | "high" | "medium" | "low" | "negligible" | null;
+  platformMismatch: boolean;
+}
+
+export interface VexRuleAction {
+  vexStatus: "not_affected" | "affected" | "fixed" | "under_investigation";
+  vexJustification?: string | null;
+  vexDetail?: string | null;
+  dismiss: boolean;
+}
+
+export interface VexRule {
+  id: string;
+  name: string;
+  description?: string | null;
+  enabled: boolean;
+  priority: number;
+  conditions: VexRuleConditions;
+  action: VexRuleAction;
+  preset?: string | null;
+  findingCount: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface VexRuleInput {
+  name: string;
+  description?: string | null;
+  enabled: boolean;
+  priority: number;
+  conditions: VexRuleConditions;
+  action: VexRuleAction;
+  preset?: string | null;
+}
+
+export interface VexRulePreset {
+  key: string;
+  name: string;
+  description: string;
+  priority: number;
+  conditions: VexRuleConditions;
+  action: VexRuleAction;
+}
+
+export interface VexRulePresetList {
+  items: VexRulePreset[];
+  justifications: string[];
+}
+
+export interface VexRuleApplyResult {
+  targets: number;
+  scans: number;
+  applied: number;
+  cleared: number;
 }

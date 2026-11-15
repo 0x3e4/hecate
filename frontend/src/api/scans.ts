@@ -17,6 +17,8 @@ import type {
   ScannerStats,
   SubmitScanRequest,
   SubmitScanResponse,
+  ScanReleaseEntry,
+  VexExportFormat,
 } from "../types";
 
 export const fetchScanTargets = async (params?: {
@@ -311,6 +313,8 @@ export const updateFindingVex = async (
     vexJustification?: string;
     vexDetail?: string;
     vexResponse?: string[];
+    /** Re-review date, YYYY-MM-DD. */
+    vexReviewDue?: string;
   },
   targetId?: string
 ): Promise<{ success: boolean; findingId: string }> => {
@@ -338,6 +342,8 @@ export const bulkUpdateVexByIds = async (
     vexStatus: string;
     vexJustification?: string;
     vexDetail?: string;
+    /** Re-review date, YYYY-MM-DD. */
+    vexReviewDue?: string;
   },
   targetId?: string
 ): Promise<{ updated: number }> => {
@@ -361,11 +367,56 @@ export const dismissFindings = async (
   return response.data;
 };
 
-export const exportVex = async (scanId: string): Promise<Blob> => {
-  const response = await api.get(`/v1/scans/${scanId}/vex/export`, {
+export const exportVex = async (
+  scanId: string,
+  format: VexExportFormat = "cyclonedx",
+): Promise<{ data: Blob; filename?: string }> => {
+  const response = await api.get<Blob>(`/v1/scans/${scanId}/vex/export`, {
+    params: { format },
     responseType: "blob",
   });
+  return {
+    data: response.data,
+    filename: extractFilename(response.headers["content-disposition"]),
+  };
+};
+
+/** ZIP with SBOM (CycloneDX + SPDX), VEX in three formats, findings summary and manifest. */
+export const downloadEvidenceBundle = async (
+  scanId: string,
+): Promise<{ data: Blob; filename?: string }> => {
+  const response = await api.get<Blob>(`/v1/scans/${encodeURIComponent(scanId)}/evidence-bundle`, {
+    responseType: "blob",
+  });
+  return {
+    data: response.data,
+    filename: extractFilename(response.headers["content-disposition"]),
+  };
+};
+
+export const markScanRelease = async (
+  scanId: string,
+  payload: { label: string; note?: string | null },
+  targetId?: string,
+): Promise<Scan> => {
+  const response = await api.put<Scan>(`/v1/scans/${encodeURIComponent(scanId)}/release`, payload, {
+    meta: { targetId },
+  });
   return response.data;
+};
+
+export const clearScanRelease = async (scanId: string, targetId?: string): Promise<Scan> => {
+  const response = await api.delete<Scan>(`/v1/scans/${encodeURIComponent(scanId)}/release`, {
+    meta: { targetId },
+  });
+  return response.data;
+};
+
+export const fetchTargetReleases = async (targetId: string): Promise<ScanReleaseEntry[]> => {
+  const response = await api.get<{ items: ScanReleaseEntry[] }>(
+    `/v1/scans/targets/${encodeURIComponent(targetId)}/releases`,
+  );
+  return response.data.items;
 };
 
 export const importVex = async (payload: {
@@ -391,8 +442,9 @@ export const triggerScanAiAnalysis = async (
   scanId: string,
   payload: { provider: string; language?: string; additionalContext?: string },
   password?: string,
-): Promise<{ status: string; scanId: string }> => {
-  const response = await api.post<{ status: string; scanId: string }>(
+): Promise<{ status: string; scanId: string; runId?: string | null }> => {
+  // runId: every SSE event of this run (ai_scan_analysis_{scanId}) carries it in metadata
+  const response = await api.post<{ status: string; scanId: string; runId?: string | null }>(
     `/v1/scans/${encodeURIComponent(scanId)}/ai-analysis`,
     payload,
     password ? { headers: { "X-AI-Analysis-Password": password } } : undefined,
@@ -417,8 +469,9 @@ export const triggerScanAttackChainNarrative = async (
   scanId: string,
   payload: { provider: string; language?: string; additionalContext?: string; triggeredBy?: string },
   password?: string,
-): Promise<{ status: string; scanId: string }> => {
-  const response = await api.post<{ status: string; scanId: string }>(
+): Promise<{ status: string; scanId: string; runId?: string | null }> => {
+  // runId: every SSE event of this run (scan_attack_chain_{scanId}) carries it in metadata
+  const response = await api.post<{ status: string; scanId: string; runId?: string | null }>(
     `/v1/scans/${encodeURIComponent(scanId)}/attack-chain`,
     payload,
     password ? { headers: { "X-AI-Analysis-Password": password } } : undefined,
@@ -434,6 +487,8 @@ export interface ScanAiAnalysisHistoryItem {
   commit_sha?: string | null;
   image_ref?: string | null;
   provider?: string;
+  /** The model the provider was configured with (newer analyses only). */
+  model?: string | null;
   language?: string;
   summary: string;
   timestamp?: string;
@@ -478,15 +533,12 @@ export const importSbomFile = async (
 export interface ScanCoverage {
   /** CVE/GHSA id → most-recent scanId that found it (from scan findings). */
   cveScan: Record<string, string>;
-  /** Most-recent scanId that ships a package (from SBOMs): OS / binary packages keyed by
-   *  slugified name, language-registry packages as "vendor|name" per vendor that may name
-   *  them. Read through `productScanHit`, never by bare slug. */
-  productScan: Record<string, string>;
   /** scanId → its target's display name (for the chip label + link). */
   scanTargets: Record<string, string>;
 }
 
-/** Compact maps for the dashboard "Today" SCA cross-reference. */
+/** Compact maps for the dashboard / advisories SCA cross-reference. SBOM hits are not
+ *  in here: they are version-checked per CVE and arrive as `sbomScanId` on the CVE rows. */
 export const fetchScanCoverage = async (): Promise<ScanCoverage> => {
   const response = await api.get<ScanCoverage>("/v1/scans/coverage");
   return response.data;

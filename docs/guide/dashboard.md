@@ -12,9 +12,22 @@ ingested, and links onward into the parts of the app where you do deeper work �
 
 ![The Hecate Dashboard with the day's figures, the Needs attention panel beside the products that hit your inventory or scans, and the latest findings](../img/hecate-dash.png)
 
-## Quick ID lookup
+## Quick search
 
-At the very top sits a single text box: *Enter vulnerability ID and press Enter.* Type any
+At the very top sits a single text box: *Search by ID, product or keyword.* From the second
+character on, a short list of matches opens under it, sorted by what matters to you first:
+CVEs in **Needs attention**, then those in your inventory or your scans (a scan finding, or a
+package in a scan's SBOM at an affected version), then by severity, a KEV listing, EPSS and CVSS.
+An exact ID you typed always comes first. Each entry shows the ID, its severity and the reasons it
+ranks where it does (*Needs attention*, *In inventory*, the scan target, *KEV*, EPSS), and below a
+line on what it is: the affected products and the start of its description. Pick one with the
+mouse, or with the arrow keys and Enter; Escape closes the list. Press Enter on free text without
+choosing and you get the best match, or the full search on the Vulnerabilities list when nothing
+matches.
+
+### Looking up one ID
+
+Type any
 identifier Hecate understands — a CVE (`CVE-2024-3094`), a GitHub advisory (`GHSA-…`), an OSV
 malicious-package ID (`MAL-…`), a Python advisory (`PYSEC-…`), an ENISA ID (`EUVD-…`) — and hit
 Enter. The input is trimmed and upper-cased for you, so case and stray whitespace never matter.
@@ -27,9 +40,8 @@ If the ID is **not** in the local database, a notice below the box offers to fet
 [Fetching a missing ID](#fetching-a-missing-id) below.
 
 !!! tip
-    The lookup is for jumping to one known record. To search by keyword, vendor, product, severity,
-    DQL or regex, use the [Vulnerabilities list](vulnerabilities.md) or the
-    [Query Builder](search.md) instead.
+    The box is for getting to a record quickly. To filter by vendor, product, severity, DQL or
+    regex, use the [Vulnerabilities list](vulnerabilities.md) or the [Query Builder](search.md).
 
 ### Fetching a missing ID
 

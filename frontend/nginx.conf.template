@@ -1,0 +1,92 @@
+# The frontend container is Hecate's gateway: it serves the built SPA and forwards
+# /api, /mcp and the MCP OAuth discovery documents to the backend. A reverse proxy
+# in front (TLS, security headers; deploy/reverse-proxy/) therefore needs only this
+# container, and the backend needs no published port.
+#
+# The nginx image fills in ${BACKEND_UPSTREAM}, ${UPSTREAM_RESOLVER} and
+# ${MAX_UPLOAD_MB} on start (envsubst on /etc/nginx/templates, defaults in the
+# Dockerfile); nginx's own $variables are left alone. The client IP comes from the
+# real_ip settings docker-entrypoint.d/15-real-ip.sh writes from TRUSTED_PROXIES.
+server_tokens off;
+
+# The scheme the visitor used: the outer proxy's X-Forwarded-Proto, else our own.
+# The backend builds the OIDC redirect URI, cookie flags and MCP URLs from it.
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+server {
+    listen 4173;
+    root /usr/share/nginx/html;
+    index index.html;
+    charset utf-8;
+    # Relative redirects keep the host and scheme the outer proxy used.
+    absolute_redirect off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain;
+
+    # Looked up per request (resolver + variable), so the frontend starts before the
+    # backend and finds a recreated backend under its new address. With a variable
+    # and no URI part, proxy_pass forwards the original path unchanged.
+    resolver ${UPSTREAM_RESOLVER} valid=30s ipv6=off;
+    resolver_timeout 2s;
+    set $backend_upstream ${BACKEND_UPSTREAM};
+
+    # Shared by every backend location. X-Forwarded-For carries only the address
+    # real_ip settled on, so the backend (TRUSTED_PROXY_IPS=frontend) reads one
+    # trustworthy hop instead of whatever the client prepended.
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    # $http_host keeps the port ($host drops it), so a gateway reached directly on
+    # :4173 still gets correct OIDC redirect and MCP URLs from the backend.
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+
+    # Server-Sent Events (live job, scan and AI progress): no buffering, long-lived.
+    location = /api/v1/events {
+        proxy_pass $backend_upstream;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+        chunked_transfer_encoding off;
+    }
+
+    # MCP streams its answers (streamable HTTP), so it must not be buffered either.
+    location ~ ^/mcp(/|$) {
+        proxy_pass $backend_upstream;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+        client_max_body_size ${MAX_UPLOAD_MB}m;
+    }
+
+    # The API (incl. /api/docs, /api/redoc, /api/openapi.json) and the OAuth
+    # discovery documents MCP clients look for at the host root.
+    location ~ ^/(api(/|$)|\.well-known/oauth-) {
+        proxy_pass $backend_upstream;
+        # SBOM uploads, source archives for scans and backup restores.
+        client_max_body_size ${MAX_UPLOAD_MB}m;
+        # Upstream fetches (a vulnerability refresh across all sources) can take minutes.
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # Vite names every bundle after its content hash, so it can be kept for good.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Client-side routes (/scans/targets/<encoded url>, /vulnerability/<id>, …)
+    # fall back to index.html, which the browser revalidates so a new image
+    # shows at once.
+    location / {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+}

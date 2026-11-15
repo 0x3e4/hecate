@@ -231,6 +231,30 @@ async def test_set_finding_vex_refuses_bad_input(
     assert service.finding_repo.calls == []
 
 
+async def test_set_finding_vex_passes_the_review_date(
+    tools: tuple[dict[str, Any], FakeScanService], write_scope: None,
+) -> None:
+    fns, service = tools
+    result = await fns["set_finding_vex"](
+        status="not_affected", finding_ids=["a" * 24], review_due="2027-03-01T00:00:00Z",
+    )
+    assert result["reviewDue"] == "2027-03-01"
+    assert service.finding_repo.calls[0]["vex_review_due"] == "2027-03-01"
+    await fns["set_finding_vex"](
+        status="affected", target_id="org/app", vulnerability_id="CVE-2026-1", review_due="2027-04-02",
+    )
+    assert service.finding_repo.calls[1]["vex_review_due"] == "2027-04-02"
+
+
+async def test_set_finding_vex_refuses_a_bad_review_date(
+    tools: tuple[dict[str, Any], FakeScanService], write_scope: None,
+) -> None:
+    fns, service = tools
+    result = await fns["set_finding_vex"](status="fixed", finding_ids=["a" * 24], review_due="next week")
+    assert "review_due" in result["error"]
+    assert service.finding_repo.calls == []
+
+
 async def test_clearing_by_finding_ids_drops_the_actor(
     tools: tuple[dict[str, Any], FakeScanService], write_scope: None,
 ) -> None:
@@ -240,6 +264,7 @@ async def test_clearing_by_finding_ids_drops_the_actor(
     assert call["vex_status"] is None
     assert call["vex_justification"] is None
     assert call["vex_updated_by"] is None
+    assert call["vex_review_due"] is None
 
 
 async def test_import_vex_reads_openvex_given_as_a_string(

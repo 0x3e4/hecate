@@ -38,13 +38,15 @@ Each row shows:
 
 Click a row to fold it open. It lists every CVE with its severity, product, CVSS and EPSS, marks recent KEV listings, and links to each advisory in its original language; vendor and community sources carry their kind next to the name. A CVE a feed named before Hecate ingested it reads *Not in Hecate yet*. A Mastodon post has no title of its own, so its row shows the beginning of its text.
 
-Topics that touch your stack come first, then those most CERTs and vendors agree on, then those with the most community posts, then by severity and date. "Your stack" here means confirmed: an inventory match from the [version-aware matcher](inventory.md#how-matching-works) or a finding in your latest scans. A package that only shares a product's name shows a tag but does not move the row up.
+Topics that touch your stack come first, then those most CERTs and vendors agree on, then those with the most community posts, then by severity and date. "Your stack" here means confirmed: an inventory match from the [version-aware matcher](inventory.md#how-matching-works), a finding in your latest scans, or a package in a latest scan's SBOM whose installed version lies in the CVE's affected range. A package that only shares a product's name counts for nothing.
 
 ## Filters
 
 The checkboxes above the filters choose which kinds are shown, each with its number of topics. CERT and Vendor are on by default; switch on **Community** to see the posts as well. The page remembers the choice.
 
 Search covers products, vendors, CVE IDs and advisory titles. You can also narrow the list to one source, one severity or **Only my stack**, and pick the last 7, 30 or 90 days.
+
+**Only my stack** narrows each topic to the CVEs you actually use: an inventory match, a scan finding, or a package in a scan's SBOM at a version the CVE affects. The topic's title, severity and CVE table then come from those CVEs only, so a topic that merged YOOtheme Pro and Brotli shows up as Brotli when only Brotli is in your stack, and a note says how many of its other CVEs are hidden. Topics with none of your CVEs disappear; the advisories behind a topic stay listed in full.
 
 Feeds only offer their latest entries, so history builds up from the day Hecate starts reading them. A 90-day view fills in over time.
 
