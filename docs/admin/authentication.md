@@ -109,6 +109,7 @@ development, when `AUTH_PUBLIC_URL` is unset (`auth.public_url_unset`).
 | Vulnerability refresh, `/lookup` that fetches from upstream | ✓ | ✓ | – | system password |
 | AI analyses (CVE, batch, attack path, scan, attack chain) | ✓ + AI password if set | ✓ + AI password if set | – | AI password if set, else system or target password |
 | CI scan submission `POST /api/v1/scans` | – | – | – | `SCA_API_KEY` or a `scan:submit` token |
+| Reads of the audit log and the System settings: notification channels, rules and templates, backup exports, sync states, advisory feeds (always, also with `AUTH_REQUIRE_LOGIN=false`) | ✓ | – | – | system password |
 | Reads, when login is required | ✓ | ✓ | ✓ | system password, `SCA_API_KEY` or any API token |
 
 Two rules hold throughout:
@@ -159,8 +160,11 @@ The live event stream (`/api/v1/events`) needs the session like any read; the br
 cookie with it. Swagger (`/api/docs`) and the OpenAPI schema describe the API but return no data and
 stay reachable; MCP keeps its own OAuth and is not affected by any of this.
 
-With `AUTH_REQUIRE_LOGIN=false` reads stay public. The audit log is then public too, and shows
-anonymous readers who did something by name and role, without the e-mail address or IdP subject.
+With `AUTH_REQUIRE_LOGIN=false` reads stay public. The audit log and the System settings stay closed:
+the audit log, the notification channels (their Apprise URLs carry tokens), rules
+and templates, backup exports, sync states and the advisory feed list need the admin role or the
+system password even then, and the System page asks to sign in as an admin. License policies and VEX
+rules stay readable, because the scan pages show them.
 
 ## Behind a reverse proxy
 

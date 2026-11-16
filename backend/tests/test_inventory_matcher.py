@@ -289,3 +289,32 @@ async def test_vulns_for_item_prefers_camel_case_impacted_products():
     hits = await vulns_for_item(_FakeRepo([doc]), item)
 
     assert [h["_id"] for h in hits] == ["CVE-2026-119977"]
+
+
+# --- rejected records affect nothing ---
+
+
+def test_a_rejected_record_matches_no_inventory_item():
+    from app.services.inventory_matcher import items_for_vuln
+
+    doc = _wp_doc("CVE-2026-119977", [">= 7.1, < 7.1.4"])
+    item = {"_id": "wp", "vendor_slug": "wordpress", "product_slug": "wordpress", "version": "7.1.3"}
+    assert [i["_id"] for i in items_for_vuln(doc, [item])] == ["wp"]
+    assert items_for_vuln({**doc, "rejected": True}, [item]) == []
+
+
+async def test_vulns_for_item_asks_mongo_to_skip_rejected_records():
+    from app.services.inventory_matcher import vulns_for_item
+
+    class _RecordingRepo(_FakeRepo):
+        def find(self, query, projection=None) -> _FakeCursor:
+            self.query = query
+            return _FakeCursor([d for d in self._docs if not d.get("rejected")])
+
+    repo = _RecordingRepo([{**_wp_doc("CVE-2026-1", ["< 8.0"]), "rejected": True}, _wp_doc("CVE-2026-2", ["< 8.0"])])
+    item = InventoryKey(vendor_slug="wordpress", product_slug="wordpress", version="7.1.3")
+
+    hits = await vulns_for_item(repo, item)
+
+    assert repo.query["rejected"] == {"$ne": True}
+    assert [h["_id"] for h in hits] == ["CVE-2026-2"]

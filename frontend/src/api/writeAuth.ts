@@ -71,6 +71,24 @@ export const clearTargetPassword = (targetId: string): void => {
   }
 };
 
+// Reads behind the admin gate (backend require_admin_read / require_token_admin):
+// the System page's settings. The interceptor sends the system password on
+// these GETs too; every other read goes without it.
+const ADMIN_READ_PREFIXES = [
+  "/v1/notifications",
+  "/v1/backup",
+  "/v1/sync",
+  "/v1/advisory-feeds",
+  "/v1/api-tokens",
+  "/v1/audit",
+];
+
+export const isAdminReadUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  const path = url.split(/[?#]/, 1)[0].replace(/^https?:\/\/[^/]+/, "").replace(/^\/api(?=\/v1\/)/, "");
+  return ADMIN_READ_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+};
+
 // Storage key of the AI analysis password (usePersistentState in the AI views).
 export const AI_PASSWORD_KEY = "ai_analysis_password";
 

@@ -41,6 +41,7 @@ from app.repositories.scan_finding_repository import (
 )
 from app.repositories.vex_rule_repository import VexRuleRepository
 from app.schemas.vex_rule import VexRuleAction, VexRuleConditions
+from app.services.sbom_ecosystem import PACKAGE_TYPE_PURL_TYPE
 
 log = structlog.get_logger()
 
@@ -99,22 +100,7 @@ PRESETS: tuple[dict[str, Any], ...] = (
 )
 
 # Scanner package types -> purl type, for findings whose package is not in the SBOM.
-_PACKAGE_TYPE_ECOSYSTEM = {
-    "npm": "npm", "node-pkg": "npm", "yarn": "npm", "pnpm": "npm", "bun": "npm",
-    "pip": "pypi", "python": "pypi", "python-pkg": "pypi", "pipenv": "pypi", "poetry": "pypi",
-    "uv": "pypi", "pypi": "pypi",
-    "gomod": "golang", "gobinary": "golang", "go-module": "golang", "go": "golang", "golang": "golang",
-    "cargo": "cargo", "rust-crate": "cargo", "rustbinary": "cargo",
-    "composer": "composer", "php-composer": "composer",
-    "jar": "maven", "pom": "maven", "gradle": "maven", "java-archive": "maven", "maven": "maven",
-    "nuget": "nuget", "dotnet-core": "nuget", "dotnet": "nuget", "packages-lock": "nuget",
-    "gem": "gem", "bundler": "gem", "gemspec": "gem",
-    "deb": "deb", "debian": "deb", "ubuntu": "deb", "dpkg": "deb",
-    "apk": "apk", "alpine": "apk", "wolfi": "apk", "chainguard": "apk",
-    "rpm": "rpm", "redhat": "rpm", "centos": "rpm", "rocky": "rpm", "alma": "rpm", "amazon": "rpm",
-    "fedora": "rpm", "oracle": "rpm", "suse": "rpm", "photon": "rpm", "cbl-mariner": "rpm",
-    "pub": "pub", "hex": "hex", "swift": "swift", "cocoapods": "cocoapods", "conan": "conan",
-}
+_PACKAGE_TYPE_ECOSYSTEM = PACKAGE_TYPE_PURL_TYPE
 
 _LINUX_PURL_TYPES = ("deb", "apk", "rpm", "alpm")
 

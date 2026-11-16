@@ -558,6 +558,7 @@ class InventoryService:
             "vendor_slugs": {"$in": pairs_vendor},
             "product_slugs": {"$in": pairs_product},
             "published": {"$gte": since},
+            "rejected": {"$ne": True},
         }
 
         cursor = vuln_repo.collection.find(query, projection=projection).sort(

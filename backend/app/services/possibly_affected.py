@@ -153,12 +153,14 @@ def inventory_name_matches(
     return out
 
 
-def sbom_component_fits(products: dict[str, set[str]], name: str, purl: str | None) -> bool:
+def sbom_component_fits(
+    products: dict[str, set[str]], name: str, purl: str | None, package_type: str | None = None
+) -> bool:
     """Whether an SBOM component's name and ecosystem fit a product the advisory names."""
     slug = _slug(name)
     if not slug or slug not in products:
         return False
-    allowed = allowed_vendor_slugs(purl, name)
+    allowed = allowed_vendor_slugs(purl, name, package_type)
     vendors = products[slug]
     if allowed is not None and not vendors:
         return False  # a registry package needs the advisory's vendor to fit it
@@ -181,7 +183,7 @@ async def sbom_name_matches(scan_service: Any, products: dict[str, set[str]], ra
         cursor = (
             scan_service.sbom_repo.collection.find(
                 {"scan_id": {"$in": scan_ids}, "name": {"$in": names}},
-                {"scan_id": 1, "target_id": 1, "name": 1, "version": 1, "purl": 1},
+                {"scan_id": 1, "target_id": 1, "name": 1, "version": 1, "purl": 1, "type": 1},
             )
             .limit(MAX_SBOM_CANDIDATES)
             .max_time_ms(SBOM_QUERY_MAX_TIME_MS)
@@ -196,7 +198,7 @@ async def sbom_name_matches(scan_service: Any, products: dict[str, set[str]], ra
     seen: set[tuple[str, str, str]] = set()
     for comp in components:
         name = str(comp.get("name") or "")
-        if not sbom_component_fits(products, name, comp.get("purl")):
+        if not sbom_component_fits(products, name, comp.get("purl"), comp.get("type")):
             continue
         target_id = str(comp.get("target_id") or "")
         version = str(comp.get("version") or "")

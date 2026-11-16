@@ -179,8 +179,9 @@ Cargo, NuGet, RubyGems, Packagist, …) also has to belong to the advisory's ven
 (GHSA and OSV name it as the vendor), the package's namespace (`@angular`, `org.apache…`) or the
 package's own name (NVD's `lodash:lodash`). npm's `console` therefore does not show up under Citrix
 NetScaler Console. OS and binary packages (Debian, Alpine, RPM, generic binaries such as `node`) match
-by name, because there the advisory's vendor is the project itself. The dashboard's scan chips follow
-the same rule.
+by name, because there the advisory's vendor is the project itself. A component reported without a
+purl is placed in its registry by the scanner's package type (`cargo`, `npm`, `pip`, …), so a Rust
+crate called `console` is no NetScaler Console either. The dashboard's scan chips follow the same rule.
 
 ### Possibly affected
 

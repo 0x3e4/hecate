@@ -125,13 +125,17 @@ def parse_trivy_json(
         for pkg in result.get("Packages", []) or []:
             if not isinstance(pkg, dict):
                 continue
+            # Trivy >= 0.47 nests the purl under Identifier; older reports had it
+            # at the top. Without it the package lost its ecosystem's vendor rule.
+            identifier = pkg.get("Identifier") if isinstance(pkg.get("Identifier"), dict) else {}
+            pkg_purl = identifier.get("PURL") or pkg.get("PURL")
             components.append(ScanSbomComponentDocument(
                 scan_id=scan_id,
                 target_id=target_id,
                 name=pkg.get("Name", ""),
                 version=pkg.get("Version", ""),
                 type=result_type,
-                purl=pkg.get("PURL"),
+                purl=pkg_purl if isinstance(pkg_purl, str) and pkg_purl else None,
                 licenses=[lic for lic in (pkg.get("Licenses") or []) if isinstance(lic, str)],
                 file_path=target_name or None,
                 # Trivy flags dev dependencies; its absence says nothing.

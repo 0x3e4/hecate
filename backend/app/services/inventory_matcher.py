@@ -1473,7 +1473,12 @@ def items_for_vuln(
     may be the only place a given product identifier shows up. The full
     matcher then validates each surviving candidate against all three data
     sources (impacted_products → cpe_configurations → flat cpes).
+
+    A rejected record (``rejected: true``: withdrawn by its CNA, a duplicate,
+    not a vulnerability) affects nothing.
     """
+    if _get_attr(vuln, "rejected") is True:
+        return []
     impacted_products = _coerce_impacted_products(
         _get_attr(vuln, "impacted_products", "impactedProducts")
     )
@@ -1581,6 +1586,8 @@ async def vulns_for_item(
             {"$or": [{"vendor_slugs": vendor}, {"vendors": vendor}]},
             {"$or": [{"product_slugs": product}, {"products": product}]},
         ],
+        # Rejected records are no vulnerabilities; the inventory page listed them.
+        "rejected": {"$ne": True},
     }
     # ``limit`` caps the *hits*, never the cursor: the pre-filter only knows
     # vendor/product, so a popular product (WordPress: hundreds of core CVEs)

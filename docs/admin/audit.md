@@ -118,9 +118,10 @@ Three more entry types come with sign-in: **Sign-in** (completed, or failed with
 System, Audit and AI pages. Audit entries are written after the response and a failure to write one
 is only logged: auditing never fails or slows down the request it describes.
 
-When sign-in is configured but `AUTH_REQUIRE_LOGIN=false`, the log stays public; visitors who are not
-signed in see names and roles but not e-mail addresses or IdP subjects. MCP entries show "MCP user" in
-place of the IdP identity (GitHub login, Microsoft UPN or OIDC subject) and no e-mail address.
+The log is for admins only: it names people with their e-mail address, IdP identity and client IP.
+With sign-in configured only the admin role or the system password opens it, also when
+`AUTH_REQUIRE_LOGIN=false` keeps the rest of Hecate public. Without sign-in the system password
+closes it; when neither is set, it is open like every other page.
 
 ## When to use it
 

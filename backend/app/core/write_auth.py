@@ -90,6 +90,11 @@ async def _require_write(request: Request, x_system_password: str | None, role: 
     """
     if request.method not in _MUTATING_METHODS:
         return
+    await _require_role(request, x_system_password, role, reading=False)
+
+
+async def _require_role(request: Request, x_system_password: str | None, role: str, *, reading: bool) -> None:
+    """A session of ``role``, else the system password; fail-open without both OIDC and the password."""
     user = await current_user(request)
     if user is not None and user.has_role(role):
         note_credential(request, "session")
@@ -103,15 +108,34 @@ async def _require_write(request: Request, x_system_password: str | None, role: 
         record_auth_result(key, True)
         note_credential(request, "system_password")
         return
-    # A signed-in user without a password header is not guessing.
-    if user is None or x_system_password:
+    # A signed-in user without a password header is not guessing, and neither is
+    # a visitor opening a page whose reads need the password.
+    if x_system_password or (user is None and not reading):
         record_auth_result(key, False)
     if user is not None:
         raise role_error(role)
     raise HTTPException(
         status_code=401,
-        detail="System password required for write operations.",
+        detail="System password required." if reading else "System password required for write operations.",
         headers=with_login_hint(_ADMIN_AUTH_HEADERS),
+    )
+
+
+async def require_admin_read(
+    request: Request,
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> None:
+    """The admin gate for every method, reads included.
+
+    For the routers behind the System page: notification channels (their Apprise
+    URLs carry tokens), rules and templates, backup exports, sync states and the
+    advisory feed list. A signed-in admin or the system password opens them. With
+    OIDC an anonymous caller is refused even when ``AUTH_REQUIRE_LOGIN`` is off,
+    so a public instance shows its data but not its settings; without OIDC it
+    stays fail-open when no system password is set, as every admin gate does.
+    """
+    await _require_role(
+        request, x_system_password, "admin", reading=request.method not in _MUTATING_METHODS,
     )
 
 

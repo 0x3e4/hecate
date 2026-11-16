@@ -54,6 +54,12 @@ class SystemAuthRequest(BaseModel):
 class SystemAuthResponse(BaseModel):
     required: bool = Field(alias="required", serialization_alias="required")
     authenticated: bool = Field(alias="authenticated", serialization_alias="authenticated")
+    # The System page's settings are closed to this caller (require_admin_read):
+    # it needs the admin role or, when one is set, the system password.
+    admin_required: bool | None = Field(default=None, alias="adminRequired", serialization_alias="adminRequired")
+    password_accepted: bool | None = Field(
+        default=None, alias="passwordAccepted", serialization_alias="passwordAccepted"
+    )
     model_config = {"populate_by_name": True}
 
 
@@ -66,10 +72,14 @@ async def system_auth_status(request: Request) -> SystemAuthResponse:
     """
     ctx = await get_auth_context(request)
     if ctx.user is not None and ctx.user.has_role("admin"):
-        return SystemAuthResponse(required=False, authenticated=True)
+        return SystemAuthResponse(required=False, authenticated=True, admin_required=False, password_accepted=False)
     return SystemAuthResponse(
         required=bool(settings.system_password),
         authenticated=False,
+        # Mirrors require_admin_read: with OIDC nobody below admin reads the
+        # settings, without it only the system password closes them.
+        admin_required=bool(settings.system_password) or settings.oidc_enabled,
+        password_accepted=bool(settings.system_password),
     )
 
 

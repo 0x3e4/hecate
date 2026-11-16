@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.core.passwords import hash_password
 from app.core.request_audit import RequestAuditMiddleware
 from app.core.write_auth import (
+    require_admin_read,
     require_admin_write,
     require_ai_write,
     require_editor_write,
@@ -228,6 +229,10 @@ def _build_app() -> FastAPI:
 
     @api.post("/ai-write", dependencies=[Depends(require_ai_write)])
     async def ai_write() -> dict[str, bool]:
+        return {"ok": True}
+
+    @api.get("/settings", dependencies=[Depends(require_admin_read)])
+    async def settings_read() -> dict[str, bool]:
         return {"ok": True}
 
     @api.get("/tokens", dependencies=[Depends(require_token_admin)])
@@ -585,7 +590,52 @@ def test_a_signed_in_admin_skips_the_system_password_dialog(
     monkeypatch.setattr(settings, "system_password", SYSTEM_PASSWORD)
     assert client.get("/api/v1/status/system-auth").status_code == 401  # login required, nobody signed in
     _login_as(client, idp, ["hecate-admins"])
-    assert client.get("/api/v1/status/system-auth").json() == {"required": False, "authenticated": True}
+    assert client.get("/api/v1/status/system-auth").json() == {
+        "required": False, "authenticated": True, "adminRequired": False, "passwordAccepted": False,
+    }
+
+
+# --- System settings reads -----------------------------------------------------------
+
+
+def test_settings_reads_need_the_admin_even_when_login_is_optional(
+    client: TestClient, idp: FakeIdp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "auth_require_login", False)
+    assert client.get("/api/v1/things").status_code == 200  # data stays public
+    anonymous = client.get("/api/v1/settings")
+    assert anonymous.status_code == 401
+    assert anonymous.headers["x-auth-required"] == "login"
+    status = client.get("/api/v1/status/system-auth").json()
+    assert status["adminRequired"] is True and status["passwordAccepted"] is False
+    _login_as(client, idp, [])  # viewer
+    refused = client.get("/api/v1/settings")
+    assert refused.status_code == 403
+    assert refused.headers["x-auth-role-required"] == "admin"
+    _login_as(client, idp, ["hecate-admins"])
+    assert client.get("/api/v1/settings").status_code == 200
+
+
+def test_the_system_password_opens_settings_reads_without_counting_bare_visits(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "auth_require_login", False)
+    monkeypatch.setattr(settings, "system_password", SYSTEM_PASSWORD)
+    # Opening the page without a password is no guess: it never locks the client out.
+    for _ in range(15):
+        assert client.get("/api/v1/settings").status_code == 401
+    assert client.get("/api/v1/settings", headers={"X-System-Password": SYSTEM_PASSWORD}).status_code == 200
+    assert client.get("/api/v1/settings", headers={"X-System-Password": "wrong"}).status_code == 401
+
+
+def test_settings_reads_without_oidc_follow_the_system_password(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "oidc_issuer", "")
+    assert client.get("/api/v1/settings").status_code == 200  # fail-open, as every admin gate
+    monkeypatch.setattr(settings, "system_password", SYSTEM_PASSWORD)
+    assert client.get("/api/v1/settings").status_code == 401
+    assert client.get("/api/v1/settings", headers={"X-System-Password": SYSTEM_PASSWORD}).status_code == 200
 
 
 # --- CSRF -----------------------------------------------------------------------------
@@ -738,43 +788,23 @@ def test_password_actors_without_oidc(client: TestClient, audit: FakeAudit, monk
     assert actor == {"type": "target_password", "target": "repo-1", "label": "Target password (repo-1)"}
 
 
-def test_the_public_audit_log_hides_e_mail_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1.audit import redact_actor
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/audit/ingestion", "/api/v1/notifications/channels", "/api/v1/notifications/rules",
+     "/api/v1/sync/states", "/api/v1/advisory-feeds", "/api/v1/backup/inventory/export"],
+)
+def test_settings_and_audit_reads_are_admin_only_on_the_real_router(
+    idp: FakeIdp, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """The production routers, not a test route: the gate answers before any handler runs."""
+    from app.api.v1.routes import api_router
 
-    metadata = {"actor": {"type": "user", "name": "Ada", "email": "ada@example.com", "sub": "u-1", "role": "admin"}}
-    redact_actor(metadata)
-    assert metadata["actor"] == {"type": "user", "name": "Ada", "role": "admin"}
-
-
-async def test_the_public_audit_log_hides_mcp_identities(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The MCP writers keep e-mail and IdP identity at the top level of metadata,
-    # which the actor-container redaction missed.
-    from app.api.v1.audit import MCP_IDENTITY_PLACEHOLDER, redact_actor
-    from app.mcp import audit as mcp_audit
-
-    written: list[dict] = []
-
-    class _Sink:
-        async def record_event(self, *_args, metadata=None, **_kwargs):
-            written.append(dict(metadata or {}))
-
-    async def _service(*_args, **_kwargs):
-        return _Sink()
-
-    monkeypatch.setattr("app.services.audit_service.get_audit_service", _service)
-    await mcp_audit.log_oauth_event(
-        event="authorize_success", provider="github",
-        identity="grace@example.test", email="grace@example.test", client_ip="203.0.113.7",
-    )
-    assert written, "log_oauth_event wrote nothing"
-    metadata = written[-1]
-    assert metadata.get("email") == "grace@example.test"
-
-    redact_actor(metadata)
-
-    assert "email" not in metadata and "sub" not in metadata
-    assert metadata["identity"] == MCP_IDENTITY_PLACEHOLDER
-    assert "grace" not in str(metadata)
+    monkeypatch.setattr(settings, "auth_require_login", False)
+    app = FastAPI()
+    app.include_router(api_router, prefix=settings.api_prefix)
+    response = TestClient(app, base_url=BASE).get(path)
+    assert response.status_code == 401, response.text
+    assert response.headers["x-auth-required"] == "login"
 
 
 def test_public_base_url_trusts_forwarded_headers_only_from_proxies(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -95,6 +95,17 @@ COVERAGE_CACHE_SECONDS = 300
 # out of the index (a missed chip, logged), and one sbom_version_hits call stops
 # after its time budget.
 COVERAGE_MAX_VERSIONS_PER_SLUG_SCAN = 64
+# Local DB matching of packages without a scanner CVE (SBOM import, fallback):
+# product slugs per indexed $in query, documents read per query, server time.
+_LOCAL_MATCH_SLUG_BATCH = 500
+_LOCAL_MATCH_MAX_DOCS = 5000
+_LOCAL_MATCH_TIMEOUT_MS = 10_000
+_LOCAL_MATCH_PROJECTION = {
+    "impactedProducts": 1,
+    "impacted_products": 1,
+    "cpe_configurations": 1,
+    "published": 1,
+}
 SBOM_HITS_BUDGET_SECONDS = 1.0
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 
@@ -788,46 +799,115 @@ class ScanService:
         target_id: str,
         components: list[Any],
     ) -> list[ScanFindingDocument]:
-        """Search local vulnerability DB for CVEs matching SBOM components."""
+        """Findings for the imported components from the local vulnerability DB.
+
+        Version- and vendor-checked through :meth:`_local_vulnerability_matches`,
+        one finding per (component, vulnerability).
+        """
         if not components:
             return []
 
+        def _field(comp: Any, key: str) -> Any:
+            return comp.get(key) if isinstance(comp, dict) else getattr(comp, key, None)
+
+        keys = [(_field(c, "name") or "", _field(c, "version") or "", _field(c, "purl")) for c in components]
         try:
-            from app.db.opensearch import async_search
-        except Exception:
+            matches = await self._local_vulnerability_matches(keys)
+        except Exception:  # noqa: BLE001 - the import keeps its SBOM without matches
+            log.warning("scan_service.local_vuln_match_failed", scan_id=scan_id, exc_info=True)
             return []
 
         findings: list[ScanFindingDocument] = []
-        cache: dict[str, str | None] = {}
-
-        for comp in components:
-            pkg_name = comp.name if hasattr(comp, "name") else comp.get("name", "")
-            pkg_version = comp.version if hasattr(comp, "version") else comp.get("version", "")
-            if not pkg_name:
-                continue
-
-            pkg_key = pkg_name.lower().strip()
-            if pkg_key in cache:
-                cve_id = cache[pkg_key]
-            else:
-                cve_id = await self._search_cve_by_package(pkg_name, async_search)
-                cache[pkg_key] = cve_id
-
-            if cve_id:
+        seen: set[tuple[str, str, str]] = set()
+        for comp, key in zip(components, keys):
+            name, version, _purl = key
+            for vuln_id in matches.get(key, []):
+                if (name, version, vuln_id) in seen:
+                    continue
+                seen.add((name, version, vuln_id))
                 findings.append(ScanFindingDocument(
                     scan_id=scan_id,
                     target_id=target_id,
-                    vulnerability_id=cve_id,
+                    vulnerability_id=vuln_id,
                     matched_from="sbom-import",
                     scanner="sbom-import",
-                    package_name=pkg_name,
-                    package_version=pkg_version,
-                    package_type=comp.type if hasattr(comp, "type") else comp.get("type", ""),
+                    package_name=name,
+                    package_version=version,
+                    package_type=_field(comp, "type") or "",
                     severity="unknown",
-                    title=f"Matched from local DB for {pkg_name}",
+                    title=f"Matched from local DB for {name}",
                 ))
-
         return findings
+
+    async def _local_vulnerability_matches(
+        self,
+        components: Iterable[tuple[str, str, str | None]],
+        vuln_collection: Any = None,
+    ) -> dict[tuple[str, str, str | None], list[str]]:
+        """Vulnerabilities in the local DB affecting each ``(name, version, purl)``, newest first.
+
+        The rule of "Affected in your scans" and the dashboard's SBOM hits: the
+        advisory's product slug equals the package's, its vendor fits the package
+        (a registry package only takes entries of its registry or its own
+        namespace) and the version lies in the entry's ranges. A shared name is no
+        match: the former wildcard search on product names handed a package called
+        ``console`` the newest Citrix NetScaler Console CVE.
+        """
+        from app.services.inventory_matcher import _slug
+        from app.services.sbom_ecosystem import (
+            affected_entries_by_slug,
+            allowed_vendor_slugs,
+            component_in_affected_range,
+        )
+        from app.services.vulnerability_service import _get_impacted_products_or_build
+
+        by_slug: dict[str, list[tuple[str, str, str | None]]] = {}
+        for name, version, purl in components:
+            if not (name and version):
+                continue
+            slug = _slug(name)
+            if slug and (name, version, purl) not in by_slug.get(slug, ()):
+                by_slug.setdefault(slug, []).append((name, version, purl))
+        if not by_slug:
+            return {}
+        if vuln_collection is None:
+            from app.db.mongo import get_database
+
+            vuln_collection = (await get_database())[settings.mongo_vulnerabilities_collection]
+
+        allowed = {comp: allowed_vendor_slugs(comp[2], comp[0]) for comps in by_slug.values() for comp in comps}
+        memo: dict[tuple[str, tuple[str, ...]], bool] = {}
+        hits: dict[tuple[str, str, str | None], list[tuple[datetime, str]]] = {}
+        slugs = sorted(by_slug)
+        for start in range(0, len(slugs), _LOCAL_MATCH_SLUG_BATCH):
+            cursor = vuln_collection.find(
+                {"product_slugs": {"$in": slugs[start:start + _LOCAL_MATCH_SLUG_BATCH]}},
+                _LOCAL_MATCH_PROJECTION,
+            ).limit(_LOCAL_MATCH_MAX_DOCS)
+            try:
+                cursor = cursor.max_time_ms(_LOCAL_MATCH_TIMEOUT_MS)
+            except AttributeError:
+                pass
+            async for doc in cursor:
+                vuln_id = doc.get("_id")
+                if not isinstance(vuln_id, str):
+                    continue
+                entries, _ = affected_entries_by_slug(_get_impacted_products_or_build(doc))
+                published = doc.get("published")
+                if not isinstance(published, datetime):
+                    published = _EPOCH
+                elif published.tzinfo is None:
+                    published = published.replace(tzinfo=UTC)
+                for slug in entries.keys() & by_slug.keys():
+                    for comp in by_slug[slug]:
+                        if component_in_affected_range(
+                            entries, name=comp[0], version=comp[1], slug=slug, allowed=allowed[comp], memo=memo,
+                        ):
+                            hits.setdefault(comp, []).append((published, vuln_id))
+        return {
+            comp: [vuln_id for _, vuln_id in sorted(found, key=lambda item: item[0], reverse=True)]
+            for comp, found in hits.items()
+        }
 
     async def _run_scan_background_inner(
         self,
@@ -999,7 +1079,7 @@ class ScanService:
                 await self._cleanup_source_checkout(source_token)
 
         # CVE fallback: try to match findings without CVE against local vulnerability DB
-        await self._match_cve_for_unmatched_findings(scan_id, all_findings)
+        await self._match_cve_for_unmatched_findings(scan_id, all_findings, all_components)
 
         # Fix version correction: replace scanner-reported downgrade fixes with correct versions from vuln DB
         await self._fix_downgrade_fix_versions(scan_id, all_findings)
@@ -1913,7 +1993,7 @@ class ScanService:
             capped: set[tuple[str, str]] = set()
             async for c in self.sbom_repo.collection.find(
                 {"scan_id": {"$in": scan_ids}},
-                {"name": 1, "version": 1, "scan_id": 1, "purl": 1},
+                {"name": 1, "version": 1, "scan_id": 1, "purl": 1, "type": 1},
             ):
                 name = c.get("name")
                 version = c.get("version")
@@ -1925,7 +2005,8 @@ class ScanService:
                 if not slug:
                     continue
                 purl = c.get("purl") if isinstance(c.get("purl"), str) else ""
-                key = (slug, name, version, purl, sid)
+                ptype = c.get("type") if isinstance(c.get("type"), str) else ""
+                key = (slug, name, version, purl or ptype, sid)
                 if key in seen:
                     continue
                 versions = versions_per.setdefault((slug, sid), set())
@@ -1937,7 +2018,7 @@ class ScanService:
                 state.sbom_by_slug.setdefault(slug, []).append(IndexedComponent(
                     name=name,
                     version=version,
-                    allowed=allowed_vendor_slugs(purl or None, name),
+                    allowed=allowed_vendor_slugs(purl or None, name, ptype or None),
                     scan_id=sid,
                 ))
             if capped:
@@ -2443,7 +2524,8 @@ class ScanService:
             version = comp.get("version") or ""
             slug = _slug(name)
             if not component_in_affected_range(
-                entries_by_slug, name=name, version=version, purl=comp.get("purl"), slug=slug
+                entries_by_slug, name=name, version=version, purl=comp.get("purl"),
+                package_type=comp.get("type"), slug=slug,
             ):
                 continue
             target_id = comp.get("target_id") or ""
@@ -2855,34 +2937,51 @@ class ScanService:
     })
 
     async def _match_cve_for_unmatched_findings(
-        self, scan_id: str, findings: list[ScanFindingDocument]
+        self,
+        scan_id: str,
+        findings: list[ScanFindingDocument],
+        components: Iterable[Any] = (),
     ) -> None:
-        """Try to match findings without CVE against the local vulnerability DB via OpenSearch."""
-        from app.db.opensearch import async_search
+        """Give findings without a CVE the newest local vulnerability that affects their package.
+
+        Version- and vendor-checked (:meth:`_local_vulnerability_matches`). The
+        package's purl comes from the scan's SBOM rows, else from the finding's
+        package type, so a registry package keeps its ecosystem's vendor rule.
+        """
+        from app.services.sbom_ecosystem import PACKAGE_TYPE_PURL_TYPE
 
         unmatched = [
             f for f in findings
             if not f.vulnerability_id
             and f.package_type not in self._NON_PACKAGE_FINDING_TYPES
+            and f.package_name
         ]
         if not unmatched:
             return
 
-        # Group by package name to avoid repeated searches
-        seen_packages: dict[str, str | None] = {}
+        purls = {
+            (c.name, c.version): c.purl
+            for c in components
+            if getattr(c, "purl", None) and getattr(c, "name", None)
+        }
+
+        def _key(finding: ScanFindingDocument) -> tuple[str, str, str | None]:
+            purl = purls.get((finding.package_name, finding.package_version))
+            if not purl:
+                eco = PACKAGE_TYPE_PURL_TYPE.get((finding.package_type or "").strip().lower())
+                purl = f"pkg:{eco}/{finding.package_name}" if eco else None
+            return (finding.package_name, finding.package_version or "", purl)
+
+        try:
+            matches = await self._local_vulnerability_matches(_key(f) for f in unmatched)
+        except Exception:  # noqa: BLE001 - the findings stay without a CVE
+            log.warning("scan_service.cve_fallback_failed", scan_id=scan_id, exc_info=True)
+            return
+
         matched_count = 0
-
         for finding in unmatched:
-            pkg = finding.package_name.lower().strip()
-            if not pkg:
-                continue
-
-            if pkg in seen_packages:
-                cve_id = seen_packages[pkg]
-            else:
-                cve_id = await self._search_cve_by_package(pkg, async_search)
-                seen_packages[pkg] = cve_id
-
+            found = matches.get(_key(finding))
+            cve_id = found[0] if found else None
             if cve_id:
                 finding.vulnerability_id = cve_id
                 finding.matched_from = "auto"
@@ -3038,33 +3137,6 @@ class ScanService:
             return None
 
         return walk_nodes(cpe_configurations)
-
-    @staticmethod
-    async def _search_cve_by_package(package_name: str, async_search_fn: Any) -> str | None:
-        """Search OpenSearch for a CVE matching a package name."""
-        index = settings.opensearch_index
-        query = {
-            "size": 1,
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {"products": package_name}},
-                        {"wildcard": {"products": {"value": f"*{package_name}*", "case_insensitive": True}}},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
-            "_source": ["vuln_id"],
-            "sort": [{"published": {"order": "desc"}}],
-        }
-        try:
-            result = await async_search_fn(index, query)
-            hits = result.get("hits", {}).get("hits", [])
-            if hits:
-                return hits[0].get("_source", {}).get("vuln_id")
-        except Exception as exc:
-            log.warning("scan_service.cve_search_failed", package=package_name, error=str(exc))
-        return None
 
     async def _override_severity_from_vuln_db(
         self, scan_id: str, findings: list[ScanFindingDocument]

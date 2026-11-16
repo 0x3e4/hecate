@@ -422,7 +422,7 @@ class ScanSbomRepository:
         try:
             cursor = self.collection.find(
                 query,
-                {"scan_id": 1, "target_id": 1, "name": 1, "version": 1, "purl": 1},
+                {"scan_id": 1, "target_id": 1, "name": 1, "version": 1, "purl": 1, "type": 1},
             )
             out: list[dict[str, Any]] = []
             async for doc in cursor:
@@ -432,6 +432,7 @@ class ScanSbomRepository:
                     "name": doc.get("name"),
                     "version": doc.get("version"),
                     "purl": doc.get("purl"),
+                    "type": doc.get("type"),
                 })
             return out
         except PyMongoError as exc:

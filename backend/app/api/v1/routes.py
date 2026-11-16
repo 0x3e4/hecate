@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.core.auth_context import require_read_access
-from app.core.write_auth import require_admin_write, require_editor_write, require_token_admin
+from app.core.write_auth import require_admin_read, require_admin_write, require_editor_write, require_token_admin
 from app.api.v1 import (
     advisory_feeds,
     api_tokens,
@@ -46,6 +46,12 @@ _admin_write = [Depends(require_admin_write)]
 # Writes that are work rather than administration: an OIDC editor passes, password
 # callers still need the system password (the same secret as before).
 _editor_write = [Depends(require_editor_write)]
+# Settings behind the System page: their reads need the admin too (notification
+# channel URLs carry tokens, backups are whole datasets). With OIDC this holds
+# even when AUTH_REQUIRE_LOGIN is off, so a public instance shows its data, not
+# its configuration or its audit log. license_policies and vex_rules stay readable: the scan
+# pages show them.
+_admin_all = [Depends(require_admin_read)]
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(status.router, prefix="/status", tags=["status"])
@@ -64,17 +70,17 @@ api_router.include_router(packages.router, prefix="/packages", tags=["packages"]
 api_router.include_router(cwe.router, prefix="/cwe", tags=["cwe"])
 api_router.include_router(capec.router, prefix="/capec", tags=["capec"])
 api_router.include_router(assets.router, prefix="/assets", tags=["assets"])
-api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"], dependencies=_admin_all)
 api_router.include_router(stats.router, prefix="/stats", tags=["stats"])
 api_router.include_router(changelog.router, prefix="/changelog", tags=["changelog"])
-api_router.include_router(backup.router, prefix="/backup", tags=["backup"], dependencies=_admin_write)
-api_router.include_router(sync.router, prefix="/sync", tags=["sync"], dependencies=_admin_write)
+api_router.include_router(backup.router, prefix="/backup", tags=["backup"], dependencies=_admin_all)
+api_router.include_router(sync.router, prefix="/sync", tags=["sync"], dependencies=_admin_all)
 api_router.include_router(
-    advisory_feeds.router, prefix="/advisory-feeds", tags=["advisory-feeds"], dependencies=_admin_write
+    advisory_feeds.router, prefix="/advisory-feeds", tags=["advisory-feeds"], dependencies=_admin_all
 )
 api_router.include_router(scans.router, prefix="/scans", tags=["scans"])
 api_router.include_router(
-    notifications.router, prefix="/notifications", tags=["notifications"], dependencies=_admin_write
+    notifications.router, prefix="/notifications", tags=["notifications"], dependencies=_admin_all
 )
 api_router.include_router(
     license_policies.router, prefix="/license-policies", tags=["license-policies"], dependencies=_admin_write

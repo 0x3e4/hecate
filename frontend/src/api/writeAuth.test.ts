@@ -5,6 +5,7 @@ import {
   clearWriteSecrets,
   getAdminPassword,
   getTargetPassword,
+  isAdminReadUrl,
   setAdminPassword,
   setTargetPassword,
   writePromptTarget,
@@ -59,4 +60,26 @@ describe("clearWriteSecrets", () => {
     vi.stubGlobal("localStorage", undefined);
     expect(() => clearWriteSecrets()).not.toThrow();
   });
+});
+
+describe("isAdminReadUrl", () => {
+  it.each([
+    "/v1/notifications/channels",
+    "/v1/notifications/rules/abc",
+    "/v1/backup/inventory/export",
+    "/v1/sync/states",
+    "/v1/advisory-feeds",
+    "/v1/api-tokens",
+    "/api/v1/sync/states?x=1",
+    "/v1/audit/ingestion",
+  ])("sends the system password on %s", (url) => {
+    expect(isAdminReadUrl(url)).toBe(true);
+  });
+
+  it.each([undefined, "/v1/vulnerabilities", "/v1/license-policies", "/v1/vex-rules", "/v1/notificationsX", "/v1/scans/targets"])(
+    "leaves %s alone",
+    (url) => {
+      expect(isAdminReadUrl(url)).toBe(false);
+    },
+  );
 });

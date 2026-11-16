@@ -54,8 +54,13 @@ check itself).
 public, but fetching a miss from upstream needs the header. An anonymous lookup with the default
 `autoSync` therefore answers `401` on a miss. Pass `autoSync: false` for a plain read.
 
+The audit log and the System page's own settings are closed for reading too: the audit log, notification
+channels (their Apprise URLs carry tokens), rules and templates, backup exports, sync states and the advisory feed list need the
+header (or a signed-in admin). Without `SYSTEM_PASSWORD` and without OIDC they stay open like every
+admin gate; with OIDC an anonymous caller is refused even when `AUTH_REQUIRE_LOGIN=false`.
+
 The web UI persists the admin password after you unlock the **System** page and automatically
-attaches the header to subsequent writes — so an admin just unlocks once.
+attaches the header to subsequent writes and to those settings reads — so an admin just unlocks once.
 
 ## Layer B — per-target write delegation
 

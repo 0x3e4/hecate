@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { fetchIngestionLogs } from "../api/audit";
-import { api } from "../api/client";
 import { IngestionLogEntry } from "../types";
 import { SkeletonBlock } from "../components/Skeleton";
-import { useToastContext } from "../components/ToastProvider";
+import { AdminGate } from "../components/AdminGate";
 import { useI18n } from "../i18n/context";
 import { formatDateTime } from "../utils/dateFormat";
 import { describeAuditActor } from "../utils/auditActor";
-import { BusyLabel, EmptyState, LoadingState, PageHeader } from "../ui/primitives";
+import { EmptyState, PageHeader } from "../ui/primitives";
 import "../screens/audit.css";
 
 const JOB_LABELS: Record<string, string> = {
@@ -65,40 +63,8 @@ const STATUS_TONE: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
-export const AuditLogPage = () => {
+const AuditLog = () => {
   const { t, locale } = useI18n();
-  const { showToast } = useToastContext();
-  const navigate = useNavigate();
-
-  // --- System password gate ---
-  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
-  const [authOk, setAuthOk] = useState(false);
-  const [authPassword, setAuthPassword] = useState("");
-  const [authChecking, setAuthChecking] = useState(false);
-
-  useEffect(() => {
-    api.get<{ required: boolean }>("/v1/status/system-auth").then((r) => {
-      setAuthRequired(r.data.required);
-      if (!r.data.required) setAuthOk(true);
-    }).catch(() => {
-      setAuthRequired(false);
-      setAuthOk(true);
-    });
-  }, []);
-
-  const handleAuthSubmit = async () => {
-    setAuthChecking(true);
-    try {
-      const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
-      if (r.data.authenticated) {
-        setAuthOk(true);
-      }
-    } catch {
-      showToast(t("Invalid password.", "Falsches Passwort."), "error");
-    } finally {
-      setAuthChecking(false);
-    }
-  };
 
   const [logs, setLogs] = useState<IngestionLogEntry[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -367,48 +333,6 @@ export const AuditLogPage = () => {
   const pageEndIndex = total === 0 ? 0 : Math.min(pageEndIndexRaw, total);
 
   return (
-    <>
-    {authRequired && !authOk ? (
-      <div className="dialog-overlay audit-gate" onClick={() => navigate(-1)}>
-        <div className="dialog audit-gate-dialog" onClick={(e) => e.stopPropagation()}>
-          <h1 className="audit-gate-title">{t("System Password", "System-Passwort")}</h1>
-          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
-          <input
-            type="password"
-            value={authPassword}
-            onChange={(e) => setAuthPassword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
-            placeholder={t("Password", "Passwort")}
-            aria-label={t("Password", "Passwort")}
-            autoFocus
-          />
-          <div className="dialog-actions">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => navigate(-1)}
-            >
-              {t("Cancel", "Abbrechen")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => void handleAuthSubmit()}
-              disabled={authChecking || !authPassword}
-              aria-busy={authChecking || undefined}
-            >
-              <BusyLabel busy={authChecking}>{t("Unlock", "Entsperren")}</BusyLabel>
-            </button>
-          </div>
-        </div>
-      </div>
-    ) : authRequired === null ? (
-      <div className="dialog-overlay audit-gate">
-        <div className="dialog">
-          <LoadingState />
-        </div>
-      </div>
-    ) : (
     <div className="page audit-page">
       <PageHeader
         title={t("Audit log", "Audit-Log")}
@@ -540,10 +464,16 @@ export const AuditLogPage = () => {
         </table>
       </div>
     </div>
-    )}
-    </>
   );
 };
+
+// Admins only, like the System page: nothing in AuditLog mounts, and so nothing
+// is fetched, until a signed-in admin or the system password opens the page.
+export const AuditLogPage = () => (
+  <AdminGate overlayClassName="audit-gate" dialogClassName="audit-gate-dialog" titleClassName="audit-gate-title">
+    <AuditLog />
+  </AdminGate>
+);
 
 const AuditSkeletonRows = ({ rows }: { rows: number }) => (
   <>

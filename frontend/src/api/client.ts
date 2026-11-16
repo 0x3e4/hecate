@@ -7,6 +7,7 @@ import {
   extractTargetIdFromUrl,
   getAdminPassword,
   getTargetPassword,
+  isAdminReadUrl,
   requestWritePassword,
   setAdminPassword,
   setTargetPassword,
@@ -50,10 +51,18 @@ const resolveTargetId = (config: {
   meta?: { targetId?: string };
 }): string | null => config.meta?.targetId ?? extractTargetIdFromUrl(config.url);
 
-// Request: attach write credentials to mutating requests only (reads stay open).
+// Request: attach write credentials to mutating requests, and the system
+// password to the few reads behind the admin gate (the System page settings).
 api.interceptors.request.use((config) => {
   const method = (config.method ?? "get").toLowerCase();
-  if (!MUTATING.has(method)) return config;
+  if (!MUTATING.has(method)) {
+    const admin = isAdminReadUrl(config.url) ? getAdminPassword() : null;
+    if (admin) {
+      config.headers = config.headers ?? {};
+      (config.headers as Record<string, string>)["X-System-Password"] = admin;
+    }
+    return config;
+  }
   const admin = getAdminPassword();
   if (admin) {
     config.headers = config.headers ?? {};

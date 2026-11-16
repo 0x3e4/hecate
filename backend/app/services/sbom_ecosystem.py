@@ -11,9 +11,12 @@ be what an advisory names when the advisory's vendor is that registry (GHSA and
 OSV write ``npm`` / ``PyPI`` / ``Maven`` as the vendor), the package's own
 namespace (``@angular`` → ``angular``, ``org.apache.logging.log4j`` →
 ``apache``), or the package itself (NVD's ``lodash:lodash``). OS and binary
-packages (``deb``, ``apk``, ``rpm``, ``generic``, …) and components without a
-purl keep the plain name match: there NVD's vendors are the projects
-themselves (``openssl``, ``nodejs``) and no registry name exists to compare.
+packages (``deb``, ``apk``, ``rpm``, ``generic``, …) and components with
+neither a purl nor a registry package type keep the plain name match: there
+NVD's vendors are the projects themselves (``openssl``, ``nodejs``) and no
+registry name exists to compare. A component without a purl takes the
+ecosystem from its scanner package type (``PACKAGE_TYPE_PURL_TYPE``): Trivy
+rows carried no purl, and a ``cargo`` ``console`` row then matched NetScaler.
 """
 
 from __future__ import annotations
@@ -44,6 +47,24 @@ LANGUAGE_ECOSYSTEM_VENDORS: dict[str, frozenset[str]] = {
     "githubactions": frozenset({"github-actions"}),
 }
 
+# Scanner package types -> purl type, for rows and findings without a purl.
+PACKAGE_TYPE_PURL_TYPE: dict[str, str] = {
+    "npm": "npm", "node-pkg": "npm", "yarn": "npm", "pnpm": "npm", "bun": "npm",
+    "pip": "pypi", "python": "pypi", "python-pkg": "pypi", "pipenv": "pypi", "poetry": "pypi",
+    "uv": "pypi", "pypi": "pypi",
+    "gomod": "golang", "gobinary": "golang", "go-module": "golang", "go": "golang", "golang": "golang",
+    "cargo": "cargo", "rust-crate": "cargo", "rustbinary": "cargo",
+    "composer": "composer", "php-composer": "composer",
+    "jar": "maven", "pom": "maven", "gradle": "maven", "java-archive": "maven", "maven": "maven",
+    "nuget": "nuget", "dotnet-core": "nuget", "dotnet": "nuget", "packages-lock": "nuget",
+    "gem": "gem", "bundler": "gem", "gemspec": "gem",
+    "deb": "deb", "debian": "deb", "ubuntu": "deb", "dpkg": "deb",
+    "apk": "apk", "alpine": "apk", "wolfi": "apk", "chainguard": "apk",
+    "rpm": "rpm", "redhat": "rpm", "centos": "rpm", "rocky": "rpm", "alma": "rpm", "amazon": "rpm",
+    "fedora": "rpm", "oracle": "rpm", "suse": "rpm", "photon": "rpm", "cbl-mariner": "rpm",
+    "pub": "pub", "hex": "hex", "swift": "swift", "cocoapods": "cocoapods", "conan": "conan",
+}
+
 # Namespace pieces that say nothing about who makes a package.
 _NOISE_SEGMENTS = frozenset({"com", "org", "net", "io", "dev", "co", "www", "github", "gitlab"})
 
@@ -61,13 +82,19 @@ def _purl_type_and_namespace(purl: str | None) -> tuple[str | None, str | None]:
     return purl_type, unquote(namespace) if namespace else None
 
 
-def allowed_vendor_slugs(purl: str | None, name: str | None) -> frozenset[str] | None:
+def allowed_vendor_slugs(
+    purl: str | None, name: str | None, package_type: str | None = None
+) -> frozenset[str] | None:
     """Vendor slugs an advisory may carry to name this component.
 
     ``None`` means any vendor: the component is no language-registry package
-    (OS / binary / generic / no purl), so the name match stays as it was.
+    (OS / binary / generic, or neither a purl nor a known package type), so the
+    name match stays as it was. Without a purl the scanner's ``package_type``
+    names the ecosystem.
     """
     purl_type, namespace = _purl_type_and_namespace(purl)
+    if purl_type is None and isinstance(package_type, str):
+        purl_type = PACKAGE_TYPE_PURL_TYPE.get(package_type.strip().lower())
     registry = LANGUAGE_ECOSYSTEM_VENDORS.get(purl_type or "")
     if registry is None:
         return None
@@ -160,6 +187,7 @@ def component_in_affected_range(
     name: str,
     version: str,
     purl: str | None = None,
+    package_type: str | None = None,
     slug: str | None = None,
     allowed: frozenset[str] | None = _UNSET,
     memo: dict[tuple[str, tuple[str, ...]], bool] | None = None,
@@ -177,7 +205,7 @@ def component_in_affected_range(
     if not entries:
         return False
     if allowed is _UNSET:
-        allowed = allowed_vendor_slugs(purl, name)
+        allowed = allowed_vendor_slugs(purl, name, package_type)
     ranges = [
         r
         for vendor_values, entry_ranges in entries

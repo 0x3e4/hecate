@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { LuChevronRight, LuPlus } from "react-icons/lu";
-import { useNavigate } from "react-router-dom";
 
 import "../screens/system.css";
 
@@ -52,8 +51,7 @@ import {
   resyncVulnerabilities,
 } from "../api/sync";
 import { fetchScanTargets } from "../api/scans";
-import { getAdminPassword, setAdminPassword } from "../api/writeAuth";
-import { useAuth } from "../auth/context";
+import { AdminGate } from "../components/AdminGate";
 import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { AdvisoryFeedsPanel } from "../components/AdvisoryFeedsPanel";
 import { VexRulesPanel } from "../components/VexRulesPanel";
@@ -68,7 +66,7 @@ import type { AppLanguage } from "../i18n/language";
 import { useTimezone } from "../timezone/context";
 import { listSupportedTimezones } from "../timezone/storage";
 import { useServerConfig } from "../server-config/context";
-import { BusyLabel, EmptyState, LoadingState, PageHeader, Section } from "../ui/primitives";
+import { BusyLabel, EmptyState, PageHeader, Section } from "../ui/primitives";
 import { tabPillStyle } from "../ui/TabPill";
 import type {
   NotificationChannel,
@@ -202,7 +200,7 @@ const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
   }
 ];
 
-export const SystemPage = () => {
+const SystemSettings = () => {
   const { language, locale, setLanguage, t } = useI18n();
   const { timezone, isBrowserDefault, setTimezone } = useTimezone();
   const supportedTimezones = useMemo(() => listSupportedTimezones(), []);
@@ -211,51 +209,14 @@ export const SystemPage = () => {
     setTimezoneDraft(isBrowserDefault ? "" : timezone);
   }, [timezone, isBrowserDefault]);
   const { aiBatchMaxVulns } = useServerConfig();
-  const auth = useAuth();
-  // Signed in below admin and no system password unlocked: the page reads fine,
-  // but every change would be refused. Say so up front instead of on each save.
-  const readOnlyForRole = auth.enabled && !auth.hasRole("admin") && !getAdminPassword();
   const [aiBatchDraft, setAiBatchDraft] = useState<string>(String(aiBatchMaxVulns));
   const [aiBatchSaving, setAiBatchSaving] = useState(false);
-  const navigate = useNavigate();
 
-  // --- System password gate ---
-  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
-  const [authOk, setAuthOk] = useState(false);
-  const [authPassword, setAuthPassword] = useState("");
-  const [authChecking, setAuthChecking] = useState(false);
   // ?tab=policies (e.g. from a VEX rule chip on a scan) opens that tab
   const [tab, setTab] = useState<SystemTab>(() => {
     const wanted = new URLSearchParams(window.location.search).get("tab");
     return (["general", "access", "notifications", "data", "policies"] as const).find(k => k === wanted) ?? "general";
   });
-
-  useEffect(() => {
-    api.get<{ required: boolean }>("/v1/status/system-auth").then((r) => {
-      setAuthRequired(r.data.required);
-      if (!r.data.required) setAuthOk(true);
-    }).catch(() => {
-      setAuthRequired(false);
-      setAuthOk(true);
-    });
-  }, []);
-
-  const handleAuthSubmit = async () => {
-    setAuthChecking(true);
-    try {
-      const r = await api.post<{ authenticated: boolean }>("/v1/status/system-auth", { password: authPassword });
-      if (r.data.authenticated) {
-        setAuthOk(true);
-        // Persist so the axios interceptor can attach X-System-Password to write
-        // requests from any page (delete target, manage notifications, etc.).
-        setAdminPassword(authPassword);
-      }
-    } catch {
-      showToast(t("Invalid password.", "Falsches Passwort."), "error");
-    } finally {
-      setAuthChecking(false);
-    }
-  };
 
   // --- Regular state ---
   const [backupBusy, setBackupBusy] = useState<{ id: string; action: "export" | "restore" } | null>(null);
@@ -1289,48 +1250,6 @@ export const SystemPage = () => {
   };
 
   return (
-    <>
-    {authRequired && !authOk ? (
-      <div className="dialog-overlay system-overlay" onClick={() => navigate(-1)}>
-        <div className="dialog" onClick={(e) => e.stopPropagation()}>
-          <h1 className="system-gate-title">{t("System Password", "System-Passwort")}</h1>
-          <p>{t("Enter the password to access this page.", "Passwort eingeben, um auf diese Seite zuzugreifen.")}</p>
-          <input
-            type="password"
-            value={authPassword}
-            onChange={(e) => setAuthPassword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleAuthSubmit(); else if (e.key === "Escape") navigate(-1); }}
-            placeholder={t("Password", "Passwort")}
-            aria-label={t("Password", "Passwort")}
-            autoFocus
-          />
-          <div className="dialog-actions">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => navigate(-1)}
-            >
-              {t("Cancel", "Abbrechen")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => void handleAuthSubmit()}
-              disabled={authChecking || !authPassword}
-              aria-busy={authChecking || undefined}
-            >
-              <BusyLabel busy={authChecking}>{t("Unlock", "Entsperren")}</BusyLabel>
-            </button>
-          </div>
-        </div>
-      </div>
-    ) : authRequired === null ? (
-      <div className="dialog-overlay system-overlay">
-        <div className="dialog">
-          <LoadingState />
-        </div>
-      </div>
-    ) : (
     <div className="page system-page">
       <PageHeader
         title="System"
@@ -1339,27 +1258,6 @@ export const SystemPage = () => {
           "Systemeinstellungen, Datenquellen, Benachrichtigungen und Richtlinien verwalten."
         )}
       />
-      {readOnlyForRole && (
-        <p className="system-role-notice" role="note">
-          {auth.user
-            ? t(
-                "You can look around, but changes here require the admin role.",
-                "Du kannst dich umsehen, aber Änderungen hier erfordern die Admin-Rolle."
-              )
-            : t(
-                "Sign in as an admin to change these settings.",
-                "Melde dich als Admin an, um diese Einstellungen zu ändern."
-              )}
-          {!auth.user && (
-            <>
-              {" "}
-              <button type="button" className="btn btn-secondary" onClick={() => auth.signIn()}>
-                {t("Sign in", "Anmelden")}
-              </button>
-            </>
-          )}
-        </p>
-      )}
       <div className="tabs-scroll system-tabs">
         {([
           { key: "general" as SystemTab, label: t("General", "Allgemein") },
@@ -2651,7 +2549,13 @@ export const SystemPage = () => {
       )}
       {tab === "policies" && <VexRulesPanel />}
     </div>
-    )}
-  </>
   );
 };
+
+// The settings are behind the admin gate, reads included: nothing in
+// SystemSettings mounts, and so nothing is fetched, until it opens.
+export const SystemPage = () => (
+  <AdminGate overlayClassName="system-overlay" titleClassName="system-gate-title">
+    <SystemSettings />
+  </AdminGate>
+);
