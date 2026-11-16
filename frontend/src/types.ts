@@ -22,11 +22,17 @@ export interface SemverTagInfo {
   releaseUrl: string;
 }
 
+/** How a running build relates to the newest main-<sha> image (GitHub compare). */
+export type BuildRelation = "identical" | "ahead" | "behind" | "diverged" | "unknown_commit";
+
 export interface VersionInfo {
   backend: RunningComponentInfo;
   scanner: RunningComponentInfo;
   ghcr: GhcrLatestInfo;
   semverTag: SemverTagInfo | null;
+  /** semverTag is newer than the running version (false for a beta ahead of it). */
+  releaseAvailable?: boolean | null;
+  buildRelations?: { backend?: BuildRelation | null; scanner?: BuildRelation | null };
   repoUrl: string;
   kofiUrl: string;
   checkedAt: string;

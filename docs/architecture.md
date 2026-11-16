@@ -111,7 +111,7 @@ scoped to explicit origins via `CORS_ORIGINS`.
 | `license_policies` | License-policy CRUD, default policy and license groups. |
 | `inventory` | Environment inventory CRUD + per-item affected vulnerabilities. |
 | `malware` | The malware-intel feed for the frontend overview (MongoDB-backed with OpenSearch-routed substring search). |
-| `version` | Build / release metadata that powers the in-app Support page. |
+| `version` | Build / release metadata that powers the in-app Support page: the newest release tag (pre-release tags never count) with `releaseAvailable` only when it is newer than the running version, and per component how the running commit relates to the newest `main-<sha>` image (GitHub compare API: newer, behind, or a local build GitHub doesn't know). |
 
 Several routes in `scans` are order-sensitive: collection-style routes such as
 `GET /scans/ai-analyses`, the per-target `GET /scans/targets/{id}/history` and

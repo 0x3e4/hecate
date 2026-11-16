@@ -23,7 +23,7 @@ differ from the code defaults.
 | `SUPPORT_PAGE_ENABLED` | `true` | Show the in-app Support page. |
 | `DOCS_URL` | `https://docs.hecate.pw` | Target of the sidebar's **Documentation** link: the public docs, your own docs image (`docs/Dockerfile`), or empty to hide the link. Only `http(s)` URLs are used. |
 | `HECATE_GHCR_OWNER` | `0x3e4` | GHCR namespace for the three Hecate images (version-check on Support page). |
-| `HECATE_BUILD_SHA` | (build-injected) | Short git SHA of the running build (set at image build). |
+| `HECATE_BUILD_SHA` | (build-injected) | Git SHA of the running build, a build argument of all three images. CI sets it; for a local `docker compose build` pass it yourself (`args: { HECATE_BUILD_SHA: ${HECATE_BUILD_SHA:-} }` per service, then `HECATE_BUILD_SHA=$(git rev-parse --short HEAD) docker compose build`), or the Support page shows *SHA unknown*. |
 | `VITE_API_BASE_URL` | `/api` | Frontend API base URL, baked into the bundle at build time. |
 
 ## Access control (passwords)

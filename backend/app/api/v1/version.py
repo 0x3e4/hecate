@@ -7,7 +7,7 @@ import tomllib
 from datetime import UTC, datetime
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import structlog
@@ -56,6 +56,19 @@ _PYPROJECT_CANDIDATES = (
 # available). Read-only, parsed without needing a git binary.
 _GIT_FALLBACK_PATHS = (Path("/host/.git"), Path("/repo/.git"))
 
+# Version strings (tags and the running pyproject version): optional `v`, 2 or
+# 3 numeric segments, optional pre-release (`-beta.8`, `-rc.1`) and build
+# metadata. A pre-release sorts below its release, as in SemVer.
+_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$")
+# How a running build relates to the newest main-<sha> image, from GitHub's
+# compare API (latest...running): "ahead" = running is newer (a beta built
+# before CI ran), "behind" = an update exists, "unknown_commit" = GitHub does
+# not know the commit (built locally, not pushed).
+BuildRelation = Literal["identical", "ahead", "behind", "diverged", "unknown_commit"]
+_HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+_RELATION_TTL_SECONDS = CACHE_TTL_SECONDS
+_RELATION_CACHE_MAX = 32
+_relation_cache: dict[tuple[str, str], tuple[float, str]] = {}
 # Match semver-ish git tags: optional `v` prefix, 2 or 3 numeric segments,
 # optional pre-release suffix (`-rc.1`, `-beta`, …).
 _SEMVER_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?(?:[-+].+)?$")
@@ -139,12 +152,26 @@ class SemverTag(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class BuildRelations(BaseModel):
+    backend: BuildRelation | None = None
+    scanner: BuildRelation | None = None
+    model_config = {"populate_by_name": True}
+
+
 class VersionInfoResponse(BaseModel):
     backend: RunningComponent
     scanner: RunningComponent
     ghcr: GhcrLatest
     semver_tag: SemverTag | None = Field(
         default=None, alias="semverTag", serialization_alias="semverTag"
+    )
+    # Whether ``semver_tag`` is newer than the running backend version. False
+    # for a beta ahead of the latest release; None when either is unparseable.
+    release_available: bool | None = Field(
+        default=None, alias="releaseAvailable", serialization_alias="releaseAvailable"
+    )
+    build_relations: BuildRelations = Field(
+        default_factory=BuildRelations, alias="buildRelations", serialization_alias="buildRelations"
     )
     repo_url: str = Field(alias="repoUrl", serialization_alias="repoUrl")
     kofi_url: str = Field(alias="kofiUrl", serialization_alias="kofiUrl")
@@ -264,6 +291,32 @@ def _parse_semver(tag: str) -> tuple[int, int, int] | None:
     return (int(match.group(1)), int(match.group(2)), int(match.group(3) or "0"))
 
 
+def version_key(value: str | None) -> tuple[Any, ...] | None:
+    """Sortable key of a version string; a pre-release sorts below its release."""
+    match = _VERSION_RE.match((value or "").strip())
+    if not match:
+        return None
+    core = (int(match.group(1)), int(match.group(2)), int(match.group(3) or "0"))
+    pre = match.group(4)
+    if not pre:
+        return (*core, 1, ())
+    parts = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split("."))
+    return (*core, 0, parts)
+
+
+def is_prerelease(value: str) -> bool:
+    key = version_key(value)
+    return key is not None and key[3] == 0
+
+
+def release_available(tag: str | None, running: str | None) -> bool | None:
+    """Whether the release ``tag`` is newer than the ``running`` version."""
+    tag_key, running_key = version_key(tag), version_key(running)
+    if tag_key is None or running_key is None:
+        return None
+    return tag_key > running_key
+
+
 # ---------------------------------------------------------------------------
 # GitHub API calls
 # ---------------------------------------------------------------------------
@@ -303,15 +356,16 @@ async def _fetch_latest_semver_tag(client: httpx.AsyncClient) -> SemverTag | Non
         return None
     if not isinstance(payload, list) or not payload:
         return None
-    best: tuple[tuple[int, int, int], str] | None = None
+    best: tuple[tuple[Any, ...], str] | None = None
     for entry in payload:
         if not isinstance(entry, dict):
             continue
         name = entry.get("name")
         if not isinstance(name, str):
             continue
-        parsed = _parse_semver(name)
-        if parsed is None:
+        # Only releases: a pre-release tag is no update to offer.
+        parsed = version_key(name)
+        if parsed is None or is_prerelease(name):
             continue
         if best is None or parsed > best[0]:
             best = (parsed, name)
@@ -512,6 +566,70 @@ async def _fetch_github_signals() -> dict[str, Any]:
     return {"semver": semver, "builds": builds}
 
 
+async def _build_relation(
+    client: httpx.AsyncClient, latest_sha: str | None, running_sha: str | None
+) -> BuildRelation | None:
+    """How ``running_sha`` relates to ``latest_sha`` (the newest main-<sha> image).
+
+    Both come from the server (the image's baked SHA and GHCR), never from
+    the request, so callers cannot make the backend query GitHub at will.
+    Cached per pair; a failed lookup is not cached and answers None.
+    """
+    latest = (latest_sha or "").strip().lower()
+    running = (running_sha or "").strip().lower()
+    if not (_HEX_SHA_RE.match(latest) and _HEX_SHA_RE.match(running)):
+        return None
+    if latest.startswith(running) or running.startswith(latest):
+        return "identical"
+    key = (latest, running)
+    cached = _relation_cache.get(key)
+    now = time.monotonic()
+    if cached is not None and now < cached[0]:
+        return cached[1]  # type: ignore[return-value]
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/compare/{latest}...{running}"
+    try:
+        resp = await client.get(url)
+    except httpx.HTTPError as exc:
+        log.info("version_check.compare_failed", error=str(exc))
+        return None
+    relation: str | None
+    if resp.status_code in (404, 422):
+        relation = "unknown_commit"
+    elif resp.status_code >= 400:
+        log.info("version_check.compare_failed", status=resp.status_code)
+        return None
+    else:
+        try:
+            status = resp.json().get("status")
+        except (ValueError, AttributeError):
+            return None
+        relation = status if status in ("identical", "ahead", "behind", "diverged") else None
+    if relation is None:
+        return None
+    if len(_relation_cache) >= _RELATION_CACHE_MAX:
+        _relation_cache.clear()
+    _relation_cache[key] = (now + _RELATION_TTL_SECONDS, relation)
+    return relation  # type: ignore[return-value]
+
+
+async def _build_relations(
+    builds: dict[str, Any], backend_sha: str | None, scanner_sha: str | None
+) -> BuildRelations:
+    def latest(component: str) -> str | None:
+        build = builds.get(component)
+        return getattr(build, "short_sha", None)
+
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    async with httpx.AsyncClient(
+        verify=get_http_verify(), timeout=timeout, headers=_github_headers()
+    ) as client:
+        backend, scanner = await asyncio.gather(
+            _build_relation(client, latest("backend"), backend_sha),
+            _build_relation(client, latest("scanner"), scanner_sha),
+        )
+    return BuildRelations(backend=backend, scanner=scanner)
+
+
 async def _get_cached_signals() -> dict[str, Any]:
     now = time.monotonic()
     cached = _cache["value"]
@@ -571,12 +689,16 @@ async def get_version_info() -> VersionInfoResponse:
         frontend=builds.get("frontend"),
         scanner=builds.get("scanner"),
     )
+    relations = await _build_relations(builds, backend_info.running_sha, scanner_info.running_sha)
+    semver = signals.get("semver")
 
     return VersionInfoResponse(
         backend=backend_info,
         scanner=scanner_info,
         ghcr=ghcr,
-        semver_tag=signals.get("semver"),
+        semver_tag=semver,
+        release_available=release_available(semver.tag if semver else None, CURRENT_VERSION),
+        build_relations=relations,
         repo_url=REPO_URL,
         kofi_url=KOFI_URL,
         checked_at=datetime.now(UTC),

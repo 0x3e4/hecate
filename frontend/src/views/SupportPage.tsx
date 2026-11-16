@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { LuCoffee, LuExternalLink, LuGithub } from "react-icons/lu";
 
+import { version as FRONTEND_VERSION } from "../../package.json";
 import "../screens/support.css";
 import { fetchVersionInfo } from "../api/version";
 import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { useI18n } from "../i18n/context";
-import type { VersionInfo } from "../types";
+import type { BuildRelation, VersionInfo } from "../types";
 import { ErrorState, PageHeader, Section } from "../ui/primitives";
 import { safeHref } from "../utils/safeHref";
 
@@ -63,16 +64,23 @@ export const SupportPage = () => {
       .slice(0, 7);
 
   type ComponentKey = "backend" | "frontend" | "scanner";
-  type Status = "up_to_date" | "build_update" | "running_unknown" | "unreachable";
+  type Status = "up_to_date" | "build_update" | "ahead" | "local" | "running_unknown" | "unreachable";
 
+  // The backend asks GitHub how the running commit relates to the newest
+  // main-<sha> image; without that answer a different SHA is all we know.
   const componentStatus = (
     runningSha: string | null,
     latestSha: string | null,
-    reachable: boolean
+    reachable: boolean,
+    relation: BuildRelation | null
   ): Status => {
     if (!reachable) return "unreachable";
     if (!runningSha) return "running_unknown";
     if (!latestSha) return "running_unknown";
+    if (relation === "identical") return "up_to_date";
+    if (relation === "ahead") return "ahead";
+    if (relation === "unknown_commit") return "local";
+    if (relation === "behind" || relation === "diverged") return "build_update";
     return runningSha === latestSha ? "up_to_date" : "build_update";
   };
 
@@ -82,6 +90,12 @@ export const SupportPage = () => {
     }
     if (status === "build_update") {
       return <StatusWord tone="info">{t("New build available", "Neuer Build verfügbar")}</StatusWord>;
+    }
+    if (status === "ahead") {
+      return <StatusWord tone="ok">{t("Newer than the latest build", "Neuer als der letzte Build")}</StatusWord>;
+    }
+    if (status === "local") {
+      return <StatusWord tone="muted">{t("Local build, not on GitHub", "Lokaler Build, nicht auf GitHub")}</StatusWord>;
     }
     if (status === "unreachable") {
       return <StatusWord tone="error">{t("Unreachable", "Nicht erreichbar")}</StatusWord>;
@@ -99,7 +113,18 @@ export const SupportPage = () => {
     latestSha: string | null;
     publishedAt: string | null;
     packageUrl: string | null;
+    relation: BuildRelation | null;
   };
+
+  // The frontend's SHA lives only in this bundle. Built from the same commit
+  // as the backend and compared with the same image commit, it shares the
+  // backend's answer; otherwise it falls back to comparing SHAs.
+  const frontendRelation = (data: VersionInfo): BuildRelation | null =>
+    FRONTEND_SHA &&
+    FRONTEND_SHA === data.backend.runningSha &&
+    data.ghcr.frontend?.shortSha === data.ghcr.backend?.shortSha
+      ? data.buildRelations?.backend ?? null
+      : null;
 
   const buildRows = (data: VersionInfo): Row[] => [
     {
@@ -108,6 +133,7 @@ export const SupportPage = () => {
       runningSha: data.backend.runningSha,
       runningVersion: data.backend.runningVersion,
       reachable: data.backend.reachable,
+      relation: data.buildRelations?.backend ?? null,
       latestTag: data.ghcr.backend?.tag ?? null,
       latestSha: data.ghcr.backend?.shortSha ?? null,
       publishedAt: data.ghcr.backend?.publishedAt ?? null,
@@ -117,8 +143,9 @@ export const SupportPage = () => {
       key: "frontend",
       label: t("Frontend", "Frontend"),
       runningSha: FRONTEND_SHA || null,
-      runningVersion: null,
+      runningVersion: FRONTEND_VERSION,
       reachable: true,
+      relation: frontendRelation(data),
       latestTag: data.ghcr.frontend?.tag ?? null,
       latestSha: data.ghcr.frontend?.shortSha ?? null,
       publishedAt: data.ghcr.frontend?.publishedAt ?? null,
@@ -130,6 +157,7 @@ export const SupportPage = () => {
       runningSha: data.scanner.runningSha,
       runningVersion: data.scanner.runningVersion,
       reachable: data.scanner.reachable,
+      relation: data.buildRelations?.scanner ?? null,
       latestTag: data.ghcr.scanner?.tag ?? null,
       latestSha: data.ghcr.scanner?.shortSha ?? null,
       publishedAt: data.ghcr.scanner?.publishedAt ?? null,
@@ -140,17 +168,19 @@ export const SupportPage = () => {
   const overallBadge = (rows: Row[]): React.ReactNode => {
     if (!info) return null;
     const statuses = rows.map((r) =>
-      componentStatus(r.runningSha, r.latestSha, r.reachable)
+      componentStatus(r.runningSha, r.latestSha, r.reachable, r.relation)
     );
     const allUpToDate = statuses.every((s) => s === "up_to_date");
     const anyOutdated = statuses.includes("build_update");
 
-    if (allUpToDate) {
-      return <StatusWord tone="ok">{t("All components up to date", "Alle Komponenten aktuell")}</StatusWord>;
-    }
-    if (info.semverTag) {
+    // Only a release newer than the running version is an update: a beta
+    // ahead of the latest release is not offered a downgrade.
+    if (info.semverTag && info.releaseAvailable) {
       const tag = info.semverTag.tag.replace(/^v/, "");
       return <StatusWord tone="info">{t(`Release available: ${tag}`, `Release verfügbar: ${tag}`)}</StatusWord>;
+    }
+    if (allUpToDate) {
+      return <StatusWord tone="ok">{t("All components up to date", "Alle Komponenten aktuell")}</StatusWord>;
     }
     if (anyOutdated) {
       const count = statuses.filter((s) => s === "build_update").length;
@@ -162,6 +192,16 @@ export const SupportPage = () => {
           )}
         </StatusWord>
       );
+    }
+    if (statuses.every((s) => s === "up_to_date" || s === "ahead" || s === "local")) {
+      return (
+        <StatusWord tone="ok">
+          {t("Newer than the published builds", "Neuer als die veröffentlichten Builds")}
+        </StatusWord>
+      );
+    }
+    if (info.releaseAvailable === false && FRONTEND_VERSION.includes("-")) {
+      return <StatusWord tone="muted">{t(`Pre-release ${FRONTEND_VERSION}`, `Vorabversion ${FRONTEND_VERSION}`)}</StatusWord>;
     }
     return <StatusWord tone="muted">{t("Status partial", "Status unvollständig")}</StatusWord>;
   };
@@ -189,11 +229,14 @@ export const SupportPage = () => {
 
     const renderRunning = (row: Row): React.ReactNode => {
       if (!row.reachable) return <span className="muted">{t("(not reachable)", "(nicht erreichbar)")}</span>;
-      if (!row.runningSha) return <span className="muted">{t("(SHA unknown)", "(SHA unbekannt)")}</span>;
       return (
         <span className="support-screen-value">
           {row.runningVersion ? <span className="mono">{row.runningVersion}</span> : null}
-          <span className="mono muted">{row.runningSha}</span>
+          {row.runningSha ? (
+            <span className="mono muted">{row.runningSha}</span>
+          ) : (
+            <span className="muted">{t("(SHA unknown)", "(SHA unbekannt)")}</span>
+          )}
         </span>
       );
     };
@@ -229,7 +272,7 @@ export const SupportPage = () => {
             </thead>
             <tbody>
               {rows.map((row) => {
-                const status = componentStatus(row.runningSha, row.latestSha, row.reachable);
+                const status = componentStatus(row.runningSha, row.latestSha, row.reachable, row.relation);
                 return (
                   <tr key={row.key}>
                     <td className="support-screen-component">{row.label}</td>
