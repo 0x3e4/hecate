@@ -46,6 +46,8 @@
 .scan-detail-meta-item { display: flex; flex-direction: column; gap: var(--space-3xs); min-width: 0; }
 .scan-detail-meta-item dt { color: var(--color-muted); font-size: var(--text-xs); }
 .scan-detail-meta-item dd { margin: 0; color: var(--color-ink-2); overflow-wrap: anywhere; }
+/* Inline text links in the meta row sit on the text line, not at control height. */
+.scan-detail-meta-item dd .scan-detail-link-button { min-height: 0; line-height: inherit; }
 .scan-detail-error { display: flex; align-items: flex-start; gap: var(--space-xs); max-width: none; padding: var(--space-sm) var(--space-md); color: var(--color-error); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .scan-detail-error svg { margin-top: var(--space-2xs); }
 
