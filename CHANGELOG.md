@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [2.3.1] - 2026-11-17
+
+### Added
+
+### Changed
+
+### Fixed
+
 - Sidebar footer no longer squeezes the version next to its buttons
 
 ## [2.3.0] - 2026-11-17
