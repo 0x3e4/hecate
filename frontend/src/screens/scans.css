@@ -160,10 +160,11 @@
 
 .scans-switch { display: inline-flex; align-items: center; height: var(--control-height); padding: 0; border: 0; background: none; cursor: pointer; }
 .scans-switch:active .scans-switch-track { background: var(--overlay-2); }
-.scans-switch-track { position: relative; display: block; width: 32px; height: 18px; border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-pill); transition: background-color var(--dur-micro) var(--ease-out); }
-.scans-switch-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: var(--radius-pill); background: var(--color-muted); transition: transform var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
-.scans-switch[aria-checked="true"] .scans-switch-track { background: var(--overlay-3); }
-.scans-switch[aria-checked="true"] .scans-switch-knob { background: var(--color-ink); transform: translateX(14px); }
+/* On reads green, off reads red, both muted; the title and aria-checked carry the state in words. */
+.scans-switch-track { position: relative; display: block; width: 32px; height: 18px; border: var(--rule-hair) solid color-mix(in oklch, var(--color-error) 45%, var(--color-rule-strong)); border-radius: var(--radius-pill); background: color-mix(in oklch, var(--color-error) 14%, transparent); transition: background-color var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out); }
+.scans-switch-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--color-error) 70%, var(--color-muted)); transition: transform var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
+.scans-switch[aria-checked="true"] .scans-switch-track { border-color: color-mix(in oklch, var(--color-success) 60%, var(--color-rule-strong)); background: color-mix(in oklch, var(--color-success) 28%, transparent); }
+.scans-switch[aria-checked="true"] .scans-switch-knob { background: var(--color-success); transform: translateX(14px); }
 
 .scans-editor-row td { padding: 0 0 var(--space-sm); }
 .scans-editor { display: flex; flex-direction: column; gap: var(--space-md); }

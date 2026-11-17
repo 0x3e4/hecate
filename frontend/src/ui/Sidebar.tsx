@@ -368,7 +368,9 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
           aria-label={t("Language and time", "Sprache und Zeit")}
           aria-haspopup="dialog"
         >
-          <LuLanguages aria-hidden="true" />
+          <span aria-hidden="true" className="sidebar-collapse-icon">
+            <LuLanguages />
+          </span>
           <span className="sidebar-prefs-label">{t("Language", "Sprache")}</span>
         </button>
         <button

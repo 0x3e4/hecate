@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sidebar footer no longer squeezes the version next to its buttons
+
 ## [2.3.0] - 2026-11-17
 
 > **Existing instances: the frontend port and the routing changed. Update Compose, `.env` and your reverse proxy before you start this version.**
