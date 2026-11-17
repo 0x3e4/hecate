@@ -107,8 +107,8 @@ CERT_FEEDS_EXTRA=CERT.at|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml,Clo
 These feeds appear on the System page too, read-only, and a name used in `.env` cannot be taken by a
 feed added in the UI. `CERT_FEEDS` replaces the built-in list, `CERT_FEEDS_ENABLED=false` turns the job
 off for every feed, and **System → Data** shows the last run, including any feed that failed. The feed
-list on the System page is public like the other lists, so a key or password in a feed URL is shown
-as `***`.
+list on the System page is for admins only; a key or password in a feed URL is shown as `***` there
+and in the audit log all the same.
 
 Use the feed's final URL, because redirects are not followed. If a CERT or vendor item names no CVE,
 Hecate reads the advisory's page once, on the feed's own host; community posts never cost that request. A feed

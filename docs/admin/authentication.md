@@ -87,6 +87,8 @@ development, when `AUTH_PUBLIC_URL` is unset (`auth.public_url_unset`).
 
 ## Roles
 
+What each role means in the web app, page by page: [Permissions](permissions.md).
+
 | Role | Can |
 | --- | --- |
 | **admin** | Everything the system password opens: the System page, API tokens, deleting targets and scans, target passwords, app settings, advisory feeds, notifications, license policies, backups, syncs and re-syncs. |
@@ -313,9 +315,9 @@ viewer), then compare the claims in your IdP's token preview with the names you 
   worked before, with or without a session.
 - A signed-in **admin** never sees the System or Audit password dialog: the role opens what the
   password would.
-- A signed-in user below admin who opens the System page sees the password dialog when a system
-  password is set (the escape hatch for whoever holds it), and otherwise a note that changes need
-  the admin role.
+- A signed-in user below admin who opens the System or Audit page sees the password dialog when a
+  system password is set (the escape hatch for whoever holds it), and otherwise an **Admins only**
+  notice with **Sign in**; the page itself does not load.
 - The AI page keeps its AI-password dialog whenever an AI password is configured.
 
 ## Audit trail

@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuRadioTower,
-  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart, LuLogIn, LuLogOut, LuUser } from "react-icons/lu";
+  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart, LuLogIn, LuLogOut, LuUser, LuLanguages } from "react-icons/lu";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { version } from "../../package.json";
@@ -11,6 +11,7 @@ import { useSSE } from "../hooks/useSSE";
 import { useServerConfig } from "../server-config/context";
 import { api } from "../api/client";
 import { useAuth } from "../auth/context";
+import { PreferencesDialog } from "../components/PreferencesDialog";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -93,6 +94,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
   const { jobs, snapshotSeq } = useSSE();
   const auth = useAuth();
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const { aiEnabled, scaEnabled, supportPageEnabled, docsUrl } = useServerConfig();
   const navSections = useMemo(
     () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled, docsUrl),
@@ -360,6 +362,17 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
         <div className="sidebar-version">{collapsed ? `v${version}` : `Hecate v${version}`}</div>
         <button
           type="button"
+          className="sidebar-prefs-button"
+          onClick={() => setPrefsOpen(true)}
+          title={t("Language and time", "Sprache und Zeit")}
+          aria-label={t("Language and time", "Sprache und Zeit")}
+          aria-haspopup="dialog"
+        >
+          <LuLanguages aria-hidden="true" />
+          <span className="sidebar-prefs-label">{t("Language", "Sprache")}</span>
+        </button>
+        <button
+          type="button"
           className="sidebar-collapse-button"
           onClick={onToggleCollapse}
           aria-pressed={collapsed}
@@ -371,6 +384,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
           <span className="sidebar-collapse-label">{collapsed ? t("Expand", "Ausklappen") : t("Collapse", "Einklappen")}</span>
         </button>
       </div>
+      {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
     </aside>
   );
 };

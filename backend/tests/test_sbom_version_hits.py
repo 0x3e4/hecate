@@ -284,3 +284,15 @@ def test_component_match_falls_back_to_the_package_type_without_purl():
     assert component_in_affected_range(
         entries, name="console", version="0.16.2", purl="pkg:deb/debian/console@0.16.2", package_type="cargo"
     )
+
+
+def test_trivy_status_becomes_the_fix_state():
+    findings, _, _ = parse_trivy_json({"Results": [{"Target": "img (debian 12)", "Type": "debian", "Vulnerabilities": [
+        {"VulnerabilityID": "CVE-1", "PkgName": "a", "InstalledVersion": "1", "Status": "will_not_fix"},
+        {"VulnerabilityID": "CVE-2", "PkgName": "b", "InstalledVersion": "1", "Status": "fix_deferred"},
+        {"VulnerabilityID": "CVE-3", "PkgName": "c", "InstalledVersion": "1", "Status": "end_of_life"},
+        {"VulnerabilityID": "CVE-4", "PkgName": "d", "InstalledVersion": "1", "Status": "affected"},
+        {"VulnerabilityID": "CVE-5", "PkgName": "e", "InstalledVersion": "1", "FixedVersion": "2", "Status": "fixed"},
+    ]}]}, "s", "t")
+
+    assert [f.fix_state for f in findings] == ["wont_fix", "fix_deferred", "end_of_life", "not_fixed", "fixed"]

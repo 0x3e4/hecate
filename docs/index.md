@@ -63,6 +63,11 @@ optional AI triage.
 
     Stand up the Docker Compose stack in a few minutes. → [Getting Started](getting-started.md)
 
+-   :material-server-outline: **Running it on a server?**
+
+    Reverse proxy and TLS, your own images, updates and backups.
+    → [Installation & Deployment](deployment.md)
+
 -   :material-book-open-variant: **Learn the UI**
 
     A guided tour of every page and what you can do on it. → [User Guide](guide/overview.md)
@@ -74,11 +79,12 @@ optional AI triage.
 
 -   :material-cog-outline: **Tuning a deployment?**
 
-    Every environment variable, grouped and explained. → [Configuration](configuration.md)
+    Every environment variable, grouped and explained. → [Environment Variables](configuration.md)
 
 </div>
 
 !!! note "Documentation status"
-    This site is built from the repository with MkDocs Material and published on Read the Docs.
+    This site is built from the repository with MkDocs Material and served from its own nginx image;
+    you can [host a copy](deployment.md#hosting-the-documentation) next to your instance.
     For contributor-level detail, see the component `README.md` files in the repository
     (`backend/`, `frontend/`, `scanner/`).

@@ -112,25 +112,29 @@ cp docker-compose.yml.example docker-compose.yml
 nano .env
 
 # 3. Bring the stack up
-docker compose up --build
+docker compose up -d
 ```
+
+Server setup — reverse proxy and TLS, your own images, updates, backups — is described in
+[Installation & Deployment](https://docs.hecate.pw/deployment/), every setting in
+[Environment Variables](https://docs.hecate.pw/configuration/).
 
 ### Default endpoints
 
+Only the frontend publishes a port; it is also the gateway to the API. MongoDB, OpenSearch, the
+scanner and Apprise are reachable inside Compose only.
+
 | Service | URL |
 | --- | --- |
-| Frontend + gateway | <http://localhost:8080> |
-| Backend API (through the gateway) | <http://localhost:8080/api/v1> |
+| Web app | <http://localhost:8080> |
+| API (through the gateway) | <http://localhost:8080/api/v1> |
 | Health check | <http://localhost:8080/api/v1/status/health> |
-| MongoDB | `mongodb://localhost:27017` |
-| OpenSearch | <https://localhost:9200> |
-| Scanner sidecar | <http://localhost:8080> |
-| Apprise (internal) | `http://apprise:8000` |
+| Documentation (optional, `docs` profile) | <http://127.0.0.1:8001> |
 
 ### Behind a reverse proxy
 
 For a live deployment, terminate TLS at a reverse proxy. Ready-to-adapt **nginx**, **Caddy**, and
-**Traefik** templates — terminating HTTPS, routing `/api` / `/mcp` / SSE to the backend, and setting
+**Traefik** templates — terminating HTTPS, sending every request to the frontend gateway, and setting
 a hardened HTTP security-header set (HSTS, a strict CSP, `X-Frame-Options`, `Permissions-Policy`, …) —
 live in [`deploy/reverse-proxy/`](deploy/reverse-proxy/).
 

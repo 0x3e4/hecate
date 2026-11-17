@@ -1,9 +1,18 @@
-# Configuration
+# Environment Variables
 
-All configuration is via environment variables. The **authoritative defaults live in
-`backend/app/core/config.py`** (every Pydantic field is an env var, uppercased); scanner-side
-variables are read directly by the scanner sidecar. `.env.example` ships example values that may
-differ from the code defaults.
+Every setting of Hecate is an environment variable. This page lists all of them. Where they go:
+
+- **`.env`**: read by the backend and the scanner (`env_file` in `docker-compose.yml`). Most settings
+  on this page.
+- **The `frontend` service** in `docker-compose.yml`: the [gateway settings](#frontend-gateway). The
+  frontend reads no `.env`, so the backend's secrets stay out of it.
+- **The other services** in `docker-compose.yml`: MongoDB, OpenSearch and Apprise take a few
+  variables of their own, see [Bundled services](#bundled-services).
+- **Build arguments**: baked into an image when you [build it yourself](#build-arguments).
+
+The defaults below are the ones the code uses when a variable is unset; `.env.example` sometimes ships
+a different example value. A change takes effect after `docker compose up -d` recreates the
+container. How to install and run the stack: [Installation & Deployment](deployment.md).
 
 !!! warning "Fail-open by design"
     When `SYSTEM_PASSWORD` is unset the REST write gate is a no-op so existing deployments keep
@@ -22,9 +31,8 @@ differ from the code defaults.
 | `CORS_ORIGINS` | `*` | Comma-separated allowed browser origins. The `*` default serves wildcard reads **without** credentials (Hecate authenticates via headers, not cookies). Set explicit origin(s) — e.g. `https://hecate.example.com` — to scope reads and re-enable credentials. |
 | `SUPPORT_PAGE_ENABLED` | `true` | Show the in-app Support page. |
 | `DOCS_URL` | `https://docs.hecate.pw` | Target of the sidebar's **Documentation** link: the public docs, your own docs image (`docs/Dockerfile`), or empty to hide the link. Only `http(s)` URLs are used. |
-| `HECATE_GHCR_OWNER` | `0x3e4` | GHCR namespace for the three Hecate images (version-check on Support page). |
-| `HECATE_BUILD_SHA` | (build-injected) | Git SHA of the running build, a build argument of all three images. CI sets it; for a local `docker compose build` pass it yourself (`args: { HECATE_BUILD_SHA: ${HECATE_BUILD_SHA:-} }` per service, then `HECATE_BUILD_SHA=$(git rev-parse --short HEAD) docker compose build`), or the Support page shows *SHA unknown*. |
-| `VITE_API_BASE_URL` | `/api` | Frontend API base URL, baked into the bundle at build time. |
+| `HECATE_GHCR_OWNER` | `0x3e4` | GHCR namespace the Support page checks for newer `hecate-backend`, `-frontend` and `-scanner` images. |
+| `HECATE_BUILD_SHA` | (from the image) | Git commit of the running backend or scanner, normally baked in as a [build argument](#build-arguments). Set it as a variable only when you run the backend outside Docker. |
 
 ## Access control (passwords)
 
@@ -35,8 +43,8 @@ The full model, including per-target write delegation, is described in
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SYSTEM_PASSWORD` 🔑 | (unset) | Admin password. When set, **all REST writes** require header `X-System-Password`, and it unlocks the System page. |
-| `AI_ANALYSIS_PASSWORD` 🔑 | (unset) | Required (header `X-AI-Analysis-Password`) to trigger any AI analysis — the final layer on top of the write gate. |
+| `SYSTEM_PASSWORD` 🔑 | (unset) | Admin password (header `X-System-Password`). When set, every REST write needs it, and so do the admin reads: the System page, the audit log and API tokens. With [sign-in](admin/authentication.md), admins don't need it. |
+| `AI_ANALYSIS_PASSWORD` 🔑 | (unset) | Needed (header `X-AI-Analysis-Password`) to start any AI analysis and to list past analyses on the AI analysis page, for every role. |
 | `SCA_API_KEY` 🔑 | (unset) | API key (header `X-API-Key`) for the CI/CD scan-submission endpoint `POST /api/v1/scans`. API tokens from System → Access Control work as well, see [Security & Access Control](security-access-control.md#api-tokens). |
 | `SCA_SCANNER_SECRET` 🔑 | (unset) | Shared secret between the backend and the scanner sidecar (header `X-Scanner-Secret`). Set the same value on both; needed once anything else can reach the sidecar. |
 
@@ -97,9 +105,43 @@ at startup, so direct egress (for example to NVD) keeps working alongside proxie
 | `MONGO_TLS_CERT_KEY_FILE` | (unset) | Client cert+key path for MongoDB TLS auth. |
 | `MONGO_DB` | `hecate` | Database name. |
 
-Collection names are also overridable (`MONGO_*_COLLECTION`, e.g. `MONGO_VULNERABILITIES_COLLECTION`,
-`MONGO_SCANS_COLLECTION`) — defaults match the collection list in the [Architecture](architecture.md)
-docs and rarely need changing.
+### Collection names
+
+Each collection's name can be changed, for example to share one database between two instances.
+Rarely needed; the defaults are:
+
+| Variable | Default |
+| --- | --- |
+| `MONGO_VULNERABILITIES_COLLECTION` | `vulnerabilities` |
+| `MONGO_CPE_COLLECTION` | `cpe_catalog` |
+| `MONGO_ASSET_VENDORS_COLLECTION` | `asset_vendors` |
+| `MONGO_ASSET_PRODUCTS_COLLECTION` | `asset_products` |
+| `MONGO_ASSET_VERSIONS_COLLECTION` | `asset_versions` |
+| `MONGO_INGESTION_STATE_COLLECTION` | `ingestion_state` |
+| `MONGO_INGESTION_LOG_COLLECTION` | `ingestion_logs` |
+| `MONGO_KEV_COLLECTION` | `known_exploited_vulnerabilities` |
+| `MONGO_CERT_ADVISORIES_COLLECTION` | `cert_advisories` |
+| `MONGO_ADVISORY_FEEDS_COLLECTION` | `advisory_feeds` |
+| `MONGO_CWE_COLLECTION` | `cwe_catalog` |
+| `MONGO_CAPEC_COLLECTION` | `capec_catalog` |
+| `MONGO_SAVED_SEARCHES_COLLECTION` | `saved_searches` |
+| `MONGO_SCAN_TARGETS_COLLECTION` | `scan_targets` |
+| `MONGO_SCANS_COLLECTION` | `scans` |
+| `MONGO_SCAN_FINDINGS_COLLECTION` | `scan_findings` |
+| `MONGO_SCAN_SBOM_COLLECTION` | `scan_sbom_components` |
+| `MONGO_SCAN_LAYERS_COLLECTION` | `scan_layer_analysis` |
+| `MONGO_NOTIFICATION_RULES_COLLECTION` | `notification_rules` |
+| `MONGO_NOTIFICATION_CHANNELS_COLLECTION` | `notification_channels` |
+| `MONGO_NOTIFICATION_TEMPLATES_COLLECTION` | `notification_templates` |
+| `MONGO_LICENSE_POLICIES_COLLECTION` | `license_policies` |
+| `MONGO_ENVIRONMENT_INVENTORY_COLLECTION` | `environment_inventory` |
+| `MONGO_ENVIRONMENT_INVENTORY_HISTORY_COLLECTION` | `environment_inventory_history` |
+| `MONGO_MALWARE_INTEL_COLLECTION` | `malware_intel` |
+| `MONGO_APP_SETTINGS_COLLECTION` | `app_settings` |
+| `MONGO_API_TOKENS_COLLECTION` | `api_tokens` |
+| `MONGO_VEX_RULES_COLLECTION` | `vex_rules` |
+| `MONGO_PACKAGE_RELEASES_COLLECTION` | `package_releases` |
+| `MONGO_AUTH_SESSIONS_COLLECTION` | `auth_sessions` |
 
 ## OpenSearch
 
@@ -140,6 +182,7 @@ The compatible provider activates only once both its base URL and model are set.
 | `AI_MAX_OUTPUT_TOKENS` | `16000` | Hard ceiling per completion across providers. |
 | `AI_RESPONSE_LANGUAGE` | `en` | Default AI response language. |
 | `AI_WEB_SEARCH_ENABLED` | `true` | Enable web search where supported (OpenAI; OpenRouter `:online`). |
+| `AI_BATCH_MAX_VULNS` | `10` | Most vulnerabilities in one batch analysis. Admins can change it on System → General → AI analysis, up to 100; that value wins over this one. |
 
 ## MCP server (optional)
 
@@ -202,9 +245,22 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 
 ### Scanner sidecar (scanner-side)
 
+Set in `.env` like the rest; the scanner reads them. When a scanner's time limit is raised, the
+backend waits longer for it on its own: its timeout per call is the largest of these plus 60 s, at
+least `SCA_SCANNER_TIMEOUT_SECONDS`.
+
 | Variable | Default | Description |
 | --- | --- | --- |
-| `<SCANNER>_TIMEOUT_SECONDS` | grype `1800`, devskim `1500`, trufflehog `300`, others `600` | Per-scanner subprocess timeout. Hyphenated names use underscores (`osv-scanner` → `OSV_SCANNER_TIMEOUT_SECONDS`). The backend's HTTP timeout auto-derives from these. For `govulncheck` it is the budget for all Go modules of a scan. |
+| `TRIVY_TIMEOUT_SECONDS` | `600` | Time limit of one Trivy run. |
+| `GRYPE_TIMEOUT_SECONDS` | `1800` | Grype; loading its database and matching a large image takes long. |
+| `SYFT_TIMEOUT_SECONDS` | `600` | Syft, also the SBOM step before Grype on images. |
+| `OSV_SCANNER_TIMEOUT_SECONDS` | `600` | OSV Scanner. |
+| `DOCKLE_TIMEOUT_SECONDS` | `600` | Dockle (images). |
+| `DIVE_TIMEOUT_SECONDS` | `600` | Dive (images). |
+| `SEMGREP_TIMEOUT_SECONDS` | `600` | Semgrep (repositories). |
+| `TRUFFLEHOG_TIMEOUT_SECONDS` | `300` | TruffleHog (repositories). |
+| `DEVSKIM_TIMEOUT_SECONDS` | `1500` | DevSkim (repositories). |
+| `GOVULNCHECK_TIMEOUT_SECONDS` | `600` | govulncheck: one budget for all Go modules of a scan. |
 | `GOVULNCHECK_MAX_MODULES` | `25` | Most Go modules (`go.mod` files) govulncheck analyses per repository. More make the run incomplete, and then it sets no VEX statements. |
 | `GOVULNCHECK_DB` | (vuln.go.dev) | Go vulnerability database for govulncheck, e.g. a mirror for an offline site (`https://` or `file://`). |
 | `GOVULNCHECK_CACHE_DIR` | (per run) | Persistent Go module cache for govulncheck; unset, modules are downloaded into a per-run directory under `/tmp` and removed afterwards. |
@@ -236,32 +292,76 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 
 ### Per source
 
-Each source shares the same knobs (`*_BASE_URL`, `*_TIMEOUT_SECONDS`, `*_RATE_LIMIT_SECONDS`,
-`*_MAX_RETRIES`, `*_RETRY_BACKOFF_SECONDS`, `*_MAX_RECORDS_PER_RUN`). Notable ones:
+Most sources share the same kinds of settings:
+
+- `*_BASE_URL`: the API address, for a mirror or proxy.
+- `*_TIMEOUT_SECONDS`: timeout per request.
+- `*_RATE_LIMIT_SECONDS`: least time between two requests.
+- `*_MAX_RETRIES` / `*_RETRY_BACKOFF_SECONDS`: retries after timeouts, 5xx and 429; the wait doubles
+  from the backoff on each try.
+- `*_MAX_RECORDS_PER_RUN`: cap per sync run; empty means no cap.
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `EUVD_BASE_URL` | `https://euvdservices.enisa.europa.eu/api` | ENISA EUVD API. |
 | `EUVD_PAGE_SIZE` | `250` | Records per page (max 250). |
+| `EUVD_TIMEOUT_SECONDS` | `30` | |
+| `EUVD_RATE_LIMIT_SECONDS` | `1.0` | |
+| `EUVD_MAX_RETRIES` | `3` | |
+| `EUVD_RETRY_BACKOFF_SECONDS` | `5.0` | |
+| `EUVD_MAX_RECORDS_PER_RUN` | (none) | |
+| `NVD_BASE_URL` | `https://services.nvd.nist.gov/rest/json` | NVD CVE API. |
 | `NVD_API_KEY` 🔑 | (unset) | NVD key (5× rate limit). |
 | `NVD_PAGE_SIZE` | `2000` | Records per page; don't lower or backfill slows hugely. |
 | `NVD_TIMEOUT_SECONDS` | `60` | NVD per-request timeout. |
+| `NVD_RATE_LIMIT_SECONDS` | `6.0` | Lower it with an API key (NVD allows about 50 requests in 30 s then). |
+| `NVD_MAX_RETRIES` | `5` | |
+| `NVD_RETRY_BACKOFF_SECONDS` | `5.0` | |
+| `NVD_MAX_RECORDS_PER_RUN` | (none) | |
 | `KEV_FEED_URL` | CISA KEV JSON | CISA Known Exploited Vulnerabilities feed. |
+| `CPE_BASE_URL` | `https://services.nvd.nist.gov/rest/json/cpes/2.0` | NVD CPE API. |
 | `CPE_MAX_RECORDS_PER_RUN` | `10000` | Per-run cap for the CPE catalog. |
 | `CWE_BASE_URL` | `https://cwe-api.mitre.org/api/v1` | MITRE CWE API. |
+| `CWE_TIMEOUT_SECONDS` | `30` | |
+| `CWE_RATE_LIMIT_SECONDS` | `1.0` | |
 | `CAPEC_XML_URL` | MITRE CAPEC XML | MITRE CAPEC download. |
+| `CAPEC_TIMEOUT_SECONDS` | `60` | |
 | `CIRCL_BASE_URL` | `https://vulnerability.circl.lu/api` | CIRCL CVE + EPSS API. |
+| `CIRCL_TIMEOUT_SECONDS` | `30` | |
+| `CIRCL_RATE_LIMIT_SECONDS` | `1.0` | |
+| `CIRCL_MAX_RETRIES` | `3` | |
+| `CIRCL_RETRY_BACKOFF_SECONDS` | `3.0` | |
+| `CIRCL_MAX_RECORDS_PER_RUN` | `1000` | CVEs enriched with CIRCL data (and EPSS) per run. |
 | `CERT_FEEDS_ENABLED` | `true` | Read the advisory feeds behind the Advisories page and the dashboard's *Needs attention* panel, including those added on System → Data. |
 | `CERT_FEEDS_EXTRA` | (unset) | Feeds on top of the built-in list, as `Name\|URL` or `Name\|URL\|kind` entries separated by commas, e.g. `CERT.at\|https://www.cert.at/cert-at.de.warnings.rss_2.0.xml`. `kind` is `cert` (default), `vendor` or `community`. Any RSS, RDF or Atom feed; a built-in name replaces that entry. Feeds can also be added on System → Data. See [Advisory feeds](guide/dashboard.md#advisory-feeds). |
 | `CERT_FEEDS` | CERT-FR, CERT-EU, NCSC-NL, CCCS, JPCERT/CC | Replaces the built-in list, same format. |
 | `CERT_FEEDS_MAX_PAGE_FETCHES_PER_RUN` | `50` | Per feed and run: advisory pages read for items that name no CVE in the feed. Community feeds read none. |
 | `CERT_FEEDS_ALLOW_PRIVATE_HOSTS` | `false` | Let feeds added on System → Data point at private, loopback or link-local addresses. Off, such a feed is refused when saved and skipped before every run. `.env` feeds are not checked. |
-| `GHSA_TOKEN` 🔑 | (unset) | GitHub PAT (60 → 5000 req/h). |
+| `CERT_FEEDS_TIMEOUT_SECONDS` | `30` | |
+| `CERT_FEEDS_RATE_LIMIT_SECONDS` | `1.0` | |
+| `CERT_FEEDS_MAX_RETRIES` | `3` | |
+| `CERT_FEEDS_RETRY_BACKOFF_SECONDS` | `3.0` | |
+| `GHSA_BASE_URL` | `https://api.github.com/advisories` | GitHub Advisory API. |
+| `GHSA_TOKEN` 🔑 | (unset) | GitHub PAT (60 → 5000 req/h). Also raises the limit of the Support page's version check. |
+| `GHSA_TIMEOUT_SECONDS` | `30` | |
+| `GHSA_RATE_LIMIT_SECONDS` | `1.0` | |
+| `GHSA_MAX_RETRIES` | `3` | |
+| `GHSA_RETRY_BACKOFF_SECONDS` | `5.0` | |
+| `GHSA_MAX_RECORDS_PER_RUN` | `5000` | |
 | `OSV_BASE_URL` | `https://api.osv.dev/v1` | OSV.dev API. |
+| `OSV_TIMEOUT_SECONDS` | `30` | |
+| `OSV_RATE_LIMIT_SECONDS` | `0.5` | |
+| `OSV_MAX_RETRIES` | `5` | |
+| `OSV_RETRY_BACKOFF_SECONDS` | `5.0` | |
+| `OSV_MAX_RECORDS_PER_RUN` | (none) | The run's time budget (`INGESTION_RUNNING_TIMEOUT_MINUTES`) bounds it instead. |
 | `OSV_INCREMENTAL_LOOKBACK_HOURS` | `48` | Incremental OSV syncs re-read `modified_id.csv` from this many hours before the cursor, because OSV exports a record hours after its upstream `modified` timestamp. Rows already processed with the same timestamp are skipped. `0` disables. |
 | `OSV_INITIAL_SYNC_CONCURRENCY` | `16` | Workers for the OSV initial sync. |
 | `OSV_INITIAL_SYNC_BATCH_SIZE` | `32` | Batch size for the OSV initial sync. |
-| `DEPS_DEV_BASE_URL` | `https://api.deps.dev/v3` | deps.dev API for MAL-* version enrichment. |
+| `DEPS_DEV_BASE_URL` | `https://api.deps.dev/v3` | deps.dev API: versions of malicious packages, release data for the supply-chain signals and the package check. |
+| `DEPS_DEV_TIMEOUT_SECONDS` | `15` | |
+| `DEPS_DEV_RATE_LIMIT_SECONDS` | `0.1` | |
+| `DEPS_DEV_MAX_RETRIES` | `3` | |
+| `DEPS_DEV_RETRY_BACKOFF_SECONDS` | `2.0` | |
 
 ## Inventory enrichment (endoflife.date)
 
@@ -283,10 +383,21 @@ Annotates [Environment Inventory](guide/inventory.md) items with support / end-o
 | --- | --- | --- |
 | `SCHEDULER_ENABLED` | `true` | Master toggle for all periodic ingestion jobs. |
 | `SCHEDULER_TIMEZONE` | `UTC` | IANA timezone for cron expressions. |
-| `SCHEDULER_<SOURCE>_INTERVAL_MINUTES` | EUVD 60, NVD 10, KEV 60, CPE 1440, CIRCL/GHSA/OSV/CERT_FEEDS 120 | Incremental sync interval per source. |
-| `SCHEDULER_<SOURCE>_FULL_SYNC_*` | enabled; Sun/Wed/Fri 02:00 | Weekly full-sync verification for EUVD/NVD/OSV (`*_ENABLED`, `*_CRON_HOUR`, `*_CRON_DAY_OF_WEEK`). |
-| `SCHEDULER_CWE_CRON_*` / `SCHEDULER_CAPEC_CRON_*` | Mon/Tue 03:00 | Wall-clock cron for the CWE / CAPEC catalogs. |
-| `SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` | `1.5` | Startup stale-catalog catch-up threshold (× the interval). |
+| `SCHEDULER_NVD_INTERVAL_MINUTES` | `10` | Incremental NVD sync. |
+| `SCHEDULER_EUVD_INTERVAL_MINUTES` | `60` | Incremental EUVD sync. |
+| `SCHEDULER_KEV_INTERVAL_MINUTES` | `60` | CISA KEV catalog. |
+| `SCHEDULER_CPE_INTERVAL_MINUTES` | `1440` | CPE catalog. |
+| `SCHEDULER_CIRCL_INTERVAL_MINUTES` | `120` | CIRCL enrichment and EPSS. |
+| `SCHEDULER_GHSA_INTERVAL_MINUTES` | `120` | GitHub advisories. |
+| `SCHEDULER_OSV_INTERVAL_MINUTES` | `120` | OSV, including malicious packages. |
+| `SCHEDULER_CERT_FEEDS_INTERVAL_MINUTES` | `120` | Advisory feeds. |
+| `SCHEDULER_NVD_FULL_SYNC_ENABLED` / `_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `true` / `wed` / `2` | Weekly full NVD sync that catches anything the incremental runs missed. |
+| `SCHEDULER_EUVD_FULL_SYNC_ENABLED` / `_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `true` / `sun` / `2` | Weekly full EUVD sync. |
+| `SCHEDULER_OSV_FULL_SYNC_ENABLED` / `_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `true` / `fri` / `2` | Weekly full OSV sync (re-reads every ecosystem export). |
+| `SCHEDULER_CWE_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `mon` / `3` | Weekly CWE catalog refresh. |
+| `SCHEDULER_CAPEC_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `tue` / `3` | Weekly CAPEC catalog refresh. |
+| `SCHEDULER_CWE_INTERVAL_DAYS` / `SCHEDULER_CAPEC_INTERVAL_DAYS` | `7` | How old the catalog may get; the startup check below measures against it. |
+| `SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` | `1.5` | At startup, a CWE or CAPEC catalog older than interval × this is refreshed right away. |
 
 ## Notifications (Apprise)
 
@@ -320,4 +431,30 @@ the backend, so the backend publishes no port. Its settings are environment vari
 | `MAX_UPLOAD_MB` | `100` | Request body limit for `/api` and `/mcp` (SBOM uploads, base64 source archives, backups). Keep it above `SCA_SOURCE_ARCHIVE_MAX_BYTES` × 1.4. |
 
 Ready-to-adapt nginx / Caddy / Traefik templates that terminate TLS, send every request to the
-gateway, and set a hardened HTTP security-header set live in `deploy/reverse-proxy/`.
+gateway, and set a hardened HTTP security-header set live in `deploy/reverse-proxy/`, see
+[Reverse proxy & TLS](deployment.md#reverse-proxy-tls).
+
+## Bundled services
+
+The compose file passes a few `.env` values on to the database and notification containers:
+
+| Variable | Service | Set from | Description |
+| --- | --- | --- | --- |
+| `MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD` | `mongo` | `MONGO_USERNAME` / `MONGO_PASSWORD` | Create the MongoDB admin user on the **first** start. Changing them later does not change the user; change it in MongoDB. |
+| `OPENSEARCH_INITIAL_ADMIN_PASSWORD` | `opensearch` | `OPENSEARCH_PASSWORD` | The `admin` password on the first start. OpenSearch refuses weak ones (at least 8 characters with upper and lower case, a digit and a special character). |
+| `OPENSEARCH_JAVA_OPTS` | `opensearch` | `OPENSEARCH_JAVA_OPTS` | Java heap, e.g. `-Xms2g -Xmx2g`. Give it about half the memory you allow the container. |
+| `APPRISE_STATEFUL_MODE` | `apprise` | fixed `simple` | Lets Apprise keep its configuration on the `apprise-config` volume. Hecate sends its channel URLs with every message and does not depend on it. |
+| `TZ` | `opensearch` | `TZ` | Timezone of the OpenSearch logs. |
+
+## Build arguments
+
+Only when you [build the images yourself](deployment.md#building-your-own-images):
+
+| Argument | Image | Description |
+| --- | --- | --- |
+| `HECATE_BUILD_SHA` | backend, frontend, scanner | Git commit of the build (`git rev-parse HEAD`). The Support page compares it with the published images; without it the page shows *SHA unknown*. |
+| `VITE_API_BASE_URL` | frontend | Where the web app sends API requests, default `/api`. Only change it when the API is served under another path. |
+| `DOCS_SITE_URL` | docs | Address the documentation is served under, default `https://docs.hecate.pw/`. Links inside the site only stay on your copy when this matches it. |
+
+The scanner's `Dockerfile` also pins the version and commit of every bundled tool (`DIVE_VERSION`,
+`OSV_SCANNER_VERSION`, `GOVULNCHECK_VERSION`, …). Leave them as they are; a release updates them.

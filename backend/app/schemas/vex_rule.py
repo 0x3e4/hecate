@@ -13,6 +13,8 @@ VexStatusLiteral = Literal["not_affected", "affected", "fixed", "under_investiga
 ScopeLiteral = Literal["runtime", "dev", "optional", "unknown"]
 TargetTypeLiteral = Literal["container_image", "source_repo", "sbom-import"]
 SeverityLiteral = Literal["critical", "high", "medium", "low", "negligible"]
+# fix_state values a distribution sets when it ships no fix (Trivy `Status`, Grype `fix.state`).
+NoFixStateLiteral = Literal["wont_fix", "fix_deferred", "end_of_life"]
 
 # CycloneDX analysis.justification and OpenVEX justification values; the
 # rule's justification is written as-is into exports, so it stays in these.
@@ -66,7 +68,7 @@ class VexRuleConditions(BaseModel):
     )
     package_pattern: str | None = Field(
         default=None, alias="packagePattern", serialization_alias="packagePattern", max_length=300,
-        description="Wildcard (*, ?) on the package name, case-insensitive",
+        description="Wildcard (*, ?) on the package name, case-insensitive; several separated by commas",
     )
     ecosystems: list[str] = Field(
         default_factory=list, max_length=30,
@@ -82,6 +84,15 @@ class VexRuleConditions(BaseModel):
             "Every vulnerable configuration of the vulnerability needs Windows or an Apple OS, "
             "and the target is a Linux container image"
         ),
+    )
+
+    vulnerability_rejected: bool = Field(
+        default=False, alias="vulnerabilityRejected", serialization_alias="vulnerabilityRejected",
+        description="The vulnerability record is REJECTED by its CNA (from the vulnerability database)",
+    )
+    fix_states: list[NoFixStateLiteral] = Field(
+        default_factory=list, alias="fixStates", serialization_alias="fixStates",
+        description="The distribution ships no fix: will not fix, fix deferred, or the release is end of life",
     )
 
     model_config = {"populate_by_name": True}
@@ -116,7 +127,7 @@ class VexRuleConditions(BaseModel):
                 out.append(eco)
         return out
 
-    @field_validator("target_types", "dependency_scopes")
+    @field_validator("target_types", "dependency_scopes", "fix_states")
     @classmethod
     def _dedupe(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))
@@ -125,8 +136,12 @@ class VexRuleConditions(BaseModel):
         return not (
             self.target_pattern or self.target_group or self.target_types or self.dependency_scopes
             or self.cwe_ids or self.package_pattern or self.ecosystems or self.max_severity
-            or self.platform_mismatch
+            or self.platform_mismatch or self.vulnerability_rejected or self.fix_states
         )
+
+    def package_patterns(self) -> list[str]:
+        """The package wildcards; ``package_pattern`` holds them separated by commas."""
+        return [p.strip() for p in (self.package_pattern or "").split(",") if p.strip()]
 
 
 class VexRuleAction(BaseModel):

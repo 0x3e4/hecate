@@ -56,10 +56,10 @@ flowchart TB
 ```
 
 The whole stack is orchestrated with Docker Compose — backend, frontend, scanner, mongo, opensearch
-and apprise. Images are published to GitHub Container Registry at
-`ghcr.io/0x3e4/hecate-{backend,frontend,scanner}` (the namespace is configurable via
-`HECATE_GHCR_OWNER`) and tagged `latest`, `main-<sha>` and the matching semver on release. Two GitHub
-Actions workflows drive CI/CD: `build-images.yml` builds all three images on every push to `main` and
+and apprise, plus the optional docs site. Images are published to GitHub Container Registry at
+`ghcr.io/0x3e4/hecate-{backend,frontend,scanner,docs}` (the namespace the Support page checks is
+configurable via `HECATE_GHCR_OWNER`) and tagged `latest`, `main-<sha>` and the matching semver on
+release. Two GitHub Actions workflows drive CI/CD: `build-images.yml` builds all four images on every push to `main` and
 on semver tags, while `release.yml` extracts the matching section from `CHANGELOG.md` and cuts a
 GitHub Release whenever a semver tag is pushed.
 
@@ -604,7 +604,7 @@ and Flexbox throughout, with the sidebar collapsing to an overlay on mobile.
 Hecate ships German and English through a small home-grown i18n built on the Context API and the
 `t(english, german)` pattern, with browser-language detection and `localStorage` persistence — no
 external framework. Dates render as `DD.MM.YYYY HH:mm` (de-DE) or `MM/DD/YYYY` (en-US). The timezone is
-a user setting on the System page (persisted under `hecate.ui_timezone`, defaulting to the browser
+a per-browser setting under **Language** in the sidebar (persisted under `hecate.ui_timezone`, defaulting to the browser
 timezone), and `formatDate` reads the current value per call.
 
 ### Code splitting

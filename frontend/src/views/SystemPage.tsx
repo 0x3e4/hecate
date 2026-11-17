@@ -62,9 +62,6 @@ import { fetchInventoryItems } from "../api/inventory";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
-import type { AppLanguage } from "../i18n/language";
-import { useTimezone } from "../timezone/context";
-import { listSupportedTimezones } from "../timezone/storage";
 import { useServerConfig } from "../server-config/context";
 import { BusyLabel, EmptyState, PageHeader, Section } from "../ui/primitives";
 import { tabPillStyle } from "../ui/TabPill";
@@ -201,13 +198,7 @@ const createBackupDatasets = (t: TranslateFn): BackupDataset[] => [
 ];
 
 const SystemSettings = () => {
-  const { language, locale, setLanguage, t } = useI18n();
-  const { timezone, isBrowserDefault, setTimezone } = useTimezone();
-  const supportedTimezones = useMemo(() => listSupportedTimezones(), []);
-  const [timezoneDraft, setTimezoneDraft] = useState<string>(isBrowserDefault ? "" : timezone);
-  useEffect(() => {
-    setTimezoneDraft(isBrowserDefault ? "" : timezone);
-  }, [timezone, isBrowserDefault]);
+  const { locale, t } = useI18n();
   const { aiBatchMaxVulns } = useServerConfig();
   const [aiBatchDraft, setAiBatchDraft] = useState<string>(String(aiBatchMaxVulns));
   const [aiBatchSaving, setAiBatchSaving] = useState(false);
@@ -1321,87 +1312,6 @@ const SystemSettings = () => {
             <StatusWord tone={serviceTone(scannerStatus)}>{serviceLabel(scannerStatus)}</StatusWord>
           </Setting>
         ) : null}
-      </Section>
-
-      <Section title={t("Language and timezone", "Sprache und Zeitzone")}>
-        <Setting
-          label={t("Interface language", "Oberflächensprache")}
-          help={t(
-            "The initial default follows your browser language. Set a fixed language here.",
-            "Die initiale Standardsprache folgt der Browser-Sprache. Hier kannst du eine feste Sprache setzen."
-          )}
-          htmlFor="system-language-select"
-        >
-          <select
-            id="system-language-select"
-            className="system-input"
-            value={language}
-            onChange={(event) => setLanguage(event.target.value as AppLanguage)}
-          >
-            <option value="en">English</option>
-            <option value="de">Deutsch</option>
-          </select>
-        </Setting>
-
-        <Setting
-          label={t("Display timezone", "Anzeige-Zeitzone")}
-          help={t(
-            "All dates in the UI are rendered in this timezone. Defaults to your browser's timezone.",
-            "Alle Datumsangaben werden in dieser Zeitzone dargestellt. Standard ist die Zeitzone deines Browsers."
-          )}
-          htmlFor="system-timezone-input"
-        >
-          <input
-            id="system-timezone-input"
-            className="system-input"
-            list="system-timezone-options"
-            value={timezoneDraft}
-            placeholder={t(`Browser default (${timezone})`, `Browser-Standard (${timezone})`)}
-            onChange={(event) => {
-              const next = event.target.value;
-              setTimezoneDraft(next);
-              const trimmed = next.trim();
-              if (!trimmed) {
-                setTimezone(null);
-                return;
-              }
-              if (supportedTimezones.includes(trimmed)) {
-                setTimezone(trimmed);
-              }
-            }}
-            onBlur={() => {
-              const trimmed = timezoneDraft.trim();
-              if (!trimmed) {
-                setTimezone(null);
-                return;
-              }
-              if (!supportedTimezones.includes(trimmed)) {
-                // invalid entry — snap back to committed value
-                setTimezoneDraft(isBrowserDefault ? "" : timezone);
-              }
-            }}
-          />
-          <datalist id="system-timezone-options">
-            {supportedTimezones.map((tz) => (
-              <option key={tz} value={tz} />
-            ))}
-          </datalist>
-          {!isBrowserDefault && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setTimezone(null)}
-            >
-              {t("Reset to browser default", "Auf Browser-Standard zurücksetzen")}
-            </button>
-          )}
-          <p className="system-setting-note">
-            {t(
-              `Active timezone: ${timezone}${isBrowserDefault ? " (browser default)" : ""}`,
-              `Aktive Zeitzone: ${timezone}${isBrowserDefault ? " (Browser-Standard)" : ""}`
-            )}
-          </p>
-        </Setting>
       </Section>
 
       <Section title={t("AI analysis", "AI-Analyse")}>

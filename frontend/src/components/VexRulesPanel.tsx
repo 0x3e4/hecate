@@ -13,6 +13,7 @@ import {
   updateVexRule,
 } from "../api/vexRules";
 import { useI18n, type TranslateFn } from "../i18n/context";
+import { NO_FIX_STATES, noFixLabel, type NoFixState } from "../utils/fixState";
 import type { VexRule, VexRuleConditions, VexRuleInput, VexRulePreset } from "../types";
 import { BusyLabel, EmptyState, ErrorState, Section } from "../ui/primitives";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -74,6 +75,8 @@ const describeConditions = (c: VexRuleConditions, t: TranslateFn): string[] => {
   if (c.ecosystems.length) parts.push(c.ecosystems.join(" / "));
   if (c.maxSeverity) parts.push(t(`severity ≤ ${c.maxSeverity}`, `Schweregrad ≤ ${c.maxSeverity}`));
   if (c.platformMismatch) parts.push(t("Windows/Apple OS only, Linux image", "nur Windows/Apple-OS, Linux-Image"));
+  if (c.vulnerabilityRejected) parts.push(t("rejected CVE", "zurückgezogenes CVE"));
+  if (c.fixStates?.length) parts.push(c.fixStates.map(s => noFixLabel(s, t)).join(" / "));
   return parts;
 };
 
@@ -91,6 +94,8 @@ interface FormState {
   ecosystems: string;
   maxSeverity: string;
   platformMismatch: boolean;
+  vulnerabilityRejected: boolean;
+  fixStates: NoFixState[];
   vexStatus: VexRuleInput["action"]["vexStatus"];
   vexJustification: string;
   vexDetail: string;
@@ -102,6 +107,7 @@ const EMPTY_FORM: FormState = {
   name: "", description: "", enabled: false, priority: "100",
   targetPattern: "", targetGroup: "", targetTypes: [], dependencyScopes: [], cweIds: "",
   packagePattern: "", ecosystems: "", maxSeverity: "", platformMismatch: false,
+  vulnerabilityRejected: false, fixStates: [],
   vexStatus: "not_affected", vexJustification: "", vexDetail: "", dismiss: false, preset: null,
 };
 
@@ -120,6 +126,8 @@ const toForm = (rule: { name: string; description?: string | null; enabled?: boo
   ecosystems: rule.conditions.ecosystems.join(", "),
   maxSeverity: rule.conditions.maxSeverity ?? "",
   platformMismatch: rule.conditions.platformMismatch,
+  vulnerabilityRejected: !!rule.conditions.vulnerabilityRejected,
+  fixStates: [...(rule.conditions.fixStates ?? [])],
   vexStatus: rule.action.vexStatus,
   vexJustification: rule.action.vexJustification ?? "",
   vexDetail: rule.action.vexDetail ?? "",
@@ -144,6 +152,8 @@ const toInput = (form: FormState): VexRuleInput => ({
     ecosystems: splitList(form.ecosystems).map(e => e.toLowerCase()),
     maxSeverity: (form.maxSeverity || null) as VexRuleConditions["maxSeverity"],
     platformMismatch: form.platformMismatch,
+    vulnerabilityRejected: form.vulnerabilityRejected,
+    fixStates: form.fixStates,
   },
   action: {
     vexStatus: form.vexStatus,
@@ -157,7 +167,8 @@ const toInput = (form: FormState): VexRuleInput => ({
 const hasCondition = (form: FormState): boolean => {
   const c = toInput(form).conditions;
   return !!(c.targetPattern || c.targetGroup || c.targetTypes.length || c.dependencyScopes.length || c.cweIds.length
-    || c.packagePattern || c.ecosystems.length || c.maxSeverity || c.platformMismatch);
+    || c.packagePattern || c.ecosystems.length || c.maxSeverity || c.platformMismatch
+    || c.vulnerabilityRejected || c.fixStates?.length);
 };
 
 const toggle = <T extends string>(list: T[], value: T): T[] =>
@@ -398,8 +409,8 @@ export const VexRulesPanel = () => {
             <input className="system-input mono" value={form.cweIds} placeholder="CWE-400, CWE-1333" onChange={e => setForm({ ...form, cweIds: e.target.value })} />
           </label>
           <label className="vex-rules-field">
-            <span>{t("Package (wildcard)", "Paket (Platzhalter)")}</span>
-            <input className="system-input mono" value={form.packagePattern} placeholder="@types/*" onChange={e => setForm({ ...form, packagePattern: e.target.value })} />
+            <span>{t("Packages (wildcards, comma-separated)", "Pakete (Platzhalter, mit Komma getrennt)")}</span>
+            <input className="system-input mono" value={form.packagePattern} placeholder="linux-libc-dev, kernel-headers" onChange={e => setForm({ ...form, packagePattern: e.target.value })} />
           </label>
           <label className="vex-rules-field">
             <span>{t("Ecosystems (purl types)", "Ökosysteme (purl-Typen)")}</span>
@@ -411,6 +422,19 @@ export const VexRulesPanel = () => {
               <option value="">{t("Any", "Beliebig")}</option>
               {SEVERITIES.map(sev => <option key={sev} value={sev}>{sev.charAt(0).toUpperCase() + sev.slice(1)}</option>)}
             </select>
+          </label>
+          <fieldset className="vex-rules-checks">
+            <legend>{t("Distribution ships no fix", "Distribution liefert keinen Fix")}</legend>
+            {NO_FIX_STATES.map(state => (
+              <label key={state}>
+                <input type="checkbox" checked={form.fixStates.includes(state)} onChange={() => setForm({ ...form, fixStates: toggle(form.fixStates, state) })} />
+                {noFixLabel(state, t)}
+              </label>
+            ))}
+          </fieldset>
+          <label className="vex-rules-check">
+            <input type="checkbox" checked={form.vulnerabilityRejected} onChange={e => setForm({ ...form, vulnerabilityRejected: e.target.checked })} />
+            <span>{t("The CVE is rejected by its CNA", "Das CVE ist von seiner CNA zurückgezogen")}</span>
           </label>
           <label className="vex-rules-check vex-rules-span">
             <input type="checkbox" checked={form.platformMismatch} onChange={e => setForm({ ...form, platformMismatch: e.target.checked })} />

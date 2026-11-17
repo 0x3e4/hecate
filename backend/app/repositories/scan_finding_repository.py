@@ -1044,7 +1044,7 @@ class ScanFindingRepository:
                 },
                 {
                     "vulnerability_id": 1, "package_name": 1, "package_version": 1,
-                    "package_type": 1, "severity": 1, "dependency_scope": 1,
+                    "package_type": 1, "severity": 1, "dependency_scope": 1, "fix_state": 1,
                     "vex_status": 1, "vex_justification": 1, "vex_detail": 1,
                     "vex_updated_by": 1, "dismissed": 1, "dismissed_by": 1,
                 },

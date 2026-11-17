@@ -15,11 +15,14 @@ Because these UIs are generated from the running backend, they always match your
 !!! tip
     The raw OpenAPI JSON is served at `/api/openapi.json`. Point Postman, Insomnia, or a code generator at it to scaffold a typed client in your language of choice.
 
-## Reads are open; writes can be gated
+## Authentication
 
-Hecate treats reading and writing very differently. **Every read endpoint is open** — searching, fetching a CVE, listing findings, pulling stats, exporting an SBOM, and so on, all work without any credential. This keeps dashboards and automation simple, and it is why the security model assumes you put network-level controls (VPN, firewall, reverse-proxy auth, TLS) in front of the instance.
+How a script authenticates depends on how the instance is set up:
 
-**Mutating requests** — creating, updating, or deleting data — can be protected by one or more shared secrets, each carried in its own header. None of these are user accounts; they are shared-secret gates that you pair with network ACLs. The relevant headers are summarised below, and the full model is documented in [Security & Access Control](../security-access-control.md).
+- **Without sign-in, or with `AUTH_REQUIRE_LOGIN=false`**: most reads are open — searching, fetching a CVE, listing findings, pulling stats, exporting an SBOM. The admin reads are not: the audit log, notification channels, rules and templates, backups, sync states, advisory feeds and API tokens need `X-System-Password` (or an admin session), and the AI analysis history lists need `X-AI-Analysis-Password` when that password is set.
+- **With [sign-in](../admin/authentication.md) and `AUTH_REQUIRE_LOGIN=true`** (the default once OIDC is configured): every request needs a credential. Scripts send `X-API-Key` with an [API token](../security-access-control.md#api-tokens) of any scope, `SCA_API_KEY`, or `X-System-Password`; see [Reads, scripts and CI](../admin/authentication.md#reads-scripts-and-ci).
+
+**Mutating requests** — creating, updating, or deleting data — are protected by shared secrets, each carried in its own header, and with sign-in by the role of the session. The relevant headers are summarised below, and the full model is documented in [Security & Access Control](../security-access-control.md).
 
 | Header | Protects | Set on the backend via |
 | --- | --- | --- |
@@ -33,7 +36,7 @@ The password gates are **fail-open**: if the corresponding secret is unset on th
 The CI-friendly scan submission flow uses its own `X-API-Key` rather than the admin password, so you can hand a pipeline a narrow [API token](../security-access-control.md#api-tokens) without granting it broader write access. That flow is covered end to end in [CI/CD Scanning](./cicd.md).
 
 !!! warning
-    Apart from these gates, endpoints are not individually authenticated and there is no per-user login. Restrict access to your Hecate instance at the network layer, and always serve it over TLS so the shared-secret headers are not exposed in transit.
+    Personal accounts exist only with [sign-in](../admin/authentication.md) configured; scripts still use the shared headers or API tokens above. Restrict access to your Hecate instance at the network layer, and always serve it over TLS so the headers are not exposed in transit.
 
 ## Key endpoints
 

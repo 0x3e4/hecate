@@ -11,6 +11,7 @@ import type { ApiToken, ApiTokenCreated, ApiTokenScope } from "../types";
 import { BusyLabel, EmptyState, ErrorState, IconButton } from "../ui/primitives";
 import { formatDateOnly, formatDateTime } from "../utils/dateFormat";
 import { LoadingRegion, SkeletonRows } from "./Skeleton";
+import { DocsLink } from "./DocsLink";
 import { useToastContext } from "./ToastProvider";
 
 const DEFAULT_EXPIRY = "365";
@@ -123,9 +124,10 @@ export const ApiTokenPanel = () => {
       {status === "unavailable" && (
         <EmptyState title={t("API tokens need a system password.", "API-Tokens brauchen ein Systempasswort.")}>
           {t(
-            "Without SYSTEM_PASSWORD anyone could create a token. Set it on the backend, then restart.",
-            "Ohne SYSTEM_PASSWORD könnte jeder ein Token erstellen. Setze es im Backend und starte neu."
-          )}
+            "Without one anyone could create a token.",
+            "Ohne eines könnte jeder ein Token erstellen."
+          )}{" "}
+          <DocsLink path="security-access-control/#api-tokens">{t("API tokens", "API-Tokens")}</DocsLink>
         </EmptyState>
       )}
 

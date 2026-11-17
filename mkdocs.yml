@@ -63,6 +63,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Installation & Deployment: deployment.md
   - User Guide:
       - guide/overview.md
       - Dashboard: guide/dashboard.md
@@ -88,10 +89,11 @@ nav:
       - System Settings: admin/system.md
       - Security & Access Control: security-access-control.md
       - Sign-in (OIDC) & Roles: admin/authentication.md
+      - Permissions: admin/permissions.md
       - VEX for Hecate's Images: admin/vex.md
       - Audit & Observability: admin/audit.md
   - Reference:
-      - Configuration: configuration.md
+      - Environment Variables: configuration.md
       - Architecture: architecture.md
       - How Hecate Compares: comparison.md
   - Changelog: changelog.md

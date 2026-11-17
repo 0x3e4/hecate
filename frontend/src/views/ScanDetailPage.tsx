@@ -48,6 +48,7 @@ import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { formatDateTime } from "../utils/dateFormat";
 import { downloadText } from "../utils/download";
+import { isNoFixState, mergeFixState, noFixLabel } from "../utils/fixState";
 import { findingsExportFilename, findingsToCsv, findingsToJson } from "../utils/findingsExport";
 import {
   SCOPE_FILTER_VALUES,
@@ -289,6 +290,7 @@ function mergeFindings(findings: ScanFinding[]): MergedFinding[] {
       existing.vexReviewReason = f.vexReviewReason ?? null;
     }
     existing.dependencyScope = mergeScope(existing.dependencyScope, f.dependencyScope);
+    existing.fixState = mergeFixState(existing.fixState, f.fixState);
     // Dismissed: any sub-finding dismissed → merged row counted as dismissed
     if (f.dismissed) {
       existing.dismissed = true;
@@ -1541,7 +1543,9 @@ export const ScanDetailPage = () => {
                             {f.fixVersion ? (
                               <span className="mono">{f.fixVersion}</span>
                             ) : advisoryExtras.length === 0 ? (
-                              f.fixState === "not_fixed" ? <span className="muted">{t("No fix", "Kein Fix")}</span> : <NotAvailable />
+                              isNoFixState(f.fixState) ? (
+                                <span className="chip" title={t("The distribution ships no fix for this package", "Die Distribution liefert für dieses Paket keinen Fix")}>{noFixLabel(f.fixState, t)}</span>
+                              ) : f.fixState === "not_fixed" ? <span className="muted">{t("No fix", "Kein Fix")}</span> : <NotAvailable />
                             ) : null}
                             {advisoryExtras.length > 0 && (
                               <span

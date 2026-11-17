@@ -161,7 +161,7 @@ configured with, so the dates in a notification stay consistent with its header.
 ## Where this fits
 
 Notifications live alongside the rest of Hecate's administration on the System page. For the full tour of the
-System tabs — General, Access Control, Data, and Policies — see [System Settings](../admin/system.md). The
+System tabs — General, Access Control, Notifications, Data, and Policies — see [System Settings](../admin/system.md). The
 rule types lean on features documented elsewhere: saved-search rules build on the
 [Search & Query Builder](../guide/search.md), inventory rules on the
 [Environment Inventory](../guide/inventory.md), and malware-alert rules on

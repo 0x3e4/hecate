@@ -13,8 +13,9 @@ longer prompt you again. With no `SYSTEM_PASSWORD` configured, the page opens di
 [Security & Access Control](../security-access-control.md) for how the gate works end to end.
 
 With [OIDC sign-in](authentication.md) configured, a signed-in **admin** opens the page without the
-dialog. Anyone else signed in sees the dialog when a system password exists (so whoever holds it can
-still use it), or otherwise the page with a note that changes need the admin role.
+dialog. Anyone else signed in sees the password dialog when a system password exists (so whoever
+holds it can still use it), or otherwise an **Admins only** notice with **Sign in**; the page itself
+does not load. See [Permissions](permissions.md).
 
 ![System page — General tab](../img/hecate-system.png)
 
@@ -36,16 +37,15 @@ linked in the last column.
 The General tab collects the personal and instance-wide preferences that shape how the rest of Hecate
 behaves, plus the health checks and data exports you reach for occasionally.
 
-**Language and timezone** sit at the top. Hecate ships in English and German; the interface language
-defaults to your browser language, and the dropdown here pins it permanently for this browser. The
-timezone field controls how *every* timestamp in the UI is rendered — it defaults to your browser's
-timezone, and you can type or pick any IANA zone (for example `Europe/Vienna`) from the autocomplete
-list. Both settings persist locally, so they follow you per browser rather than being global to the
-instance. A "Reset to browser default" button clears an explicit timezone choice.
+**Language and timezone** are not on this page: they belong to each person's browser, so everyone
+sets them under **Language** at the bottom of the sidebar, without admin rights. Hecate ships in
+English and German; the interface language defaults to your browser language. The timezone controls
+how *every* timestamp is rendered — it defaults to your browser's timezone, and you can type or pick
+any IANA zone (for example `Europe/Vienna`). **Use browser default** clears an explicit choice.
 
 !!! note
     Timezone matters for more than cosmetics. The dashboard's day view and the calendar-day
-    drill-downs compute their day boundaries against the timezone you set here, so picking the right
+    drill-downs compute their day boundaries against the timezone you set, so picking the right
     zone keeps "today" aligned with your local midnight rather than UTC.
 
 **AI Analysis** exposes a single tunable: the batch limit, the maximum number of vulnerabilities that
@@ -187,9 +187,11 @@ needs at least one:
 | Target type | container image, source repository, SBOM import |
 | Dependency scope | runtime, optional, dev, unknown (see [Dependency scope](../sca/scan-results.md#dependency-scope)) |
 | CWE ids | any of the listed CWEs on the vulnerability, read from Hecate's vulnerability database |
-| Package | a wildcard on the package name |
+| Packages | wildcards on the package name, several separated by commas (`linux-libc-dev, kernel-headers`) |
 | Ecosystems | purl types such as `npm`, `pypi`, `maven`, `golang`, `deb` (from the SBOM component, else the scanner's package type) |
 | Severity at or below | the finding's severity is at most this one; a finding of unknown severity never matches |
+| Distribution ships no fix | the distribution decided not to fix it (*won't fix*), deferred the fix, or the release is *end of life*; from Trivy and Grype. When scanners disagree, one that has a fix wins, so every row of a finding is judged alike. |
+| Rejected CVE | the CVE's record in Hecate says REJECTED |
 | Windows / Apple OS only, Linux image | see below |
 
 and an **action**: a VEX status, a justification from the CycloneDX or OpenVEX vocabulary (for example
@@ -202,6 +204,10 @@ sources), at the end of an SBOM import, after a target's VEX sources were fetche
 changed, switched on or off, or deleted, and on **Apply to latest scans**, which goes through the latest completed
 scan of every target and reports how many statuses it set and cleared. Rules work on the latest scan; older scans
 keep the statuses they had.
+
+**Malicious packages are never judged.** A finding for a malicious package (an advisory id starting with
+`MAL-`) is left alone by every rule, whatever its scope or package: such a package has to be removed, not
+assessed. A status a rule set on one earlier is taken back on the next run.
 
 **Who wins.** A rule only fills findings that have **no VEX status or one a rule set** (`vexUpdatedBy` =
 `vex-rule:<id>`). A status set by hand, through MCP, imported with **Import VEX**, carried forward from a manual
@@ -222,13 +228,23 @@ anything else) makes the whole vulnerability not match. The target must be a **c
 SBOM contains Linux distribution packages (purl type `deb`, `apk`, `rpm` or `alpm`); a source repository, an
 SBOM import or an image without such packages never matches.
 
-**Presets.** Three ready-made rules can be copied into the form with **Use**; they start switched off:
+**Presets.** Ready-made rules can be copied into the form with **Use**; they start switched off:
 
 | Preset | Conditions | Sets |
 | --- | --- | --- |
 | DoS and ReDoS in dev dependencies | scope dev, CWE-400, 405, 407, 674, 770, 776, 834, 835, 1050, 1333 | not affected, `code_not_reachable` |
 | Dev dependencies to triage | scope dev (priority 900, so it runs after more specific rules) | under investigation |
 | Windows and Apple OS vulnerabilities in Linux images | container image, Windows / Apple OS only | not affected, `requires_environment` |
+| Linux kernel headers in container images | container image, packages `linux-libc-dev`, `kernel-headers`, `linux-headers`, `linux-headers-*` | not affected, `code_not_present`: a container runs on the host's kernel |
+| Rejected CVEs | the CVE is rejected | not affected |
+| Package managers in runtime images | container image, packages `pip`, `setuptools`, `wheel`, `npm`, `corepack`, `yarn` (priority 800) | under investigation |
+| OS packages the distribution won't fix | container image, won't fix / fix deferred / end of life (priority 850) | under investigation |
+| Low and negligible OS package findings in images | container image, ecosystems `deb`, `apk`, `rpm`, severity at most low (priority 950) | under investigation |
+
+The *under investigation* presets hide nothing: they sort findings apart, so the **VEX → No status** filter
+shows what still needs a look. A per-language preset is rarely needed: development and test dependencies are
+recognised per ecosystem ([Dependency scope](../sca/scan-results.md#dependency-scope)), and Go findings get
+their status from the [reachability analysis](../sca-scanning.md#go-reachability-govulncheck).
 
 The rules live in the `vex_rules` collection; the routes are `GET/POST /api/v1/vex-rules`,
 `PUT/DELETE /api/v1/vex-rules/{id}`, `GET /api/v1/vex-rules/presets` and `POST /api/v1/vex-rules/apply`. Reading

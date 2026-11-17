@@ -7,16 +7,18 @@ editor or viewer role, can require a sign-in for reading too, and names the pers
 in the audit log. The passwords described here keep working alongside it.
 
 !!! info "Reads are open unless sign-in requires otherwise"
-    Without OIDC, only mutating requests (`POST` / `PUT` / `PATCH` / `DELETE`) are gated. Browsing,
-    searching, viewing scans, findings, SBOMs and reports never requires a password. With OIDC and
-    `AUTH_REQUIRE_LOGIN=true` (its default), reads need a session, an API key or the system password.
+    Browsing, searching, viewing scans, findings, SBOMs and reports needs no password. The exceptions
+    are the admin reads: the audit log, the System page's settings (notifications, backups, sync
+    states, advisory feeds) and API tokens need the system password or an admin session, and the AI
+    analysis history needs the AI password when one is set. With OIDC and `AUTH_REQUIRE_LOGIN=true`
+    (its default), every read needs a session, an API key or the system password.
 
 ## The three secrets
 
 | Secret | Env var | Header | Gates |
 | --- | --- | --- | --- |
-| **Admin password** | `SYSTEM_PASSWORD` | `X-System-Password` | All REST writes (Layer A) and System-page access. |
-| **AI password** | `AI_ANALYSIS_PASSWORD` | `X-AI-Analysis-Password` | Triggering any AI analysis — the always-required final layer. |
+| **Admin password** | `SYSTEM_PASSWORD` | `X-System-Password` | All REST writes (Layer A), the System page, the audit log and API tokens. |
+| **AI password** | `AI_ANALYSIS_PASSWORD` | `X-AI-Analysis-Password` | Starting any AI analysis, and listing past ones on the AI analysis page. Required for every role. |
 | **Per-target password** | set in the UI (hashed in MongoDB) | `X-Target-Password` | Writes scoped to one SCA target (Layer B). |
 | **SCA API key** | `SCA_API_KEY` | `X-API-Key` | The CI/CD scan-submission endpoint `POST /api/v1/scans`. |
 | **API token** | created in the UI (hashed in MongoDB) | `X-API-Key` | The routes of its scopes, see [API tokens](#api-tokens). |
@@ -192,7 +194,7 @@ deployment, pair it with:
   addresses only from the gateway (`TRUSTED_PROXY_IPS=hecate-frontend`), not from the scanner or other
   containers on the same network.
 - **Network ACLs** / VPN to limit who can reach the API at all.
-- **Scoped CORS** via `CORS_ORIGINS` (see [Configuration](configuration.md)). Reads are open by
+- **Scoped CORS** via `CORS_ORIGINS` (see [Environment Variables](configuration.md)). Reads are open by
   design, so the `*` default lets any browser origin read the API; set explicit origin(s) to keep
   cross-origin reads scoped to your own frontend.
 

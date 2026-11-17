@@ -97,7 +97,104 @@ PRESETS: tuple[dict[str, Any], ...] = (
             "vex_detail": "Affects only Windows or Apple operating systems; this is a Linux image.",
         },
     },
+    {
+        "key": "kernel-headers",
+        "name": "Linux kernel headers in container images",
+        "description": (
+            "Kernel vulnerabilities reported for the kernel header packages a distribution image ships "
+            "(linux-libc-dev on Debian and Ubuntu, kernel-headers on RHEL, Fedora and Amazon Linux, "
+            "linux-headers on Alpine). The headers are only used to compile against; a container runs on "
+            "the host's kernel, which the image does not contain."
+        ),
+        "conditions": {
+            "target_types": ["container_image"],
+            "package_pattern": "linux-libc-dev, kernel-headers, linux-headers, linux-headers-*",
+        },
+        "action": {
+            "vex_status": "not_affected",
+            "vex_justification": "code_not_present",
+            "vex_detail": "Kernel headers only: a container uses the host's kernel, which is not part of this image.",
+        },
+    },
+    {
+        "key": "rejected",
+        "name": "Rejected CVEs",
+        "description": (
+            "A scanner still reports a CVE that its CNA has rejected (withdrawn, a duplicate, or not a "
+            "vulnerability). Matches only when Hecate's record of the CVE says REJECTED."
+        ),
+        "conditions": {"vulnerability_rejected": True},
+        "action": {
+            "vex_status": "not_affected",
+            "vex_detail": "The CVE was rejected by its CNA: it does not describe a vulnerability.",
+        },
+    },
+    {
+        "key": "build-tools-in-image",
+        "name": "Package managers in runtime images",
+        "description": (
+            "Vulnerabilities in pip, setuptools, wheel, npm, corepack or yarn inside a container image. "
+            "These tools install packages; a runtime image rarely calls them, but base images ship them. "
+            "Marked under investigation so they sort apart; remove the tool from the final image or "
+            "confirm that nothing runs it."
+        ),
+        "conditions": {
+            "target_types": ["container_image"],
+            "package_pattern": "pip, setuptools, wheel, npm, corepack, yarn",
+        },
+        "action": {
+            "vex_status": "under_investigation",
+            "vex_detail": "Package manager in a runtime image: remove it from the final stage, or check that the application never calls it.",
+        },
+        "priority": 800,
+    },
+    {
+        "key": "distro-no-fix",
+        "name": "OS packages the distribution won't fix",
+        "description": (
+            "Vulnerabilities in OS packages for which the distribution ships no fix: it decided not to "
+            "fix them (often minor ones), deferred the fix, or the release is end of life. Updating the "
+            "image does not help, so they are marked under investigation to sort apart from the ones a "
+            "rebuild fixes. An end-of-life release needs a newer base image."
+        ),
+        "conditions": {
+            "target_types": ["container_image"],
+            "fix_states": ["wont_fix", "fix_deferred", "end_of_life"],
+        },
+        "action": {
+            "vex_status": "under_investigation",
+            "vex_detail": "No fix from the distribution (won't fix, deferred, or end of life).",
+        },
+        "priority": 850,
+    },
+    {
+        "key": "os-low",
+        "name": "Low and negligible OS package findings in images",
+        "description": (
+            "Low and negligible vulnerabilities in distribution packages of a container image. Marked "
+            "under investigation, so the runtime findings that need attention sort first. Put it below "
+            "more specific rules."
+        ),
+        "conditions": {
+            "target_types": ["container_image"],
+            "ecosystems": ["deb", "apk", "rpm"],
+            "max_severity": "low",
+        },
+        "action": {
+            "vex_status": "under_investigation",
+            "vex_detail": "Low or negligible severity in an OS package.",
+        },
+        "priority": 950,
+    },
 )
+
+# A rule never speaks for a malicious package: whatever the scope or
+# reachability, a MAL-* hit is to be removed, not assessed away.
+MALICIOUS_PREFIX = "MAL-"
+
+# A distribution's "no fix" answers, strongest first, for findings that
+# several scanners report with different fix states.
+_NO_FIX_STATES = ("end_of_life", "wont_fix", "fix_deferred")
 
 # Scanner package types -> purl type, for findings whose package is not in the SBOM.
 _PACKAGE_TYPE_ECOSYSTEM = PACKAGE_TYPE_PURL_TYPE
@@ -190,6 +287,7 @@ class RuleContext:
     target_os: str | None = None
     vuln_cwes: dict[str, set[str]] = field(default_factory=dict)
     vuln_platforms: dict[str, frozenset[str] | None] = field(default_factory=dict)
+    vuln_rejected: set[str] = field(default_factory=set)
     purl_types: dict[tuple[str, str], str] = field(default_factory=dict)
 
 
@@ -222,8 +320,13 @@ def conditions_match(conditions: VexRuleConditions, finding: Mapping[str, Any], 
         scope = finding.get("dependency_scope") or "unknown"
         if scope not in conditions.dependency_scopes:
             return False
-    if conditions.package_pattern and not _wildcard(conditions.package_pattern, finding.get("package_name")):
+    patterns = conditions.package_patterns()
+    if patterns and not any(_wildcard(p, finding.get("package_name")) for p in patterns):
         return False
+    if conditions.fix_states:
+        state = finding.get("group_fix_state") or finding.get("fix_state")
+        if state not in conditions.fix_states:
+            return False
     if conditions.ecosystems and finding_ecosystem(finding, ctx.purl_types) not in conditions.ecosystems:
         return False
     if conditions.max_severity:
@@ -233,6 +336,8 @@ def conditions_match(conditions: VexRuleConditions, finding: Mapping[str, Any], 
     vuln_id = (finding.get("vulnerability_id") or "").upper()
     if conditions.cwe_ids and not ctx.vuln_cwes.get(vuln_id, set()) & set(conditions.cwe_ids):
         return False
+    if conditions.vulnerability_rejected and vuln_id not in ctx.vuln_rejected:
+        return False
     if conditions.platform_mismatch:
         if ctx.target_os != "linux":
             return False
@@ -240,6 +345,27 @@ def conditions_match(conditions: VexRuleConditions, finding: Mapping[str, Any], 
         if not platforms or "linux" in platforms:
             return False
     return True
+
+
+def spread_fix_states(findings: list[dict[str, Any]]) -> None:
+    """Give every row of a (vulnerability, package, version) the same fix state.
+
+    Scanners disagree: Trivy knows Debian's "will not fix", Grype often says
+    only "not fixed". One rule must judge the merged finding the same on every
+    row, so each row gets ``group_fix_state``: ``fixed`` when any scanner has a
+    fix, else the strongest "no fix" answer, else its own state.
+    """
+    groups: dict[tuple[str, str, str], set[str]] = {}
+    for f in findings:
+        key = ((f.get("vulnerability_id") or "").upper(), f.get("package_name") or "", f.get("package_version") or "")
+        groups.setdefault(key, set()).add(f.get("fix_state") or "unknown")
+    for f in findings:
+        key = ((f.get("vulnerability_id") or "").upper(), f.get("package_name") or "", f.get("package_version") or "")
+        states = groups[key]
+        if "fixed" in states:
+            f["group_fix_state"] = "fixed"
+        else:
+            f["group_fix_state"] = next((s for s in _NO_FIX_STATES if s in states), f.get("fix_state"))
 
 
 @dataclass
@@ -285,7 +411,8 @@ def plan_rule_updates(
         actor = finding.get("vex_updated_by")
         if finding.get("vex_status") and not _is_rule_actor(actor):
             continue  # someone (or something) else owns this status
-        rule = next((r for r in rules if conditions_match(r.conditions, finding, ctx)), None)
+        malicious = (finding.get("vulnerability_id") or "").upper().startswith(MALICIOUS_PREFIX)
+        rule = None if malicious else next((r for r in rules if conditions_match(r.conditions, finding, ctx)), None)
         fields: dict[str, Any] = {}
         if rule:
             wanted = {
@@ -348,12 +475,13 @@ class VexRuleService:
         return [r for r in rules if r is not None]
 
     async def _vulnerability_info(
-        self, vuln_ids: set[str], need_cwes: bool, need_platforms: bool,
-    ) -> tuple[dict[str, set[str]], dict[str, frozenset[str] | None]]:
+        self, vuln_ids: set[str], need_cwes: bool, need_platforms: bool, need_rejected: bool = False,
+    ) -> tuple[dict[str, set[str]], dict[str, frozenset[str] | None], set[str]]:
         cwes: dict[str, set[str]] = {}
         platforms: dict[str, frozenset[str] | None] = {}
-        if not vuln_ids or not (need_cwes or need_platforms):
-            return cwes, platforms
+        rejected: set[str] = set()
+        if not vuln_ids or not (need_cwes or need_platforms or need_rejected):
+            return cwes, platforms, rejected
         from app.db.mongo import get_database
 
         projection: dict[str, int] = {}
@@ -361,6 +489,8 @@ class VexRuleService:
             projection["cwes"] = 1
         if need_platforms:
             projection["cpe_configurations"] = 1
+        if need_rejected:
+            projection["rejected"] = 1
         db = await get_database()
         collection = db[settings.mongo_vulnerabilities_collection]
         ids = sorted(vuln_ids)
@@ -372,7 +502,9 @@ class VexRuleService:
                     cwes[vid] = {str(c).strip().upper() for c in doc.get("cwes") or [] if isinstance(c, str)}
                 if need_platforms:
                     platforms[vid] = vulnerability_platforms(doc)
-        return cwes, platforms
+                if need_rejected and doc.get("rejected") is True:
+                    rejected.add(vid)
+        return cwes, platforms, rejected
 
     async def _target_os(self, scan_id: str, target: Mapping[str, Any]) -> str | None:
         if target.get("type") != "container_image":
@@ -407,8 +539,13 @@ class VexRuleService:
         if rules:
             need_cwes = any(r.conditions.cwe_ids for r in rules)
             need_platforms = any(r.conditions.platform_mismatch for r in rules)
+            need_rejected = any(r.conditions.vulnerability_rejected for r in rules)
             vuln_ids = {(f.get("vulnerability_id") or "").upper() for f in findings} - {""}
-            ctx.vuln_cwes, ctx.vuln_platforms = await self._vulnerability_info(vuln_ids, need_cwes, need_platforms)
+            ctx.vuln_cwes, ctx.vuln_platforms, ctx.vuln_rejected = await self._vulnerability_info(
+                vuln_ids, need_cwes, need_platforms, need_rejected,
+            )
+            if any(r.conditions.fix_states for r in rules):
+                spread_fix_states(findings)
             if need_platforms:
                 ctx.target_os = await self._target_os(scan_id, target)
             if any(r.conditions.ecosystems for r in rules):

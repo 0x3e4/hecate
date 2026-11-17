@@ -16,6 +16,7 @@ import { triggerCertFeedsSync } from "../api/sync";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { BusyLabel, EmptyState, ErrorState, Section } from "../ui/primitives";
 import { feedKindLabel } from "../utils/certTopics";
+import { DocsLink } from "./DocsLink";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { LoadingRegion, SkeletonRows } from "./Skeleton";
 import { useToastContext } from "./ToastProvider";
@@ -189,16 +190,17 @@ export const AdvisoryFeedsPanel = () => {
     >
       <p className="system-section-help">
         {t(
-          "RSS, RDF or Atom feeds that the Advisories page and Needs attention read every two hours. Feeds from .env (CERT_FEEDS, CERT_FEEDS_EXTRA) are listed here but changed only there.",
-          "RSS-, RDF- oder Atom-Feeds, die die Seite Meldungen und Handlungsbedarf alle zwei Stunden lesen. Feeds aus der .env (CERT_FEEDS, CERT_FEEDS_EXTRA) stehen hier mit, werden aber nur dort geändert.",
-        )}
+          "RSS, RDF or Atom feeds that the Advisories page and Needs attention read every two hours. Feeds from the server configuration are listed but can't be changed here.",
+          "RSS-, RDF- oder Atom-Feeds, die die Seite Meldungen und Handlungsbedarf alle zwei Stunden lesen. Feeds aus der Serverkonfiguration stehen hier mit, lassen sich hier aber nicht ändern.",
+        )}{" "}
+        <DocsLink path="guide/dashboard/#advisory-feeds">{t("Advisory feeds", "Advisory-Feeds")}</DocsLink>
       </p>
 
       {!syncEnabled && (
         <p className="advisory-feeds-note" role="status">
           {t(
-            "CERT_FEEDS_ENABLED is false, so no feed is read, including the ones added here.",
-            "CERT_FEEDS_ENABLED ist false, deshalb wird kein Feed gelesen, auch keiner der hier hinzugefügten.",
+            "Advisory feeds are switched off on the server, so no feed is read, including the ones added here.",
+            "Advisory-Feeds sind auf dem Server abgeschaltet, deshalb wird kein Feed gelesen, auch keiner der hier hinzugefügten.",
           )}
         </p>
       )}
@@ -251,8 +253,8 @@ export const AdvisoryFeedsPanel = () => {
           </fieldset>
           <p className="advisory-feeds-hint">
             {t(
-              "A Mastodon account has its feed at https://<instance>/@<user>.rss. Only public addresses are accepted unless CERT_FEEDS_ALLOW_PRIVATE_HOSTS is set.",
-              "Ein Mastodon-Konto hat seinen Feed unter https://<instanz>/@<nutzer>.rss. Nur öffentliche Adressen werden angenommen, außer CERT_FEEDS_ALLOW_PRIVATE_HOSTS ist gesetzt.",
+              "A Mastodon account has its feed at https://<instance>/@<user>.rss. Only public addresses are accepted.",
+              "Ein Mastodon-Konto hat seinen Feed unter https://<instanz>/@<nutzer>.rss. Nur öffentliche Adressen werden angenommen.",
             )}
           </p>
           <div className="advisory-feeds-actions">

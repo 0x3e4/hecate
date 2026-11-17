@@ -30,7 +30,7 @@ URL and the redirect URI filled in with your hostname, so you can copy the value
 MCP is off by default and **fail-closed**: it is only mounted when `MCP_ENABLED=true` *and* either a
 full OAuth provider is configured, or the dev-mode bypass is explicitly enabled. Configuration is
 done entirely through `MCP_*` environment variables on the backend; changing them needs a backend
-restart but no image rebuild. The full list lives in [Configuration](../configuration.md) — the keys
+restart but no image rebuild. The full list lives in [Environment Variables](../configuration.md) — the keys
 you will reach for most often are below.
 
 | Variable | Default | What it controls |
@@ -152,8 +152,10 @@ scan document, tagged with an attribution like `Claude - MCP` so you can later s
 | Prepare (read) | Save (write) | Scope |
 | --- | --- | --- |
 | `prepare_vulnerability_ai_analysis` | `save_vulnerability_ai_analysis` | A single CVE / GHSA / EUVD. |
-| `prepare_vulnerabilities_ai_batch_analysis` | `save_vulnerabilities_ai_batch_analysis` | Up to 10 vulnerabilities together. |
+| `prepare_vulnerabilities_ai_batch_analysis` | `save_vulnerabilities_ai_batch_analysis` | Several vulnerabilities together, up to the batch limit (10 by default; admins change it on System → General, at most 100). |
 | `prepare_scan_ai_analysis` | `save_scan_ai_analysis` | An SCA scan risk triage. |
+| `prepare_attack_path_analysis` | `save_attack_path_analysis` | The attack-path narrative of one vulnerability. |
+| `prepare_scan_attack_chain_analysis` | `save_scan_attack_chain_analysis` | The cross-CVE attack chain of one scan. |
 
 Two attack-path tools follow the same idea. `prepare_attack_path_analysis` returns the deterministic
 graph (entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix) and prompts for an

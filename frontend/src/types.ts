@@ -1459,6 +1459,8 @@ export interface VexRuleConditions {
   ecosystems: string[];
   maxSeverity?: "critical" | "high" | "medium" | "low" | "negligible" | null;
   platformMismatch: boolean;
+  vulnerabilityRejected?: boolean;
+  fixStates?: ("wont_fix" | "fix_deferred" | "end_of_life")[];
 }
 
 export interface VexRuleAction {

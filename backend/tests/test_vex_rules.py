@@ -22,6 +22,7 @@ from app.services.vex_rule_service import (
     RuleContext,
     conditions_match,
     plan_rule_updates,
+    spread_fix_states,
     vulnerability_platforms,
 )
 
@@ -417,3 +418,58 @@ async def test_service_applies_rules_to_the_latest_scan() -> None:
     assert findings.by_id("dev")["vex_updated_by"] == "vex-rule:r1"
     assert findings.by_id("run")["vex_status"] is None
     assert findings.by_id("old")["vex_status"] is None  # history stays as it was
+
+
+# ---------------------------------------------------------------- newer conditions and guards
+
+
+def test_rules_never_judge_a_malicious_package() -> None:
+    ctx = RuleContext(target=LINUX_IMAGE)
+    mal = _finding(vulnerability_id="MAL-2026-1974")
+    assert plan_rule_updates([mal], [_rule(dependency_scopes=["dev"])], ctx) == ([], 0, 0)
+    # A status a rule set before the guard existed is taken back.
+    old = _finding(vulnerability_id="mal-2026-1974", vex_status="not_affected", vex_updated_by="vex-rule:r1")
+    updates, applied, cleared = plan_rule_updates([old], [_rule(dependency_scopes=["dev"])], ctx)
+    assert (applied, cleared) == (0, 1) and updates[0][1]["vex_status"] is None
+
+
+@pytest.mark.parametrize(
+    ("package", "expected"),
+    [("linux-libc-dev", True), ("kernel-headers", True), ("linux-headers-6.1.0-18-amd64", True),
+     ("linux-image-6.1.0", False), ("libc6", False)],
+)
+def test_package_pattern_takes_several_wildcards(package: str, expected: bool) -> None:
+    cond = _cond(package_pattern="linux-libc-dev, kernel-headers ,linux-headers-*")
+    assert conditions_match(cond, _finding(package_name=package), RuleContext(target=LINUX_IMAGE)) is expected
+
+
+def test_rejected_condition_reads_the_vulnerability_record() -> None:
+    cond = _cond(vulnerability_rejected=True)
+    assert conditions_match(cond, _finding(), RuleContext(target=LINUX_IMAGE, vuln_rejected={"CVE-2026-1"}))
+    assert not conditions_match(cond, _finding(), RuleContext(target=LINUX_IMAGE))
+
+
+def test_fix_state_condition_judges_all_rows_of_a_finding_alike() -> None:
+    rows = [
+        _finding(_id="trivy", fix_state="wont_fix"),
+        _finding(_id="grype", fix_state="not_fixed"),
+        _finding(_id="other", package_name="zlib", fix_state="not_fixed"),
+        _finding(_id="fixed-trivy", package_name="curl", fix_state="wont_fix"),
+        _finding(_id="fixed-grype", package_name="curl", fix_state="fixed"),
+    ]
+    spread_fix_states(rows)
+    cond = _cond(fix_states=["wont_fix", "end_of_life"])
+    hits = {r["_id"] for r in rows if conditions_match(cond, r, RuleContext(target=LINUX_IMAGE))}
+    assert hits == {"trivy", "grype"}
+
+
+def test_new_presets_hit_what_they_describe() -> None:
+    by_key = {p["key"]: p for p in PRESETS}
+    ctx = RuleContext(target=LINUX_IMAGE, purl_types={("libgnutls30", "3.7.9"): "deb"})
+    kernel = _cond(**by_key["kernel-headers"]["conditions"])
+    assert conditions_match(kernel, _finding(package_name="linux-libc-dev", package_type="debian"), ctx)
+    assert not conditions_match(kernel, _finding(package_name="linux-libc-dev"), RuleContext(
+        target={**LINUX_IMAGE, "type": "source_repo"}))
+    low = _cond(**by_key["os-low"]["conditions"])
+    assert conditions_match(low, _finding(package_name="libgnutls30", package_version="3.7.9", severity="low"), ctx)
+    assert not conditions_match(low, _finding(severity="low"), ctx)  # npm package, not an OS one

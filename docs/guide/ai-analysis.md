@@ -37,7 +37,8 @@ a local Ollama instance reads clearly.
 AI triggers can be protected by a dedicated password, separate from the system admin password. When
 `AI_ANALYSIS_PASSWORD` is set, every action that *starts* an analysis is gated: opening the AI Analysis
 page prompts for the password, and triggering an analysis from a CVE detail page or a scan asks for it
-too. Reading existing analyses is never gated — only generating new ones.
+too. The list of past analyses on the AI Analysis page needs it as well; analyses shown on a CVE
+or scan page can be read without it.
 
 The password you enter is remembered in this browser. On your next visit the AI Analysis page checks it
 quietly and opens straight away; it asks again only when the password has changed. Nothing on the page

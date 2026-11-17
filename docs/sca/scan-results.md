@@ -88,6 +88,10 @@ teal **`adv:`** chip — so you still get a remediation target even when the sca
 This hint is read live from the vulnerability database, so it stays current as advisories are enriched,
 without needing to re-scan.
 
+When the distribution ships no fix for an OS package, the column says so: **Won't fix** (the distribution
+decided not to fix it), **Fix deferred**, or **End of life** (the distribution release gets no more fixes; a
+newer base image helps). These come from Trivy and Grype.
+
 A checkbox on every row plus a "select all visible" header turns on a sticky multi-select toolbar. From there
 you can apply a VEX status (with an optional re-review date) to the whole selection at once, or dismiss and
 restore findings in bulk. There is

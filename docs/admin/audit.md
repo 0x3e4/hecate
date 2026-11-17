@@ -23,7 +23,7 @@ shown, and **Cancel** (or Escape) takes you back. A signed-in admin (see
 ## What gets logged
 
 The log spans the whole system, not just one subsystem. Most rows are ingestion runs from the nine
-data feeds — EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV — each appearing as both a
+data feeds — EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV — and the Advisory Feed Sync, each appearing as both a
 regular incremental sync and an "initial sync" variant for the first full bootstrap. Alongside those
 you will see manual CVE refreshes, saved-search create/update/delete actions, SCA scans, AI analyses
 (single and batch), attack-path narrative generation, the MAL-* deps.dev enrichment backfill, and
@@ -79,7 +79,7 @@ into a "Show details" expander so the table stays readable. AI jobs additionally
 and output token counts, and MCP rows expose the originating client IP alongside the full request
 payload, which is useful when you are auditing who triggered a tool.
 
-The audit log is readable without a password, so the payload never holds a secret: fields named like
+Only admins read the audit log, but the payload never holds a secret all the same: fields named like
 a password, key or token show `***`, and the `user:token@` part of every URL is masked, also inside a
 repository URL that a scan rejected. Entries written by versions before this masking existed can be
 cleaned with `docker compose exec backend python -m app.cli scrub-audit-credentials` (add

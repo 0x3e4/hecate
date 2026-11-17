@@ -114,7 +114,7 @@ def parse_trivy_json(
                 title=vuln.get("Title"),
                 description=vuln.get("Description"),
                 fix_version=vuln.get("FixedVersion"),
-                fix_state="fixed" if vuln.get("FixedVersion") else "not_fixed",
+                fix_state=_trivy_fix_state(vuln),
                 data_source=vuln.get("DataSource", {}).get("Name") if isinstance(vuln.get("DataSource"), dict) else None,
                 urls=vuln.get("References", []) or [],
                 cvss_score=_extract_trivy_cvss_score(vuln),
@@ -180,6 +180,24 @@ def _extract_trivy_cvss_vector(vuln: dict[str, Any]) -> str | None:
             if isinstance(vec, str):
                 return vec
     return None
+
+
+# Trivy's `Status` (from the distribution's security tracker) -> fix_state.
+# "will_not_fix" and friends say no update will help; Grype's "wont-fix"
+# lands on the same value.
+_TRIVY_STATUS_FIX_STATE = {
+    "fixed": "fixed",
+    "will_not_fix": "wont_fix",
+    "fix_deferred": "fix_deferred",
+    "end_of_life": "end_of_life",
+}
+
+
+def _trivy_fix_state(vuln: dict[str, Any]) -> str:
+    if vuln.get("FixedVersion"):
+        return "fixed"
+    status = str(vuln.get("Status") or "").strip().lower()
+    return _TRIVY_STATUS_FIX_STATE.get(status, "not_fixed")
 
 
 def parse_grype_json(

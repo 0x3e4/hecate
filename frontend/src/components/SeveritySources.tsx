@@ -1,4 +1,5 @@
 import { useI18n } from "../i18n/context";
+import { DocsLink } from "./DocsLink";
 import type { SeverityProvenance } from "../types";
 import { SeverityTag } from "../ui/primitives";
 import { disagreementRange, orderedSources, sourceKindLabel } from "../utils/severitySources";
@@ -86,10 +87,9 @@ export const SeveritySourcesBlock = ({ provenance }: { provenance?: SeverityProv
               `Hecate zeigt den CVSS-${primary.version ?? ""}-Wert von ${primary.source}. `,
             )
           : ""}
-        {t(
-          `${provenance.priorityDb} is the priority database (INGESTION_PRIORITY_VULN_DB): its record sets the shown score, other sources only fill an empty one. Within a record the newest CVSS version wins, with its highest score, so the shown score can be a CNA's.`,
-          `${provenance.priorityDb} ist die Prioritäts-Datenbank (INGESTION_PRIORITY_VULN_DB): Ihr Eintrag bestimmt den angezeigten Wert, andere Quellen füllen nur einen leeren auf. Innerhalb eines Eintrags gewinnt die neueste CVSS-Version mit ihrem höchsten Wert, daher kann der angezeigte Wert von einer CNA stammen.`,
-        )}
+        <DocsLink path="guide/vulnerabilities/#severity-by-source">
+          {t("Why this score", "Warum dieser Wert")}
+        </DocsLink>
       </p>
     </section>
   );
