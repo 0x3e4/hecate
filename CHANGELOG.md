@@ -11,8 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- Frontend and documentation images: the nginx runtime moves from `nginx:1.31.8-alpine` to `nginx:1.31.9-alpine-slim`. The slim variant leaves out `curl` and the dynamic modules (njs, image-filter, xslt, geoip, perl), none of which either image uses; `envsubst`, the entrypoint scripts and busybox `wget` (the docs healthcheck) are still there.
 
 ### Fixed
+
+### Security
+- nginx 1.31.9 fixes the critical HTTP/2 vulnerabilities CVE-2026-123633 and CVE-2026-123007. Neither Hecate image turned HTTP/2 on: both serve plain HTTP (frontend on 8080, docs on 80) without `http2`, so they were not directly exploitable. The nginx reverse-proxy template (`deploy/reverse-proxy/nginx.conf.example`) does use `http2 on` on 443: if your proxy in front of Hecate runs nginx, update it to 1.31.9 (mainline) or 1.30.7 (stable).
 
 ## [2.3.1] - 2026-11-17
 

@@ -26,7 +26,7 @@ RUN pnpm run build
 # runtime carried npm, corepack and serve's own dependencies (undici,
 # minimatch, compression, ip-address, …), none of which the page needs, and
 # every one of them a scan finding.
-FROM nginx:1.31.8-alpine AS gateway
+FROM nginx:1.31.9-alpine-slim AS gateway
 RUN apk upgrade --no-cache  && rm -f /etc/nginx/conf.d/default.conf
 # The frontend is also the gateway to the backend (nginx.conf.template). The nginx
 # image fills in the ${...} placeholders from these variables on start (envsubst on
