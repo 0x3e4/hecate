@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+
+### Fixed
+
+## [2.3.2] - 2026-11-18
+
+### Added
+
+### Changed
 - Frontend and documentation images: the nginx runtime moves from `nginx:1.31.8-alpine` to `nginx:1.31.9-alpine-slim`. The slim variant leaves out `curl` and the dynamic modules (njs, image-filter, xslt, geoip, perl), none of which either image uses; `envsubst`, the entrypoint scripts and busybox `wget` (the docs healthcheck) are still there.
 
 ### Fixed
