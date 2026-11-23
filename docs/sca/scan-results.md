@@ -241,8 +241,9 @@ An OpenVEX export can be imported again (into the same or another target) with *
 ## Releases and the evidence bundle
 
 The EU Cyber Resilience Act expects a manufacturer to keep the SBOM and the vulnerability handling of every release
-for years. Hecate never deletes scans on its own: there is no retention job and no expiry, and scans, findings and
-SBOM rows only go when an admin deletes a scan or a whole target.
+for years. Hecate never deletes a target's scans on its own: there is no retention job and no expiry, and scans,
+findings and SBOM rows only go when an admin deletes a scan or a whole target. The one exception are
+[checks](../sca-scanning.md#checks), scans without a target, which expire after a few days and cannot be releases.
 
 **Mark as release** in the header of a completed scan gives it a version label (`1.4.2`, at most 64 characters,
 unique per target) and an optional note. The marker needs the target's write password (or the system password),

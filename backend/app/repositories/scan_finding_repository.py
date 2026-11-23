@@ -13,6 +13,7 @@ from pymongo.errors import PyMongoError
 from app.core.config import settings
 from app.db.mongo import get_database
 from app.models.scan import ScanFindingDocument
+from app.services.scan_checks import not_check_target
 from app.utils.strings import contains_regex
 
 log = structlog.get_logger()
@@ -270,8 +271,8 @@ class ScanFindingRepository:
     async def find_by_cve(
         self, vulnerability_id: str, limit: int = 50, offset: int = 0
     ) -> tuple[int, list[dict[str, Any]]]:
-        """Find scan findings that match a specific CVE ID."""
-        query = {"vulnerability_id": vulnerability_id}
+        """Find scan findings that match a specific CVE ID (checks excluded)."""
+        query = {"vulnerability_id": vulnerability_id, "target_id": not_check_target()}
         try:
             total = await self.collection.count_documents(query)
             cursor = (
@@ -303,6 +304,7 @@ class ScanFindingRepository:
         query: dict[str, Any] = {
             "vulnerability_id": {"$in": vulnerability_ids},
             "dismissed": {"$ne": True},
+            "target_id": not_check_target(),
         }
         try:
             total = await self.collection.count_documents(query)

@@ -102,6 +102,7 @@ from app.services.scan_attack_chain_service import (
     get_scan_attack_chain_service,
 )
 from app.services.license_compliance_service import LicenseComplianceService
+from app.services.scan_checks import is_check_target
 from app.services.scan_service import ScanService, get_scan_service
 from app.services.vex_service import VexService
 from app.services.vex_review import review_state
@@ -159,7 +160,7 @@ async def submit_scan(
             branch=request.branch,
             pipeline_url=request.pipeline_url,
             source_archive_base64=request.source_archive_base64,
-            one_time=request.one_time or bool(request.source_archive_base64),
+            one_time=request.is_check,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -171,6 +172,8 @@ async def submit_scan(
         sbom_component_count=result["sbom_component_count"],
         summary=ScanSummarySchema(**result["summary"]),
         error=result.get("error"),
+        check=result.get("check", False),
+        expires_at=result.get("expires_at"),
     )
 
 
@@ -196,7 +199,7 @@ async def submit_manual_scan(
             scanners=request.scanners,
             source="manual",
             source_archive_base64=request.source_archive_base64,
-            one_time=request.one_time or bool(request.source_archive_base64),
+            one_time=request.is_check,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -209,6 +212,8 @@ async def submit_manual_scan(
         sbom_component_count=result["sbom_component_count"],
         summary=ScanSummarySchema(**result["summary"]),
         error=result.get("error"),
+        check=result.get("check", False),
+        expires_at=result.get("expires_at"),
     )
 
 
@@ -701,6 +706,7 @@ async def import_sbom(
             format=request.format,
             target_name=request.target_name,
             target_id=request.target_id,
+            check=request.check,
         )
         summary = result.get("summary")
         return SubmitScanResponse(
@@ -710,6 +716,8 @@ async def import_sbom(
             findings_count=result.get("findings_count", 0),
             sbom_component_count=result.get("sbom_component_count", 0),
             summary=ScanSummarySchema(**summary.model_dump()) if hasattr(summary, "model_dump") else ScanSummarySchema(),
+            check=result.get("check", False),
+            expires_at=result.get("expires_at"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -720,6 +728,7 @@ async def import_sbom_upload(
     file: UploadFile = File(...),
     target_name: str | None = Query(default=None, alias="targetName"),
     format: str | None = Query(default=None),
+    check: bool = Query(default=False, description="Import as a check: no target, report only, expires"),
     _auth: None = Depends(require_target_write_sbom_upload),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
@@ -739,6 +748,7 @@ async def import_sbom_upload(
             sbom_data=sbom_data,
             format=format,
             target_name=target_name,
+            check=check,
         )
         summary = result.get("summary")
         return SubmitScanResponse(
@@ -748,6 +758,8 @@ async def import_sbom_upload(
             findings_count=result.get("findings_count", 0),
             sbom_component_count=result.get("sbom_component_count", 0),
             summary=ScanSummarySchema(**summary.model_dump()) if hasattr(summary, "model_dump") else ScanSummarySchema(),
+            check=result.get("check", False),
+            expires_at=result.get("expires_at"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -1499,6 +1511,8 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         id=str(doc.get("_id", "")),
         target_id=doc.get("target_id", ""),
         target_name=doc.get("target_name"),
+        check=bool(doc.get("check")) or is_check_target(doc.get("target_id")),
+        expires_at=doc.get("expires_at"),
         scanners=doc.get("scanners", []),
         status=doc.get("status", ""),
         source=doc.get("source", ""),

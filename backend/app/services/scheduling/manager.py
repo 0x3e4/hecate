@@ -245,6 +245,13 @@ class SchedulerManager:
                 id="sca_stale_scan_watchdog",
                 replace_existing=True,
             )
+            # Checks (scans without a target) are deleted once they expire.
+            self.scheduler.add_job(
+                _scheduled_check_cleanup,
+                trigger=IntervalTrigger(hours=1),
+                id="sca_check_cleanup",
+                replace_existing=True,
+            )
 
         # NVD weekly full sync
         if settings.scheduler_nvd_full_sync_enabled:
@@ -878,6 +885,16 @@ async def _scheduled_stale_scan_watchdog() -> None:
             log.info("scheduler.stale_scans_cancelled", count=count)
     except Exception as exc:  # noqa: BLE001 - the watchdog must not take the scheduler down
         log.warning("scheduler.stale_scan_watchdog_failed", error=str(exc))
+
+
+async def _scheduled_check_cleanup() -> None:
+    try:
+        scan_service = await get_scan_service()
+        count = await scan_service.purge_expired_checks()
+        if count:
+            log.info("scheduler.expired_checks_deleted", count=count)
+    except Exception as exc:  # noqa: BLE001 - cleanup must not take the scheduler down
+        log.warning("scheduler.check_cleanup_failed", error=str(exc))
 
 
 async def _scheduled_auto_scans() -> None:

@@ -88,6 +88,10 @@ class ScanDocument(BaseModel):
 
     target_id: str
     target_name: str | None = None
+    # A check: no target, kept out of every list, deleted at expires_at
+    # (app/services/scan_checks.py).
+    check: bool = False
+    expires_at: datetime | None = None
     scanners: list[str] = Field(default_factory=list)
     status: str = Field(default="pending", description="pending, running, completed, failed")
     source: str = Field(default="manual", description="ci_cd or manual")

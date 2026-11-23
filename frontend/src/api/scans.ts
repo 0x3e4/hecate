@@ -433,6 +433,7 @@ export const importSbom = async (payload: {
   format?: string;
   targetName?: string;
   targetId?: string;
+  check?: boolean;
 }): Promise<SubmitScanResponse> => {
   const response = await api.post<SubmitScanResponse>("/v1/scans/import-sbom", payload);
   return response.data;
@@ -516,12 +517,14 @@ export const importSbomFile = async (
   file: File,
   targetName?: string,
   format?: string,
+  check = false,
 ): Promise<SubmitScanResponse> => {
   const formData = new FormData();
   formData.append("file", file);
   const params: Record<string, string> = {};
   if (targetName) params.targetName = targetName;
   if (format) params.format = format;
+  if (check) params.check = "true";
   const response = await api.post<SubmitScanResponse>(
     "/v1/scans/import-sbom/upload",
     formData,

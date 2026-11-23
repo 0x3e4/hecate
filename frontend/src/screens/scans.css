@@ -146,6 +146,12 @@
 .scans-target-meta { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: var(--space-xs); min-width: 0; }
 .scans-target-type { white-space: nowrap; }
 .scans-target-rename { flex-shrink: 0; }
+/* "Check only" in the new-scan dialog and the SBOM import */
+.scans-check-only { display: flex; align-items: flex-start; gap: var(--space-xs); cursor: pointer; }
+.scans-check-only input { margin-top: 0.2em; }
+.scans-check-only-label { display: block; }
+.scans-check-only-hint { display: block; margin-top: var(--space-3xs); }
+.scans-import-check { display: inline-flex; align-items: center; gap: var(--space-2xs); white-space: nowrap; cursor: pointer; }
 .scans-target-id { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scans-running { color: var(--color-info); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
 .scans-running.is-queued { color: var(--color-muted); }

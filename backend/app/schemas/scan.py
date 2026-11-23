@@ -90,7 +90,14 @@ class SubmitScanRequest(BaseModel):
     source_archive_base64: str | None = Field(
         default=None, alias="sourceArchiveBase64", serialization_alias="sourceArchiveBase64"
     )
+    # A check: no target, kept out of every list, deleted after
+    # SCA_CHECK_RETENTION_DAYS. oneTime is the older name for the same thing.
+    check: bool = Field(default=False, description="Run as a check: no target, report only, expires")
     one_time: bool = Field(default=False, alias="oneTime", serialization_alias="oneTime")
+
+    @property
+    def is_check(self) -> bool:
+        return self.check or self.one_time or bool(self.source_archive_base64)
 
     model_config = {"populate_by_name": True}
 
@@ -116,6 +123,7 @@ class ImportSbomRequest(BaseModel):
         default=None, alias="targetId", serialization_alias="targetId",
         description="Reuse existing target ID",
     )
+    check: bool = Field(default=False, description="Import as a check: no target, report only, expires")
 
     model_config = {"populate_by_name": True}
 
@@ -333,6 +341,8 @@ class ScanResponse(BaseModel):
     target_name: str | None = Field(
         default=None, alias="targetName", serialization_alias="targetName"
     )
+    check: bool = False
+    expires_at: UtcDatetime | None = Field(default=None, alias="expiresAt", serialization_alias="expiresAt")
     scanners: list[str] = Field(default_factory=list)
     status: str
     source: str
@@ -772,6 +782,8 @@ class SubmitScanResponse(BaseModel):
     )
     summary: ScanSummarySchema = Field(default_factory=ScanSummarySchema)
     error: str | None = None
+    check: bool = False
+    expires_at: UtcDatetime | None = Field(default=None, alias="expiresAt", serialization_alias="expiresAt")
 
     model_config = {"populate_by_name": True}
 

@@ -1,9 +1,10 @@
 """Release markers on scans: "this completed scan is what we shipped as 1.4.2".
 
 The EU Cyber Resilience Act asks a manufacturer to keep the SBOM and the
-vulnerability handling of every release for years. Hecate never deletes scans
-on its own (no retention job, no TTL index: scans, findings and SBOM rows only
-go when an admin deletes a scan or a whole target), so a marker is enough to
+vulnerability handling of every release for years. Hecate never deletes a
+target's scans on its own (no retention job, no TTL index: scans, findings and
+SBOM rows only go when an admin deletes a scan or a whole target; checks, which
+have no target and cannot be releases, expire), so a marker is enough to
 find a release's evidence again; deleting a single release scan is refused
 until the marker is removed.
 
@@ -17,6 +18,8 @@ from typing import Any
 import structlog
 from bson import ObjectId
 from pymongo.errors import PyMongoError
+
+from app.services.scan_checks import is_check_target
 
 log = structlog.get_logger()
 
@@ -70,6 +73,9 @@ async def mark_release(scan_repo: Any, scan_id: str, label: Any, note: Any = Non
     if scan.get("status") != "completed":
         raise ReleaseError("Only a completed scan can be marked as a release.", status=409)
     target_id = scan.get("target_id")
+    if is_check_target(target_id):
+        # Releases belong to a target, and a check expires.
+        raise ReleaseError("A check has no target and cannot be marked as a release.", status=409)
     try:
         clash = await scan_repo.collection.find_one(
             {

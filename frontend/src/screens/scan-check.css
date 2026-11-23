@@ -1,0 +1,38 @@
+/* Check report (/scans/check/:scanId): a scan without a target, read-only. */
+.scan-check-back { display: inline-flex; align-items: center; gap: var(--space-2xs); margin-bottom: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); text-decoration: none; }
+.scan-check-back:hover { color: var(--color-link); }
+.scan-check-identity { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
+/* An image reference or repository URL can be long: it breaks rather than widening the page. */
+.scan-check-label { min-width: 0; color: var(--color-ink-2); overflow-wrap: anywhere; }
+.scan-check-warning { margin: 0 0 var(--space-md); color: var(--color-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.scan-check-note { margin: var(--space-xs) 0 0; font-size: var(--text-sm); }
+
+.scan-check-rollup { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); gap: var(--space-md); }
+.scan-check-rollup .stat { flex-direction: column-reverse; justify-content: flex-end; }
+.scan-check-rollup .stat dt { font-size: var(--text-sm); }
+.scan-check-rollup .stat dd { font-size: var(--text-2xl); }
+
+.scan-check-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+
+.scan-check-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.scan-check-table th, .scan-check-table td { padding: var(--space-xs) var(--space-md) var(--space-xs) 0; text-align: left; vertical-align: baseline; border-bottom: var(--rule-hair) solid var(--color-rule); }
+.scan-check-table thead th { color: var(--color-muted); font-weight: 500; }
+.scan-check-table th:last-child, .scan-check-table td:last-child { padding-right: 0; }
+.scan-check-table tbody tr:last-child td { border-bottom: 0; }
+.scan-check-id { white-space: nowrap; }
+.scan-check-package, .scan-check-where { overflow-wrap: anywhere; }
+.scan-check-finding { min-width: 14rem; }
+.scan-check-more { margin-top: var(--space-sm); }
+
+.scan-check-facets { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-lg); margin-top: var(--space-sm); }
+.scan-check-facet h3 { margin: 0 0 var(--space-xs); color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; }
+.scan-check-facet ul { margin: 0; padding: 0; list-style: none; }
+.scan-check-facet li { display: flex; justify-content: space-between; gap: var(--space-sm); padding-block: var(--space-3xs); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); }
+.scan-check-facet li:last-child { border-bottom: 0; }
+.scan-check-facet-name { min-width: 0; overflow-wrap: anywhere; }
+.scan-check-facet-count { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 40rem) {
+  .scan-check-rollup { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-sm); }
+  .scan-check-finding { min-width: 10rem; }
+}

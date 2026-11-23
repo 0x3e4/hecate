@@ -82,6 +82,24 @@ clearly attributed in the UI). The available scanners are:
 If you omit `scanners`, Hecate runs the defaults `trivy`, `grype`, and `syft`. See
 [SCA Scanning](../sca-scanning.md) for what each scanner produces and how findings are ranked.
 
+### Checks without a target
+
+Add `"check": true` to scan something without registering it as a target: the scan appears in no list
+and on no dashboard, and is deleted after `SCA_CHECK_RETENTION_DAYS` (default 7). The response carries
+`"check": true` and `expiresAt`; poll `GET /api/v1/scans/{scanId}` as usual, read the findings from
+`GET /api/v1/scans/{scanId}/findings`, or open the report at `https://<host>/scans/check/{scanId}`.
+`oneTime` is the older name for the same flag, and a request with `sourceArchiveBase64` always runs as
+a check. See [Checks](../sca-scanning.md#checks).
+
+```bash
+curl -sS -X POST "${HECATE_URL}/api/v1/scans" \
+  -H "X-API-Key: ${API_KEY}" -H "Content-Type: application/json" \
+  -d '{"target": "ghcr.io/vendor/tool:2.1.0", "type": "container_image", "check": true}'
+```
+
+An SBOM is checked the same way: `"check": true` in the body of `POST /api/v1/scans/import-sbom`, or
+`?check=true` on `POST /api/v1/scans/import-sbom/upload`.
+
 ## A representative pipeline
 
 The shape of the integration is the same regardless of platform: submit, poll, then read the

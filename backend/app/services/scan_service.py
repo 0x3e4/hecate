@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 from urllib.parse import unquote, urlparse
-from uuid import uuid4
 
 import httpx
 import structlog
@@ -46,6 +45,7 @@ from app.services.scan_parser import (
     parse_trufflehog_json,
 )
 from app.schemas.scan import VALID_SCANNERS, normalize_scanners
+from app.services.scan_checks import check_expires_at, is_check_target, new_check_target_id, not_check_target
 from app.services.scan_target_validation import validate_scan_target
 
 log = structlog.get_logger()
@@ -460,12 +460,9 @@ class ScanService:
         if not source_archive_base64:
             validate_scan_target(target, target_type)
 
-        # 1. Upsert scan target (unless one-time scan)
-        target_id = (
-            f"one-time-upload:{uuid4().hex}"
-            if one_time
-            else self._derive_target_id(target, target_type)
-        )
+        # 1. Upsert scan target, unless it is a check (one-time scan): that one
+        # gets a pseudo target id no list shows and expires (scan_checks.py).
+        target_id = new_check_target_id() if one_time else self._derive_target_id(target, target_type)
         target_name = self._derive_target_name(target)
         if not one_time:
             registry = self._extract_registry(target) if target_type == "container_image" else None
@@ -490,6 +487,8 @@ class ScanService:
         scan_doc = ScanDocument(
             target_id=target_id,
             target_name=target_name,
+            check=one_time,
+            expires_at=check_expires_at(submitted_at) if one_time else None,
             scanners=scanners,
             status="pending",
             source=source,
@@ -526,6 +525,8 @@ class ScanService:
             "sbom_component_count": 0,
             "summary": ScanSummary().model_dump(),
             "error": None,
+            "check": one_time,
+            "expires_at": scan_doc.expires_at,
         }
 
     async def _run_scan_background(
@@ -684,8 +685,13 @@ class ScanService:
         format: str | None = None,
         target_name: str | None = None,
         target_id: str | None = None,
+        check: bool = False,
     ) -> dict[str, Any]:
-        """Import an external SBOM file. Creates target + scan + components + matched findings."""
+        """Import an external SBOM file. Creates target + scan + components + matched findings.
+
+        As a check no target is created: the name only labels the report, and
+        the scan expires like every check (scan_checks.py).
+        """
         from app.services.scan_parser import parse_cyclonedx_sbom, parse_spdx_sbom
 
         format = format or detect_sbom_format(sbom_data)
@@ -700,9 +706,13 @@ class ScanService:
 
         # Create or reuse target (the write gate resolved the same one)
         target_name, target_id = resolve_sbom_import_target(sbom_data, format, target_name, target_id)
+        if check:
+            target_id = new_check_target_id()
 
-        existing_target = await self.target_repo.get(target_id)
-        if not existing_target:
+        existing_target = None if check else await self.target_repo.get(target_id)
+        if existing_target and existing_target.get("name_custom") and existing_target.get("name"):
+            target_name = existing_target["name"]
+        if not existing_target and not check:
             from app.models.scan import ScanTargetDocument
             target_doc = ScanTargetDocument(
                 target_id=target_id,
@@ -719,6 +729,8 @@ class ScanService:
         scan_doc = ScanDocument(
             target_id=target_id,
             target_name=target_name,
+            check=check,
+            expires_at=check_expires_at(started_at) if check else None,
             scanners=["sbom-import"],
             status="completed",
             source="sbom-import",
@@ -778,15 +790,16 @@ class ScanService:
             {"$set": update_data},
         )
 
-        await self.target_repo.update_last_scan(target_id, started_at)
-        await self.target_repo.update_scan_state(
-            target_id,
-            latest_summary=summary.model_dump(),
-            latest_scan_id=scan_id_val,
-            has_running_scan=False,
-        )
-        await self.apply_vex_sources(target_id)
-        self._schedule_release_info(scan_id_val)
+        if not check:
+            await self.target_repo.update_last_scan(target_id, started_at)
+            await self.target_repo.update_scan_state(
+                target_id,
+                latest_summary=summary.model_dump(),
+                latest_scan_id=scan_id_val,
+                has_running_scan=False,
+            )
+            await self.apply_vex_sources(target_id)
+            self._schedule_release_info(scan_id_val)
 
         return {
             "scan_id": scan_id_val,
@@ -795,6 +808,8 @@ class ScanService:
             "findings_count": len(all_findings),
             "sbom_component_count": comp_count,
             "summary": summary,
+            "check": check,
+            "expires_at": scan_doc.expires_at,
         }
 
     async def _match_vulnerabilities_for_components(
@@ -1190,9 +1205,13 @@ class ScanService:
         if scan_metadata.get("commit_sha"):
             await self.target_repo.update_last_fingerprint(target_id, commit_sha=scan_metadata["commit_sha"])
 
+        # A check has no target: no earlier scan to carry from, no VEX sources or
+        # rules, no registry lookups and no notifications. Only the report.
+        is_check = is_check_target(target_id)
+
         # VEX carry-forward: copy VEX annotations from previous scan
         try:
-            _, prev_scans = await self.scan_repo.list_by_target(target_id, limit=2)
+            _, prev_scans = (0, []) if is_check else await self.scan_repo.list_by_target(target_id, limit=2)
             prev_scan_id = None
             for ps in prev_scans:
                 ps_id = str(ps.get("_id", ""))
@@ -1221,11 +1240,12 @@ class ScanService:
 
         # VEX sources come after the carry-forward: they may update what it
         # copied from the previous scan, and fill in the new findings.
-        await self.apply_vex_sources(target_id)
+        if not is_check:
+            await self.apply_vex_sources(target_id)
 
         # Release age / unmaintained / npm publisher change on the SBOM
         # components: registry lookups, so they run behind the scan.
-        if status == "completed":
+        if status == "completed" and not is_check:
             self._schedule_release_info(scan_id)
 
         # Evaluate license compliance if a default policy exists
@@ -1261,7 +1281,7 @@ class ScanService:
             status=status,
             started_at=started_at,
             finished_at=finished_at,
-            metadata={"target": target, "type": target_type, "scanners": scanners, "source": source},
+            metadata={"target": target, "type": target_type, "scanners": scanners, "source": source, "check": is_check},
             result={
                 "scan_id": scan_id,
                 "findings_count": len(all_findings),
@@ -1272,6 +1292,8 @@ class ScanService:
         )
 
         try:
+            if is_check:
+                return
             notifier = get_notification_service()
 
             # -- Classify findings by category --
@@ -1603,6 +1625,17 @@ class ScanService:
         await asyncio.gather(*(self._cleanup_target_data(tid) for tid in orphan_ids))
         return len(orphan_ids)
 
+    async def purge_expired_checks(self, now: datetime | None = None) -> int:
+        """Delete checks past their expiry with their findings, SBOM and layer rows."""
+        deleted = 0
+        for scan_id in await self.scan_repo.list_expired_checks(now or datetime.now(tz=UTC)):
+            try:
+                if await self.delete_scan(scan_id):
+                    deleted += 1
+            except Exception:
+                log.warning("scan_service.check_purge_failed", scan_id=scan_id, exc_info=True)
+        return deleted
+
     async def delete_scan(self, scan_id: str) -> bool:
         """Delete a single scan and its associated findings and SBOM components."""
         # Look up the scan to find its target_id before deletion
@@ -1615,7 +1648,7 @@ class ScanService:
         deleted = await self.scan_repo.delete(scan_id)
 
         # Decrement the target's scan count and refresh denormalized state
-        if deleted and target_id:
+        if deleted and target_id and not is_check_target(target_id):
             await self.target_repo.decrement_scan_count(target_id)
             # Re-derive latest scan state after deletion
             latest = await self.scan_repo.get_latest_by_target(target_id)
@@ -1677,7 +1710,7 @@ class ScanService:
         from app.db.mongo import get_database
         db = await get_database()
         coll = db[settings.mongo_scans_collection]
-        query = {"ai_analysis": {"$ne": None}}
+        query = {"ai_analysis": {"$ne": None}, "target_id": not_check_target()}
         try:
             total = await coll.count_documents(query)
             cursor = (

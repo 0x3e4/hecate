@@ -43,6 +43,35 @@ minutes a watchdog cancels a scan that lost its task or ran past its maximum run
 (`SCA_SCAN_MAX_RUNTIME_SECONDS`; by default derived from the selected scanners' timeouts, about 90
 minutes). The scan's error says why, and the target stops showing a scan in progress.
 
+## Checks
+
+A **check** scans something once without registering it as a target: an image or repository you want
+to look at before adopting it, a ZIP of code that is not pushed yet, or an SBOM a supplier sent you.
+It runs the same scanners and shows a **check report** at `/scans/check/<scan id>`: the severity
+summary, the affected packages, other findings (malware indicators, secrets, SAST, best practices),
+an overview of the SBOM, and exports (findings as CSV or JSON, the SBOM as CycloneDX or SPDX).
+
+A check stays out of everything else. It appears in no list (Targets, Scans, Findings, SBOM), not on
+the dashboard, not in "Affected in your scans" on a vulnerability, and the MAL-* watcher, VEX sources
+and VEX rules, notifications and the registry lookups for supply-chain signals all leave it alone.
+The report link is the only way back to it, and it is deleted with its findings and SBOM
+`SCA_CHECK_RETENTION_DAYS` (default 7) after it was submitted. A check cannot be marked as a release.
+
+Out of the lists is not private: like every scan, a check can be read by anyone who may read scans and
+knows its id, and scan ids are not secret tokens. For code that must stay confidential, turn on
+[sign-in](admin/authentication.md) with `AUTH_REQUIRE_LOGIN` so reads need a session or a key.
+
+Start one in the **New scan** dialog with **Check only, without a target**; an uploaded ZIP always runs
+as a check. For an SBOM, tick **Check only** next to the import. From a pipeline, send `"check": true`
+with [`POST /api/v1/scans`](integrations/cicd.md#checks-without-a-target), or `check=true` /
+`"check": true` with the SBOM import endpoints; an assistant calls the MCP tool `trigger_scan` with
+`check=true`. Since a check writes into no target, a target password
+does not open it: it needs the editor role or the system password, or the CI key / a `scan:submit`
+token for `POST /api/v1/scans`.
+
+Scans made with the earlier one-time ZIP upload count as checks too: they drop out of the lists, but
+have no expiry date and stay until deleted.
+
 ## Scanners
 
 Eleven scanners run inside the sidecar. Trivy, Grype and OSV Scanner find dependency vulnerabilities;

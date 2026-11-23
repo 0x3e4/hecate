@@ -11,6 +11,7 @@ from pymongo.errors import PyMongoError
 from app.core.config import settings
 from app.db.mongo import get_database
 from app.models.scan import ScanDocument, ScanSummary
+from app.services.scan_checks import not_check_target
 
 log = structlog.get_logger()
 
@@ -27,6 +28,8 @@ class ScanRepository:
         await collection.create_index("status")
         await collection.create_index([("created_at", -1)])
         await collection.create_index([("target_id", 1), ("created_at", -1)])
+        # Only checks carry it; the cleanup job looks them up by it.
+        await collection.create_index("expires_at", sparse=True)
         return cls(collection)
 
     async def insert(self, scan: ScanDocument) -> str:
@@ -121,9 +124,8 @@ class ScanRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[int, list[dict[str, Any]]]:
-        query: dict[str, Any] = {}
-        if target_id:
-            query["target_id"] = target_id
+        # Without a target: every scan except checks, which no list shows.
+        query: dict[str, Any] = {"target_id": target_id if target_id else not_check_target()}
         if status:
             query["status"] = status
 
@@ -148,7 +150,7 @@ class ScanRepository:
         """Return the latest completed scan _id for each target via aggregation."""
         try:
             pipeline: list[dict[str, Any]] = [
-                {"$match": {"status": "completed", **({"target_id": target_id} if target_id else {})}},
+                {"$match": {"status": "completed", "target_id": target_id if target_id else not_check_target()}},
                 {"$sort": {"created_at": -1}},
                 {"$group": {"_id": "$target_id", "scan_id": {"$first": "$_id"}}},
             ]
@@ -289,6 +291,19 @@ class ScanRepository:
         except PyMongoError as exc:
             log.warning("scan_repository.count_history_failed", target_id=target_id, error=str(exc))
             return 0
+
+    async def list_expired_checks(self, now: datetime, limit: int = 200) -> list[str]:
+        """Ids of finished checks past their ``expires_at``.
+
+        Running ones are left to the stale-scan watchdog; the next run takes
+        them once they have ended.
+        """
+        query = {"check": True, "expires_at": {"$lte": now}, "status": {"$nin": ["pending", "running"]}}
+        try:
+            return [str(doc["_id"]) async for doc in self.collection.find(query, {"_id": 1}).limit(limit)]
+        except PyMongoError as exc:
+            log.warning("scan_repository.list_expired_checks_failed", error=str(exc))
+            return []
 
     async def delete(self, scan_id: str) -> bool:
         try:

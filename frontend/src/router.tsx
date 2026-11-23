@@ -12,6 +12,7 @@ import { ChangelogPage } from "./views/ChangelogPage";
 import { SystemPage } from "./views/SystemPage";
 import { InventoryPage } from "./views/InventoryPage";
 import { ScansPage } from "./views/ScansPage";
+import { ScanCheckReportPage } from "./views/ScanCheckReportPage";
 import { ScanDetailPage } from "./views/ScanDetailPage";
 import { ScanTargetDetailPage } from "./views/ScanTargetDetailPage";
 import { CertPage } from "./views/CertPage";
@@ -44,6 +45,8 @@ export const router = createBrowserRouter([
       // Splat, not :targetId — target ids are URLs with literal slashes, so
       // pasted un-encoded/scheme-less forms must match across segments.
       { path: "scans/targets/*", element: <ScanTargetDetailPage /> },
+      // A check: a scan without a target, shown as a report (before scans/:scanId).
+      { path: "scans/check/:scanId", element: <ScanCheckReportPage /> },
       { path: "scans/:scanId", element: <ScanDetailPage /> },
       { path: "malware-feed", element: <MalwareFeedPage /> },
       { path: "advisories", element: <CertPage /> },

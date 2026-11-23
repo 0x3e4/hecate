@@ -572,6 +572,9 @@ async def require_target_write_sbom_import(
         _model_field(body, "targetName", "target_name"),
         _model_field(body, "targetId", "target_id"),
     )
+    if body.get("check") is True:
+        # A check writes into no target: an editor or the admin, never a target password.
+        target_id = None
     await _authorize_target(
         request,
         target_id,
@@ -591,6 +594,7 @@ async def require_target_write_sbom_upload(
     request: Request,
     target_name: str | None = Query(default=None, alias="targetName"),
     format: str | None = Query(default=None),
+    check: bool = Query(default=False),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
     service: ScanService = Depends(get_scan_service),
@@ -604,9 +608,13 @@ async def require_target_write_sbom_upload(
     Starlette caches the parsed form, and the handler reads the same upload.
     """
     sbom: dict = {}
-    if not (target_name and target_name.strip()):
-        sbom = await _uploaded_sbom(request)
-    _, target_id = resolve_sbom_import_target(sbom, format, target_name, None)
+    if check:
+        # A check writes into no target: an editor or the admin, never a target password.
+        target_id = None
+    else:
+        if not (target_name and target_name.strip()):
+            sbom = await _uploaded_sbom(request)
+        _, target_id = resolve_sbom_import_target(sbom, format, target_name, None)
     await _authorize_target(
         request,
         target_id,
@@ -711,7 +719,12 @@ async def require_target_write_manual_scan(
     target = body.get("target")
     target_type = body.get("type")
     target_id = None
-    if isinstance(target, str) and isinstance(target_type, str):
+    # A check (oneTime, or an uploaded archive, which always runs as one) writes
+    # into no target, so no target password opens it: an editor or the admin.
+    is_check = body.get("check") is True or body.get("oneTime") is True or body.get("one_time") is True or bool(
+        body.get("sourceArchiveBase64") or body.get("source_archive_base64")
+    )
+    if not is_check and isinstance(target, str) and isinstance(target_type, str):
         try:
             target_id = service._derive_target_id(target, target_type)
         except Exception:

@@ -889,6 +889,9 @@ export interface Scan {
   id: string;
   targetId: string;
   targetName?: string | null;
+  /** A check: no target, in no list, deleted at expiresAt. */
+  check?: boolean;
+  expiresAt?: string | null;
   scanners: string[];
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   source: "ci_cd" | "manual" | "scheduled" | "sbom-import";
@@ -1230,6 +1233,8 @@ export interface SubmitScanRequest {
   pipelineUrl?: string;
   source?: string;
   sourceArchiveBase64?: string;
+  /** Run as a check: no target, report only, deleted after a few days. */
+  check?: boolean;
   oneTime?: boolean;
 }
 
@@ -1331,6 +1336,8 @@ export interface SubmitScanResponse {
   sbomComponentCount: number;
   summary: ScanSummary;
   error?: string | null;
+  check?: boolean;
+  expiresAt?: string | null;
 }
 
 // --- License Compliance ---

@@ -77,18 +77,28 @@ def register(mcp: FastMCP) -> None:
         target: str,
         target_type: str = "container_image",
         scanners: list[str] | None = None,
+        check: bool = False,
     ) -> dict[str, Any]:
         """Submit an SCA scan for a container image or source repository.
 
         Requires write scope (caller's source IP must be in MCP_WRITE_IP_SAFELIST).
         Supported target types: 'container_image', 'source_repo'.
         Default scanners: trivy, grype, syft, osv-scanner, hecate.
+
+        check=True runs a check instead: no scan target is registered, the scan
+        appears in no list or dashboard, and it is deleted after a few days
+        (SCA_CHECK_RETENTION_DAYS). Use it to look at an image or repository once
+        without adding it to the inventory of scanned things. Poll it with
+        get_sca_scan(scan_id=...) and read its findings with
+        get_scan_findings_by_scan(scan_id=...); the response names the report page.
+
         Examples:
         - trigger_scan(target="nginx:latest") — scan nginx container image
         - trigger_scan(target="https://github.com/org/repo.git", target_type="source_repo")
+        - trigger_scan(target="ghcr.io/vendor/tool:2.1.0", check=True) — one-off check, no target
         """
         started_at = datetime.now(tz=UTC)
-        tool_inputs = {"target": target, "target_type": target_type, "scanners": scanners}
+        tool_inputs = {"target": target, "target_type": target_type, "scanners": scanners, "check": check}
 
         rate_limiter = get_rate_limiter()
         if not rate_limiter.check(mcp_client_id.get()):
@@ -132,14 +142,22 @@ def register(mcp: FastMCP) -> None:
                 target_type=target_type,
                 scanners=scanners,
                 source="mcp",
+                one_time=bool(check),
             )
 
-            output = {
-                "scanId": result.get("scanId") or result.get("scan_id"),
+            scan_id = result.get("scanId") or result.get("scan_id")
+            output: dict[str, Any] = {
+                "scanId": scan_id,
                 "status": "submitted",
                 "target": target,
                 "targetType": target_type,
+                "check": bool(result.get("check")),
             }
+            if result.get("check"):
+                expires_at = result.get("expires_at")
+                output["expiresAt"] = expires_at.isoformat() if expires_at else None
+                # Relative: the MCP server cannot know the host the user opens Hecate on.
+                output["reportPath"] = f"/scans/check/{scan_id}"
             await log_tool_invocation(
                 tool_name="trigger_scan", inputs=tool_inputs,
                 result_count=1, started_at=started_at,

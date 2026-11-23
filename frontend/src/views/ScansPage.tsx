@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { LuArrowDown, LuArrowUp, LuChevronDown, LuExternalLink, LuInfo, LuLock, LuPencil, LuPlus, LuRefreshCw, LuSquare, LuTrash2, LuX } from "react-icons/lu";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import "../screens/scans.css";
 
@@ -34,6 +34,7 @@ import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import { BusyLabel, EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Spinner, Stat } from "../ui/primitives";
 import { TargetRenameDialog } from "../components/TargetRenameDialog";
+import { DocsLink } from "../components/DocsLink";
 import { TabPill } from "../ui/TabPill";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
@@ -191,6 +192,7 @@ export const ScansPage = () => {
   const [sbomImportFile, setSbomImportFile] = useState<File | null>(null);
   const [sbomImportTargetName, setSbomImportTargetName] = useState("");
   const [sbomImportFormat, setSbomImportFormat] = useState("");
+  const [sbomImportCheck, setSbomImportCheck] = useState(false);
   const [sbomImportLoading, setSbomImportLoading] = useState(false);
   const [sbomImportResult, setSbomImportResult] = useState<SubmitScanResponse | null>(null);
   const [sbomImportError, setSbomImportError] = useState<string | null>(null);
@@ -257,6 +259,10 @@ export const ScansPage = () => {
   const [sourceRepoInputMode, setSourceRepoInputMode] = useState<SourceRepoInputMode>("url");
   const [sourceArchiveFile, setSourceArchiveFile] = useState<File | null>(null);
   const [sourceArchiveTargetName, setSourceArchiveTargetName] = useState("");
+  // A check: no target, a report in no list, deleted after a few days. An
+  // uploaded archive always runs as one.
+  const [checkOnly, setCheckOnly] = useState(false);
+  const navigate = useNavigate();
   const [scanType, setScanType] = useState<"container_image" | "source_repo">("container_image");
   const [scanners, setScanners] = useState<string[]>(["trivy", "grype", "syft", "dockle", "dive"]);
   const [scanning, setScanning] = useState(false);
@@ -536,9 +542,13 @@ export const ScansPage = () => {
           target: scanTarget.trim(),
           type: scanType,
           scanners: effectiveScanners,
+          check: checkOnly || undefined,
         });
-      void result;
       setNewScanModalOpen(false);
+      if (result.check) {
+        navigate(`/scans/check/${encodeURIComponent(result.scanId)}`);
+        return;
+      }
       // Switch to scans tab to show the running scan
       setTab("scans");
     } catch (err: any) {
@@ -657,6 +667,8 @@ export const ScansPage = () => {
   const handleRenamed = (updated: ScanTarget) => {
     setTargets(prev => prev.map((tt: ScanTarget) => tt.id === updated.id ? { ...tt, name: updated.name } : tt));
   };
+
+  const zipUpload = scanType === "source_repo" && sourceRepoInputMode === "zip";
 
   const isSubmitDisabled =
     scanning
@@ -1490,11 +1502,15 @@ export const ScansPage = () => {
                 <input
                   type="text"
                   className="scans-import-name"
-                  aria-label={t("Target name (optional)", "Zielname (opt.)")}
+                  aria-label={sbomImportCheck ? t("Name (optional)", "Name (opt.)") : t("Target name (optional)", "Zielname (opt.)")}
                   value={sbomImportTargetName}
                   onChange={e => setSbomImportTargetName(e.target.value)}
-                  placeholder={t("Target name (optional)", "Zielname (opt.)")}
+                  placeholder={sbomImportCheck ? t("Name (optional)", "Name (opt.)") : t("Target name (optional)", "Zielname (opt.)")}
                 />
+                <label className="scans-import-check" title={t("No target; the report is deleted after a few days.", "Kein Ziel; der Bericht wird nach einigen Tagen gelöscht.")}>
+                  <input type="checkbox" checked={sbomImportCheck} onChange={e => setSbomImportCheck(e.target.checked)} />
+                  {t("Check only", "Nur prüfen")}
+                </label>
                 <button
                   type="button"
                   className="btn"
@@ -1510,7 +1526,12 @@ export const ScansPage = () => {
                         sbomImportFile,
                         sbomImportTargetName || undefined,
                         sbomImportFormat || undefined,
+                        sbomImportCheck,
                       );
+                      if (res.check) {
+                        navigate(`/scans/check/${encodeURIComponent(res.scanId)}`);
+                        return;
+                      }
                       setSbomImportResult(res);
                     } catch (err: any) {
                       setSbomImportError(err?.response?.data?.detail || err?.message || t("Import failed.", "Import fehlgeschlagen."));
@@ -1519,7 +1540,7 @@ export const ScansPage = () => {
                     }
                   }}
                 >
-                  <BusyLabel busy={sbomImportLoading}>{t("Import", "Importieren")}</BusyLabel>
+                  <BusyLabel busy={sbomImportLoading}>{sbomImportCheck ? t("Check", "Prüfen") : t("Import", "Importieren")}</BusyLabel>
                 </button>
               </div>
             </div>
@@ -1877,8 +1898,8 @@ export const ScansPage = () => {
                     />
                     <p className="scans-sub scans-field-hint">
                       {t(
-                        "Uploads a source archive for a one-time scan.",
-                        "Lädt ein Quellcode-Archiv für einen einmaligen Scan hoch."
+                        "Uploads a source archive and checks it without creating a target.",
+                        "Lädt ein Quellcode-Archiv hoch und prüft es, ohne ein Ziel anzulegen."
                       )}
                     </p>
                   </div>
@@ -1896,6 +1917,26 @@ export const ScansPage = () => {
                 </>
               )}
 
+              <label className="scans-check-only">
+                <input
+                  type="checkbox"
+                  checked={zipUpload || checkOnly}
+                  disabled={zipUpload}
+                  onChange={e => setCheckOnly(e.target.checked)}
+                  aria-describedby="scans-check-only-hint"
+                />
+                <span>
+                  <span className="scans-check-only-label">{t("Check only, without a target", "Nur prüfen, ohne Ziel")}</span>
+                  <span id="scans-check-only-hint" className="scans-sub scans-check-only-hint">
+                    {t(
+                      "Shows a report that appears in no list and is deleted after a few days.",
+                      "Zeigt einen Bericht, der in keiner Liste erscheint und nach einigen Tagen gelöscht wird.",
+                    )}{" "}
+                    <DocsLink path="sca-scanning/#checks">{t("More", "Mehr")}</DocsLink>
+                  </span>
+                </span>
+              </label>
+
               <fieldset className="scans-fieldset">
                 <legend className="scans-label">{t("Scanners", "Scanner")}</legend>
                 <ScannerCheckboxGroup
@@ -1907,7 +1948,9 @@ export const ScansPage = () => {
 
               <div className="scans-dialog-actions">
                 <button type="submit" className="btn-primary" disabled={isSubmitDisabled} aria-busy={scanning || undefined}>
-                  <BusyLabel busy={scanning}>{t("Start scan", "Scan starten")}</BusyLabel>
+                  <BusyLabel busy={scanning}>
+                    {zipUpload || checkOnly ? t("Start check", "Prüfung starten") : t("Start scan", "Scan starten")}
+                  </BusyLabel>
                 </button>
               </div>
             </form>

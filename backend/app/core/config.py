@@ -269,6 +269,9 @@ class Settings(BaseSettings):
     # Most components one imported SBOM may carry. Imports land in the shared
     # coverage index that the dashboard and the search suggestions read.
     sca_sbom_import_max_components: int = 25000
+    # Checks (scans without a target, see app/services/scan_checks.py) are
+    # deleted this many days after they were submitted. At least 1.
+    sca_check_retention_days: int = 7
     # VEX sources: URLs a target owner attaches to a scan target, fetched and
     # applied after every scan. Public https hosts only unless allowed here.
     sca_vex_source_timeout_seconds: int = 20
