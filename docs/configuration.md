@@ -271,7 +271,8 @@ least `SCA_SCANNER_TIMEOUT_SECONDS`.
 | `SCANNER_MAX_CONCURRENT_SCANS` | `20` | How many `/scan` calls the sidecar works on at once; further calls wait. The backend sends one per scanner of `SCA_MAX_CONCURRENT_SCANS` scans, so the default never queues its own traffic. |
 | `TRIVY_CACHE_DIR` | `/tmp/.trivy-cache` | Trivy DB cache dir (tmpfs by default; mount a volume to persist). |
 | `GRYPE_DB_CACHE_DIR` | `/tmp/.grype-cache` | Grype DB cache dir. The bundled `docker-compose.yml.example` sets it to `/grype-db` on the persistent `grype-db` volume, so the ~3 GB DB survives restarts. Without that volume it sits on tmpfs and is re-downloaded after each restart. |
-| `SEMGREP_RULES` | `p/security-audit` | Semgrep ruleset(s). |
+| `SEMGREP_RULES` | `p/security-audit` | Semgrep ruleset(s). Each Semgrep run gets its own `HOME` under `/tmp` (settings, log and caches), removed afterwards, so nothing lands in the small `/root` tmpfs. |
+| `TRUFFLEHOG_NO_VERIFICATION` | `false` | `true` runs TruffleHog with `--no-verification`. To verify a candidate, TruffleHog sends it to the provider it belongs to (a login against that service's API); turn this on when the sidecar may not reach those hosts or no found secret may leave the network. Every secret is then reported unverified (high instead of critical). |
 | `SCANNER_AUTH` 🔑 | (unset) | Per-host registry/git auth: `host:token` (git PATs) or `host:user:token` (Docker Hub). Git credentials are only sent to `https://` repositories, and only in memory: the sidecar writes no `~/.git-credentials` and removes the variable from its environment at startup, so scanners don't inherit it. |
 | `HECATE_MALWARE_ALLOWLIST` | (empty) | Comma-separated package names to skip during malware detection. |
 | `HECATE_REGISTRY_CACHE_TTL` | `604800` | Typosquatting registry-lookup cache TTL (seconds; 7 days). |

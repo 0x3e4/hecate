@@ -968,6 +968,23 @@ async def _run_dive(target: str, target_type: str) -> ScannerResult:
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
+def _semgrep_env(home: str) -> dict[str, str]:
+    """Environment for one Semgrep run, with its own HOME.
+
+    Semgrep writes ``~/.semgrep`` (settings, log, version cache) and its caches
+    below HOME and the XDG directories. Inherited, that is the 50 MB /root
+    tmpfs every scan shares, and runs in parallel would share the files. The
+    directory is removed after the run.
+    """
+    env = dict(os.environ)
+    env.update({
+        "HOME": home,
+        "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+        "XDG_CACHE_HOME": os.path.join(home, ".cache"),
+    })
+    return env
+
+
 async def _run_semgrep(
     target: str,
     target_type: str,
@@ -981,6 +998,7 @@ async def _run_semgrep(
         )
 
     clone_dir: str | None = None
+    home = tempfile.mkdtemp(prefix="hecate-semgrep-")
     try:
         scan_dir = source_dir
         if not scan_dir:
@@ -998,7 +1016,7 @@ async def _run_semgrep(
             scan_dir,
         ]
 
-        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("semgrep"))
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("semgrep"), env=_semgrep_env(home))
         # Semgrep exit codes: 0 = no findings, 1 = findings found, other = error
         if rc not in (0, 1) and not stdout.strip():
             return ScannerResult(
@@ -1015,6 +1033,7 @@ async def _run_semgrep(
     except RuntimeError as exc:
         return ScannerResult(scanner="semgrep", format="semgrep-json", report={}, error=str(exc))
     finally:
+        shutil.rmtree(home, ignore_errors=True)
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
 
@@ -1096,6 +1115,17 @@ async def _run_devskim(
             shutil.rmtree(clone_dir, ignore_errors=True)
 
 
+def _trufflehog_no_verification() -> bool:
+    """TRUFFLEHOG_NO_VERIFICATION: skip TruffleHog's verification.
+
+    To verify a candidate, TruffleHog sends it to the provider it belongs to
+    (a login against the AWS, GitHub, Slack ... API). Where the sidecar may not
+    reach those hosts, or no found secret may leave the network, this turns it
+    off: every finding is then unverified (high instead of critical).
+    """
+    return (os.environ.get("TRUFFLEHOG_NO_VERIFICATION") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 async def _run_trufflehog(
     target: str,
     target_type: str,
@@ -1115,11 +1145,10 @@ async def _run_trufflehog(
             clone_dir = await _clone_repo(target)
             scan_dir = clone_dir
 
-        cmd = [
-            "trufflehog", "filesystem",
-            "--json", "--no-update",
-            scan_dir,
-        ]
+        cmd = ["trufflehog", "filesystem", "--json", "--no-update"]
+        if _trufflehog_no_verification():
+            cmd.append("--no-verification")
+        cmd.append(scan_dir)
 
         stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("trufflehog", default=300))
         # TruffleHog exit 0 = no secrets, 183 = secrets found

@@ -90,7 +90,7 @@ scanners chosen at its first scan and reuses them for later auto-scans.
 | dive | Image-layer analysis, container images (Layer Analysis tab) |
 | semgrep | SAST for source repositories |
 | devskim | Microsoft SAST, strong .NET coverage (shares the SAST tab) |
-| trufflehog | Secret scanning for source repositories |
+| trufflehog | Secret scanning for source repositories; verifies each candidate against its provider unless `TRUFFLEHOG_NO_VERIFICATION=true` |
 
 In a repository scan the dependency scanners read lockfiles and manifests. SBOM or VEX files committed
 to the repository (`*.cdx.json`, `*.spdx.json`, `bom.json`) are not treated as the repository's
