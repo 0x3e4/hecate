@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LuX } from "react-icons/lu";
 
 import { useI18n } from "../i18n/context";
@@ -9,6 +10,11 @@ import { listSupportedTimezones } from "../timezone/storage";
 /**
  * Language and display timezone. Both are stored in this browser only, so
  * everyone can set them: they used to sit on the admin-only System page.
+ *
+ * Rendered into document.body: it is opened from the sidebar, and on narrow
+ * screens the sidebar slides in through a transform, which makes it the
+ * containing block of every position: fixed descendant. Inside it the overlay
+ * only covered the sidebar.
  */
 export const PreferencesDialog = ({ onClose }: { onClose: () => void }) => {
   const { language, setLanguage, t } = useI18n();
@@ -43,7 +49,7 @@ export const PreferencesDialog = ({ onClose }: { onClose: () => void }) => {
     return false;
   };
 
-  return (
+  return createPortal(
     <div className="dialog-overlay" role="presentation" onClick={onClose}>
       <div
         className="dialog preferences-dialog"
@@ -113,6 +119,7 @@ export const PreferencesDialog = ({ onClose }: { onClose: () => void }) => {
           {t("Saved in this browser only.", "Nur in diesem Browser gespeichert.")}
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

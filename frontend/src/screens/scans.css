@@ -142,8 +142,10 @@
 .scans-target-title { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; }
 .scans-target-name { display: inline-flex; align-items: center; gap: var(--space-2xs); font-weight: 600; overflow-wrap: anywhere; }
 .scans-target-lock { color: var(--color-muted); }
-.scans-target-meta { display: flex; gap: var(--space-xs); min-width: 0; }
-.scans-target-meta > :first-child { flex-shrink: 0; }
+/* Type and reference in two columns: a fixed type width lines the references up from row to row ("Container" is wider than "SBOM"). */
+.scans-target-meta { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: var(--space-xs); min-width: 0; }
+.scans-target-type { white-space: nowrap; }
+.scans-target-rename { flex-shrink: 0; }
 .scans-target-id { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scans-running { color: var(--color-info); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
 .scans-running.is-queued { color: var(--color-muted); }

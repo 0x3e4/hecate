@@ -52,6 +52,10 @@ class ScanTargetRepository:
             # Preserve scanners from first scan — don't override on subsequent scans
             if existing.get("scanners"):
                 payload["scanners"] = existing["scanners"]
+            # Keep a name someone gave the target; the payload carries the derived one.
+            if existing.get("name_custom") and existing.get("name"):
+                payload["name"] = existing["name"]
+                payload["name_custom"] = True
             # Preserve group unless explicitly set on the new payload
             if not payload.get("group") and existing.get("group"):
                 payload["group"] = existing["group"]
@@ -174,6 +178,18 @@ class ScanTargetRepository:
             return result.modified_count > 0
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_auto_scan_failed", target_id=target_id, error=str(exc))
+            return False
+
+    async def update_name(self, target_id: str, name: str) -> bool:
+        """Rename a target; ``name_custom`` keeps the name across re-scan upserts."""
+        try:
+            result = await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {"name": name, "name_custom": True, "updated_at": datetime.now(tz=UTC)}},
+            )
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_name_failed", target_id=target_id, error=str(exc))
             return False
 
     async def update_group(self, target_id: str, group: str | None) -> bool:

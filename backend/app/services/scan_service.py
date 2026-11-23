@@ -480,6 +480,10 @@ class ScanService:
                 scanners=scanners,
             )
             await self.target_repo.upsert(target_doc)
+            # A renamed target keeps its name, and its scans carry that one.
+            stored = await self.target_repo.get(target_id)
+            if stored and stored.get("name_custom") and stored.get("name"):
+                target_name = stored["name"]
 
         # 2. Create scan record (status=pending — will transition to running when semaphore acquired)
         submitted_at = datetime.now(tz=UTC)
@@ -2656,6 +2660,20 @@ class ScanService:
         if invalid:
             raise ValueError(f"Invalid scanners: {', '.join(sorted(invalid))}")
         return await self.target_repo.update_scanners(target_id, scanners)
+
+    async def rename_target(self, target_id: str, name: str) -> bool:
+        """Rename a target and the copy of its name on its scans.
+
+        Scans carry ``target_name`` themselves (scan lists, notifications, the
+        dashboard's scan chips), so they follow the rename.
+        """
+        if not await self.target_repo.update_name(target_id, name):
+            return False
+        try:
+            await self.scan_repo.collection.update_many({"target_id": target_id}, {"$set": {"target_name": name}})
+        except Exception as exc:
+            log.warning("scan_service.rename_scans_failed", target_id=target_id, error=str(exc))
+        return True
 
     async def update_target_group(self, target_id: str, group: str | None) -> bool:
         """Set or clear the application/group name for a target."""

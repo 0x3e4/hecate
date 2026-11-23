@@ -389,12 +389,12 @@ and says so, rather than reporting "no changes" just because the most recent run
 A target with only one completed scan shows a baseline line instead. A **Releases** list shows the scans marked as
 releases (see [Releases and the evidence bundle](#releases-and-the-evidence-bundle)). A paginated **Scan history** table lists every
 completed run with a link into each. Quick-action buttons let you trigger a rescan, run a change-detection check on
-demand, copy a shields.io status badge for your README, or delete the target and all its data — a dialog asks first,
+demand, copy a shields.io status badge for your README, rename the target, or delete the target and all its data — a dialog asks first,
 and deleting removes the target from the list immediately, while its scan history is cleaned up in the background.
 When a target is write-protected, a lock badge appears next to its name, the action buttons require the appropriate
 password, and **Change password** lets the owner replace or remove it —
 see [Security & Access Control](../security-access-control.md). SBOM-import targets are read-only and do not show the
-rescan, check or delete actions.
+rescan, check or delete actions; they can still be renamed.
 
 !!! note "Status badges for your README"
     The **Copy badge** button copies Markdown for a shields.io badge that always tracks the target's latest completed

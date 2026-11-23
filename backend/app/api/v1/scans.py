@@ -59,6 +59,8 @@ from app.schemas.scan import (
     TargetSbomDiffResponse,
     TargetVexSourcesRequest,
     TargetWritePasswordRequest,
+    TARGET_NAME_MAX_LENGTH,
+    normalize_target_name,
 )
 from app.schemas.vex import (
     FindingsDismissRequest,
@@ -461,7 +463,13 @@ async def update_target(
     _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Update target settings (e.g., auto_scan, scanners, group)."""
+    """Update target settings (e.g., name, auto_scan, scanners, group)."""
+    if body and "name" in body:
+        name = normalize_target_name(body.get("name"))
+        if name is None:
+            raise HTTPException(status_code=400, detail=f"name must be 1 to {TARGET_NAME_MAX_LENGTH} characters")
+        if not await service.rename_target(target_id, name):
+            raise HTTPException(status_code=404, detail="Scan target not found")
     if body and "autoScan" in body:
         await service.update_target_auto_scan(target_id, bool(body["autoScan"]))
     if body and "scanners" in body:

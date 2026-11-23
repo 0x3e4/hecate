@@ -2,8 +2,9 @@
 
 Supports equality (``None`` also matches a missing field), ``$ne``, ``$in``,
 ``$nin``, ``$regex`` and ``$or`` in filters, ``$set`` updates, ``find`` with
-``limit``, ``find_one``, ``update_one`` / ``update_many`` and ``bulk_write``
-with ``UpdateOne`` / ``UpdateMany``. Projections are ignored.
+``limit``, ``find_one``, ``update_one`` / ``update_many``, ``replace_one``
+(with ``upsert``) and ``bulk_write`` with ``UpdateOne`` / ``UpdateMany``.
+Projections are ignored.
 """
 from __future__ import annotations
 
@@ -45,6 +46,7 @@ def matches(doc: dict[str, Any], query: dict[str, Any]) -> bool:
 class _Result:
     modified_count: int = 0
     matched_count: int = 0
+    upserted_id: Any = None
 
 
 class _Cursor:
@@ -106,6 +108,21 @@ class FakeCollection:
 
     async def update_many(self, query: dict[str, Any], update: dict[str, Any]) -> _Result:
         return self._apply(query, update, many=True)
+
+    async def replace_one(self, query: dict[str, Any], replacement: dict[str, Any], upsert: bool = False) -> _Result:
+        for index, doc in enumerate(self.docs):
+            if matches(doc, query):
+                new = copy.deepcopy(replacement)
+                new.setdefault("_id", doc["_id"])
+                changed = new != doc
+                self.docs[index] = new
+                return _Result(modified_count=int(changed), matched_count=1)
+        if not upsert:
+            return _Result()
+        new = copy.deepcopy(replacement)
+        new.setdefault("_id", query.get("_id", ObjectId()))
+        self.docs.append(new)
+        return _Result(upserted_id=new["_id"])
 
     async def bulk_write(self, ops: list[Any], ordered: bool = True) -> _Result:
         total = _Result()

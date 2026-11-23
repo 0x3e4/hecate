@@ -22,6 +22,9 @@ class ScanTargetDocument(BaseModel):
     target_id: str = Field(description="Slug, e.g. 'ghcr.io/0x3e4/hecate-backend' or repo URL")
     type: str = Field(description="container_image or source_repo")
     name: str = Field(description="Human-readable name")
+    # Set once someone renames the target: every scan upserts the target with the
+    # name derived from its reference, and that must not undo the rename.
+    name_custom: bool = Field(default=False, description="name was set by hand, keep it on re-scan")
     registry: str | None = Field(default=None, description="Registry host for container images")
     repository_url: str | None = Field(default=None, description="URL for source repos")
     description: str | None = None

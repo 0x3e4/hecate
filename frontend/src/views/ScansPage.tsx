@@ -33,6 +33,7 @@ import { useToastContext } from "../components/ToastProvider";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n } from "../i18n/context";
 import { BusyLabel, EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Spinner, Stat } from "../ui/primitives";
+import { TargetRenameDialog } from "../components/TargetRenameDialog";
 import { TabPill } from "../ui/TabPill";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
@@ -652,6 +653,11 @@ export const ScansPage = () => {
     }
   };
 
+  // Only the name: the row keeps its running state and summary from the list.
+  const handleRenamed = (updated: ScanTarget) => {
+    setTargets(prev => prev.map((tt: ScanTarget) => tt.id === updated.id ? { ...tt, name: updated.name } : tt));
+  };
+
   const isSubmitDisabled =
     scanning
     || scanners.length === 0
@@ -823,6 +829,7 @@ export const ScansPage = () => {
                             onToggleAutoScan={handleToggleAutoScan}
                             onUpdateScanners={handleUpdateScanners}
                             onUpdateGroup={handleUpdateGroup}
+                            onRenamed={handleRenamed}
                             onCancelScan={handleCancelScan}
                             onFilterScans={onFilterScansFn}
                           />
@@ -2198,7 +2205,7 @@ const FoundInTargets = ({ refs, targets }: { refs: { targetId: string; scanId: s
   );
 };
 
-const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onUpdateGroup, onFilterScans, onCancelScan }: { target: ScanTarget; colSpan: number; groupSuggestions?: string[]; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onUpdateGroup?: (targetId: string, group: string | null) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
+const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan, onToggleAutoScan, onUpdateScanners, onUpdateGroup, onRenamed, onFilterScans, onCancelScan }: { target: ScanTarget; colSpan: number; groupSuggestions?: string[]; onDelete: (id: string) => void; onRescan: (target: ScanTarget) => void; onToggleAutoScan: (target: ScanTarget) => void; onUpdateScanners: (targetId: string, scanners: string[]) => void; onUpdateGroup?: (targetId: string, group: string | null) => void; onRenamed?: (target: ScanTarget) => void; onFilterScans: (id: string, name: string) => void; onCancelScan?: (scanId: string) => void }) => {
   const { t } = useI18n();
   const { scaAutoScanEnabled } = useServerConfig();
   const isRunning = !!target.hasRunningScan;
@@ -2206,6 +2213,7 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
   const [editingScanners, setEditingScanners] = useState(false);
   const [selectedScanners, setSelectedScanners] = useState<string[]>([]);
   const [editingGroup, setEditingGroup] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [groupDraft, setGroupDraft] = useState<string>(target.group || "");
   const datalistId = `group-suggestions-${target.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const isSbomImport = target.type === "sbom-import";
@@ -2250,12 +2258,33 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
               )}
               {target.name}
             </Link>
+            {onRenamed && (
+              <IconButton className="scans-target-rename" label={t("Rename target", "Ziel umbenennen")} onClick={() => setRenaming(true)}>
+                <LuPencil aria-hidden="true" />
+              </IconButton>
+            )}
             {isRunning && <ScanningBadge status={target.runningScanStatus} />}
           </div>
           <div className="scans-sub scans-target-meta">
-            <span>{target.type === "container_image" ? "Container" : "Source"}</span>
+            <span className="scans-target-type">
+              {target.type === "container_image"
+                ? t("Container", "Container")
+                : target.type === "sbom-import"
+                  ? "SBOM"
+                  : t("Source", "Quellcode")}
+            </span>
             <span className="mono scans-target-id" title={target.id}>{target.id}</span>
           </div>
+          {renaming && onRenamed && (
+            <TargetRenameDialog
+              target={target}
+              onClose={() => setRenaming(false)}
+              onRenamed={(updated) => {
+                onRenamed(updated);
+                setRenaming(false);
+              }}
+            />
+          )}
         </td>
         <td className="scans-cell-findings" data-label={t("Findings", "Ergebnisse")}>
           {target.latestSummary && <SeverityBadges summary={target.latestSummary} />}

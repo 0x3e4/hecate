@@ -51,6 +51,8 @@ summary.dashboard-triage-row .dashboard-disclosure-icon { color: var(--color-mut
 .dashboard-triage-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2xs); }
 .dashboard-triage-chips:empty { display: none; }
 .dashboard-triage-when { color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Source names can be long (Mastodon accounts: `@user@infosec.exchange`), so this one wraps instead of pushing out of the card. break-word, not anywhere: it leaves the column's min-content alone, so short CERT names stay whole. */
+.dashboard-triage-sources { max-width: 28ch; min-width: 0; text-align: right; white-space: normal; overflow-wrap: break-word; }
 .dashboard-tally { display: inline-flex; gap: var(--space-xs); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dashboard-flag { position: relative; min-height: 24px; color: var(--color-ink); white-space: nowrap; }
 .dashboard-section-link { color: var(--color-muted); font-size: var(--text-sm); text-decoration: underline; text-decoration-color: var(--color-rule-strong); }
@@ -178,6 +180,7 @@ details[open] > summary .dashboard-disclosure-icon { transform: rotate(90deg); }
   .dashboard-triage-side { grid-column: 2 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; padding-top: var(--space-3xs); }
   .dashboard-triage-row--lead .dashboard-triage-side { grid-column: 3; }
   .dashboard-triage-chips { justify-content: flex-start; }
+  .dashboard-triage-sources { max-width: 100%; text-align: left; }
   .dashboard-group-cve { grid-template-columns: 4.75rem minmax(0, 1fr); padding-inline: var(--space-xs); }
   .dashboard-group-cve-title { grid-column: 2; }
   .dashboard-list-item { min-height: 44px; }
@@ -197,6 +200,7 @@ details[open] > summary .dashboard-disclosure-icon { transform: rotate(90deg); }
   .dashboard-cve-aliases .mono { white-space: normal; overflow-wrap: anywhere; }
   .dashboard-cve-chips .coverage-chip + .coverage-chip { margin-left: 0; }
   .dashboard-facet { display: inline-block; padding-block: var(--space-2xs); }
+  .dashboard-triage-sources .dashboard-facet { max-width: 100%; }
 }
 
 /* Stacks on the width this table actually has: the sidebar eats 232px at tablet widths */

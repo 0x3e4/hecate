@@ -1307,7 +1307,7 @@ const CERTS_SHOWN = 3;
 const CertLinks = ({ sources }: { sources: CertMention[] }) => {
   const certs = [...sources.filter((source) => source.kind !== "community"), ...sources.filter((source) => source.kind === "community")];
   return (
-    <span className="dashboard-triage-when">
+    <span className="dashboard-triage-when dashboard-triage-sources">
       {certs.slice(0, CERTS_SHOWN).map((cert, index) => (
         <React.Fragment key={cert.name}>
           {index > 0 && ", "}

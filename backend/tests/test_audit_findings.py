@@ -163,6 +163,10 @@ class _Recorder:
     async def update_running_state(self, *_args: Any) -> None:
         return None
 
+    async def get(self, _target_id: str) -> None:
+        # submit_scan reads the target back for a name someone gave it.
+        return None
+
     async def insert(self, doc: Any) -> str:
         self.scans.append(doc)
         return "scan-1"

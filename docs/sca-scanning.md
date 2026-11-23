@@ -21,6 +21,11 @@ a scan and the target is created for you. Related targets (say the backend repo,
 the worker image of one product) can be grouped into a single **application**, and the Targets tab then
 shows each group as a collapsible section with a combined severity roll-up.
 
+A target's name starts out derived from its reference (`hecate-docs` for `ghcr.io/0x3e4/hecate-docs`).
+**Rename** on the target page, or the pencil next to the name in the Targets tab, gives it another one.
+Only the name changes: the id stays, the target's earlier scans show the new name too, and later scans
+keep it. Renaming is a target write, so a write-protected target asks for its password.
+
 Every target also has its own deep-linkable overview page at `/scans/targets/<id>`, reachable by
 clicking a target card's title. It gathers the target's metadata, latest severity rollup, auto-scan
 diagnostics, full scan history, top findings and quick actions (rescan, run a check, delete) in one

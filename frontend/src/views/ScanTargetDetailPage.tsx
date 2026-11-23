@@ -6,6 +6,7 @@ import {
   LuExternalLink,
   LuKeyRound,
   LuLock,
+  LuPencil,
   LuRefreshCw,
   LuSearchCheck,
   LuTrash2,
@@ -27,6 +28,7 @@ import { SeverityBadges } from "../components/SeverityBadges";
 import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
+import { TargetRenameDialog } from "../components/TargetRenameDialog";
 import { VexSourcesCard } from "../components/VexSourcesCard";
 import { TargetReleases } from "../components/TargetReleases";
 import { Toast, useToast } from "../components/Toast";
@@ -259,6 +261,7 @@ export const ScanTargetDetailPage = () => {
   const [errorCause, setErrorCause] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -454,6 +457,14 @@ export const ScanTargetDetailPage = () => {
   // Critical to low always show; negligible and unknown only when something landed there.
   const rollup = SEVERITY_ORDER.map((s) => ({ ...s, n: Number(summary?.[s.key]) || 0 })).filter((s) => !s.optional || s.n > 0);
 
+  // SBOM imports get none of the scan actions, but can be renamed like any target.
+  const renameButton = (
+    <button type="button" className="btn-secondary" onClick={() => setRenameOpen(true)}>
+      <LuPencil aria-hidden="true" />
+      {t("Rename", "Umbenennen")}
+    </button>
+  );
+
   return (
     <div className={`page scan-target${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
       {backLink}
@@ -545,6 +556,7 @@ export const ScanTargetDetailPage = () => {
                   {t("Change password", "Passwort ändern")}
                 </button>
               )}
+              {renameButton}
               <button
                 type="button"
                 className="btn-secondary scan-target-delete"
@@ -555,7 +567,7 @@ export const ScanTargetDetailPage = () => {
                 {t("Delete target", "Ziel löschen")}
               </button>
             </>
-            ) : null}
+            ) : renameButton}
           </>
         }
       />
@@ -832,6 +844,18 @@ export const ScanTargetDetailPage = () => {
           confirmLabel={t("Delete", "Löschen")}
           onConfirm={handleDelete}
           onCancel={() => setDeleteOpen(false)}
+        />
+      )}
+
+      {renameOpen && (
+        <TargetRenameDialog
+          target={target}
+          onClose={() => setRenameOpen(false)}
+          onRenamed={(updated) => {
+            setTarget((prev) => (prev ? { ...prev, name: updated.name } : updated));
+            setRenameOpen(false);
+            showToast(t("Target renamed.", "Ziel umbenannt."), "success");
+          }}
         />
       )}
 

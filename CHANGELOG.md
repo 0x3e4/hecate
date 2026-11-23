@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Scan targets can be renamed: **Rename** on the target page, or the pencil next to the name in the Targets tab (`PATCH /scans/targets/{id}` with `name`). The id stays the same, the target's earlier scans take the new name, and later scans keep it instead of putting the name derived from the reference back.
 
 ### Changed
 
 ### Fixed
+- **Language** in the sidebar footer opened its dialog inside the sidebar on phones instead of over the whole page: the sliding sidebar's transform made it the frame of every fixed element in it. The dialog now renders at the page root.
+- Needs attention on the dashboard: a long source name (a Mastodon account such as `@watchTowr@infosec.exchange`) ran past the edge of the card on phones. Source names now wrap; so do long advisory titles on the Advisories page.
+- Targets tab: the references under the target names now line up from row to row (the type label has a fixed width), and SBOM-import targets are labelled "SBOM" instead of "Source".
 
 ## [2.3.2] - 2026-11-18
 

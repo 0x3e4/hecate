@@ -27,6 +27,20 @@ def normalize_scanners(scanners: list[str]) -> list[str]:
     return unique
 
 
+TARGET_NAME_MAX_LENGTH = 200
+
+
+def normalize_target_name(value: object) -> str | None:
+    """A target name as given by a person: whitespace collapsed, no control
+    characters, 1 to TARGET_NAME_MAX_LENGTH characters. None when unusable."""
+    if not isinstance(value, str):
+        return None
+    name = " ".join("".join(ch for ch in value if ch.isprintable() or ch.isspace()).split())
+    if not name or len(name) > TARGET_NAME_MAX_LENGTH:
+        return None
+    return name
+
+
 class ScanSummarySchema(BaseModel):
     critical: int = 0
     high: int = 0
