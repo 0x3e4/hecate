@@ -6,6 +6,7 @@ from typing import Any, Iterable
 
 import structlog
 
+from app.services.cpe_version import cpe_version
 from app.models.vulnerability import CpeConfiguration, CpeMatch, CpeNode
 from app.utils.strings import slugify
 
@@ -313,18 +314,12 @@ def _slug(value: Any) -> str:
 
 
 def _extract_version_from_cpe(criteria: str | None) -> str | None:
-    """Extract the version field (6th component) from a CPE 2.3 URI."""
-    if not criteria or not isinstance(criteria, str):
-        return None
-    if not criteria.startswith("cpe:2.3:"):
-        return None
-    parts = criteria.split(":")
-    if len(parts) < 6:
-        return None
-    version = parts[5]
-    if version in ("", "*", "-", "ANY", "NA"):
-        return None
-    return version
+    """The version of a CPE 2.3 URI, a pre-release in its update field included.
+
+    Same rule as the normalizer (:mod:`app.services.cpe_version`): read from
+    the version field alone, ``wazuh:5.0.0:beta1`` pinned the final 5.0.0.
+    """
+    return cpe_version(criteria)
 
 
 def _expand_wildcard(version: str) -> tuple[str, str] | None:
@@ -1266,6 +1261,73 @@ class ProductEvidence:
     branch_segments: int | None = None
 
 
+# --- Product lines named in target_sw ---
+#
+# For almost every product ``target_sw`` names the platform it runs on
+# (node.js, wordpress, android), and it must not split anything. NVD writes a
+# few products the other way round: one CPE product with the product *line* in
+# target_sw. ``microsoft:dynamics_365`` covers Finance and Operations (10.0.x),
+# Supply Chain Management, Field Service ... and next to them the on-premises
+# Customer Engagement server (9.x, ``target_sw`` *, ``sw_edition``
+# on-premises). Kept as one product, a Finance and Operations range
+# (< 10.0.32) flagged every Dynamics 365 9.1 on-premises installation
+# (CVE-2023-24896, CVE-2023-36800). For the products below, evidence carrying a
+# line goes under that line's own product slug, ``<product>-<line>`` and
+# ``<product>-for-<line>`` (the spelling EUVD and CIRCL use), and the plain
+# product keeps only the evidence without one. Evidence collection is shared
+# with the range index, so ``affectedVersion:`` queries split the same way.
+
+_EDITION_SCOPED_PRODUCTS: dict[tuple[str, str], dict[str, Any]] = {
+    ("microsoft", "dynamics-365"): {
+        # Lines that are the plain product (an on-premises target_sw, if one shows up).
+        "base": frozenset({"on-premises", "on-premise", "onprem"}),
+        # Extra product slugs a line answers to, beyond <product>-<line> and <product>-for-<line>.
+        "aliases": {"finance-and-operations": ("dynamics-365-finance",)},
+    },
+}
+
+
+def edition_pairs(pair: tuple[str, str], edition: Any) -> list[tuple[str, str]]:
+    """The product slugs ``pair`` evidence goes under for product line ``edition``."""
+    config = _EDITION_SCOPED_PRODUCTS.get(pair)
+    line = _slug(edition)
+    if config is None or not line or line in {"na", "any"} or line in config["base"]:
+        return [pair]
+    vendor, product = pair
+    slugs = {f"{product}-{line}", f"{product}-for-{line}", *config["aliases"].get(line, ())}
+    return [(vendor, slug) for slug in sorted(slugs)]
+
+
+def edition_base_products(vendor: str, product: str) -> set[str]:
+    """The plain products whose line ``product`` names (dynamics-365-for-finance-and-operations → dynamics-365).
+
+    The vulnerability documents carry only the plain product slug, so the
+    MongoDB pre-filters look for it too when an inventory item names a line.
+    """
+    vendor, product = _slug(vendor), _slug(product)
+    return {
+        base for (v, base) in _EDITION_SCOPED_PRODUCTS
+        if v == vendor and product != base and product.startswith(f"{base}-")
+    }
+
+
+def _entry_lines(entry: dict[str, Any]) -> list[Any]:
+    environments = entry.get("environments")
+    return [e for e in environments if isinstance(e, str)] if isinstance(environments, list) else []
+
+
+def _entry_evidence_pairs(entry: dict[str, Any]) -> list[tuple[str, str]]:
+    """The product slugs an impacted-products entry's ranges go under (see edition_pairs)."""
+    lines = _entry_lines(entry)
+    keyed: list[tuple[str, str]] = []
+    for pair in impacted_entry_pairs(entry):
+        for line in lines or [None]:
+            for target in edition_pairs(pair, line):
+                if target not in keyed:
+                    keyed.append(target)
+    return keyed
+
+
 def _cpe_match_pair(match: CpeMatch) -> tuple[str, str] | None:
     vendor, product = _slug(match.vendor), _slug(match.product)
     if vendor and product:
@@ -1316,7 +1378,8 @@ def collect_product_evidence(
             ):
                 pair = _cpe_match_pair(match)
                 if pair is not None:
-                    open_starts.setdefault(pair, set()).add(match.version_start_including.strip())
+                    for keyed in edition_pairs(pair, _cpe_target(match)):
+                        open_starts.setdefault(keyed, set()).add(match.version_start_including.strip())
 
     evidence: dict[tuple[str, str], ProductEvidence] = {}
 
@@ -1327,7 +1390,7 @@ def collect_product_evidence(
             continue
         versions = entry.get("versions")
         ranges = [v for v in versions if isinstance(v, str)] if isinstance(versions, list) else []
-        for pair in impacted_entry_pairs(entry):
+        for pair in _entry_evidence_pairs(entry):
             tier1.setdefault(pair, []).extend(ranges)
     for pair, ranges in tier1.items():
         segments = _BRANCH_SCOPED_PRODUCTS.get(pair)
@@ -1362,13 +1425,17 @@ def collect_product_evidence(
             if is_marked_not_vulnerable(match):
                 continue
             pair = _cpe_match_pair(match)
-            if pair is None or pair in evidence:
+            if pair is None:
                 continue
+            target = _cpe_target(match)
             found, span = cpe_match_span(match)
-            group = tier2.setdefault(pair, {}).setdefault(_cpe_target(match), ([], []))
-            group[0].extend(found)
-            if span is not None:
-                group[1].append(span)
+            for keyed in edition_pairs(pair, target):
+                if keyed in evidence:
+                    continue
+                group = tier2.setdefault(keyed, {}).setdefault(target, ([], []))
+                group[0].extend(found)
+                if span is not None:
+                    group[1].append(span)
     for pair, by_target in tier2.items():
         groups = [group for group in by_target.values() if group[0] or group[1]]
         if groups:
@@ -1383,12 +1450,14 @@ def collect_product_evidence(
             pair = _cpe_uri_pair(cpe)
             if pair is None or pair in platform_pairs:
                 continue
-            if pair in evidence and evidence[pair].tier != 3:
-                continue
             version = _extract_version_from_cpe(cpe)
             if version is None:
                 continue
-            evidence.setdefault(pair, ProductEvidence(tier=3, groups=[([], [])])).groups[0][0].append(version)
+            parts = cpe.split(":")
+            for keyed in edition_pairs(pair, parts[10] if len(parts) > 10 else None):
+                if keyed in evidence and evidence[keyed].tier != 3:
+                    continue
+                evidence.setdefault(keyed, ProductEvidence(tier=3, groups=[([], [])])).groups[0][0].append(version)
 
     return evidence
 
@@ -1510,6 +1579,11 @@ def items_for_vuln(
 
     # One evidence pass per CVE, not per inventory item.
     evidence = collect_product_evidence(impacted_products, cpe_configurations, flat_cpes)
+    # A product line's slug (dynamics-365-for-finance-and-operations) exists
+    # only as an evidence key, not in the document's slug arrays.
+    for vendor_key, product_key in evidence:
+        vendor_slug_set.add(vendor_key)
+        product_slug_set.add(product_key)
     results: list[dict[str, Any]] = []
     for raw in inventory:
         if not isinstance(raw, dict):
@@ -1581,10 +1655,13 @@ async def vulns_for_item(
     # at least one of the denormalized arrays populated with a slug the
     # matcher can hit; the nested-path data is then read from the returned
     # document and evaluated in Python by the full matcher.
+    # An item naming a product line (dynamics-365-for-finance-and-operations)
+    # finds its CVEs under the plain product the documents carry.
+    products = sorted({product, *edition_base_products(vendor, product)})
     query = {
         "$and": [
             {"$or": [{"vendor_slugs": vendor}, {"vendors": vendor}]},
-            {"$or": [{"product_slugs": product}, {"products": product}]},
+            {"$or": [{"product_slugs": {"$in": products}}, {"products": {"$in": products}}]},
         ],
         # Rejected records are no vulnerabilities; the inventory page listed them.
         "rejected": {"$ne": True},

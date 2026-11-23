@@ -28,6 +28,7 @@ from app.schemas.inventory import (
 from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_matcher import (
     InventoryKey,
+    edition_base_products,
     items_for_vuln,
     vulns_for_item,
 )
@@ -531,6 +532,12 @@ class InventoryService:
             (str(i.get("product_slug") or "").lower())
             for i in raw_inventory
             if i.get("product_slug")
+        } | {
+            # A product line's item finds its CVEs under the plain product.
+            base
+            for i in raw_inventory
+            if i.get("product_slug")
+            for base in edition_base_products(str(i.get("vendor_slug") or ""), str(i.get("product_slug")))
         })
         if not pairs_vendor or not pairs_product:
             return []

@@ -12,6 +12,7 @@ _EUVD_TZ = ZoneInfo("Europe/Brussels")
 import re
 import structlog
 
+from app.services.cpe_version import version_with_update
 from app.models.vulnerability import CvssScore, VulnerabilityDocument
 from app.utils.strings import slugify
 
@@ -1032,7 +1033,12 @@ def _determine_rejected(*records: Any) -> bool:
 
     def _text_signals_rejected(value: Any) -> bool:
         if isinstance(value, str):
-            return "** REJECT" in value.upper()
+            upper = value.upper()
+            # The old marker, and the wording the CVE program writes into a
+            # rejected record today. EUVD only carries the text: without it a
+            # rejected CVE read as valid there and the EUVD upsert cleared the
+            # NVD's rejected flag (CVE-2026-56401).
+            return "** REJECT" in upper or "REJECTED OR WITHDRAWN BY ITS CVE NUMBERING AUTHORITY" in upper
         return False
 
     def _record_signals_rejected(record: Any, depth: int = 0) -> bool:
@@ -1214,7 +1220,11 @@ def _parse_cpe_uri_details(value: str | None) -> dict[str, str | None]:
     part = _normalize_cpe_component(parts[2] if len(parts) > 2 else None)
     vendor_raw = _normalize_cpe_component(parts[3] if len(parts) > 3 else None)
     product_raw = _normalize_cpe_component(parts[4] if len(parts) > 4 else None)
-    version = _normalize_cpe_component(parts[5] if len(parts) > 5 else None)
+    # A pre-release sits in the update field (5.0.0:beta1); see cpe_version.py.
+    version = version_with_update(
+        _normalize_cpe_component(parts[5] if len(parts) > 5 else None),
+        _normalize_cpe_component(parts[6] if len(parts) > 6 else None),
+    )
     target_sw = _normalize_cpe_component(parts[10] if len(parts) > 10 else None)
     target_hw = _normalize_cpe_component(parts[11] if len(parts) > 11 else None)
 

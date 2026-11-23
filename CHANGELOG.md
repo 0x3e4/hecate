@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Language** in the sidebar footer opened its dialog inside the sidebar on phones instead of over the whole page: the sliding sidebar's transform made it the frame of every fixed element in it. The dialog now renders at the page root.
 - Needs attention on the dashboard: a long source name (a Mastodon account such as `@watchTowr@infosec.exchange`) ran past the edge of the card on phones. Source names now wrap; so do long advisory titles on the Advisories page.
+- A rejected CVE could come back on the inventory and dashboard: the EUVD sync cleared the rejected flag the NVD had set, because EUVD only carries the CVE program's wording ("rejected or withdrawn by its CVE Numbering Authority"), which Hecate did not recognise. That wording now counts as a rejection, and EUVD can no longer clear one (CVE-2026-56401, Wazuh).
+- A pre-release in a CPE's update field (`wazuh:5.0.0:beta1`) was read as the final release, so an advisory about the betas flagged 5.0.0. It now reads as `5.0.0-beta1`; service packs and updates are unchanged.
+- Dynamics 365 Finance and Operations advisories (10.0.x, e.g. CVE-2023-24896, CVE-2023-36800) matched Dynamics 365 on-premises entries: NVD names the product line only as the CPE's target software. For Dynamics 365 the line now is its own product (`dynamics-365-for-finance-and-operations`) in the inventory match and the `affectedVersion:` index. Run `reindex-opensearch` for the search; stored pre-release pins and the Wazuh flag correct themselves with the next NVD / EUVD write of the record (or a refresh from the detail page).
 - Targets tab: the references under the target names now line up from row to row (the type label has a fixed width), and SBOM-import targets are labelled "SBOM" instead of "Source".
 
 ## [2.3.2] - 2026-11-18
