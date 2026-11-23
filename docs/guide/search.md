@@ -51,6 +51,18 @@ Ranges work on the numeric and date fields — `epss_score:>=0.5`, `cvss.base_sc
 `published:>=2026-01-01 AND published:<2026-02-01` for a single month. Boolean operators are `AND`, `OR`
 and `NOT`; `*` is a multi-character wildcard and `?` matches a single character.
 
+Terms without a field are allowed too and must all match (`"Dynamics 365" Microsoft` means both). They
+are looked up in the ID, title, description, alias, vendor, product, version, CPE, CWE, assigner and
+source fields and in the KEV name and description; everything else needs its field named. The title and
+description ignore case, the identifier fields (vendor, product, alias, ...) compare the whole value as
+written, so `vendors:microsoft` and `"Dynamics 365"` find more than `vendors:Microsoft` or
+`products:"Dynamics 365"`. A query OpenSearch cannot run shows its reason above the results instead of
+an empty list.
+
+For a product line NVD only names in its CPE data (Dynamics 365 Finance and Operations), `productSlugs`
+also carries the line's slug, so `productSlugs:"dynamics-365-for-finance-and-operations"` finds those
+advisories once the index has been rebuilt (`reindex-opensearch`).
+
 One convenience is worth knowing: a `source:` clause is automatically expanded so it matches both the
 primary source and any source alias on a record. Writing `source:NVD` finds entries whose primary feed is
 NVD *and* entries that NVD merely contributed to, so you don't have to know which feed "owns" a given CVE.

@@ -521,7 +521,45 @@ async def async_index_document(
         _mark_opensearch_unavailable(error=exc, operation="index", index=index, document_id=document_id)
 
 
-async def async_search(index: str, body: dict[str, Any], *, suppress_exceptions: bool = True) -> dict[str, Any]:
+class SearchRequestRejected(Exception):
+    """OpenSearch answered 400 to a search: the query itself is at fault."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _request_error_reason(exc: Exception) -> str:
+    """The root cause OpenSearch gives for a refused search, short enough for the UI."""
+    info = getattr(exc, "info", None)
+    reason = None
+    if isinstance(info, dict):
+        error = info.get("error")
+        if isinstance(error, dict):
+            causes = error.get("root_cause") or []
+            first = causes[0] if causes and isinstance(causes[0], dict) else error
+            reason = first.get("reason") or error.get("reason")
+            caused_by = error.get("caused_by")
+            if isinstance(caused_by, dict) and caused_by.get("reason") and (
+                not reason or "all shards failed" in str(reason)
+            ):
+                reason = caused_by["reason"]
+    text = str(reason or getattr(exc, "error", None) or exc).strip()
+    return text[:300] or "unknown error"
+
+
+async def async_search(
+    index: str,
+    body: dict[str, Any],
+    *,
+    suppress_exceptions: bool = True,
+    raise_request_errors: bool = False,
+) -> dict[str, Any]:
+    """Run a search. ``raise_request_errors`` turns a 400 into SearchRequestRejected.
+
+    Without it a refused query reads as no hits, which is right for internal
+    callers but hid every broken user query behind "0 entries".
+    """
     client = get_client()
     loop = asyncio.get_running_loop()
 
@@ -541,6 +579,8 @@ async def async_search(index: str, body: dict[str, Any], *, suppress_exceptions:
     except (OSConnectionError, OpenSearchException) as exc:
         if isinstance(exc, RequestError):
             log.warning("opensearch.request_error", operation="search", index=index, error=str(exc))
+            if raise_request_errors:
+                raise SearchRequestRejected(_request_error_reason(exc)) from exc
         else:
             _mark_opensearch_unavailable(error=exc, operation="search", index=index)
         if suppress_exceptions:

@@ -42,6 +42,7 @@ from app.services.attack_path_service import AttackPathService, get_attack_path_
 from app.services.event_bus import publish_job_completed, publish_job_failed, publish_job_started
 from app.services.inventory_service import InventoryService, get_inventory_service
 from app.services.scan_service import ScanService, get_scan_service
+from app.services.vulnerability_service import DqlQueryError
 from app.services.vulnerability_service import VulnerabilityService, get_vulnerability_service
 from app.services.audit_service import AuditService, get_audit_service
 from app.core.auth_throttle import AI_SECRET, enforce_auth_throttle, record_auth_result
@@ -387,7 +388,10 @@ async def list_vulnerabilities(
         )
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
-    result = await service.search_paginated(query, limit=limit, offset=offset)
+    try:
+        result = await service.search_paginated(query, limit=limit, offset=offset)
+    except DqlQueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     result.max_offset = max_offset
     return result
 
