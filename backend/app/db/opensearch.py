@@ -127,6 +127,69 @@ def _ensure_index_mappings(client: OpenSearch, index_name: str) -> None:
 _exact_field_paths: dict[str, dict[str, str]] = {}
 
 
+# --- Case-insensitive display fields -----------------------------------------
+#
+# vendors, products and aliases are ``keyword``: exact and case-sensitive, so
+# ``vendors:Microsoft`` and ``vendors:microsoft`` found different sets (EUVD
+# writes "Microsoft", NVD "microsoft") and ``products:"Dynamics 365"`` found
+# nothing next to ``products:"dynamics 365"``. A normalizer cannot be added to
+# a field in place, but a sub-field can: each of them carries ``.text`` (the
+# standard analyzer: lower-cased words), added to long-lived indices by
+# ``_ensure_case_insensitive_subfields`` and filled by ``reindex-opensearch``.
+# The DQL side queries both paths (exact OR words), so documents not yet
+# reindexed keep matching exactly in the meantime.
+CASE_INSENSITIVE_FIELDS: tuple[str, ...] = ("vendors", "products", "aliases")
+_TEXT_SUBFIELD = "text"
+_case_insensitive_paths: dict[str, dict[str, str]] = {}
+
+
+def _case_insensitive_path(definition: Any, path: str) -> str | None:
+    """The path that ignores case for one mapped field, or None."""
+    if not isinstance(definition, dict):
+        return None
+    if definition.get("type") == "text":
+        return path
+    sub = (definition.get("fields") or {}).get(_TEXT_SUBFIELD)
+    if definition.get("type") == "keyword" and isinstance(sub, dict) and sub.get("type") == "text":
+        return f"{path}.{_TEXT_SUBFIELD}"
+    return None
+
+
+def case_insensitive_field_path(field: str, index_name: str | None = None) -> str | None:
+    """Where ``field`` matches regardless of case on the live index; None until the sub-field exists."""
+    return _case_insensitive_paths.get(index_name or settings.opensearch_index, {}).get(field)
+
+
+def _ensure_case_insensitive_subfields(client: OpenSearch, index_name: str) -> None:
+    """Add the ``.text`` sub-field to vendors / products / aliases of an existing index.
+
+    One put_mapping per field, restating the field's live definition: a field
+    an old index mapped dynamically as ``text`` is left alone (it already
+    ignores case), and a refused update costs only that field, not the other
+    mapping upgrades.
+    """
+    try:
+        mapping = client.indices.get_mapping(index=index_name)
+    except (OSConnectionError, OpenSearchException) as exc:
+        log.warning("opensearch.get_mapping_failed", index=index_name, error=str(exc))
+        return
+    for body in (mapping or {}).values():
+        properties = ((body or {}).get("mappings") or {}).get("properties") or {}
+        for field in CASE_INSENSITIVE_FIELDS:
+            definition = properties.get(field)
+            if not isinstance(definition, dict) or definition.get("type") != "keyword":
+                continue
+            if _case_insensitive_path(definition, field):
+                continue
+            updated = dict(definition)
+            updated["fields"] = {**(definition.get("fields") or {}), _TEXT_SUBFIELD: {"type": "text"}}
+            try:
+                client.indices.put_mapping(index=index_name, body={"properties": {field: updated}})
+                log.info("opensearch.case_insensitive_subfield_added", index=index_name, field=field)
+            except (OSConnectionError, OpenSearchException) as exc:
+                log.warning("opensearch.case_insensitive_subfield_failed", index=index_name, field=field, error=str(exc))
+
+
 def _walk_mapping_properties(
     properties: dict[str, Any],
     prefix: str,
@@ -163,11 +226,17 @@ def refresh_exact_field_paths(index_name: str) -> dict[str, str]:
         log.warning("opensearch.get_mapping_failed", index=index_name, error=str(exc))
         return _exact_field_paths.get(index_name, {})
 
+    case_insensitive: dict[str, str] = {}
     for body in (mapping or {}).values():
         properties = ((body or {}).get("mappings") or {}).get("properties") or {}
         _walk_mapping_properties(properties, "", resolved)
+        for field in CASE_INSENSITIVE_FIELDS:
+            path = _case_insensitive_path(properties.get(field), field)
+            if path:
+                case_insensitive[field] = path
 
     _exact_field_paths[index_name] = resolved
+    _case_insensitive_paths[index_name] = case_insensitive
     drifted = sorted(field for field, path in resolved.items() if path != field)
     if drifted:
         log.info(
@@ -246,6 +315,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
             log.info("opensearch.index_already_exists", index=index_name)
             applied = _ensure_index_settings(client, index_name)
             _ensure_index_mappings(client, index_name)
+            _ensure_case_insensitive_subfields(client, index_name)
             refresh_exact_field_paths(index_name)
             _mark_opensearch_available()
             if applied:
@@ -327,7 +397,7 @@ def ensure_vulnerability_index(index_name: str) -> None:
                         "vulnerable": {"type": "boolean"},
                     },
                 },
-                "aliases": {"type": "keyword"},
+                "aliases": {"type": "keyword", "fields": {"text": {"type": "text"}}},
                 "rejected": {"type": "boolean"},
                 "assigner": {"type": "keyword"},
                 "exploited": {"type": "boolean"},
@@ -359,8 +429,8 @@ def ensure_vulnerability_index(index_name: str) -> None:
                 "productSlugs": {"type": "keyword"},
                 "productVersions": {"type": "keyword"},
                 "productVersionIds": {"type": "keyword"},
-                "vendors": {"type": "keyword"},
-                "products": {"type": "keyword"},
+                "vendors": {"type": "keyword", "fields": {"text": {"type": "text"}}},
+                "products": {"type": "keyword", "fields": {"text": {"type": "text"}}},
                 "versionRanges": VERSION_RANGES_MAPPING,
                 "cvss": {
                     "properties": {

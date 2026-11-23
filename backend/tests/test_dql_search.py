@@ -194,3 +194,131 @@ def test_other_products_keep_their_slugs() -> None:
         }],
     )
     assert doc.opensearch_document()["productSlugs"] == ["nginx"]
+
+
+# --------------------------------------------------------------------------
+# Case-insensitive vendors / products / aliases (.text sub-field)
+# --------------------------------------------------------------------------
+
+KEYWORD = {"type": "keyword"}
+WITH_TEXT = {"type": "keyword", "fields": {"text": {"type": "text"}}}
+
+
+class _MappingClient:
+    """An index whose live mapping the test sets; records put_mapping calls."""
+
+    def __init__(self, properties: dict[str, Any], refuse: set[str] | None = None) -> None:
+        self.properties = properties
+        self.refuse = refuse or set()
+        self.puts: list[dict[str, Any]] = []
+        client = self
+
+        class _Indices:
+            def get_mapping(self, index: str) -> dict[str, Any]:
+                return {index: {"mappings": {"properties": client.properties}}}
+
+            def put_mapping(self, index: str, body: dict[str, Any]) -> None:
+                (field, definition), = body["properties"].items()
+                if field in client.refuse:
+                    raise opensearch.RequestError(400, "illegal_argument_exception", {})
+                client.puts.append(body)
+                client.properties[field] = definition
+
+        self.indices = _Indices()
+
+
+@pytest.fixture
+def live_index(monkeypatch: pytest.MonkeyPatch):
+    def make(properties: dict[str, Any], refuse: set[str] | None = None) -> _MappingClient:
+        client = _MappingClient(properties, refuse)
+        monkeypatch.setattr(opensearch, "get_client", lambda: client)
+        monkeypatch.setattr(opensearch.settings, "opensearch_index", "vulns")
+        return client
+
+    yield make
+    opensearch._case_insensitive_paths.pop("vulns", None)
+    opensearch._exact_field_paths.pop("vulns", None)
+
+
+def test_subfields_are_added_to_an_existing_index(live_index) -> None:
+    client = live_index({
+        "vendors": {"type": "keyword", "ignore_above": 256},
+        "products": WITH_TEXT,
+        "aliases": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    })
+    opensearch._ensure_case_insensitive_subfields(client, "vulns")
+    # vendors gains .text and keeps its own parameters; products already has
+    # it; aliases is text-mapped and left alone.
+    assert client.puts == [{"properties": {"vendors": {
+        "type": "keyword", "ignore_above": 256, "fields": {"text": {"type": "text"}},
+    }}}]
+
+
+def test_a_refused_field_does_not_stop_the_others(live_index) -> None:
+    client = live_index({"vendors": KEYWORD, "products": KEYWORD, "aliases": KEYWORD}, refuse={"vendors"})
+    opensearch._ensure_case_insensitive_subfields(client, "vulns")
+    assert [next(iter(p["properties"])) for p in client.puts] == ["products", "aliases"]
+
+
+def test_case_insensitive_paths_follow_the_live_mapping(live_index) -> None:
+    live_index({"vendors": WITH_TEXT, "products": KEYWORD, "aliases": {"type": "text"}})
+    opensearch.refresh_exact_field_paths("vulns")
+    assert opensearch.case_insensitive_field_path("vendors") == "vendors.text"
+    assert opensearch.case_insensitive_field_path("products") is None
+    assert opensearch.case_insensitive_field_path("aliases") == "aliases"
+
+
+def test_a_new_index_declares_the_subfields(monkeypatch: pytest.MonkeyPatch) -> None:
+    created: dict[str, Any] = {}
+
+    class _Indices:
+        def exists(self, index: str) -> bool:
+            return False
+
+        def create(self, index: str, body: dict[str, Any]) -> None:
+            created.update(body)
+
+    class _Client:
+        indices = _Indices()
+
+    monkeypatch.setattr(opensearch, "get_client", lambda: _Client())
+    monkeypatch.setattr(opensearch, "refresh_exact_field_paths", lambda *_a, **_k: None)
+    opensearch.ensure_vulnerability_index("dql-test-2")
+    properties = created["mappings"]["properties"]
+    for field in opensearch.CASE_INSENSITIVE_FIELDS:
+        assert properties[field] == WITH_TEXT
+
+
+@pytest.mark.parametrize(
+    ("dql", "expected"),
+    [
+        ('vendors:Microsoft', '(vendors:Microsoft OR vendors.text:Microsoft)'),
+        ('products:"Dynamics 365"', '(products:"Dynamics 365" OR products.text:"Dynamics 365")'),
+        ('(vendors:microsoft)', '((vendors:microsoft OR vendors.text:microsoft))'),
+        ('vendors:(Microsoft OR Wazuh)', '(vendors:(Microsoft OR Wazuh) OR vendors.text:(Microsoft OR Wazuh))'),
+        ('NOT vendors:micro*', 'NOT (vendors:micro* OR vendors.text:micro*)'),
+        ('vendors.text:x AND myvendors:y', 'vendors.text:x AND myvendors:y'),
+        ('aliases:ghsa-26vj-jqr4-v7fv', '(aliases:ghsa-26vj-jqr4-v7fv OR aliases.text:ghsa-26vj-jqr4-v7fv)'),
+    ],
+)
+def test_display_field_clauses_also_ask_the_case_insensitive_path(live_index, dql: str, expected: str) -> None:
+    live_index({"vendors": WITH_TEXT, "products": WITH_TEXT, "aliases": WITH_TEXT})
+    opensearch.refresh_exact_field_paths("vulns")
+    assert vs._translate_dql_fields(dql) == expected
+
+
+def test_without_the_subfield_clauses_stay_as_written(live_index) -> None:
+    live_index({"vendors": KEYWORD, "products": KEYWORD, "aliases": KEYWORD})
+    opensearch.refresh_exact_field_paths("vulns")
+    assert vs._translate_dql_fields('vendors:Microsoft AND products:"Dynamics 365"') == (
+        'vendors:Microsoft AND products:"Dynamics 365"'
+    )
+    assert _query_string("dynamics microsoft")["fields"] == list(DQL_DEFAULT_FIELDS)
+
+
+def test_free_terms_also_search_the_case_insensitive_paths(live_index) -> None:
+    live_index({"vendors": WITH_TEXT, "products": WITH_TEXT, "aliases": WITH_TEXT})
+    opensearch.refresh_exact_field_paths("vulns")
+    fields = _query_string('"Dynamics 365" Microsoft')["fields"]
+    assert fields[: len(DQL_DEFAULT_FIELDS)] == list(DQL_DEFAULT_FIELDS)
+    assert {"vendors.text", "products.text", "aliases.text"} <= set(fields)

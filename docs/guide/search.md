@@ -53,11 +53,15 @@ and `NOT`; `*` is a multi-character wildcard and `?` matches a single character.
 
 Terms without a field are allowed too and must all match (`"Dynamics 365" Microsoft` means both). They
 are looked up in the ID, title, description, alias, vendor, product, version, CPE, CWE, assigner and
-source fields and in the KEV name and description; everything else needs its field named. The title and
-description ignore case, the identifier fields (vendor, product, alias, ...) compare the whole value as
-written, so `vendors:microsoft` and `"Dynamics 365"` find more than `vendors:Microsoft` or
-`products:"Dynamics 365"`. A query OpenSearch cannot run shows its reason above the results instead of
-an empty list.
+source fields and in the KEV name and description; everything else needs its field named. A query
+OpenSearch cannot run shows its reason above the results instead of an empty list.
+
+Vendors, products and aliases ignore case and match single words: `vendors:Microsoft` and
+`vendors:microsoft` find the same entries, and `products:"Dynamics 365"` also finds "Dynamics 365 for
+Finance and Operations". An exact whole value still matches as well. This needs the index rebuilt once
+(`reindex-opensearch`); until then those three fields compare the value as written. The slug fields
+(`vendorSlugs`, `productSlugs`) stay exact on purpose: `vendorSlugs:wordpress` means WordPress itself, not
+every plugin with "wordpress" in its name.
 
 For a product line NVD only names in its CPE data (Dynamics 365 Finance and Operations), `productSlugs`
 also carries the line's slug, so `productSlugs:"dynamics-365-for-finance-and-operations"` finds those
