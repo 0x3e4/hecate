@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **Existing instances: rebuild the search index after updating.** Case-insensitive vendor / product / alias search and the product-line slugs in `productSlugs` (Dynamics 365 Finance and Operations) only reach records when they are indexed again. Run once, after the new backend is up:
+>
+> ```bash
+> docker compose exec backend python -m app.cli reindex-opensearch
+> ```
+>
+> The new `.text` sub-fields of `vendors`, `products` and `aliases` are added to the existing index automatically at startup, no index recreation. Until a record is reindexed, DQL clauses on those fields match it exactly as before, so search keeps working while the reindex runs. The inventory matches (Wazuh, Dynamics 365) read MongoDB and are correct right after the update; the rejected Wazuh CVE and stored pre-release pins correct themselves with the record's next NVD / EUVD write, or at once with **Refresh** on its detail page.
+
 ### Added
 - **Checks**: scan an image, a repository, a ZIP or an SBOM once without registering a target. A check shows a report at `/scans/check/<scan id>` (severity summary, affected packages, other findings, SBOM overview, CSV / JSON / CycloneDX / SPDX exports), appears in no list, on no dashboard and in no "Affected in your scans" block, gets no notifications, VEX sources or rules, and is deleted after `SCA_CHECK_RETENTION_DAYS` (default 7). Start it with **Check only** in the New scan dialog or at the SBOM import, send `"check": true` to `POST /scans` and the SBOM import endpoints, or call the MCP tool `trigger_scan` with `check=true` (its response carries `expiresAt` and the report path). A target password does not open a check: it needs the editor role, the system password, or the CI key / a `scan:submit` token.
 - Scan targets can be renamed: **Rename** on the target page, or the pencil next to the name in the Targets tab (`PATCH /scans/targets/{id}` with `name`). The id stays the same, the target's earlier scans take the new name, and later scans keep it instead of putting the name derived from the reference back.
