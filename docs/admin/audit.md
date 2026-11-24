@@ -23,8 +23,9 @@ shown, and **Cancel** (or Escape) takes you back. A signed-in admin (see
 ## What gets logged
 
 The log spans the whole system, not just one subsystem. Most rows are ingestion runs from the nine
-data feeds — EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV — plus the Advisory Feed, Nuclei Templates and (with a token) VulnCheck KEV syncs, the nine each appearing as both a
-regular incremental sync and an "initial sync" variant for the first full bootstrap. Alongside those
+data feeds — EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV — each appearing as both a
+regular incremental sync and an "initial sync" variant for the first full bootstrap, plus the Advisory
+Feed, Nuclei Templates and (with a token) VulnCheck KEV syncs. Alongside those
 you will see manual CVE refreshes, saved-search create/update/delete actions, SCA scans, AI analyses
 (single and batch), attack-path narrative generation, the MAL-* deps.dev enrichment backfill, and
 MCP tool calls and OAuth events. In short, anything that touches data or runs as a tracked job leaves

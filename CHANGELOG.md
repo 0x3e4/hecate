@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [2.4.0] - 2026-11-24
+
 > **Existing instances: rebuild the search index after updating.** Case-insensitive vendor / product / alias search and the product-line slugs in `productSlugs` (Dynamics 365 Finance and Operations) only reach records when they are indexed again. Run once, after the new backend is up:
 >
 > ```bash

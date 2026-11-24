@@ -6,7 +6,7 @@
 
 **[Live demo](https://hecate.pw)** · **[Quick start](#quick-start-docker-compose)** · [Documentation](https://docs.hecate.pw) · [How Hecate compares](#how-hecate-compares)
 
-Hecate ingests **9 vulnerability data sources** (EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL, CPE, CWE, CAPEC) plus CERT, vendor and community advisory feeds, normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim, and govulncheck (Go reachability) against your container images and source repos.
+Hecate ingests **9 vulnerability data sources** (EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL, CPE, CWE, CAPEC) plus CERT, vendor and community advisory feeds and two exploit signals (public Nuclei templates, VulnCheck KEV with a free token), normalises everything into a single `VulnerabilityDocument` schema, and exposes the result through a REST API and a React frontend. On top of the catalogue, a hardened scanner sidecar runs Trivy, Grype, Syft, OSV Scanner, the Hecate Analyzer, Dockle, Dive, Semgrep, TruffleHog, DevSkim, and govulncheck (Go reachability) against your container images and source repos.
 
 > [!NOTE]
 > **Works without AI.** Every core feature runs without an API key: the catalogue and its search, SCA scanning, SBOM and VEX, malware detection, inventory matching, notifications, the deterministic attack-path graph per CVE and the ATT&CK chain per scan. AI analysis stays off until a provider is configured and only adds narrative and triage text on top, with a local model (Ollama, vLLM, LM Studio) or a cloud provider.
@@ -164,7 +164,7 @@ flowchart TB
     Mongo[("MongoDB :27017<br/>persistence")]
     OS[("OpenSearch :9200<br/>full-text index")]
 
-    Feeds[("External feeds<br/>EUVD · NVD · KEV · CPE<br/>CWE · CAPEC · CIRCL · GHSA · OSV<br/>CERT advisories")]
+    Feeds[("External feeds<br/>EUVD · NVD · KEV · CPE<br/>CWE · CAPEC · CIRCL · GHSA · OSV<br/>CERT advisories<br/>Nuclei templates · VulnCheck KEV")]
     AI[("AI providers (optional)<br/>OpenAI · Anthropic · Gemini<br/>OpenAI-compatible")]
 
     User --> Frontend
@@ -279,7 +279,7 @@ backend/
 │   ├── repositories/     Data-access layer (repository pattern)
 │   ├── schemas/          API request/response schemas
 │   ├── services/         Business logic, AI, backup, stats
-│   │   ├── ingestion/    Pipelines + clients (10 sources)
+│   │   ├── ingestion/    Pipelines + clients (12 sources)
 │   │   ├── scheduling/   APScheduler job management
 │   │   └── http/         Retry, rate limiter, SSL helper
 │   └── utils/
@@ -313,7 +313,7 @@ scanner/
 
 ### Data aggregation & automation
 
-- **10 sources** with configurable intervals, weekly full syncs (EUVD Sun, NVD Wed, OSV Fri at 02:00 UTC), and bootstrap-on-startup.
+- **12 sources** (nine vulnerability feeds, the advisory feeds, Nuclei templates, VulnCheck KEV) with configurable intervals, weekly full syncs (EUVD Sun, NVD Wed, OSV Fri at 02:00 UTC), and bootstrap-on-startup.
 - **Normaliser** funnels every source into a single `VulnerabilityDocument` schema with CVSS v2.0 / v3.0 / v3.1 / v4.0 metrics.
 - **Priority-gated NVD ↔ EUVD upserts** prevent version-identification fields from flapping between sources every cycle.
 - **Asset catalogue** (vendors, products, versions) is derived automatically from ingested data.
@@ -567,7 +567,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `GET  /api/v1/stats/overview` — statistics aggregations
 - `GET  /api/v1/audit/ingestion` — audit log
 - `GET  /api/v1/changelog` — recent changes (pagination, date and source filters)
-- `POST /api/v1/sync/trigger/{job}` — sync trigger (`euvd`, `nvd`, `cpe`, `kev`, `cwe`, `capec`, `circl`, `ghsa`, `osv`)
+- `POST /api/v1/sync/trigger/{job}` — sync trigger (`euvd`, `nvd`, `cpe`, `kev`, `cwe`, `capec`, `circl`, `ghsa`, `osv`, `cert-feeds`, `nuclei-templates`, `vulncheck-kev`)
 - `POST /api/v1/sync/resync` — delete vulnerabilities and optionally re-fetch from upstream (multi-ID, wildcards, delete-only)
 - `GET  /api/v1/backup/vulnerabilities/{source}/export` · `POST /api/v1/backup/vulnerabilities/{source}/restore` — vulnerability backup (`NVD` / `EUVD` / `ALL`, streaming JSON)
 - `GET  /api/v1/backup/saved-searches/export` · `POST /api/v1/backup/saved-searches/restore` — saved-search backup

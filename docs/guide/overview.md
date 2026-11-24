@@ -13,7 +13,8 @@ against it, and what matters comes out.**
 On the intake side, nine feeds (EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV) are pulled
 on a schedule and folded into a single normalised record per vulnerability. Hecate reconciles the
 same CVE arriving from several sources, keeps a change history, and indexes the result in OpenSearch
-so search stays fast even across hundreds of thousands of records.
+so search stays fast even across hundreds of thousands of records. Public Nuclei templates and, with a
+free token, VulnCheck KEV add exploit signals on top.
 
 On the measurement side, the scanner sidecar inspects your container images and source repositories,
 and an environment inventory you maintain by hand records the products and versions you run. Findings
@@ -28,7 +29,7 @@ channel.
 
 ```text
    Feeds ──► Normalise & index ──►  Search / Inventory match / SCA scan  ──► Act
-(10 sources)   (MongoDB + OpenSearch)        (rank by EPSS / KEV / malware)   (alerts, exports, AI)
+(12 sources)   (MongoDB + OpenSearch)        (rank by EPSS / KEV / malware)   (alerts, exports, AI)
 ```
 
 ## The navigation, at a glance

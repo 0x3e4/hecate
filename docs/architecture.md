@@ -17,7 +17,8 @@ orchestrator: it runs the ingestion pipelines, owns persistence, performs AI cal
 to both the web UI and external clients. Persistence is split deliberately — MongoDB holds the
 normalised documents and all job state, while OpenSearch is the performant full-text and DQL query
 index that the search-heavy pages read from. Raw intelligence arrives from EUVD, NVD, CISA KEV, CPE,
-CWE, CAPEC, CIRCL, GHSA, OSV and the CERT advisory feeds, with optional AI providers (OpenAI, Anthropic, Gemini, or any
+CWE, CAPEC, CIRCL, GHSA, OSV and the CERT advisory feeds, plus exploit signals from Nuclei templates and VulnCheck
+KEV, with optional AI providers (OpenAI, Anthropic, Gemini, or any
 OpenAI-compatible endpoint such as Ollama, vLLM, OpenRouter, LocalAI or LM Studio) layered on for
 analysis. A separate scanner sidecar — bundling Trivy, Grype, Syft, OSV Scanner, the in-house Hecate
 Analyzer, Dockle, Dive, Semgrep, TruffleHog and DevSkim — executes the active SCA scans.
@@ -101,7 +102,7 @@ scoped to explicit origins via `CORS_ORIGINS`.
 | `assets` | Asset catalogue (vendors, products, versions). |
 | `stats` | Statistics aggregations. |
 | `backup` | Streaming export / import. |
-| `sync` | Manual sync triggers for all ten data sources. |
+| `sync` | Manual sync triggers for all twelve data sources. |
 | `saved_searches` | Saved-search CRUD. |
 | `audit` | Ingestion logs. |
 | `changelog` | Recent changes. |
@@ -703,6 +704,8 @@ OpenSearch (with a MongoDB fallback).
 | CIRCL | REST API | Additional vulnerability information (`vulnerability.circl.lu`) |
 | GHSA (GitHub) | REST API | GitHub Security Advisories (`api.github.com`) |
 | OSV (OSV.dev) | GCS bucket + REST API | OSV vulnerabilities (`storage.googleapis.com/osv-vulnerabilities`, 11 ecosystems) |
+| Nuclei templates (ProjectDiscovery) | JSON index | Which CVEs have a public template (`raw.githubusercontent.com`) |
+| VulnCheck KEV | REST API, token | Exploitation reports per CVE (`api.vulncheck.com`, opt-in) |
 | OpenAI | API | Optional AI provider for summaries and risk hints |
 | Anthropic | API | Optional AI provider for summaries and risk hints |
 | Google Gemini | API | Optional AI provider for summaries and risk hints |

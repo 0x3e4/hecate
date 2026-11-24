@@ -8,10 +8,73 @@ generated from it on every semver tag. The format follows
 
 !!! tip "Check your running version"
     The in-app **Support** page compares your running build SHA against the latest published image
-    and tells you whether an update is available. See [Getting Started](getting-started.md#updating)
+    and tells you whether an update is available. See [Deployment](deployment.md#updating)
     for the upgrade command.
 
 ## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+## [2.4.0] - 2026-11-24
+
+> **Existing instances: rebuild the search index after updating.** Case-insensitive vendor / product / alias search and the product-line slugs in `productSlugs` (Dynamics 365 Finance and Operations) only reach records when they are indexed again. Run once, after the new backend is up:
+>
+> ```bash
+> docker compose exec backend python -m app.cli reindex-opensearch
+> ```
+>
+> The new `.text` sub-fields of `vendors`, `products` and `aliases` are added to the existing index automatically at startup, no index recreation. Until a record is reindexed, DQL clauses on those fields match it exactly as before, so search keeps working while the reindex runs. The inventory matches (Wazuh, Dynamics 365) read MongoDB and are correct right after the update; the rejected Wazuh CVE and stored pre-release pins correct themselves with the record's next NVD / EUVD write, or at once with **Refresh** on its detail page.
+
+### Added
+- **Checks**: scan an image, a repository, a ZIP or an SBOM once without registering a target. A check shows a report at `/scans/check/<scan id>` (severity summary, affected packages, other findings, SBOM overview, CSV / JSON / CycloneDX / SPDX exports), appears in no list, on no dashboard and in no "Affected in your scans" block, gets no notifications, VEX sources or rules, and is deleted after `SCA_CHECK_RETENTION_DAYS` (default 7). Start it with **Check only** in the New scan dialog or at the SBOM import, send `"check": true` to `POST /scans` and the SBOM import endpoints, or call the MCP tool `trigger_scan` with `check=true` (its response carries `expiresAt` and the report path). A target password does not open a check: it needs the editor role, the system password, or the CI key / a `scan:submit` token.
+- Scan targets can be renamed: **Rename** on the target page, or the pencil next to the name in the Targets tab (`PATCH /scans/targets/{id}` with `name`). The id stays the same, the target's earlier scans take the new name, and later scans keep it instead of putting the name derived from the reference back.
+- `TRUFFLEHOG_NO_VERIFICATION=true` runs TruffleHog with `--no-verification`: found secrets are no longer sent to their provider's API to check them, and are all reported unverified (high).
+- **Bundled native libraries**: sharp's prebuilt `@img/sharp-libvips-*` packages carry libvips and about 25 libraries it links (libheif, libxml2, libexpat, libpng, librsvg, ...) that no manifest names, so no scanner reported their CVEs. Hecate now reads the release's `versions.json` from the npm registry (integrity-checked, cached per release), adds each library to the SBOM with **bundled in** naming its package, and matches it by the CPE vendor and product its advisories use (scanner `bundled-libraries`). Fail-soft and time-boxed; `SCA_BUNDLED_LIBRARIES_ENABLED=false` turns it off.
+- **Exploit signals** on the vulnerability page, the API (`exploitSignals`), MCP `get_vulnerability`, the AI analysis and the attack path: a **Public Nuclei template** block when projectdiscovery/nuclei-templates has a template for the CVE (read daily, job *Nuclei Templates Sync*, CLI `sync-nuclei`), and a **VulnCheck KEV** block with VulnCheck's exploitation reports, often ahead of CISA (opt-in with a free community token in `VULNCHECK_API_TOKEN`, every 6 hours, CLI `sync-vulncheck-kev`, labelled "VulnCheck KEV" as its terms ask). Both live in their own `exploit_signals` collection and write no change history; a template raises the attack path's exploit maturity to PoC, a VulnCheck KEV listing to high.
+- CVE pages link to SecurityContext next to NVD and CIRCL.
+
+### Changed
+- Semgrep runs with its own `HOME` under `/tmp` for each scan (settings, log and caches), removed afterwards. It used to write into `/root`, the 50 MB tmpfs every scan shares.
+- An uploaded ZIP and the API's `oneTime` flag now run as a check: the scan no longer shows up in the scan list, the Findings and SBOM tabs and on the dashboard, and is deleted after `SCA_CHECK_RETENTION_DAYS`. Scans made earlier with the one-time upload drop out of the lists too, but are not deleted.
+
+### Fixed
+- **Language** in the sidebar footer opened its dialog inside the sidebar on phones instead of over the whole page: the sliding sidebar's transform made it the frame of every fixed element in it. The dialog now renders at the page root.
+- Needs attention on the dashboard: a long source name (a Mastodon account such as `@watchTowr@infosec.exchange`) ran past the edge of the card on phones. Source names now wrap; so do long advisory titles on the Advisories page.
+- A rejected CVE could come back on the inventory and dashboard: the EUVD sync cleared the rejected flag the NVD had set, because EUVD only carries the CVE program's wording ("rejected or withdrawn by its CVE Numbering Authority"), which Hecate did not recognise. That wording now counts as a rejection, and EUVD can no longer clear one (CVE-2026-56401, Wazuh).
+- A pre-release in a CPE's update field (`wazuh:5.0.0:beta1`) was read as the final release, so an advisory about the betas flagged 5.0.0. It now reads as `5.0.0-beta1`; service packs and updates are unchanged.
+- Dynamics 365 Finance and Operations advisories (10.0.x, e.g. CVE-2023-24896, CVE-2023-36800) matched Dynamics 365 on-premises entries: NVD names the product line only as the CPE's target software. For Dynamics 365 the line now is its own product (`dynamics-365-for-finance-and-operations`) in the inventory match and the `affectedVersion:` index. Run `reindex-opensearch` for the search; stored pre-release pins and the Wazuh flag correct themselves with the next NVD / EUVD write of the record (or a refresh from the detail page).
+- DQL search found nothing for any query with two free terms (`"Dynamics 365" "Microsoft"`, even `dynamics microsoft`): every term was looked up in every field of the index, OpenSearch refused the query over its clause limit, and the list showed "0 entries". Free terms now search a fixed set of fields (ID, title, description, aliases, vendors, products, versions, CPEs, CWEs, assigner, sources, KEV name and description), and a query OpenSearch refuses comes back with its reason instead of an empty list.
+- Vendors, products and aliases ignore case in DQL: `vendors:Microsoft` and `vendors:microsoft` found different sets (EUVD writes "Microsoft", NVD "microsoft"), and `products:"Dynamics 365"` found nothing. The three fields gain a `.text` sub-field, added to existing indices at startup without recreating them; a DQL clause asks both the exact value and the words. Run `reindex-opensearch` once to fill it; until then the clauses match as before.
+- `productSlugs` in the search index also carries product-line slugs (`dynamics-365-for-finance-and-operations`), so a DQL search for a line finds the advisories NVD files under the plain product. Takes effect after `reindex-opensearch`.
+- Targets tab: the references under the target names now line up from row to row (the type label has a fixed width), and SBOM-import targets are labelled "SBOM" instead of "Source".
+
+## [2.3.2] - 2026-11-18
+
+### Added
+
+### Changed
+- Frontend and documentation images: the nginx runtime moves from `nginx:1.31.8-alpine` to `nginx:1.31.9-alpine-slim`. The slim variant leaves out `curl` and the dynamic modules (njs, image-filter, xslt, geoip, perl), none of which either image uses; `envsubst`, the entrypoint scripts and busybox `wget` (the docs healthcheck) are still there.
+
+### Fixed
+
+### Security
+- nginx 1.31.9 fixes the critical HTTP/2 vulnerabilities CVE-2026-123633 and CVE-2026-123007. Neither Hecate image turned HTTP/2 on: both serve plain HTTP (frontend on 8080, docs on 80) without `http2`, so they were not directly exploitable. The nginx reverse-proxy template (`deploy/reverse-proxy/nginx.conf.example`) does use `http2 on` on 443: if your proxy in front of Hecate runs nginx, update it to 1.31.9 (mainline) or 1.30.7 (stable).
+
+## [2.3.1] - 2026-11-17
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Sidebar footer no longer squeezes the version next to its buttons
+
+## [2.3.0] - 2026-11-17
 
 > **Existing instances: the frontend port and the routing changed. Update Compose, `.env` and your reverse proxy before you start this version.**
 >
@@ -26,6 +89,8 @@ generated from it on every semver tag. The format follows
 
 - **Import VEX** on the Findings tab and `POST /scans/vex/import` read OpenVEX as well as CycloneDX VEX; the format is detected. OpenVEX statements match by vulnerability and its aliases, and where a document gives one vulnerability different statuses per package, each statement only reaches the packages it names. A file in neither format is refused with a message instead of importing nothing.
 - VEX over MCP: `set_finding_vex` sets or clears the status of findings (by finding ids, or target and vulnerability), `import_vex` imports a CycloneDX VEX or OpenVEX document, `get_target_vex_sources`, `set_target_vex_sources` and `apply_target_vex_sources` manage a target's VEX sources, and `export_scan_vex` returns a scan's statuses as CycloneDX VEX. The writes need the `mcp:write` scope; a status set this way counts as set by hand, so a VEX source never overwrites it. Findings returned over MCP now carry their VEX status and whether they are dismissed.
+- Scan findings can be exported as CSV or JSON from the Findings tab of a scan: the ticked rows, or every row the current filter shows when none is ticked. The JSON file carries the scan and target metadata, the CSV opens in Excel with umlauts intact and neutralises values a spreadsheet would run as a formula.
+- More ways to share a vulnerability from its detail page: **Copy as Markdown** (linked ID, severity, CVSS, title and summary for tickets and chats), the system share sheet where the browser offers it, Microsoft Teams, Bluesky, LinkedIn and X, and **Download JSON** next to **Copy JSON**. **Copy URL** is now **Copy link**, and the copy button in the header adds the link to its text block.
 - A running NVD, EUVD, OSV or CPE sync shows its progress on **System → Data**: the records processed so far, live, and for an initial (full) NVD or EUVD sync a bar with the share of the source's total. The pipelines already recorded this progress, but nothing showed it, and the live event stream never sent it.
 - AI analyses name the model that wrote them next to the provider ("OpenAI · gpt-5"), on the scan, the vulnerability, the attack path and the AI Analysis history. Earlier analyses show the provider alone.
 - A new AI analysis builds on the previous one. A vulnerability's analysis gets its last analysis, a scan triage its own earlier ones or the last one of an earlier scan of the same target, and the model is asked to say what changed and whether the earlier priority still holds, trusting the current data where they differ. This also applies to the prompts the MCP `prepare_*` tools return.
@@ -56,6 +121,10 @@ generated from it on every semver tag. The format follows
 
 ### Changed
 
+- Tags with a pre-release suffix (`2.3.0-beta.1`) no longer create a GitHub release or GHCR images; only plain `X.Y.Z` tags do.
+- Wide, ultrawide and 4K screens use their width: the content column grows from 1600 px to 2560 px from a 1920 px wide window, to 3200 px from 2560 px and to 3840 px from 3520 px, and the type grows a step at the last two. Running text keeps its line length; tables, lists and grids take the room.
+- The AI Analysis page tries a password kept from an earlier visit on its own and opens straight away, and a wrong password is shown under the field instead of in a toast, with its own message once the attempts are throttled.
+- On wide screens a vulnerability's description runs to 120 characters a line (140 from 2560 px) instead of 80, and the details column beside it widens; the list's expanded rows go from 75 to 110.
 - Loading looks and behaves the same on every page. A first load shows grey placeholders in the shape of what is coming, with a quiet sheen and only after a short delay, so a fast answer shows nothing in between. Content that is fetched again stays on screen, dimmed, instead of turning back into placeholders (dashboard day change, scan lists, target page, inventory, malware feed, AI history, audit log, changelog). A button that is working keeps its label and shows a small spinner instead of `...` or a changed word, and only the button that was clicked shows it. Pages that refetched without any sign now dim while they do, screen readers hear one "loading" per region, and the start-up splash is translated.
 - License policies on **System → Policies** show a spinner on Create/Save, Set default and Delete while the request runs, and the buttons can't be pressed twice. The notification channel, rule and template tables and the policy table dim while they reload after a change instead of swapping in silently.
 - Deleting a scan target or a scan takes the system password; a target password no longer does. It still opens every other write on its target.
@@ -76,6 +145,9 @@ generated from it on every semver tag. The format follows
 
 ### Fixed
 
+- The vulnerability list no longer shows a vertical scrollbar on its table. The product buttons in the last row reach a few pixels below the table, and a table box that only meant to scroll sideways scrolled down for them; table boxes now scroll sideways only, everywhere.
+- The AI Analysis page no longer shows "AI password is missing or invalid" while its password dialog is still empty. It loaded the providers and the history before the password was entered, and both answered 401.
+- An SBOM package from a language registry (npm, PyPI, Maven, Go, Cargo, NuGet, RubyGems, Packagist, …) no longer counts as affected by a CVE of another vendor's product that only shares its name. npm's `console` showed up under "Affected in your scans" for Citrix NetScaler Console (CVE-2026-120869), because `0.15.11` is numerically below `< 14.1-74.34`, and the dashboard tagged the CVE with that scan. Such a package now needs the advisory's vendor to be its registry (as GHSA and OSV write it), its namespace (`@angular`, `org.apache…`) or the package itself; OS and binary packages keep the plain name match. Confirmed scan findings were never affected.
 - AI assessments, attack-path narratives and batch-analysis references on vulnerabilities no longer disappear when the record is written again. They live only in the search index, and every pipeline update, manual refresh, deps.dev enrichment and `reindex-opensearch` replaced the whole indexed document, so a CVE that NVD or EUVD touched after its analysis lost it. These writes now replace the document but keep those fields. Analyses lost before this release cannot be recovered; scan AI analyses and attack chains are stored in MongoDB and were never affected.
 - The dot next to **SCA** in the sidebar no longer stays on after a scan has finished until the page is reloaded. It now follows the server's list of running scans and checks again on every scan event, reconnect and return to the tab. The live event stream also starts every connection with the jobs running now, so a client that missed a job's end while disconnected (or across a backend restart) drops it; this applies to the AI dot and to pages waiting for an analysis too. The AI dot also lights up for scan AI analyses and attack-path narratives, and the dot is announced to screen readers.
 - The changelog no longer shows an older page when its pager is clicked again before the previous page has loaded.

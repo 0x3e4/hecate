@@ -107,7 +107,8 @@ records when something looks wrong.
 ### Sync status
 
 The **Sync Status** table lists every ingestion job — the regular and initial-sync variants of EUVD,
-NVD, CPE, CISA KEV, CWE, CAPEC, CIRCL, CERT feeds, GHSA, and OSV — with one row each. For every job you see its
+NVD, CPE, CISA KEV, CWE, CAPEC, CIRCL, CERT feeds, Nuclei templates, VulnCheck KEV (only with a token),
+GHSA, and OSV — with one row each. For every job you see its
 status (Idle, Running, Completed, or Failed, colour-coded), when it last started and finished, how
 long it took, and when it is next scheduled to run. Initial syncs show "Only on startup" in the
 *Next Run* column because they have no recurring schedule. The table auto-refreshes every few seconds

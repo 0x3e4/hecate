@@ -2,7 +2,7 @@
 
 Hecate is a self-hosted **vulnerability management and software-composition-analysis (SCA)**
 platform. It pulls vulnerability intelligence from nine data sources plus CERT, vendor and community
-advisory feeds, normalises everything into one schema, indexes it for fast search, scans your
+advisory feeds and exploit signals (Nuclei templates, VulnCheck KEV), normalises everything into one schema, indexes it for fast search, scans your
 container images and source repositories, and then tells you what actually affects the products you
 run — in the web UI, over a REST API, and through an MCP server you can talk to from Claude Desktop.
 
@@ -15,8 +15,8 @@ results Hecate computes on its own.
 ## What it does
 
 Hecate sits between the raw vulnerability world and your environment. On the **intake** side it
-continuously ingests EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV and CERT advisories, reconciles
-duplicates across sources, and keeps a change history. On the **output** side it scans your software
+continuously ingests EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA, OSV and CERT advisories, marks CVEs that have a public Nuclei template or a VulnCheck KEV
+listing, reconciles duplicates across sources, and keeps a change history. On the **output** side it scans your software
 with eleven scanners, matches findings against your declared inventory, and surfaces the handful of
 issues that genuinely matter — enriched with EPSS, known-exploited status, attack paths, and
 optional AI triage.

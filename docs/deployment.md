@@ -32,8 +32,8 @@ choose it.
   (its limit in the compose file). A host with 16 GB runs the whole stack comfortably.
 - Disk: the vulnerability database grows to tens of GB once all sources have synced (MongoDB plus the
   OpenSearch index), and the scanner keeps a ~3 GB Grype database.
-- Outbound HTTPS to the data sources (NVD, EUVD, OSV, GitHub, CIRCL, CISA, MITRE, deps.dev,
-  endoflife.date). Behind a TLS-inspecting proxy, mount its CA, see
+- Outbound HTTPS to the data sources (NVD, EUVD, OSV, GitHub incl. `raw.githubusercontent.com`, CIRCL,
+  CISA, MITRE, deps.dev, endoflife.date, and `api.vulncheck.com` once a VulnCheck token is set). Behind a TLS-inspecting proxy, mount its CA, see
   [TLS / corporate proxy](configuration.md#tls-corporate-proxy).
 
 ## Install
