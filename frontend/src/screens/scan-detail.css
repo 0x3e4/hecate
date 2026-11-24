@@ -96,6 +96,7 @@
 .scan-detail-cell-sev, .scan-detail-cell-id .scan-detail-link, .scan-detail-cell-name .scan-detail-link-button { white-space: nowrap; }
 .scan-detail-cell-version { max-width: 12rem; overflow-wrap: anywhere; }
 .scan-detail-table td.scan-detail-cell-name, .scan-detail-table td.scan-detail-cell-vex { padding-block: var(--space-2xs); }
+.scan-detail-bundled-in { color: var(--color-muted); font-size: var(--text-sm); font-weight: 400; overflow-wrap: anywhere; }
 .scan-detail-cell-scanner { color: var(--color-muted); font-size: var(--text-xs); }
 .scan-detail-finding--selected { background: var(--overlay-2); }
 .scan-detail-finding--dismissed { opacity: 0.45; }

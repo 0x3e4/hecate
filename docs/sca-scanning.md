@@ -170,6 +170,31 @@ flagged by the package check and by the next scan. Only
 npm account names are stored, no e-mail addresses. `SCA_RELEASE_INFO_ENABLED=false` turns the lookups
 (and the release part of the [package check](integrations/package-check.md)) off.
 
+## Bundled native libraries
+
+Some npm packages ship compiled libraries instead of code: sharp's `@img/sharp-libvips-<platform>`
+packages contain libvips and about 25 libraries it links (libheif, libxml2, libexpat, libpng, libtiff,
+libwebp, librsvg, cairo, freetype, glib, ...). No lockfile or manifest names them, so the scanners only
+see the npm package, and a CVE in libxml2 or libheif reaches nobody.
+
+When the SBOM of a scan or an SBOM import contains a sharp-libvips package, Hecate downloads that release
+once from the npm registry, checks it against the registry's sha512 integrity, reads the
+`versions.json` the package carries and adds each library as its own SBOM row: type `library`, a
+`pkg:generic/<name>@<version>` purl, a CPE, and **bundled in** naming the package it came in. The
+libraries are matched against the vulnerability database like an inventory entry, by the CPE vendor and
+product the advisories are filed under, so a library only gets CVEs of that library (a project of the
+same name from another vendor never matches). Those findings carry the scanner `bundled-libraries`;
+the fix is an update of the package that pulls the library in (`sharp`).
+
+The platform variants of one release ship the same libraries, so a release is read once and cached in
+`package_releases` for 30 days (a failed download 6 hours). The download is capped at
+`SCA_BUNDLED_LIBRARIES_MAX_DOWNLOAD_MB` (64), the whole lookup at
+`SCA_BUNDLED_LIBRARIES_TIMEOUT_SECONDS` (90); a failure costs these rows, never the scan. A library a
+scanner already listed is not added twice. The CycloneDX export carries the carrier as the
+`hecate:bundledIn` property. `SCA_BUNDLED_LIBRARIES_ENABLED=false` turns it off; set
+`SCA_BUNDLED_LIBRARIES_REGISTRY_URL` to a registry mirror when the backend cannot reach
+registry.npmjs.org. Only sharp-libvips is recognised so far.
+
 ## Auto-scan
 
 With `SCA_AUTO_SCAN_ENABLED=true`, the scheduler periodically probes each `autoScan` target through the

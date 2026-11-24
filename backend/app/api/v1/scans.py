@@ -1634,6 +1634,7 @@ def _map_sbom_component(doc: dict[str, Any]) -> SbomComponentResponse:
         fresh_release=doc.get("fresh_release"),
         unmaintained=doc.get("unmaintained"),
         publisher_changed=doc.get("publisher_changed"),
+        bundled_in=doc.get("bundled_in"),
     )
 
 

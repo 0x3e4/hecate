@@ -1,7 +1,8 @@
 """A tiny in-memory stand-in for a Motor collection (only what the tests use).
 
 Supports equality (``None`` also matches a missing field), ``$ne``, ``$in``,
-``$nin``, ``$regex`` and ``$or`` in filters, ``$set`` updates, ``find`` with
+``$nin``, ``$regex``, ``$or`` and ``$and`` in filters (a scalar condition
+matches an element of an array field, as in MongoDB), ``$set`` updates, ``find`` with
 ``limit``, ``find_one``, ``update_one`` / ``update_many``, ``replace_one``
 (with ``upsert``) and ``bulk_write`` with ``UpdateOne`` / ``UpdateMany``.
 Projections are ignored.
@@ -16,25 +17,39 @@ from typing import Any
 from bson import ObjectId
 
 
+def _equals(value: Any, cond: Any) -> bool:
+    if value == cond:
+        return True
+    return isinstance(value, list) and not isinstance(cond, list) and cond in value
+
+
+def _any_in(value: Any, arg: Any) -> bool:
+    return any(_equals(value, a) for a in arg)
+
+
 def _matches_value(value: Any, cond: Any) -> bool:
     if isinstance(cond, dict) and any(k.startswith("$") for k in cond):
         for op, arg in cond.items():
-            if op == "$ne" and value == arg:
+            if op == "$ne" and _equals(value, arg):
                 return False
-            if op == "$in" and value not in arg:
+            if op == "$in" and not _any_in(value, arg):
                 return False
-            if op == "$nin" and value in arg:
+            if op == "$nin" and _any_in(value, arg):
                 return False
             if op == "$regex" and not (isinstance(value, str) and re.search(arg, value)):
                 return False
         return True
-    return value == cond
+    return _equals(value, cond)
 
 
 def matches(doc: dict[str, Any], query: dict[str, Any]) -> bool:
     for key, cond in query.items():
         if key == "$or":
             if not any(matches(doc, sub) for sub in cond):
+                return False
+            continue
+        if key == "$and":
+            if not all(matches(doc, sub) for sub in cond):
                 return False
             continue
         if not _matches_value(doc.get(key), cond):
@@ -80,7 +95,7 @@ class FakeCollection:
     def by_id(self, _id: Any) -> dict[str, Any]:
         return next(d for d in self.docs if d["_id"] == _id)
 
-    def find(self, query: dict[str, Any] | None = None, _projection: Any = None) -> _Cursor:
+    def find(self, query: dict[str, Any] | None = None, _projection: Any = None, **_kwargs: Any) -> _Cursor:
         return _Cursor([d for d in self.docs if matches(d, query or {})])
 
     async def find_one(self, query: dict[str, Any] | None = None, _projection: Any = None) -> dict[str, Any] | None:

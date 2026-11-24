@@ -1330,6 +1330,11 @@ export const ScanDetailPage = () => {
                               {scopeLabel(f.dependencyScope, t)}
                             </span>
                           )}
+                          {f.packageType === "native-library" && f.packagePath && (
+                            <div className="scan-detail-bundled-in">
+                              {t("bundled in", "gebündelt in")} <span className="mono">{f.packagePath}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="scan-detail-cell-version" data-label={t("Version", "Version")}>
                           {f.packageVersion ? <span className="mono">{f.packageVersion}</span> : <NotAvailable />}
@@ -1772,6 +1777,11 @@ export const ScanDetailPage = () => {
                         <td className="scan-detail-cell-full">
                           <div>{c.name}</div>
                           {c.purl && <div className="scan-detail-purl mono">{c.purl}</div>}
+                          {c.bundledIn && (
+                            <div className="muted">
+                              {t("bundled in", "gebündelt in")} <span className="mono">{c.bundledIn}</span>
+                            </div>
+                          )}
                           <SupplyChainChips component={c} />
                         </td>
                         <td data-label={t("Version", "Version")}>{c.version ? <span className="mono">{c.version}</span> : <NotAvailable />}</td>

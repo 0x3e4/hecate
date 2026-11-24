@@ -88,6 +88,7 @@ class ScanSbomRepository:
                 # "runtime" > "optional" > "dev" as strings, and $max skips
                 # nulls, so this is the runtime-wins merge rule.
                 "scope": {"$max": "$scope"},
+                "bundled_in": {"$max": "$bundled_in"},
                 "file_paths": {"$addToSet": "$file_path"},
                 "scan_id": {"$first": "$scan_id"},
                 "target_id": {"$first": "$target_id"},
@@ -130,6 +131,7 @@ class ScanSbomRepository:
                     "licenses": unique_licenses,
                     "provenance_verified": item.get("provenance_verified"),
                     "scope": item.get("scope"),
+                    "bundled_in": item.get("bundled_in"),
                     "file_paths": file_paths,
                     "scan_id": item.get("scan_id"),
                     "target_id": item.get("target_id"),

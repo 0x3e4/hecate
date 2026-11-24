@@ -1064,6 +1064,8 @@ export interface SbomComponent {
   freshRelease?: boolean | null;
   unmaintained?: boolean | null;
   publisherChanged?: boolean | null;
+  /** Native library compiled into a prebuilt package: that package as name@version. */
+  bundledIn?: string | null;
 }
 
 export interface SbomComponentListResponse {

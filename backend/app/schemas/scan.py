@@ -568,6 +568,10 @@ class SbomComponentResponse(BaseModel):
         default=None, alias="publisherChanged", serialization_alias="publisherChanged",
         description="npm: published by an account that published none of the previous versions",
     )
+    bundled_in: str | None = Field(
+        default=None, alias="bundledIn", serialization_alias="bundledIn",
+        description="Native library inside a prebuilt package: that package as name@version",
+    )
 
     model_config = {"populate_by_name": True}
 

@@ -759,6 +759,13 @@ class ScanService:
                 all_findings = findings
         except Exception:
             log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
+        bundled_components, bundled_findings = await self._add_bundled_libraries(
+            scan_id_val, target_id, components,
+        )
+        if bundled_components:
+            components = [*components, *bundled_components]
+            comp_count += len(bundled_components)
+        all_findings = [*all_findings, *bundled_findings]
         await self._apply_dependency_scopes(scan_id_val, components, all_findings)
 
         # Compute summary
@@ -811,6 +818,119 @@ class ScanService:
             "check": check,
             "expires_at": scan_doc.expires_at,
         }
+
+    async def _add_bundled_libraries(
+        self,
+        scan_id: str,
+        target_id: str,
+        components: list[Any],
+    ) -> tuple[list[ScanSbomComponentDocument], list[ScanFindingDocument]]:
+        """Native libraries inside the scan's prebuilt packages, stored with their CVEs.
+
+        Fail-soft and time-boxed: a registry problem costs these extra rows,
+        never the scan. Libraries the SBOM already lists are skipped. CVEs come
+        from the inventory matcher with the library's CPE vendor and product,
+        so a library is only matched to advisories filed under it.
+        """
+        if not settings.sca_bundled_libraries_enabled or not components:
+            return [], []
+        from app.services.bundled_libraries import get_bundled_library_resolver
+
+        try:
+            libraries = await asyncio.wait_for(
+                get_bundled_library_resolver().resolve(components),
+                timeout=settings.sca_bundled_libraries_timeout_seconds,
+            )
+        except Exception:  # noqa: BLE001 - optional enrichment
+            log.warning("scan_service.bundled_libraries_failed", scan_id=scan_id, exc_info=True)
+            return [], []
+        present = {
+            ((c.get("name") if isinstance(c, dict) else c.name), (c.get("version") if isinstance(c, dict) else c.version))
+            for c in components
+        }
+        libraries = [lib for lib in libraries if (lib.name, lib.version) not in present]
+        if not libraries:
+            return [], []
+
+        new_components = [
+            ScanSbomComponentDocument(
+                scan_id=scan_id,
+                target_id=target_id,
+                name=lib.name,
+                version=lib.version,
+                # A CycloneDX component type, so exports stay valid; bundled_in marks it.
+                type="library",
+                purl=lib.purl,
+                cpe=lib.cpe,
+                bundled_in=lib.carrier,
+                scope="runtime",
+            )
+            for lib in libraries
+        ]
+        findings = await self._bundled_library_findings(scan_id, target_id, libraries)
+        try:
+            await self.sbom_repo.bulk_insert(new_components)
+            if findings:
+                await self.finding_repo.bulk_insert(findings)
+        except Exception:  # noqa: BLE001
+            log.warning("scan_service.bundled_libraries_store_failed", scan_id=scan_id, exc_info=True)
+            return [], []
+        log.info(
+            "scan_service.bundled_libraries_added",
+            scan_id=scan_id, libraries=len(new_components), findings=len(findings),
+        )
+        return new_components, findings
+
+    async def _bundled_library_findings(
+        self, scan_id: str, target_id: str, libraries: list[Any],
+    ) -> list[ScanFindingDocument]:
+        from types import SimpleNamespace
+
+        from app.db.mongo import get_database
+        from app.services.inventory_matcher import InventoryKey, vulns_for_item
+
+        try:
+            vulns = SimpleNamespace(collection=(await get_database())[settings.mongo_vulnerabilities_collection])
+        except Exception:  # noqa: BLE001
+            return []
+        findings: list[ScanFindingDocument] = []
+        for lib in libraries:
+            seen: set[str] = set()
+            for vendor in lib.vendor_slugs:
+                try:
+                    docs = await vulns_for_item(
+                        vulns,
+                        InventoryKey(vendor_slug=vendor, product_slug=lib.product_slug, version=lib.version),
+                        projection={"_id": 1, "cpe_configurations": 1, "cpes": 1,
+                                    "impactedProducts": 1, "impacted_products": 1},
+                        limit=200,
+                    )
+                except Exception:  # noqa: BLE001
+                    log.warning("scan_service.bundled_library_match_failed", library=lib.name, exc_info=True)
+                    continue
+                for doc in docs:
+                    vuln_id = doc.get("_id")
+                    if not isinstance(vuln_id, str) or vuln_id in seen:
+                        continue
+                    seen.add(vuln_id)
+                    findings.append(ScanFindingDocument(
+                        scan_id=scan_id,
+                        target_id=target_id,
+                        vulnerability_id=vuln_id,
+                        matched_from="bundled-library",
+                        scanner="bundled-libraries",
+                        package_name=lib.name,
+                        package_version=lib.version,
+                        package_type="native-library",
+                        package_path=lib.carrier,
+                        severity="unknown",
+                        title=f"{lib.name} {lib.version} bundled in {lib.carrier}",
+                        description=(
+                            f"{lib.name} {lib.version} is compiled into the prebuilt package {lib.carrier}; "
+                            "no manifest names it. Updating the package that pulls it in updates the library."
+                        ),
+                    ))
+        return findings
 
     async def _match_vulnerabilities_for_components(
         self,
@@ -1096,6 +1216,15 @@ class ScanService:
         finally:
             if source_token:
                 await self._cleanup_source_checkout(source_token)
+
+        # Native libraries inside prebuilt packages (sharp's libvips): added to the
+        # SBOM with their CVEs before the severity and scope passes below.
+        bundled_components, bundled_findings = await self._add_bundled_libraries(
+            scan_id, target_id, all_components,
+        )
+        all_components.extend(bundled_components)
+        all_findings.extend(bundled_findings)
+        unique_component_keys.update((c.name, c.version) for c in bundled_components)
 
         # CVE fallback: try to match findings without CVE against local vulnerability DB
         await self._match_cve_for_unmatched_findings(scan_id, all_findings, all_components)

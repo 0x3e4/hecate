@@ -299,6 +299,12 @@ class Settings(BaseSettings):
     # registries and cached per (ecosystem, name, version). See
     # app/services/supply_chain_service.py.
     sca_release_info_enabled: bool = True
+    # Native libraries inside prebuilt packages (app/services/bundled_libraries.py):
+    # read from the npm registry once per carrier release, then cached.
+    sca_bundled_libraries_enabled: bool = True
+    sca_bundled_libraries_timeout_seconds: int = 90
+    sca_bundled_libraries_max_download_mb: int = 64
+    sca_bundled_libraries_registry_url: str = "https://registry.npmjs.org"
     sca_fresh_release_days: int = 7
     sca_unmaintained_days: int = 730
     sca_release_info_cache_ttl_hours: int = 24

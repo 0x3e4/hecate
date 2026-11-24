@@ -241,6 +241,10 @@ walkthrough and the in-app MCP page (`/info/mcp`) for the live OAuth metadata.
 | `SCA_RELEASE_INFO_MAX_COMPONENTS` | `3000` | Most components looked up per scan. |
 | `SCA_RELEASE_INFO_CONCURRENCY` | `8` | Packages looked up at once (deps.dev keeps its own `DEPS_DEV_RATE_LIMIT_SECONDS`). |
 | `SCA_RELEASE_INFO_TIMEOUT_SECONDS` | `900` | Time budget of the lookups after one scan. |
+| `SCA_BUNDLED_LIBRARIES_ENABLED` | `true` | Read the libraries compiled into prebuilt npm packages (sharp-libvips) and add them to the SBOM with their CVEs ([bundled native libraries](sca-scanning.md#bundled-native-libraries)). |
+| `SCA_BUNDLED_LIBRARIES_TIMEOUT_SECONDS` | `90` | Time budget of that lookup per scan. |
+| `SCA_BUNDLED_LIBRARIES_MAX_DOWNLOAD_MB` | `64` | Largest package download for it. |
+| `SCA_BUNDLED_LIBRARIES_REGISTRY_URL` | `https://registry.npmjs.org` | npm registry (or mirror) the packages are read from. |
 | `PACKAGE_CHECK_RELEASE_TIMEOUT_SECONDS` | `5` | `GET /packages/check`: longest wait for registry data; past it the verdict rests on the advisories. |
 | `PACKAGE_CHECK_RATE_PER_MINUTE` | `120` | `GET /packages/check`: checks per minute per client without a session (429 beyond; `0` = no limit). |
 

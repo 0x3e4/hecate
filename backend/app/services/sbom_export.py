@@ -50,6 +50,8 @@ def supply_chain_properties(comp: dict[str, Any]) -> list[dict[str, str]]:
     add("release:unmaintained", comp.get("unmaintained"))
     add("npm:publisher", comp.get("publisher"))
     add("npm:publisherChanged", comp.get("publisher_changed"))
+    # Native library compiled into a prebuilt package (app/services/bundled_libraries.py).
+    add("bundledIn", comp.get("bundled_in"))
     return props
 
 

@@ -225,6 +225,9 @@ class ScanSbomComponentDocument(BaseModel):
     # scanner said; after the scan every row of a (name, version) carries the
     # merged value (runtime wins, unknown never overrides).
     scope: str | None = None
+    # A native library found inside a prebuilt package: the carrier as
+    # "<package>@<version>" (app/services/bundled_libraries.py). None otherwise.
+    bundled_in: str | None = None
     # Supply-chain signals, written after the scan by
     # app/services/supply_chain_service.py (None = not looked up / unknown).
     published_at: datetime | None = None

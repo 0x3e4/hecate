@@ -123,6 +123,10 @@ publishers, the latest release), a **Supply chain** row among the summary cards 
 header counts them; a click there opens the SBOM tab filtered to that signal. See
 [Supply-chain signals](../sca-scanning.md#supply-chain-signals).
 
+A library compiled into a prebuilt package (sharp's libvips and the libraries it links) gets its own row with
+**bundled in** and that package under the name; its CVEs appear in the Findings tab like any other. See
+[Bundled native libraries](../sca-scanning.md#bundled-native-libraries).
+
 Two export buttons produce a standards-compliant bill of materials: **CycloneDX 1.5** and **SPDX 2.3** JSON. Next to
 them, the **VEX export** select writes the scan's VEX statements in one of three formats (see
 [Exporting VEX](#exporting-vex)).
