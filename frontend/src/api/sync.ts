@@ -41,6 +41,16 @@ export const triggerCertFeedsSync = async (): Promise<TriggerSyncResponse> => {
   return response.data;
 };
 
+export const triggerNucleiTemplatesSync = async (): Promise<TriggerSyncResponse> => {
+  const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/nuclei-templates", {});
+  return response.data;
+};
+
+export const triggerVulnCheckKevSync = async (): Promise<TriggerSyncResponse> => {
+  const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/vulncheck-kev", {});
+  return response.data;
+};
+
 export const triggerCirclSync = async (): Promise<TriggerSyncResponse> => {
   const response = await api.post<TriggerSyncResponse>("/v1/sync/trigger/circl", {});
   return response.data;

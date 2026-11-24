@@ -35,8 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="ingest",
-        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch", "compact-history", "scrub-audit-credentials"],
-        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch, compact-history, scrub-audit-credentials).",
+        choices=["ingest", "sync-euvd", "sync-cpe", "sync-nvd", "sync-kev", "sync-cwe", "sync-capec", "sync-circl", "sync-cert", "sync-nuclei", "sync-vulncheck-kev", "sync-ghsa", "sync-osv", "enrich-mal", "purge-malware", "reindex-opensearch", "compact-history", "scrub-audit-credentials"],
+        help="Command to execute (ingest, sync-euvd, sync-cpe, sync-nvd, sync-kev, sync-cwe, sync-capec, sync-circl, sync-cert, sync-nuclei, sync-vulncheck-kev, sync-ghsa, sync-osv, enrich-mal, purge-malware, reindex-opensearch, compact-history, scrub-audit-credentials).",
     )
     parser.add_argument(
         "--since",
@@ -142,6 +142,16 @@ def main() -> None:
             parser.error("sync-cert takes no options: every run reads all configured feeds.")
         result = asyncio.run(run_cert_feeds_sync_once())
         print(f"CERT advisory sync finished: {result}")
+    elif args.command == "sync-nuclei":
+        if args.since or args.initial or args.limit is not None:
+            parser.error("sync-nuclei takes no options: every run reads the whole template index.")
+        result = asyncio.run(run_nuclei_templates_sync_once())
+        print(f"Nuclei templates sync finished: {result}")
+    elif args.command == "sync-vulncheck-kev":
+        if args.since or args.initial or args.limit is not None:
+            parser.error("sync-vulncheck-kev takes no options: every run reads the whole catalogue.")
+        result = asyncio.run(run_vulncheck_kev_sync_once())
+        print(f"VulnCheck KEV sync finished: {result}")
     elif args.command == "sync-circl":
         if args.since:
             parser.error("The --since option is not supported for sync-circl.")
@@ -234,6 +244,28 @@ async def run_kev_sync_once(*, initial_sync: bool = False) -> dict[str, Any]:
 async def run_cert_feeds_sync_once() -> dict[str, object]:
     """Run the CERT advisory feed sync once from CLI."""
     pipeline = CertFeedPipeline()
+    try:
+        return await pipeline.sync()
+    finally:
+        await pipeline.close()
+
+
+async def run_nuclei_templates_sync_once() -> dict[str, object]:
+    """Run the Nuclei template index sync once from CLI."""
+    from app.services.ingestion.nuclei_templates import NucleiTemplatesPipeline
+
+    pipeline = NucleiTemplatesPipeline()
+    try:
+        return await pipeline.sync()
+    finally:
+        await pipeline.close()
+
+
+async def run_vulncheck_kev_sync_once() -> dict[str, object]:
+    """Run the VulnCheck KEV sync once from CLI (needs VULNCHECK_API_TOKEN)."""
+    from app.services.ingestion.vulncheck_kev import VulnCheckKevPipeline
+
+    pipeline = VulnCheckKevPipeline()
     try:
         return await pipeline.sync()
     finally:

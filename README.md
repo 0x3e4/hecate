@@ -233,7 +233,7 @@ The tools solve different problems: Dependency-Track manages SBOM components, De
 | Operating model | Self-hosted | Self-hosted | Self-hosted; Cloud separate | Self-hosted; Pro also SaaS | Self-hosted + public instances | SaaS | SaaS; local scanner, appliance |
 | License | MIT | Apache-2.0 | BUSL-1.1 | BSD-3-Clause | AGPL-3.0 | Proprietary | Proprietary |
 | Searchable advisory DB | Keyword, DQL, regex | Lookup per vulnerability | CVEs, query language | No (findings only) | Full-text + API | security.snyk.io | Aikido Intel (browse) |
-| Data sources | EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL (EPSS), CPE, CWE, CAPEC; CERT, vendor and community feeds | NVD, GHSA, OSV + analyzers; EUVD only as KEV flag | MITRE, NVD, Vulnrichment, Red Hat; EUVD not in docs | Imported reports (360+ parsers) | Many incl. CSAF, national DBs; EUVD only as KEV | NVD + own research; EUVD not mentioned | Intel, NVD, GHSA, distros; EUVD not listed |
+| Data sources | EUVD, NVD, CISA KEV, GHSA, OSV, CIRCL (EPSS), CPE, CWE, CAPEC; CERT, vendor and community feeds; Nuclei templates, VulnCheck KEV (optional) | NVD, GHSA, OSV + analyzers; EUVD only as KEV flag | MITRE, NVD, Vulnrichment, Red Hat; EUVD not in docs | Imported reports (360+ parsers) | Many incl. CSAF, national DBs; EUVD only as KEV | NVD + own research; EUVD not mentioned | Intel, NVD, GHSA, distros; EUVD not listed |
 | Version-range search | `affectedVersion:` query | Internal only | No | No | Not documented | Per-version pages | Not documented |
 | SCA scanning (images, repos) | Trivy, Grype, Syft, OSV-Scanner, Semgrep, TruffleHog, DevSkim, Dockle, Dive, Hecate Analyzer | No, ingests SBOMs | No | No, imports results | No | Yes | Yes |
 | SBOM import / export | CycloneDX, SPDX / CycloneDX 1.5, SPDX 2.3 | CycloneDX / CycloneDX | None | CycloneDX, SPDX / Pro only | None | Both, Enterprise only | CycloneDX, SPDX / CSV, SPDX, CycloneDX |
@@ -620,6 +620,8 @@ poetry run python -m app.cli sync-cwe       [--initial]
 poetry run python -m app.cli sync-capec     [--initial]
 poetry run python -m app.cli sync-circl     [--limit N]
 poetry run python -m app.cli sync-cert
+poetry run python -m app.cli sync-nuclei
+poetry run python -m app.cli sync-vulncheck-kev                            # needs VULNCHECK_API_TOKEN
 poetry run python -m app.cli sync-ghsa      [--limit N] [--initial]
 poetry run python -m app.cli sync-osv       [--limit N] [--initial]
 poetry run python -m app.cli enrich-mal     [--limit N]                    # deps.dev enrichment of existing MAL-* docs (broad >=0 → real versions)
@@ -641,7 +643,7 @@ Everything is driven through environment variables — see [`.env.example`](.env
 | **MongoDB** | `MONGO_URL`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_DB` |
 | **OpenSearch** | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD`, `OPENSEARCH_VERIFY_CERTS`, `OPENSEARCH_CA_CERT` |
 | **AI providers** | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `OPENAI_COMPATIBLE_LABEL` (Ollama / vLLM / OpenRouter / LocalAI / LM Studio via `/v1/chat/completions`) |
-| **Data sources** | `CERT_FEEDS_EXTRA` (your own feeds as `Name\|URL\|kind`, kind `cert`/`vendor`/`community`), `CERT_FEEDS_ALLOW_PRIVATE_HOSTS`, `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `NVD_TIMEOUT_SECONDS`, `NVD_MAX_RETRIES`, `NVD_RETRY_BACKOFF_SECONDS`, `KEV_FEED_URL`, `GHSA_TOKEN`, `GHSA_MAX_RETRIES`, `GHSA_RETRY_BACKOFF_SECONDS`, `CIRCL_MAX_RETRIES`, `CIRCL_RETRY_BACKOFF_SECONDS`, `OSV_BASE_URL`, `OSV_TIMEOUT_SECONDS`, `OSV_RATE_LIMIT_SECONDS`, `OSV_MAX_RETRIES`, `OSV_RETRY_BACKOFF_SECONDS`, `OSV_MAX_RECORDS_PER_RUN`, `OSV_INITIAL_SYNC_CONCURRENCY`, `OSV_INITIAL_SYNC_BATCH_SIZE` |
+| **Data sources** | `CERT_FEEDS_EXTRA` (your own feeds as `Name\|URL\|kind`, kind `cert`/`vendor`/`community`), `CERT_FEEDS_ALLOW_PRIVATE_HOSTS`, `NUCLEI_TEMPLATES_ENABLED`, `VULNCHECK_API_TOKEN`, `EUVD_BASE_URL`, `NVD_BASE_URL`, `NVD_API_KEY`, `NVD_TIMEOUT_SECONDS`, `NVD_MAX_RETRIES`, `NVD_RETRY_BACKOFF_SECONDS`, `KEV_FEED_URL`, `GHSA_TOKEN`, `GHSA_MAX_RETRIES`, `GHSA_RETRY_BACKOFF_SECONDS`, `CIRCL_MAX_RETRIES`, `CIRCL_RETRY_BACKOFF_SECONDS`, `OSV_BASE_URL`, `OSV_TIMEOUT_SECONDS`, `OSV_RATE_LIMIT_SECONDS`, `OSV_MAX_RETRIES`, `OSV_RETRY_BACKOFF_SECONDS`, `OSV_MAX_RECORDS_PER_RUN`, `OSV_INITIAL_SYNC_CONCURRENCY`, `OSV_INITIAL_SYNC_BATCH_SIZE` |
 | **Scheduler** | `SCHEDULER_ENABLED`, `SCHEDULER_*_INTERVAL_*`. CWE / CAPEC use wall-clock cron instead of intervals: `SCHEDULER_CWE_CRON_DAY_OF_WEEK` (default `mon`), `SCHEDULER_CWE_CRON_HOUR` (`3`), `SCHEDULER_CAPEC_CRON_DAY_OF_WEEK` (default `tue`), `SCHEDULER_CAPEC_CRON_HOUR` (`3`). Stale-on-startup catch-up via `SCHEDULER_CATALOG_STALE_CATCHUP_MULTIPLIER` (default `1.5`). |
 | **Inventory EOL** | `ENDOFLIFE_ENABLED` (default `true`), `ENDOFLIFE_BASE_URL` (endoflife.date v1 API), `ENDOFLIFE_TIMEOUT_SECONDS`, `ENDOFLIFE_RATE_LIMIT_SECONDS`, `ENDOFLIFE_MAX_RETRIES`, `ENDOFLIFE_RETRY_BACKOFF_SECONDS`, `ENDOFLIFE_CACHE_TTL_HOURS` — support / end-of-life enrichment for Environment Inventory items |
 | **Frontend** | `VITE_API_BASE_URL` (feature flags are derived from backend settings and exposed via `GET /api/v1/config`) |

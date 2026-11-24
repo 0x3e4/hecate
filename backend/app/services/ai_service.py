@@ -1244,6 +1244,7 @@ async def build_attack_path_prompts(
         user_prompt_parts.append(f"- EPSS: {vulnerability.epss_score:.1%}")
     if vulnerability.exploitation is not None or vulnerability.exploited:
         user_prompt_parts.append("- KEV: known-exploited")
+    user_prompt_parts.extend(f"- {line}" for line in format_exploit_signals(vulnerability.exploit_signals))
     if vulnerability.summary:
         summary_short = (
             vulnerability.summary[:600] + "..."
@@ -1542,6 +1543,29 @@ async def _build_prompts(
     return system_prompt + _UNTRUSTED_DATA_RULE, user_prompt
 
 
+def format_exploit_signals(signals: list[dict[str, Any]] | None) -> list[str]:
+    """Prompt lines for the exploit signals (VulnCheck KEV named, as its licence asks)."""
+    lines: list[str] = []
+    for signal in signals or []:
+        if signal.get("source") == "vulncheck_kev":
+            details = [f"listed {str(signal.get('dateAdded') or '')[:10] or 'unknown'}"]
+            if signal.get("cisaDateAdded"):
+                details.append(f"CISA {str(signal['cisaDateAdded'])[:10]}")
+            else:
+                details.append("not in CISA KEV")
+            if signal.get("ransomware"):
+                details.append(f"ransomware use: {signal['ransomware']}")
+            details.append(f"{signal.get('reportCount') or 0} exploitation reports")
+            details.append(f"{signal.get('exploitCount') or 0} public exploits")
+            lines.append(f"VulnCheck KEV ({signal.get('cveId')}): reported exploited, " + ", ".join(details))
+        elif signal.get("source") == "nuclei":
+            lines.append(
+                f"Public Nuclei template ({signal.get('cveId')}): {signal.get('name')}"
+                " - anyone can scan for it with one command"
+            )
+    return lines
+
+
 async def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> str:
     """Format vulnerability data into a rich, structured context for AI analysis."""
     sections: list[str] = []
@@ -1731,6 +1755,10 @@ async def _format_vulnerability_context(vulnerability: VulnerabilityDetail) -> s
                 exploit_parts.append(f"Ransomware Use: {info.known_ransomware_campaign_use}")
 
         sections.append("EXPLOITATION STATUS:\n" + "\n".join(exploit_parts))
+
+    signal_lines = format_exploit_signals(vulnerability.exploit_signals)
+    if signal_lines:
+        sections.append("EXPLOIT SIGNALS:\n" + "\n".join(signal_lines))
 
     # === AFFECTED PRODUCTS & VERSIONS (DATABASE-VERIFIED) ===
     affected_parts: list[str] = []

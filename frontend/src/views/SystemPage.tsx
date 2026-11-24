@@ -46,6 +46,8 @@ import {
   triggerCapecSync,
   triggerCirclSync,
   triggerCertFeedsSync,
+  triggerNucleiTemplatesSync,
+  triggerVulnCheckKevSync,
   triggerGhsaSync,
   triggerOsvSync,
   resyncVulnerabilities,
@@ -1126,7 +1128,7 @@ const SystemSettings = () => {
     event.target.value = "";
   };
 
-  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "cert" | "ghsa" | "osv", initial: boolean) => {
+  const handleTriggerSync = async (syncType: "euvd" | "nvd" | "cpe" | "kev" | "cwe" | "capec" | "circl" | "cert" | "nuclei" | "vulncheck" | "ghsa" | "osv", initial: boolean) => {
     const syncId = `${syncType}_${initial ? "initial" : "normal"}`;
     setSyncTriggeringId(syncId);
     try {
@@ -1155,6 +1157,12 @@ const SystemSettings = () => {
           break;
         case "cert":
           response = await triggerCertFeedsSync();
+          break;
+        case "nuclei":
+          response = await triggerNucleiTemplatesSync();
+          break;
+        case "vulncheck":
+          response = await triggerVulnCheckKevSync();
           break;
         case "ghsa":
           response = await triggerGhsaSync(initial);
@@ -1222,6 +1230,8 @@ const SystemSettings = () => {
       "capec_initial_sync",
       "circl_sync",
       "cert_feeds_sync",
+      "nuclei_templates_sync",
+      "vulncheck_kev_sync",
       "ghsa_sync",
       "ghsa_initial_sync",
       "osv_sync",
@@ -1979,6 +1989,8 @@ const SystemSettings = () => {
                     ? "nvd"
                     : sync.jobName.includes("cpe")
                     ? "cpe"
+                    : sync.jobName.includes("vulncheck")
+                    ? "vulncheck"
                     : sync.jobName.includes("kev")
                     ? "kev"
                     : sync.jobName.includes("capec")
@@ -1987,6 +1999,8 @@ const SystemSettings = () => {
                     ? "circl"
                     : sync.jobName.includes("cert")
                     ? "cert"
+                    : sync.jobName.includes("nuclei")
+                    ? "nuclei"
                     : sync.jobName.includes("ghsa")
                     ? "ghsa"
                     : sync.jobName.includes("osv")

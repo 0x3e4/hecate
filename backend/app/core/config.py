@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     mongo_api_tokens_collection: str = "api_tokens"
     mongo_vex_rules_collection: str = "vex_rules"
     mongo_package_releases_collection: str = "package_releases"
+    mongo_exploit_signals_collection: str = "exploit_signals"
     opensearch_url: str = "https://opensearch:9200"
     opensearch_username: str | None = None
     opensearch_password: str | None = None
@@ -148,6 +149,20 @@ class Settings(BaseSettings):
     cert_feeds_max_page_fetches_per_run: int = 50
     # Feeds added through the UI may only point at public addresses. Set to true for an intranet feed.
     cert_feeds_allow_private_hosts: bool = False
+
+    # Public Nuclei templates per CVE (projectdiscovery/nuclei-templates, MIT): an exploit signal.
+    nuclei_templates_enabled: bool = True
+    nuclei_templates_index_url: str = (
+        "https://raw.githubusercontent.com/projectdiscovery/nuclei-templates/main/cves.json"
+    )
+    nuclei_templates_browse_url: str = "https://github.com/projectdiscovery/nuclei-templates/blob/main"
+    nuclei_templates_timeout_seconds: int = 60
+
+    # VulnCheck KEV (exploitation reports before CISA): off until a community token is set.
+    # Its licence asks for attribution and forbids passing the data on, so it is only fetched here.
+    vulncheck_api_token: str | None = None
+    vulncheck_base_url: str = "https://api.vulncheck.com"
+    vulncheck_timeout_seconds: int = 60
 
     ghsa_base_url: str = "https://api.github.com/advisories"
     ghsa_token: str | None = None
@@ -239,6 +254,8 @@ class Settings(BaseSettings):
     scheduler_catalog_stale_catchup_multiplier: float = 1.5
     scheduler_circl_interval_minutes: int = 120
     scheduler_cert_feeds_interval_minutes: int = 120
+    scheduler_nuclei_templates_interval_minutes: int = 1440
+    scheduler_vulncheck_kev_interval_minutes: int = 360
     scheduler_ghsa_interval_minutes: int = 120
     scheduler_osv_interval_minutes: int = 120
 

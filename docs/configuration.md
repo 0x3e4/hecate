@@ -347,6 +347,13 @@ Most sources share the same kinds of settings:
 | `CERT_FEEDS_RATE_LIMIT_SECONDS` | `1.0` | |
 | `CERT_FEEDS_MAX_RETRIES` | `3` | |
 | `CERT_FEEDS_RETRY_BACKOFF_SECONDS` | `3.0` | |
+| `NUCLEI_TEMPLATES_ENABLED` | `true` | Read which CVEs have a public Nuclei template ([exploit signals](guide/vulnerabilities.md#exploit-signals)). |
+| `NUCLEI_TEMPLATES_INDEX_URL` | `https://raw.githubusercontent.com/projectdiscovery/nuclei-templates/main/cves.json` | The template repository's CVE index (one JSON object per line); point it at a mirror if GitHub is blocked. |
+| `NUCLEI_TEMPLATES_BROWSE_URL` | `https://github.com/projectdiscovery/nuclei-templates/blob/main` | Base of the template links. |
+| `NUCLEI_TEMPLATES_TIMEOUT_SECONDS` | `60` | |
+| `VULNCHECK_API_TOKEN` 🔑 | (unset) | VulnCheck community token: turns on [VulnCheck KEV](guide/vulnerabilities.md#exploit-signals). Free at vulncheck.com; VulnCheck expires a token unused for 30 days, which the 6-hourly sync prevents. |
+| `VULNCHECK_BASE_URL` | `https://api.vulncheck.com` | |
+| `VULNCHECK_TIMEOUT_SECONDS` | `60` | |
 | `GHSA_BASE_URL` | `https://api.github.com/advisories` | GitHub Advisory API. |
 | `GHSA_TOKEN` 🔑 | (unset) | GitHub PAT (60 → 5000 req/h). Also raises the limit of the Support page's version check. |
 | `GHSA_TIMEOUT_SECONDS` | `30` | |
@@ -397,6 +404,8 @@ Annotates [Environment Inventory](guide/inventory.md) items with support / end-o
 | `SCHEDULER_GHSA_INTERVAL_MINUTES` | `120` | GitHub advisories. |
 | `SCHEDULER_OSV_INTERVAL_MINUTES` | `120` | OSV, including malicious packages. |
 | `SCHEDULER_CERT_FEEDS_INTERVAL_MINUTES` | `120` | Advisory feeds. |
+| `SCHEDULER_NUCLEI_TEMPLATES_INTERVAL_MINUTES` | `1440` | Nuclei template index. |
+| `SCHEDULER_VULNCHECK_KEV_INTERVAL_MINUTES` | `360` | VulnCheck KEV (only with a token). |
 | `SCHEDULER_NVD_FULL_SYNC_ENABLED` / `_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `true` / `wed` / `2` | Weekly full NVD sync that catches anything the incremental runs missed. |
 | `SCHEDULER_EUVD_FULL_SYNC_ENABLED` / `_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `true` / `sun` / `2` | Weekly full EUVD sync. |
 | `SCHEDULER_OSV_FULL_SYNC_ENABLED` / `_CRON_DAY_OF_WEEK` / `_CRON_HOUR` | `true` / `fri` / `2` | Weekly full OSV sync (re-reads every ecosystem export). |

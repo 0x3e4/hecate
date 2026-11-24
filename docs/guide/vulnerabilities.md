@@ -150,6 +150,27 @@ When two sources score the same CVSS major version **2.0 or more points apart**,
 bands** (low / medium / high / critical), a note under the score row says the sources disagree and links to the
 table. Scores of different CVSS versions are not compared: v2 and v4 score the same flaw differently by design.
 
+### Exploit signals
+
+Two blocks above the severity table say whether a vulnerability is easy to attack, from sources that
+are not part of the advisory itself:
+
+- **Public Nuclei template**: the [nuclei-templates](https://github.com/projectdiscovery/nuclei-templates)
+  repository has a template for this CVE, so anyone, attackers included, can check a host for it with
+  one command. The block links the template. Hecate reads the repository's CVE index once a day
+  (job *Nuclei Templates Sync*, about 4,800 CVEs).
+- **VulnCheck KEV**: [VulnCheck's KEV](https://vulncheck.com/kev) lists CVEs with public reports of
+  exploitation, often days or weeks before CISA's catalogue. The block shows when VulnCheck listed it (and
+  CISA, if it did), ransomware use, and the first reports and public exploits. It is off until an
+  administrator sets `VULNCHECK_API_TOKEN` to a free VulnCheck community token; VulnCheck's terms ask
+  for the data to be named "VulnCheck KEV" wherever it is shown, which the block and the API do. Hecate
+  reads it every 6 hours (job *VulnCheck KEV Sync*, shown on System → Data only with a token).
+
+Both are kept in their own collection (`exploit_signals`), never on the vulnerability record: a template
+appearing writes no change history. The signals also reach the API (`exploitSignals`), MCP
+`get_vulnerability`, the AI analysis and the attack path, where a template raises *Exploit maturity* to
+PoC and a VulnCheck KEV listing to high.
+
 ### Affected in your environment
 
 If the entry matches something you have declared in your [Environment Inventory](inventory.md), a

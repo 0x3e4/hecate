@@ -358,6 +358,27 @@ export interface VulnerabilityDetail extends VulnerabilityPreview {
   possiblyAffected?: PossiblyAffectedEntry[];
   severityProvenance?: SeverityProvenance | null;
   attackPath?: AttackPathNarrative | null;
+  /** Exploit signals from sources outside the record, per CVE id. */
+  exploitSignals?: ExploitSignal[];
+}
+
+export interface ExploitSignal {
+  source: "nuclei" | "vulncheck_kev";
+  cveId: string;
+  name: string;
+  /** nuclei: the template; vulncheck_kev: VulnCheck's KEV page. */
+  url: string;
+  severity?: string | null;
+  protocol?: string | null;
+  dateAdded?: string | null;
+  cisaDateAdded?: string | null;
+  ransomware?: string | null;
+  canaries?: boolean;
+  reportCount?: number;
+  reportUrls?: string[];
+  exploitCount?: number;
+  exploitUrls?: string[];
+  attribution?: string;
 }
 
 export type SeveritySourceKind = "nvd" | "cna" | "euvd" | "ghsa" | "osv";

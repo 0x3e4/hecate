@@ -214,6 +214,8 @@ inserted findings only, deduplicated by a partial unique index.
 | CAPEC | MITRE XML download | 7 days | Attack patterns |
 | CIRCL | CIRCL REST API | 120 min | Additional enrichment |
 | Advisory feeds | RSS / RDF / Atom of CERTs, vendors and community accounts (`.env` + System → Data) | 120 min | Which CVEs they warn about (`cert_advisories`, for the Advisories page and the dashboard signal; never writes vulnerability documents) |
+| Nuclei templates | `cves.json` of projectdiscovery/nuclei-templates (MIT) | 1440 min | Which CVEs have a public template (`exploit_signals`, read-time join; never writes vulnerability documents) |
+| VulnCheck KEV | VulnCheck API, operator's community token (opt-in) | 360 min | Exploitation reports per CVE (`exploit_signals`, labelled "VulnCheck KEV") |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories (hybrid: enriches CVEs + creates GHSA-only entries) |
 | OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems) |
 
@@ -538,6 +540,8 @@ poetry run python -m app.cli sync-cwe       [--initial]
 poetry run python -m app.cli sync-capec     [--initial]
 poetry run python -m app.cli sync-circl     [--limit N]
 poetry run python -m app.cli sync-cert
+poetry run python -m app.cli sync-nuclei
+poetry run python -m app.cli sync-vulncheck-kev                           # needs VULNCHECK_API_TOKEN
 poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
 poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
 poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs

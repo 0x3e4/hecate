@@ -200,6 +200,24 @@ class SchedulerManager:
                 replace_existing=True,
             )
 
+        if settings.nuclei_templates_enabled:
+            self.scheduler.add_job(
+                _scheduled_nuclei_templates_sync,
+                trigger=IntervalTrigger(minutes=settings.scheduler_nuclei_templates_interval_minutes),
+                id="nuclei_templates_sync",
+                next_run_time=datetime.now(tz=UTC) + timedelta(minutes=3),
+                replace_existing=True,
+            )
+
+        if settings.vulncheck_api_token:
+            self.scheduler.add_job(
+                _scheduled_vulncheck_kev_sync,
+                trigger=IntervalTrigger(minutes=settings.scheduler_vulncheck_kev_interval_minutes),
+                id="vulncheck_kev_sync",
+                next_run_time=datetime.now(tz=UTC) + timedelta(minutes=4),
+                replace_existing=True,
+            )
+
         self.scheduler.add_job(
             _scheduled_ghsa_sync,
             trigger=IntervalTrigger(minutes=settings.scheduler_ghsa_interval_minutes),
@@ -710,6 +728,36 @@ async def _execute_capec_sync(*, initial_sync: bool) -> None:
         await tracker.fail(ctx, error_msg)
         log.exception("scheduler.capec_sync_failed", error=error_msg, initial_sync=initial_sync)
         await _notify_sync_failed("capec_sync", error_msg)
+
+
+async def _scheduled_nuclei_templates_sync() -> None:
+    """Scheduled Nuclei template index sync. Writes only exploit_signals, never a vulnerability document."""
+    from app.services.ingestion.nuclei_templates import NucleiTemplatesPipeline
+
+    pipeline = NucleiTemplatesPipeline()
+    try:
+        result = await pipeline.sync()
+        log.info("scheduler.nuclei_templates_sync_completed", **result)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("scheduler.nuclei_templates_sync_failed", error=str(exc))
+        await _notify_sync_failed("nuclei_templates_sync", str(exc))
+    finally:
+        await pipeline.close()
+
+
+async def _scheduled_vulncheck_kev_sync() -> None:
+    """Scheduled VulnCheck KEV sync. Writes only exploit_signals, never a vulnerability document."""
+    from app.services.ingestion.vulncheck_kev import VulnCheckKevPipeline
+
+    pipeline = VulnCheckKevPipeline()
+    try:
+        result = await pipeline.sync()
+        log.info("scheduler.vulncheck_kev_sync_completed", **result)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("scheduler.vulncheck_kev_sync_failed", error=str(exc))
+        await _notify_sync_failed("vulncheck_kev_sync", str(exc))
+    finally:
+        await pipeline.close()
 
 
 async def _scheduled_cert_feeds_sync() -> None:

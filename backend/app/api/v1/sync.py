@@ -96,6 +96,24 @@ async def trigger_cert_feeds_sync(
     return TriggerSyncResponse(**result)
 
 
+@router.post("/trigger/nuclei-templates", response_model=TriggerSyncResponse)
+async def trigger_nuclei_templates_sync(
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger the Nuclei template index sync (no initial_sync support)."""
+    result = await service.trigger_nuclei_templates_sync()
+    return TriggerSyncResponse(**result)
+
+
+@router.post("/trigger/vulncheck-kev", response_model=TriggerSyncResponse)
+async def trigger_vulncheck_kev_sync(
+    service: SyncService = Depends(get_sync_service),
+) -> TriggerSyncResponse:
+    """Trigger the VulnCheck KEV sync (needs VULNCHECK_API_TOKEN)."""
+    result = await service.trigger_vulncheck_kev_sync()
+    return TriggerSyncResponse(**result)
+
+
 @router.post("/trigger/circl", response_model=TriggerSyncResponse)
 async def trigger_circl_sync(
     service: SyncService = Depends(get_sync_service),

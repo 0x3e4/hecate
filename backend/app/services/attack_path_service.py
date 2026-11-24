@@ -278,6 +278,9 @@ class AttackPathService:
     def _exploit_maturity(vuln: VulnerabilityDetail) -> ExploitMaturity:
         if vuln.exploitation is not None or vuln.exploited:
             return "high"
+        # VulnCheck KEV: public reports of exploitation, often before CISA lists it.
+        if any(s.get("source") == "vulncheck_kev" for s in vuln.exploit_signals or []):
+            return "high"
         # Heuristic: explicit references to GHSA / exploit-db / packetstorm hint at PoC.
         for ref in vuln.references or []:
             ref_lower = ref.lower()
@@ -285,6 +288,9 @@ class AttackPathService:
                 return "functional"
             if "/security/advisories/ghsa-" in ref_lower or "github.com/advisories/ghsa-" in ref_lower:
                 return "poc"
+        # A public Nuclei template: anyone can probe for it with one command.
+        if any(s.get("source") == "nuclei" for s in vuln.exploit_signals or []):
+            return "poc"
         if (vuln.epss_score or 0.0) >= 0.5:
             return "poc"
         return "unknown"

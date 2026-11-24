@@ -9,6 +9,7 @@ import structlog
 from app.repositories.ingestion_log_repository import IngestionLogRepository
 from app.repositories.ingestion_state_repository import IngestionStateRepository
 from app.schemas.sync import SyncState
+from app.core.config import settings
 from app.services.ingestion.cert_feed_pipeline import CertFeedPipeline
 from app.services.ingestion.circl_pipeline import CirclPipeline
 from app.services.ingestion.cpe_pipeline import CPEPipeline
@@ -37,6 +38,8 @@ SYNC_JOBS = [
     ("capec_initial_sync", "CAPEC Initial Cache Prefetch"),
     ("circl_sync", "CIRCL Enrichment Sync"),
     ("cert_feeds_sync", "Advisory Feed Sync"),
+    ("nuclei_templates_sync", "Nuclei Templates Sync"),
+    ("vulncheck_kev_sync", "VulnCheck KEV Sync"),
     ("ghsa_sync", "GHSA Sync"),
     ("ghsa_initial_sync", "GHSA Initial Sync"),
     ("osv_sync", "OSV Sync"),
@@ -69,6 +72,8 @@ class SyncService:
                 scheduler_jobs[job.id] = job
 
         for job_name, label in SYNC_JOBS:
+            if job_name == "vulncheck_kev_sync" and not settings.vulncheck_api_token:
+                continue  # opt-in source: no row without a token
             # Map job names to scheduler job IDs
             next_run = None
             scheduler_job_id = None
@@ -275,6 +280,48 @@ class SyncService:
             log.info("sync.cert_feeds_completed", **result)
         except Exception as exc:  # noqa: BLE001
             log.exception("sync.cert_feeds_failed", error=str(exc))
+        finally:
+            await pipeline.close()
+
+    async def trigger_nuclei_templates_sync(self) -> dict[str, Any]:
+        """Trigger the Nuclei template index sync (no initial_sync support)."""
+        log.info("sync.trigger_nuclei_templates")
+        asyncio.create_task(self._execute_nuclei_templates_sync())
+        return {
+            "success": True,
+            "message": "Nuclei templates sync triggered",
+            "jobName": "nuclei_templates_sync",
+        }
+
+    async def _execute_nuclei_templates_sync(self) -> None:
+        from app.services.ingestion.nuclei_templates import NucleiTemplatesPipeline
+
+        pipeline = NucleiTemplatesPipeline()
+        try:
+            result = await pipeline.sync()
+            log.info("sync.nuclei_templates_completed", **result)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("sync.nuclei_templates_failed", error=str(exc))
+        finally:
+            await pipeline.close()
+
+    async def trigger_vulncheck_kev_sync(self) -> dict[str, Any]:
+        """Trigger the VulnCheck KEV sync (needs VULNCHECK_API_TOKEN)."""
+        if not settings.vulncheck_api_token:
+            return {"success": False, "message": "VulnCheck KEV is not configured", "jobName": "vulncheck_kev_sync"}
+        log.info("sync.trigger_vulncheck_kev")
+        asyncio.create_task(self._execute_vulncheck_kev_sync())
+        return {"success": True, "message": "VulnCheck KEV sync triggered", "jobName": "vulncheck_kev_sync"}
+
+    async def _execute_vulncheck_kev_sync(self) -> None:
+        from app.services.ingestion.vulncheck_kev import VulnCheckKevPipeline
+
+        pipeline = VulnCheckKevPipeline()
+        try:
+            result = await pipeline.sync()
+            log.info("sync.vulncheck_kev_completed", **result)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("sync.vulncheck_kev_failed", error=str(exc))
         finally:
             await pipeline.close()
 
