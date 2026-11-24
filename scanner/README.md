@@ -176,11 +176,11 @@ The malware detector implements 35 detection rules across 14 categories, informe
 | HEC-031 | Potential scope squatting | medium | `typosquatting` | — (standard heuristic) |
 | HEC-040 | Python `.pth` file with executable code | medium | `pth_backdoor` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (`.pth` fires on every Python startup) |
 | HEC-041 | Python `.pth` file with suspicious payload | critical | `pth_backdoor` | [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (34 KB `.pth`, credential theft + systemd C2) |
-| HEC-050 | GitHub Action pinned to mutable tag | high | `cicd` | [tj-actions / changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (tag poisoning, 23 K repos) |
+| HEC-050 | GitHub Action pinned to mutable tag (verified publisher) | low | `cicd` | [tj-actions / changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (tag poisoning, 23 K repos) |
 | HEC-051 | Dangerous `pull_request_target` workflow | critical | `cicd` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (PAT theft via misconfigured workflow) |
 | HEC-052 | Process-memory access in CI workflow | critical | `cicd` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/), [tj-actions](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (`/proc/mem` harvesting) |
 | HEC-053 | `curl` / `wget` piped to shell in CI workflow | high | `cicd` | — (CI security best practice) |
-| HEC-054 | Unpinned third-party GitHub Action | medium | `cicd` | [tj-actions / changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
+| HEC-054 | Unpinned third-party GitHub Action | high | `cicd` | [tj-actions / changed-files CVE-2025-30066](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) |
 | HEC-055 | Direct process-memory access | critical | `suspicious_api` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (`/proc/pid/mem`, bypasses log masking) |
 | HEC-060 | System persistence mechanism detected | high | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/) (blockchain canister C2), [LiteLLM](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (`sysmon.service`), [Telnyx SDK](https://telnyx.com/resources/telnyx-python-sdk-supply-chain-security-notice-march-2026) (Windows Startup folder) |
 | HEC-061 | Persistence mechanism with suspicious payload | critical | `persistence` | [Trivy v0.69.4](https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/), [LiteLLM v1.82.8](https://snyk.io/articles/poisoned-security-scanner-backdooring-litellm/) (systemd + network C2) |
@@ -245,6 +245,10 @@ Single pattern matches yield `low` / `medium` severity. Combinations within the 
 - Unicode: BOM at file start is ignored; threshold ≥ 5 invisible characters
 - Unicode / homoglyphs: locale awareness — files in `locale/`, `i18n/`, `translations/` directories and files with > 1 % Cyrillic density are skipped
 - Credentials: generic env vars (`SECRET_KEY`, `DATABASE_URL`, `PRIVATE_KEY`) are no longer counted as credential access
+- Code only: comments and Python docstrings are blanked before the behaviour rules run (`code_only` in `malware_detector/utils.py`, line numbers kept)
+- Test suites are skipped by the behaviour rules (`is_test_path`: `tests/`, `__tests__/`, `test_*.py`, `*.test.ts`, `*_test.go`, …)
+- Install time: HEC-075 needs a publish command that is run, from a file an npm lifecycle script (`preinstall` / `install` / `postinstall` / `prepare`) starts or `setup.py` (`install_time_files`), or next to an npm token; HEC-077 needs a runtime installer on install, a secret scanner aimed at the home directory, or the Shai-Hulud loader files
+- Shapes, not words: HEC-076 only for the home directory or `/`; HEC-020 only for a run of character codes; HEC-012 only when decoded data goes into something that runs it; HEC-081 needs OS check + download + execution; HEC-079 no longer fires on a DNS lookup alone
 
 #### Sources & references
 
