@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- OpenAPI (`/api/docs`): `PATCH /api/v1/scans/targets/{id}` documents its fields (`name`, `autoScan`, `scanners`, `group`, `trufflehogVerification`) instead of a free-form object; the SBOM, VEX, findings and backup exports, the evidence bundle and the event stream name their content type and format; sign-in and callback are documented as redirects and sign-out with its response. A test now fails on an API route that is missing from the schema, takes an untyped body or has no described response.
+
 ### Fixed
 
 ## [2.4.0] - 2026-11-24

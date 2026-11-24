@@ -117,7 +117,12 @@ async def me(request: Request) -> AuthMeResponse:
     )
 
 
-@router.get("/login")
+@router.get(
+    "/login",
+    response_class=RedirectResponse,
+    status_code=302,
+    responses={302: {"description": "Redirect to the identity provider (or back with `?authError=` when sign-in is off)."}},
+)
 async def login(request: Request, returnTo: str | None = None) -> RedirectResponse:  # noqa: N803 - query name
     if not settings.oidc_enabled:
         raise HTTPException(status_code=404, detail="Sign-in is not configured.")
@@ -151,7 +156,12 @@ async def login(request: Request, returnTo: str | None = None) -> RedirectRespon
     return response
 
 
-@router.get("/callback")
+@router.get(
+    "/callback",
+    response_class=RedirectResponse,
+    status_code=302,
+    responses={302: {"description": "Back into Hecate after sign-in, or to `/?authError=<code>`."}},
+)
 async def callback(
     request: Request,
     code: str | None = None,
@@ -251,7 +261,7 @@ async def callback(
     return response
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=LogoutResponse)
 async def logout(request: Request) -> JSONResponse:
     if not request.headers.get(CSRF_HEADER):
         raise HTTPException(status_code=403, detail=f"Cross-site request refused: missing {CSRF_HEADER} header.")

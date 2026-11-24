@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
+from app.api.openapi_docs import download
 from app.schemas.backup import (
     BackupRestoreSummary,
     InventoryBackupPayload,
@@ -18,7 +19,11 @@ from app.services.backup_service import BackupService, get_backup_service
 router = APIRouter()
 
 
-@router.get("/vulnerabilities/{source}/export", response_class=StreamingResponse)
+@router.get(
+    "/vulnerabilities/{source}/export",
+    response_class=StreamingResponse,
+    responses=download("application/json", "Streamed JSON backup: `metadata` and the vulnerability documents of the source."),
+)
 async def export_vulnerabilities(
     source: str,
     service: BackupService = Depends(get_backup_service),
@@ -66,7 +71,11 @@ async def restore_vulnerabilities(
     return await service.restore_vulnerabilities(payload)
 
 
-@router.get("/saved-searches/export", response_class=Response)
+@router.get(
+    "/saved-searches/export",
+    response_class=Response,
+    responses=download("application/json", "JSON backup of all saved searches."),
+)
 async def export_saved_searches(
     service: BackupService = Depends(get_backup_service),
 ) -> Response:
@@ -104,7 +113,11 @@ async def restore_saved_searches(
     return await service.restore_saved_searches(payload)
 
 
-@router.get("/inventory/export", response_class=Response)
+@router.get(
+    "/inventory/export",
+    response_class=Response,
+    responses=download("application/json", "JSON backup of the environment inventory (`metadata`, `items`)."),
+)
 async def export_inventory(
     service: BackupService = Depends(get_backup_service),
 ) -> Response:

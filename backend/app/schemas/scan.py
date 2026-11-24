@@ -255,6 +255,26 @@ class ScanTargetResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ScanTargetUpdateRequest(BaseModel):
+    """PATCH /scans/targets/{id}: only the fields sent change; the rest stay as they are."""
+
+    name: str | None = Field(
+        default=None, description=f"Display name, 1 to {TARGET_NAME_MAX_LENGTH} characters; kept on re-scans"
+    )
+    auto_scan: bool | None = Field(
+        default=None, alias="autoScan", serialization_alias="autoScan",
+        description="Include the target in scheduled auto-scans",
+    )
+    scanners: list[str] | None = Field(default=None, description="Scanners for the next scans of this target")
+    group: str | None = Field(default=None, description="Application group; empty or null removes it from its group")
+    trufflehog_verification: bool | None = Field(
+        default=None, alias="trufflehogVerification", serialization_alias="trufflehogVerification",
+        description="TruffleHog checks found secrets against their provider; null returns to the scanner's default",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class TargetVexSourcesRequest(BaseModel):
     """The VEX source URLs of a target; an empty list removes them."""
 

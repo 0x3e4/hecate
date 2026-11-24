@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
+from app.api.openapi_docs import download
 from app.core.config import settings
 from app.core.passwords import hash_password
 from app.repositories.license_policy_repository import LicensePolicyRepository
@@ -53,6 +54,7 @@ from app.schemas.scan import (
     ScanTargetGroupSchema,
     ScanTargetListResponse,
     ScanTargetResponse,
+    ScanTargetUpdateRequest,
     SubmitScanRequest,
     SubmitScanResponse,
     SupplyChainSummarySchema,
@@ -464,31 +466,30 @@ async def create_target(
 @router.patch("/targets/{target_id:path}", response_model=ScanTargetResponse)
 async def update_target(
     target_id: str = Depends(resolve_target_id_path),
-    body: dict[str, Any] = None,
+    body: ScanTargetUpdateRequest | None = None,
     _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Update target settings (e.g., name, auto_scan, scanners, group, trufflehogVerification)."""
-    if body and "name" in body:
-        name = normalize_target_name(body.get("name"))
+    """Update target settings. Only the fields sent change; ``group`` and
+    ``trufflehogVerification`` take null to clear."""
+    sent = body.model_fields_set if body else set()
+    if "name" in sent:
+        name = normalize_target_name(body.name)
         if name is None:
             raise HTTPException(status_code=400, detail=f"name must be 1 to {TARGET_NAME_MAX_LENGTH} characters")
         if not await service.rename_target(target_id, name):
             raise HTTPException(status_code=404, detail="Scan target not found")
-    if body and "autoScan" in body:
-        await service.update_target_auto_scan(target_id, bool(body["autoScan"]))
-    if body and "scanners" in body:
+    if "auto_scan" in sent and body.auto_scan is not None:
+        await service.update_target_auto_scan(target_id, body.auto_scan)
+    if "scanners" in sent and body.scanners is not None:
         try:
-            await service.update_target_scanners(target_id, body["scanners"])
+            await service.update_target_scanners(target_id, body.scanners)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-    if body and "group" in body:
-        await service.update_target_group(target_id, body.get("group"))
-    if body and "trufflehogVerification" in body:
-        verify = body["trufflehogVerification"]
-        if verify is not None and not isinstance(verify, bool):
-            raise HTTPException(status_code=400, detail="trufflehogVerification must be true, false or null")
-        await service.update_target_trufflehog_verification(target_id, verify)
+    if "group" in sent:
+        await service.update_target_group(target_id, body.group)
+    if "trufflehog_verification" in sent:
+        await service.update_target_trufflehog_verification(target_id, body.trufflehog_verification)
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -1288,7 +1289,11 @@ async def get_scan_sbom(
     )
 
 
-@router.get("/{scan_id}/sbom/export")
+@router.get(
+    "/{scan_id}/sbom/export",
+    response_class=Response,
+    responses=download("application/json", "CycloneDX 1.5 or SPDX 2.3 JSON document of the scan's SBOM."),
+)
 async def export_scan_sbom(
     scan_id: str,
     format: str = Query(
@@ -1390,7 +1395,15 @@ async def clear_scan_release(
     return _map_scan(scan)
 
 
-@router.get("/{scan_id}/evidence-bundle")
+@router.get(
+    "/{scan_id}/evidence-bundle",
+    response_class=Response,
+    responses=download(
+        "application/zip",
+        "ZIP with the SBOMs, the VEX documents, a findings summary, manifest.json and SHA256SUMS.",
+        binary=True,
+    ),
+)
 async def download_evidence_bundle(
     scan_id: str,
     service: ScanService = Depends(get_scan_service),
@@ -1413,7 +1426,11 @@ async def download_evidence_bundle(
     )
 
 
-@router.get("/{scan_id}/vex/export")
+@router.get(
+    "/{scan_id}/vex/export",
+    response_class=Response,
+    responses=download("application/json", "CycloneDX VEX, OpenVEX 0.2.0 or CSAF 2.0 (VEX profile) document."),
+)
 async def export_vex(
     scan_id: str,
     format: str = Query(
@@ -1445,7 +1462,11 @@ async def export_vex(
     )
 
 
-@router.get("/{scan_id}/findings/export")
+@router.get(
+    "/{scan_id}/findings/export",
+    response_class=Response,
+    responses=download("application/json", "Findings as SonarQube external issues."),
+)
 async def export_scan_findings(
     scan_id: str,
     format: str = Query(

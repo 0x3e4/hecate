@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
+from app.api.openapi_docs import event_stream
 from app.services.event_bus import JobEvent, get_event_bus
 
 log = structlog.get_logger()
@@ -47,7 +48,14 @@ async def _event_generator(request: Request):
         bus.unsubscribe(queue)
 
 
-@router.get("")
+@router.get(
+    "",
+    response_class=StreamingResponse,
+    responses=event_stream(
+        "Server-Sent Events: a `snapshot` of running jobs first, then `job_started`, `job_progress`, "
+        "`job_completed`, `job_failed`, `new_vulnerabilities` and SCA events; a keepalive comment every 15 s."
+    ),
+)
 async def stream_events(request: Request) -> StreamingResponse:
     """Server-Sent Events stream for ingestion / sync job status updates."""
     return StreamingResponse(

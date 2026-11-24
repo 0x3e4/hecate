@@ -6,9 +6,11 @@ from typing import Any
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.api.v1 import scans as scans_api
 from app.models.scan import ScanTargetDocument
+from app.schemas.scan import ScanTargetUpdateRequest
 from app.repositories.scan_target_repository import ScanTargetRepository
 from app.services import scan_service as scan_service_module
 from app.services.scan_service import ScanService
@@ -60,19 +62,24 @@ async def test_patch_sets_clears_and_rejects() -> None:
     await repo.upsert(_doc())
     service = _service(repo)
 
-    response = await scans_api.update_target(TARGET_ID, {"trufflehogVerification": False}, None, service)
+    def body(**fields: Any) -> ScanTargetUpdateRequest:
+        return ScanTargetUpdateRequest.model_validate(fields)
+
+    response = await scans_api.update_target(TARGET_ID, body(trufflehogVerification=False), None, service)
     assert response.trufflehog_verification is False
     assert response.model_dump(by_alias=True)["trufflehogVerification"] is False
 
     # A PATCH that doesn't mention the field leaves it alone.
-    response = await scans_api.update_target(TARGET_ID, {"group": "shop"}, None, service)
+    response = await scans_api.update_target(TARGET_ID, body(group="shop"), None, service)
     assert response.trufflehog_verification is False
 
-    response = await scans_api.update_target(TARGET_ID, {"trufflehogVerification": None}, None, service)
+    response = await scans_api.update_target(TARGET_ID, body(trufflehogVerification=None), None, service)
     assert response.trufflehog_verification is None
 
+    with pytest.raises(ValidationError):
+        body(trufflehogVerification="maybe")
     with pytest.raises(HTTPException) as exc:
-        await scans_api.update_target(TARGET_ID, {"trufflehogVerification": "off"}, None, service)
+        await scans_api.update_target(TARGET_ID, body(name="   "), None, service)
     assert exc.value.status_code == 400
 
 
