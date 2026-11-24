@@ -229,7 +229,7 @@ async def test_analyzer_runs_as_a_child_process(tmp_path: Path) -> None:
 
 
 async def test_analyzer_timeout_kills_the_child(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    async def run_slow(cmd: list[str], timeout: int = 600) -> tuple[str, str, int]:
+    async def run_slow(cmd: list[str], timeout: int = 600, env=None) -> tuple[str, str, int]:
         assert cmd[:3] == [sys.executable, "-m", "app.analyze_cli"]
         raise RuntimeError(f"Scanner timed out after {timeout}s")
 

@@ -119,7 +119,7 @@ doesn't or can't be checked **unverified** (high). That tells you which leaks ar
 secret leaves your network to do it, and some repositories hold credentials that must not: one-time
 tokens, or S3 keys for a local Ceph that would be sent to AWS.
 
-So it is set per repository. On the target page, **Secret verification** offers:
+So it is set per repository. On the target page, **External lookups** → **TruffleHog secret verification** offers:
 
 | Setting | TruffleHog runs |
 | --- | --- |
@@ -130,7 +130,85 @@ So it is set per repository. On the target page, **Secret verification** offers:
 Changing it needs the same rights as the target's other settings (admin, editor, or the target's
 password) and lands in the
 [audit log](admin/audit.md). It applies from the next scan. Checks (scans without a target, uploaded
-archives) always use the scanner default.
+archives) always use the scanner default. With [no external lookups](#no-external-lookups) on, TruffleHog
+never verifies, whatever this setting says.
+
+## No external lookups
+
+Several scanners ask outside services about what they find in your code: a registry about each package
+name, OSV.dev about the package list, a provider about a secret. For public code that costs nothing.
+For private code it can: internal package and module names, the shape of your dependency tree and found
+credentials leave your network. **No external lookups** keeps all of that in.
+
+Turn it on per target: target page → **External lookups** → **No external lookups**. Changing it needs
+the same rights as the target's other settings (admin, editor, or the target's password), lands in the
+[audit log](admin/audit.md) and applies from the next scan. A scan that ran this way says so in its
+header (**Lookups: none outside the network**), so its results read right later. The API field is
+`noExternalLookups` on `PATCH /api/v1/scans/targets/{id}`.
+
+### What each scanner does with it
+
+| Scanner | Normally sends out | With no external lookups | What you lose |
+| --- | --- | --- | --- |
+| **Hecate Analyzer**: provenance | every SBOM package with its version, to its registry (npm, PyPI, sum.golang.org, Maven Central search, RubyGems, crates.io, NuGet, Docker Hub) | not run | the SBOM's provenance column stays *unknown* |
+| **Hecate Analyzer**: typosquatting | a dependency name that looks like a popular package, to npm or PyPI (does it exist?) | not asked; an answer cached by an earlier scan is still used | such a candidate is reported with **low** confidence and the note *registry not consulted*, instead of being dropped when the package exists |
+| **OSV-Scanner** | the whole package list (names and versions) to `api.osv.dev`; for an unpinned `requirements.txt` line, the package name to PyPI (to find the latest version) | matches against a local copy of the OSV database (`--offline-vulnerabilities --download-offline-databases`); no PyPI lookups | unpinned `requirements.txt` lines are checked at their lowest allowed version, which can add findings; the first scan downloads the database of each ecosystem it finds (npm's is about 220 MB compressed, PyPI's about 40 MB) |
+| **TruffleHog** | each found secret to its provider, to check whether it works | `--no-verification`, whatever the target's [secret verification](#secret-verification) says | every secret is *unverified* (high instead of critical) |
+| **govulncheck** | module paths to `GOPROXY` (default `proxy.golang.org`) and the checksum database `sum.golang.org` when it downloads modules | `GOPROXY=off`, `GOSUMDB=off`: only modules vendored in the repository (`vendor/`) or already in `GOVULNCHECK_CACHE_DIR` are read | a module whose dependencies are not available that way fails, and gets no reachability VEX |
+| **Trivy** | for some dependencies (Java archives Trivy's Java database doesn't know), an API request to identify them | `--offline-scan` (`TRIVY_OFFLINE_SCAN=true`) | such an archive may stay unidentified |
+| **Grype**, **Syft** | nothing: their network lookups (Maven Central, remote licenses) are off by default | pinned off, so a configuration file can't turn them on | nothing |
+| **Semgrep**, **DevSkim**, **Dockle**, **Dive** | nothing about your code | unchanged | nothing |
+
+After the scan, the backend also stops asking about the target's packages:
+
+| Backend step | Normally asks | With no external lookups |
+| --- | --- | --- |
+| [Supply-chain signals](#supply-chain-signals) (release age, unmaintained, npm publisher change) | deps.dev, the npm registry and Packagist, per package | not run: no supply-chain chips on the SBOM tab |
+| [Bundled native libraries](#bundled-native-libraries) | the npm registry, for the libvips package of the sharp version in the SBOM | not run: no libvips rows and no CVEs for them |
+
+### What still leaves the network
+
+None of it names a package, module path, file or secret of the scanned code:
+
+- **Getting the code**: the clone of the repository or the pull of the image, from wherever you host it.
+- **Vulnerability databases**: Trivy, Grype, OSV-Scanner (its local copy) and govulncheck download
+  their public databases. OSV-Scanner's download shows which ecosystems the scan found (npm, PyPI, …).
+  govulncheck fetches advisories from `vuln.go.dev`, which sees which advisory IDs it fetches; point
+  `GOVULNCHECK_DB` at a mirror to keep that inside too.
+- **Semgrep rules**: `SEMGREP_RULES` (default `p/security-audit`) is downloaded from semgrep.dev; the
+  scanned code is not uploaded. To stay offline, mount your rules into the scanner container and set
+  `SEMGREP_RULES` to their path.
+
+### How the databases stay current
+
+The vulnerability data keeps updating; only the matching moves from a query to a local copy.
+
+| Scanner | Its data | Where it is kept |
+| --- | --- | --- |
+| Trivy | downloads a new database (and Java database) before a scan when the local one is out of date | `TRIVY_CACHE_DIR` |
+| Grype | loaded at scanner start and checked for updates at scan time | the `grype-db` volume |
+| OSV-Scanner | the database of each ecosystem in the scan, fetched with every scan of such a target and downloaded again only when OSV has published a newer one | the `osv-db` volume (`OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY`) |
+| govulncheck | advisories fetched on every run | – (`GOVULNCHECK_DB` for a mirror) |
+
+OSV.dev rebuilds its exports continuously, so the local copy is as current as the scan that fetched it;
+the online query is current to the minute. Without the `osv-db` volume the copy lives on the scanner's
+`/tmp` and is downloaded again after a restart.
+
+Hecate's own database (NVD, EUVD, OSV, GHSA, …) is unaffected: it syncs on its schedule, never per target.
+What Hecate matches itself (Affected in your scans, findings without a CVE, and the
+[MAL-* watcher](sca/malware.md), which checks every new malicious-package record against the stored
+SBOMs) works the same for these targets.
+
+### What it does not cover
+
+- **AI analysis** sends the findings to the AI provider you configured, when someone starts one.
+- **VEX sources** are fetched from the URLs you entered on the target.
+- **Notifications** go to the channels you configured.
+- **Checks** (scans without a target, uploaded archives) have no target and always run with the
+  scanner defaults. Scan private code through a target to use this setting.
+
+To be sure nothing else gets out, give the scanner container egress only to your Git or registry host
+and the database hosts above, and watch what it is refused.
 
 ## Go reachability (govulncheck)
 

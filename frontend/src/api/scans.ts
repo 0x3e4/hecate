@@ -239,6 +239,7 @@ export const updateScanTarget = async (
     scanners?: string[];
     group?: string | null;
     trufflehogVerification?: boolean | null;
+    noExternalLookups?: boolean;
   }
 ): Promise<ScanTarget> => {
   const response = await api.patch<ScanTarget>(

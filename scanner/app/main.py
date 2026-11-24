@@ -418,6 +418,7 @@ async def _scan(request: ScanRequest) -> ScanResponse:
                 request.type,
                 source_dir=source_dir,
                 trufflehog_verification=request.trufflehog_verification,
+                no_external_lookups=request.no_external_lookups,
             )
             results.append(result)
 

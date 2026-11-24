@@ -17,7 +17,7 @@ from app import scanners
 def captured(monkeypatch):
     calls: list[list[str]] = []
 
-    async def fake_run_command(cmd, timeout=600):
+    async def fake_run_command(cmd, timeout=600, env=None):
         calls.append(list(cmd))
         # Non-zero rc + empty stdout makes the grype SBOM pre-build fall back
         # to scanning the image directly, so that argv is exercised too.
@@ -101,7 +101,7 @@ async def test_devskim_writes_its_report_outside_the_checkout(tmp_path, monkeypa
         pass  # Windows without the symlink privilege: the path check below still applies
     seen: dict[str, str] = {}
 
-    async def fake_run_command(cmd, timeout=600):
+    async def fake_run_command(cmd, timeout=600, env=None):
         out = cmd[cmd.index("-O") + 1]
         seen["out"] = out
         with open(out, "w", encoding="utf-8") as handle:
@@ -171,7 +171,7 @@ async def test_a_clone_checks_out_no_symlinks(monkeypatch):
     # put the sidecar's PATs into publicly readable findings.
     seen: list[list[str]] = []
 
-    async def fake_run_command(cmd, timeout=600):
+    async def fake_run_command(cmd, timeout=600, env=None):
         seen.append(list(cmd))
         checkout = cmd[-1]
         with open(os.path.join(checkout, "creds.txt"), "w", encoding="utf-8") as handle:
@@ -226,7 +226,7 @@ async def test_concurrent_dive_runs_do_not_share_files(monkeypatch):
 
     archives: list[str] = []
 
-    async def fake_run_command(cmd, timeout=600):
+    async def fake_run_command(cmd, timeout=600, env=None):
         if cmd[0] == "skopeo":
             archives.append(cmd[-1].removeprefix("docker-archive:"))
             await asyncio.sleep(0)

@@ -490,6 +490,8 @@ async def update_target(
         await service.update_target_group(target_id, body.group)
     if "trufflehog_verification" in sent:
         await service.update_target_trufflehog_verification(target_id, body.trufflehog_verification)
+    if "no_external_lookups" in sent and body.no_external_lookups is not None:
+        await service.update_target_no_external_lookups(target_id, body.no_external_lookups)
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -1529,6 +1531,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         vex_sources=doc.get("vex_sources") or [],
         vex_source_status=doc.get("vex_source_status") or None,
         trufflehog_verification=doc.get("trufflehog_verification"),
+        no_external_lookups=bool(doc.get("no_external_lookups")),
     )
 
 
@@ -1539,6 +1542,7 @@ def _map_scan(doc: dict[str, Any]) -> ScanResponse:
         target_id=doc.get("target_id", ""),
         target_name=doc.get("target_name"),
         check=bool(doc.get("check")) or is_check_target(doc.get("target_id")),
+        no_external_lookups=bool(doc.get("no_external_lookups")),
         expires_at=doc.get("expires_at"),
         scanners=doc.get("scanners", []),
         status=doc.get("status", ""),

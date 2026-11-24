@@ -33,7 +33,7 @@ def client(monkeypatch, tmp_path):
         created_dirs.append(str(d))
         return str(d)
 
-    async def fake_run_scanner(scanner_name, target, target_type, source_dir=None, trufflehog_verification=None):
+    async def fake_run_scanner(scanner_name, target, target_type, source_dir=None, trufflehog_verification=None, **_kw):
         # Record which dir each scanner saw so tests can assert sharing.
         fake_run_scanner.seen.append((scanner_name, source_dir))
         fake_run_scanner.verification.append(trufflehog_verification)

@@ -1496,4 +1496,5 @@ def _serialize_target(target: dict[str, Any]) -> dict[str, Any]:
         "hasRunningScan": target.get("has_running_scan") or target.get("hasRunningScan") or False,
         "vexSources": target.get("vex_sources") or target.get("vexSources") or [],
         "trufflehogVerification": target.get("trufflehog_verification"),
+        "noExternalLookups": bool(target.get("no_external_lookups")),
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import contextvars
 import io
 import json
 import logging
@@ -53,6 +54,36 @@ for _index, (_key, _value) in enumerate(_GIT_HARDENING.items()):
 from app.provenance import check_provenance_batch
 from app.safe_files import read_text_limited
 from app.models import ScannerResult
+
+# Set per /scan call when the scan target asked that nothing about the scanned
+# code (package names, module paths, found secrets) leaves the network. Each
+# scanner reads it; see docs/sca-scanning.md#no-external-lookups.
+_no_external_lookups: contextvars.ContextVar[bool] = contextvars.ContextVar("no_external_lookups", default=False)
+
+# Tool switches for that mode. Trivy otherwise identifies some dependencies
+# (JARs) through API requests; Grype and Syft keep their network lookups off
+# by default, pinned here so a config file can't turn them on.
+_OFFLINE_TOOL_ENV = {
+    "TRIVY_OFFLINE_SCAN": "true",
+    "GRYPE_EXTERNAL_SOURCES_ENABLE": "false",
+    "SYFT_JAVA_USE_NETWORK": "false",
+    "SYFT_GOLANG_SEARCH_REMOTE_LICENSES": "false",
+    "SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES": "false",
+    "HECATE_NO_EXTERNAL_LOOKUPS": "1",
+}
+# Where OSV-Scanner keeps its local databases in that mode (one zip per ecosystem).
+_OSV_OFFLINE_DB_DIR = "/tmp/hecate-osv-db"
+_osv_offline_lock = asyncio.Lock()
+
+
+def _tool_env() -> dict[str, str] | None:
+    """Environment for a scanner subprocess: inherited, plus the offline switches when asked."""
+    if not _no_external_lookups.get():
+        return None
+    env = dict(os.environ)
+    env.update(_OFFLINE_TOOL_ENV)
+    return env
+
 
 # host -> (user, token); populated by setup_auth() and consumed by
 # _git_auth_args_for() so git clone/ls-remote can inject Basic auth
@@ -208,8 +239,23 @@ async def run_scanner(
     target_type: str,
     source_dir: str | None = None,
     trufflehog_verification: bool | None = None,
+    no_external_lookups: bool = False,
 ) -> ScannerResult:
     """Run a scanner tool and return parsed results."""
+    token = _no_external_lookups.set(no_external_lookups)
+    try:
+        return await _dispatch_scanner(scanner_name, target, target_type, source_dir, trufflehog_verification)
+    finally:
+        _no_external_lookups.reset(token)
+
+
+async def _dispatch_scanner(
+    scanner_name: str,
+    target: str,
+    target_type: str,
+    source_dir: str | None,
+    trufflehog_verification: bool | None,
+) -> ScannerResult:
     if scanner_name == "trivy":
         return await _run_trivy(target, target_type, source_dir)
     elif scanner_name == "grype":
@@ -576,7 +622,7 @@ async def _run_trivy(target: str, target_type: str, source_dir: str | None = Non
                 scan_dir = clone_dir
             cmd = ["trivy", "fs", "--format", "json", "--quiet", "--list-all-pkgs", scan_dir]
 
-        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("trivy"))
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("trivy"), env=_tool_env())
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="trivy", format="trivy-json", report={}, error=f"Trivy failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "trivy", "trivy-json")
@@ -610,7 +656,7 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
                 sbom_path = os.path.join(sbom_dir, "sbom.cdx.json")
                 # syft writes the SBOM straight to the file (format=path syntax).
                 syft_cmd = ["syft", "-o", f"cyclonedx-json={sbom_path}", "--quiet", "--", target]
-                _, syft_err, syft_rc = await _run_command(syft_cmd, timeout=_scanner_timeout("syft"))
+                _, syft_err, syft_rc = await _run_command(syft_cmd, timeout=_scanner_timeout("syft"), env=_tool_env())
                 if syft_rc != 0 or not (os.path.exists(sbom_path) and os.path.getsize(sbom_path) > 0):
                     logger.warning(
                         "grype.sbom_prebuild_failed rc=%d err=%s — falling back to direct image scan",
@@ -635,7 +681,7 @@ async def _run_grype(target: str, target_type: str, source_dir: str | None = Non
 
         # The timeout floor (1800s, overridable via GRYPE_TIMEOUT_SECONDS) now
         # mostly covers the SBOM-based match (fast) or the direct-scan fallback.
-        stdout, stderr, rc = await _run_command(cmd, timeout=timeout)
+        stdout, stderr, rc = await _run_command(cmd, timeout=timeout, env=_tool_env())
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="grype", format="grype-json", report={}, error=f"Grype failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "grype", "grype-json")
@@ -661,7 +707,7 @@ async def _run_syft(target: str, target_type: str, source_dir: str | None = None
                 scan_dir = clone_dir
             cmd = ["syft", f"dir:{scan_dir}", "-o", "cyclonedx-json", "--quiet"]
 
-        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("syft"))
+        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("syft"), env=_tool_env())
         if rc != 0 and not stdout.strip():
             return ScannerResult(scanner="syft", format="cyclonedx-json", report={}, error=f"Syft failed (exit {rc}): {_sanitize_error(stderr)}")
         return await _parse_json_output(stdout, "syft", "cyclonedx-json")
@@ -796,11 +842,14 @@ async def _run_osv_scanner(
         if not scan_dir:
             clone_dir = await _clone_repo(target)
             scan_dir = clone_dir
+        offline = _no_external_lookups.get()
         # Resolve unpinned requirements.txt packages to latest PyPI versions
-        # so OSV checks real versions instead of minimum/oldest
-        pinned = await _pin_requirements_files(scan_dir)
-        if pinned:
-            logger.info("Pre-pinned %d requirements file(s): %s", len(pinned), pinned)
+        # so OSV checks real versions instead of minimum/oldest. That asks PyPI
+        # for the package names, so not without external lookups.
+        if not offline:
+            pinned = await _pin_requirements_files(scan_dir)
+            if pinned:
+                logger.info("Pre-pinned %d requirements file(s): %s", len(pinned), pinned)
 
         # --no-resolve: prevent OSV's transitive dep resolver from guessing
         # minimum versions for manifest files (produces false positives)
@@ -813,10 +862,24 @@ async def _run_osv_scanner(
         # manifests are unaffected.
         cmd = [
             "osv-scanner", "scan", "--format", "json", "--no-resolve",
-            "--x-disable-plugins", "sbom", "-r", scan_dir,
+            "--x-disable-plugins", "sbom",
         ]
+        env = None
+        if offline:
+            # Without external lookups the package list stays here: OSV-Scanner
+            # downloads the public database of each ecosystem it finds and
+            # matches locally instead of sending the packages to api.osv.dev.
+            cmd += ["--offline-vulnerabilities", "--download-offline-databases"]
+            env = dict(os.environ)
+            env.setdefault("OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY", _OSV_OFFLINE_DB_DIR)
+        cmd += ["-r", scan_dir]
 
-        stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("osv-scanner"))
+        if offline:
+            # Two runs writing the same database zip would trip over each other.
+            async with _osv_offline_lock:
+                stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("osv-scanner"), env=env)
+        else:
+            stdout, stderr, rc = await _run_command(cmd, timeout=_scanner_timeout("osv-scanner"))
         # osv-scanner returns exit code 1 when vulnerabilities are found (expected)
         # exit 128 with "No package sources found" means the repo has no lockfiles/manifests — not an error
         if rc not in (0, 1):
@@ -856,6 +919,8 @@ async def _run_hecate_analyzer(
         stdout, stderr, rc = await _run_command(
             [sys.executable, "-m", "app.analyze_cli", scan_dir],
             timeout=_scanner_timeout("hecate"),
+            # HECATE_NO_EXTERNAL_LOOKUPS keeps the typosquatting check off the registries.
+            env=_tool_env(),
         )
         if rc != 0 or not stdout.strip():
             return ScannerResult(
@@ -865,9 +930,10 @@ async def _run_hecate_analyzer(
         result = json.loads(stdout)
         sbom = result.get("sbom") or {}
 
-        # Provenance verification for SBOM components
+        # Provenance verification for SBOM components: asks each registry about
+        # every package and version, so not without external lookups.
         components = sbom.get("components", [])
-        if components:
+        if components and not _no_external_lookups.get():
             try:
                 await check_provenance_batch(components)
             except Exception:
@@ -1152,7 +1218,12 @@ async def _run_trufflehog(
             scan_dir = clone_dir
 
         cmd = ["trufflehog", "filesystem", "--json", "--no-update"]
-        no_verification = _trufflehog_no_verification() if verify is None else not verify
+        if _no_external_lookups.get():
+            no_verification = True  # verifying sends the secret to its provider
+        elif verify is None:
+            no_verification = _trufflehog_no_verification()
+        else:
+            no_verification = not verify
         if no_verification:
             cmd.append("--no-verification")
         cmd.append(scan_dir)
@@ -1323,6 +1394,11 @@ def _govulncheck_env(work_dir: str) -> dict[str, str]:
         "GOTELEMETRY": "off",
     })
     env.setdefault("GOPROXY", "https://proxy.golang.org")
+    if _no_external_lookups.get():
+        # Downloading a module names it to the proxy and the checksum database:
+        # only vendored modules or ones already in GOVULNCHECK_CACHE_DIR are read.
+        env["GOPROXY"] = "off"
+        env["GOSUMDB"] = "off"
     return env
 
 

@@ -260,6 +260,7 @@ least `SCA_SCANNER_TIMEOUT_SECONDS`.
 | `GRYPE_TIMEOUT_SECONDS` | `1800` | Grype; loading its database and matching a large image takes long. |
 | `SYFT_TIMEOUT_SECONDS` | `600` | Syft, also the SBOM step before Grype on images. |
 | `OSV_SCANNER_TIMEOUT_SECONDS` | `600` | OSV Scanner. |
+| `OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY` | `/tmp/hecate-osv-db` | Where OSV Scanner keeps its local database for targets with [no external lookups](sca-scanning.md#no-external-lookups). The bundled `docker-compose.yml.example` sets it to `/osv-db` on the persistent `osv-db` volume; without that volume it sits on the `/tmp` tmpfs and is downloaded again after a restart. |
 | `DOCKLE_TIMEOUT_SECONDS` | `600` | Dockle (images). |
 | `DIVE_TIMEOUT_SECONDS` | `600` | Dive (images). |
 | `SEMGREP_TIMEOUT_SECONDS` | `600` | Semgrep (repositories). |

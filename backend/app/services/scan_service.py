@@ -759,8 +759,15 @@ class ScanService:
                 all_findings = findings
         except Exception:
             log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
-        bundled_components, bundled_findings = await self._add_bundled_libraries(
-            scan_id_val, target_id, components,
+        no_external_lookups = False
+        if not check:
+            target_doc = await self.target_repo.get(target_id) or {}
+            no_external_lookups = bool(target_doc.get("no_external_lookups"))
+            if no_external_lookups:
+                await self.scan_repo.update_fields(scan_id_val, {"no_external_lookups": True})
+        bundled_components, bundled_findings = (
+            ([], []) if no_external_lookups
+            else await self._add_bundled_libraries(scan_id_val, target_id, components)
         )
         if bundled_components:
             components = [*components, *bundled_components]
@@ -806,7 +813,8 @@ class ScanService:
                 has_running_scan=False,
             )
             await self.apply_vex_sources(target_id)
-            self._schedule_release_info(scan_id_val)
+            if not no_external_lookups:
+                self._schedule_release_info(scan_id_val)
 
         return {
             "scan_id": scan_id_val,
@@ -1076,6 +1084,7 @@ class ScanService:
         # closure; stays None for container images and uploaded-archive scans.
         source_token: str | None = None
         trufflehog_verification: bool | None = None
+        no_external_lookups = False
         # govulncheck reports of this scan: their package / module level
         # entries become reachability VEX once every scanner has stored its
         # findings (see app/services/reachability.py).
@@ -1097,6 +1106,7 @@ class ScanService:
                     source_archive_base64=source_archive_base64,
                     source_token=source_token,
                     trufflehog_verification=trufflehog_verification if scanner_name == "trufflehog" else None,
+                    no_external_lookups=no_external_lookups,
                 )
                 if metadata and not scan_metadata:
                     scan_metadata = metadata
@@ -1197,13 +1207,18 @@ class ScanService:
         # contention and failing the whole scan). Container images and
         # uploaded-archive scans keep their existing path.
         use_shared_checkout = target_type == "source_repo" and not source_archive_base64
-        # The target's TruffleHog verification choice; None leaves it to the sidecar's default.
-        if "trufflehog" in scanners and not is_check_target(target_id):
+        # The target's lookup settings: TruffleHog verification (None leaves it to
+        # the sidecar's default) and "no external lookups". Checks have no target.
+        if not is_check_target(target_id):
             try:
-                target_doc = await self.target_repo.get(target_id)
-                trufflehog_verification = (target_doc or {}).get("trufflehog_verification")
+                target_doc = await self.target_repo.get(target_id) or {}
+                trufflehog_verification = target_doc.get("trufflehog_verification")
+                no_external_lookups = bool(target_doc.get("no_external_lookups"))
             except Exception as exc:  # noqa: BLE001
                 log.warning("scan_service.target_lookup_failed", target_id=target_id, error=str(exc))
+        if no_external_lookups:
+            # Kept on the scan, so its results (no provenance, no release age) read right later.
+            await self.scan_repo.update_fields(scan_id, {"no_external_lookups": True})
         try:
             if use_shared_checkout:
                 source_token, clone_err = await self._prepare_source_checkout(target, target_type)
@@ -1227,9 +1242,11 @@ class ScanService:
                 await self._cleanup_source_checkout(source_token)
 
         # Native libraries inside prebuilt packages (sharp's libvips): added to the
-        # SBOM with their CVEs before the severity and scope passes below.
-        bundled_components, bundled_findings = await self._add_bundled_libraries(
-            scan_id, target_id, all_components,
+        # SBOM with their CVEs before the severity and scope passes below. Not
+        # without external lookups: it downloads the carrier package from npm.
+        bundled_components, bundled_findings = (
+            ([], []) if no_external_lookups
+            else await self._add_bundled_libraries(scan_id, target_id, all_components)
         )
         all_components.extend(bundled_components)
         all_findings.extend(bundled_findings)
@@ -1382,8 +1399,9 @@ class ScanService:
             await self.apply_vex_sources(target_id)
 
         # Release age / unmaintained / npm publisher change on the SBOM
-        # components: registry lookups, so they run behind the scan.
-        if status == "completed" and not is_check:
+        # components: registry lookups, so they run behind the scan (and not at
+        # all for a target without external lookups).
+        if status == "completed" and not is_check and not no_external_lookups:
             self._schedule_release_info(scan_id)
 
         # Evaluate license compliance if a default policy exists
@@ -2823,6 +2841,10 @@ class ScanService:
         """Update auto_scan flag on a target."""
         return await self.target_repo.update_auto_scan(target_id, auto_scan)
 
+    async def update_target_no_external_lookups(self, target_id: str, enabled: bool) -> bool:
+        """Turn "no external lookups" on or off for a target's next scans."""
+        return await self.target_repo.update_no_external_lookups(target_id, enabled)
+
     async def update_target_trufflehog_verification(self, target_id: str, verify: bool | None) -> bool:
         """Override (True/False) or reset (None) TruffleHog's secret verification for a target."""
         return await self.target_repo.update_trufflehog_verification(target_id, verify)
@@ -3564,6 +3586,7 @@ class ScanService:
         source_archive_base64: str | None = None,
         source_token: str | None = None,
         trufflehog_verification: bool | None = None,
+        no_external_lookups: bool = False,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Call the scanner sidecar HTTP API. Returns (results, metadata).
 
@@ -3584,6 +3607,8 @@ class ScanService:
             payload["sourceToken"] = source_token
         if trufflehog_verification is not None:
             payload["trufflehogVerification"] = trufflehog_verification
+        if no_external_lookups:
+            payload["noExternalLookups"] = True
         timeout = self._resolve_sidecar_http_timeout(scanners)
         async with scanner_client(timeout=timeout) as client:
             response = await client.post(url, json=payload)

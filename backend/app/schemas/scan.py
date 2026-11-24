@@ -251,6 +251,12 @@ class ScanTargetResponse(BaseModel):
         serialization_alias="trufflehogVerification",
         description="TruffleHog checks found secrets against their provider; null = the scanner's default",
     )
+    no_external_lookups: bool = Field(
+        default=False,
+        alias="noExternalLookups",
+        serialization_alias="noExternalLookups",
+        description="Scans of this target send nothing about the scanned code (package names, module paths, secrets) out",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -270,6 +276,10 @@ class ScanTargetUpdateRequest(BaseModel):
     trufflehog_verification: bool | None = Field(
         default=None, alias="trufflehogVerification", serialization_alias="trufflehogVerification",
         description="TruffleHog checks found secrets against their provider; null returns to the scanner's default",
+    )
+    no_external_lookups: bool | None = Field(
+        default=None, alias="noExternalLookups", serialization_alias="noExternalLookups",
+        description="Scan without external lookups: no package names, module paths or secrets leave the network",
     )
 
     model_config = {"populate_by_name": True}
@@ -369,6 +379,10 @@ class ScanResponse(BaseModel):
     )
     check: bool = False
     expires_at: UtcDatetime | None = Field(default=None, alias="expiresAt", serialization_alias="expiresAt")
+    no_external_lookups: bool = Field(
+        default=False, alias="noExternalLookups", serialization_alias="noExternalLookups",
+        description="The scan ran without external lookups (no provenance, release age or verified secrets)",
+    )
     scanners: list[str] = Field(default_factory=list)
     status: str
     source: str

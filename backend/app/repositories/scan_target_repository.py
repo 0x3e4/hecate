@@ -80,6 +80,8 @@ class ScanTargetRepository:
             # And the TruffleHog setting, where False is a choice, not a gap.
             if existing.get("trufflehog_verification") is not None and payload.get("trufflehog_verification") is None:
                 payload["trufflehog_verification"] = existing["trufflehog_verification"]
+            if existing.get("no_external_lookups") and not payload.get("no_external_lookups"):
+                payload["no_external_lookups"] = True
 
         try:
             result = await self.collection.replace_one(
@@ -198,6 +200,18 @@ class ScanTargetRepository:
             log.warning(
                 "scan_target_repository.update_trufflehog_verification_failed", target_id=target_id, error=str(exc)
             )
+            return False
+
+    async def update_no_external_lookups(self, target_id: str, enabled: bool) -> bool:
+        """Turn the target's "no external lookups" on or off."""
+        try:
+            result = await self.collection.update_one(
+                {"_id": target_id},
+                {"$set": {"no_external_lookups": enabled, "updated_at": datetime.now(tz=UTC)}},
+            )
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_no_external_lookups_failed", target_id=target_id, error=str(exc))
             return False
 
     async def update_name(self, target_id: str, name: str) -> bool:

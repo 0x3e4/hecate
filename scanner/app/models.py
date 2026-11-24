@@ -27,6 +27,11 @@ class ScanRequest(BaseModel):
     trufflehog_verification: bool | None = Field(
         default=None, alias="trufflehogVerification", serialization_alias="trufflehogVerification"
     )
+    # The target's "no external lookups": nothing about the scanned code
+    # (package names, module paths, secrets) leaves the network.
+    no_external_lookups: bool = Field(
+        default=False, alias="noExternalLookups", serialization_alias="noExternalLookups"
+    )
 
     model_config = {"populate_by_name": True}
 

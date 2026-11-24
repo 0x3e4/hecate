@@ -859,6 +859,8 @@ export interface ScanTarget {
   vexSourceStatus?: VexSourceStatus | null;
   /** TruffleHog checks found secrets against their provider; null = the scanner's default. */
   trufflehogVerification?: boolean | null;
+  /** Scans of this target send no package names, module paths or secrets out. */
+  noExternalLookups?: boolean;
 }
 
 export interface VexSourceResult {
@@ -915,6 +917,8 @@ export interface Scan {
   /** A check: no target, in no list, deleted at expiresAt. */
   check?: boolean;
   expiresAt?: string | null;
+  /** Ran without external lookups: no provenance, release age or verified secrets. */
+  noExternalLookups?: boolean;
   scanners: string[];
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   source: "ci_cd" | "manual" | "scheduled" | "sbom-import";

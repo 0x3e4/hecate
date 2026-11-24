@@ -42,6 +42,7 @@ import { ScanAttackChainView } from "../components/ScanAttackChainView";
 import { ScanReleaseActions } from "../components/ScanReleaseActions";
 import { VexExportMenu } from "../components/VexExportMenu";
 import { SupplyChainChips, SupplyChainFacet, SupplyChainSummaryLine } from "../components/SupplyChainSignals";
+import { DocsLink } from "../components/DocsLink";
 import { hasSignal, type SupplyChainSignal } from "../utils/supplyChain";
 import { Toast, useToast } from "../components/Toast";
 import { useToastContext } from "../components/ToastProvider";
@@ -812,6 +813,12 @@ export const ScanDetailPage = () => {
           {scan.branch && <MetaItem label={t("Branch", "Branch")}><span className="mono">{scan.branch}</span></MetaItem>}
           {scan.source === "ci_cd" && <MetaItem label={t("Source", "Quelle")}>CI/CD</MetaItem>}
           {scan.source === "scheduled" && <MetaItem label={t("Source", "Quelle")}>Auto</MetaItem>}
+          {scan.noExternalLookups && (
+            <MetaItem label={t("Lookups", "Abfragen")}>
+              {t("none outside the network", "keine außerhalb des Netzes")}{" "}
+              <DocsLink path="sca-scanning/#no-external-lookups">{t("What changes", "Was sich ändert")}</DocsLink>
+            </MetaItem>
+          )}
           {scan.supplyChainSummary && (scan.supplyChainSummary.state === "running" || scan.supplyChainSummary.state === "done") && (
             <MetaItem label={t("Supply chain", "Lieferkette")}>
               <SupplyChainSummaryLine

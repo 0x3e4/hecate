@@ -11,7 +11,7 @@ your own machine, [Getting Started](getting-started.md) is shorter.
 | --- | --- | --- | --- | --- |
 | `frontend` | `ghcr.io/0x3e4/hecate-frontend` | **8080** (published) | – | yes |
 | `backend` | `ghcr.io/0x3e4/hecate-backend` | 8000 (internal only) | – | yes |
-| `scanner` | `ghcr.io/0x3e4/hecate-scanner` | 8080 (internal only) | `grype-db` volume | for SCA scans |
+| `scanner` | `ghcr.io/0x3e4/hecate-scanner` | 8080 (internal only) | `grype-db` and `osv-db` volumes | for SCA scans |
 | `mongo` | `mongo:8` | internal only | `mongo-data` volume | yes |
 | `opensearch` | `opensearchproject/opensearch:3` | internal only | `opensearch-data` volume | yes |
 | `apprise` | `caronc/apprise` | internal only | `apprise-config` volume | for notifications |

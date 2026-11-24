@@ -79,10 +79,12 @@ services:
     env_file: ".env"
     # The grype vulnerability DB (~3 GB) lives on the persistent `grype-db`
     # volume below, so it is not re-downloaded on every restart and does not
-    # compete with scan workspaces for tmpfs space. Set here (not in .env) so it
-    # always points at the mounted volume.
+    # compete with scan workspaces for tmpfs space. The same goes for the local
+    # OSV database that targets with "no external lookups" use (`osv-db`, npm's
+    # alone ~220 MB). Set here (not in .env) so they always point at the volumes.
     environment:
       GRYPE_DB_CACHE_DIR: /grype-db
+      OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY: /osv-db
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -101,6 +103,7 @@ services:
     # A named volume is writable even with read_only: true above.
     volumes:
       - grype-db:/grype-db                                      # persistent grype DB cache
+      - osv-db:/osv-db                                          # local OSV DB (no external lookups)
     #   - ./certs/corporate-ca.pem:/etc/ssl/custom-ca.pem:ro    # custom CA (optional)
 
   # Documentation site (optional): docker compose --profile docs up -d docs
@@ -178,3 +181,5 @@ volumes:
   apprise-config:
   # Persists the grype vulnerability DB across scanner restarts.
   grype-db:
+  # Persists OSV-Scanner's local database (targets with no external lookups).
+  osv-db:

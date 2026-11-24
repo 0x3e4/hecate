@@ -8,9 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **Existing instances: add the `osv-db` volume to the scanner.** A target with *no external lookups* has OSV-Scanner match against a local copy of the OSV database (npm's alone is about 220 MB). Without a volume that copy sits on the scanner's `/tmp` tmpfs and is downloaded again after every restart. Like the `grype-db` volume, add to your own `docker-compose.yml`:
+>
+> ```yaml
+> services:
+>   scanner:
+>     environment:
+>       OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY: /osv-db
+>     volumes:
+>       - osv-db:/osv-db
+> volumes:
+>   osv-db:
+> ```
+>
+> It only matters once a target uses no external lookups; without the volume everything else works as before.
+
 ### Added
 
 - SCA: **Secret verification** per scan target. On the target page of a repository, TruffleHog can verify the secrets it finds, skip that (`--no-verification`, nothing leaves the network), or follow the scanner's `TRUFFLEHOG_NO_VERIFICATION`. `PATCH /api/v1/scans/targets/{id}` takes `trufflehogVerification` (`true`, `false` or `null`), the target response carries it, and MCP `list_scan_targets` shows it. Scanner and backend have to be updated together for the setting to reach TruffleHog; an older scanner ignores it.
+- SCA: **No external lookups** per scan target, for private code: no package names, module paths or found secrets leave the network. The Hecate Analyzer skips its provenance check and doesn't ask npm / PyPI about lookalike names (such a candidate is reported with low confidence), OSV-Scanner matches against a local copy of the OSV database instead of sending the package list to api.osv.dev, TruffleHog doesn't verify, govulncheck downloads no modules (`GOPROXY=off`), Trivy runs with `--offline-scan`, and the backend skips release age / publisher lookups and bundled libraries. Set on the target page under **External lookups** (which also holds TruffleHog's secret verification), `noExternalLookups` in `PATCH /api/v1/scans/targets/{id}`; a scan that ran this way says so in its header. What still goes out (the clone or image pull, the public vulnerability databases, Semgrep's rules) is listed in the docs. `OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY` (default `/tmp/hecate-osv-db`) holds OSV-Scanner's local database.
 
 ### Changed
 

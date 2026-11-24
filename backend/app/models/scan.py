@@ -49,6 +49,9 @@ class ScanTargetDocument(BaseModel):
     trufflehog_verification: bool | None = Field(
         default=None, description="TruffleHog secret verification: None = scanner default"
     )
+    # Nothing about the scanned code (package names, module paths, found
+    # secrets) leaves the network for this target; see docs/sca-scanning.md.
+    no_external_lookups: bool = Field(default=False, description="Scan without external lookups")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_scan_at: datetime | None = None
@@ -96,6 +99,8 @@ class ScanDocument(BaseModel):
     # A check: no target, kept out of every list, deleted at expires_at
     # (app/services/scan_checks.py).
     check: bool = False
+    # Ran without external lookups (the target asked for it when the scan started).
+    no_external_lookups: bool = False
     expires_at: datetime | None = None
     scanners: list[str] = Field(default_factory=list)
     status: str = Field(default="pending", description="pending, running, completed, failed")
