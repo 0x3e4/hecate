@@ -62,6 +62,11 @@ stay strict (`script-src 'self'`, `connect-src 'self'`).
   `https` (matters for `is_production_like()` and MCP OAuth redirect URIs). For
   MCP you can additionally pin `MCP_PUBLIC_URL=https://hecate.example.com` in
   `.env`.
+- **No error pages of your own for the API.** The UI reads Hecate's JSON errors (a 404
+  for an unknown vulnerability ID makes it offer to fetch it). Don't add
+  `proxy_intercept_errors on` / `error_page`, a Traefik `errors` middleware or
+  Caddy `handle_errors` for `/api`, `/mcp` or `/.well-known/oauth-*`; with one,
+  the dashboard search answers "Failed to fetch" instead.
 - **HSTS `includeSubDomains`** is left off by default. Enable it only if every
   `*.example.com` subdomain is HTTPS.
 

@@ -85,6 +85,19 @@ and set the security headers (HSTS, a strict Content-Security-Policy, `X-Frame-O
     gives Hecate's containers the aliases `hecate-backend` and `hecate-frontend` and uses those
     (`BACKEND_UPSTREAM`, `TRUSTED_PROXY_IPS`). Point your proxy at a name only Hecate's frontend carries.
 
+!!! warning "The proxy's own error pages"
+    Hecate's API answers errors as small JSON documents, and the web UI reads them: a 404 for a
+    vulnerability ID is how it learns the ID is not in Hecate yet and offers to load it from the sources.
+    A proxy that replaces upstream errors with its own page (nginx `proxy_intercept_errors on` with an
+    `error_page`, a Traefik `errors` middleware, Caddy `handle_errors`, a company-wide 404 page) breaks
+    that: the dashboard search then reports **Failed to fetch: CVE-…** for an ID it should offer to
+    fetch, and other pages show errors instead of their empty states.
+
+    Leave `/api`, `/mcp` and `/.well-known/oauth-*` out of any error-page handling. To check, open the
+    browser's developer tools on a page with an unknown ID: the request's response should be
+    `{"detail":"Vulnerability not found"}`, a few dozen bytes, not an HTML or JSON error page of the
+    proxy.
+
 The traffic between the proxy and port 8080 is plain HTTP. Keep it on the host or a private network.
 
 ## Building your own images
