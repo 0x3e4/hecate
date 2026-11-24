@@ -1,15 +1,15 @@
-FROM aquasec/trivy:0.76.1 AS trivy
-FROM anchore/grype:v0.121.1 AS grype
-FROM anchore/syft:v1.56.0 AS syft
+FROM aquasec/trivy:0.76.2 AS trivy
+FROM anchore/grype:v0.122.0 AS grype
+FROM anchore/syft:v1.57.2 AS syft
 
 # dive and dockle have had no release since early 2025, and their release
 # binaries carry Go 1.24.1 / 1.22.10 and old x/net, compress and xz modules.
-# osv-scanner v2.7.0 ships with Go 1.27.0. All three are built here from their
+# osv-scanner's release binaries trail the current Go. All three are built here from their
 # release tag (checked against the commit, so a moved tag fails the build) with
 # a current Go and the dependency fixes that still compile. Left out on
 # purpose: docker/docker 28.5 and selinux 1.13 for dockle, which break its
 # containers/image and filepath-securejoin.
-FROM golang:1.27.3-trixie AS gotools
+FROM golang:1.27.4-trixie AS gotools
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
 WORKDIR /src
 ARG DIVE_VERSION=0.13.1
@@ -29,8 +29,8 @@ RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${DOCKLE_VERSI
         github.com/klauspost/compress@v1.18.7 github.com/ulikunitz/xz@v0.5.15 github.com/moby/sys/user@v0.4.1 \
     && go mod tidy \
     && go build -ldflags "-s -w -X github.com/goodwithtech/dockle/pkg.version=${DOCKLE_VERSION}" -o /out/dockle ./cmd/dockle
-ARG OSV_SCANNER_VERSION=2.7.0
-ARG OSV_SCANNER_COMMIT=bfe2f84abd2f09fe0b83ba7f6dad40d296762f40
+ARG OSV_SCANNER_VERSION=2.7.1
+ARG OSV_SCANNER_COMMIT=02f96a40691c2d155fdda799af436e111231e365
 RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${OSV_SCANNER_VERSION} https://github.com/google/osv-scanner.git osv-scanner \
     && cd osv-scanner && test "$(git rev-parse HEAD)" = "${OSV_SCANNER_COMMIT}" \
     && go get golang.org/x/net@v0.62.0 \
@@ -43,8 +43,8 @@ RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${OSV_SCANNER_
 # and the btrfs / devicemapper graph drivers (unused, skopeo only copies to
 # docker-archive) are left out. It also drops gpgme, gnupg and the CNI plugins
 # that Debian's package pulled in.
-ARG SKOPEO_VERSION=1.24.1
-ARG SKOPEO_COMMIT=77f3d92f861271c7cb9175afcf876017bcae9202
+ARG SKOPEO_VERSION=1.25.2
+ARG SKOPEO_COMMIT=bd981d14098835b559d02e7ca46d2a9696490e12
 RUN git -c advice.detachedHead=false clone -q --depth 1 --branch v${SKOPEO_VERSION} https://github.com/containers/skopeo.git skopeo \
     && cd skopeo && test "$(git rev-parse HEAD)" = "${SKOPEO_COMMIT}" \
     && go get github.com/go-jose/go-jose/v4@v4.1.6 golang.org/x/crypto@v0.58.0 golang.org/x/net@v0.62.0 \
@@ -104,13 +104,18 @@ RUN mkdir -p /etc/containers \
 # and mcp 1.29 (1.164: PyJWT 2.12, mcp 1.23). pip leaves the venv afterwards:
 # nothing runs it, and its vendored urllib3 / msgpack showed up as findings.
 RUN python -m venv /opt/semgrep \
-    && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.183.0 \
+    && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.185.0 \
     && /opt/semgrep/bin/python -m pip uninstall -y -q pip \
     && ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
 
-# Install TruffleHog (secret scanner)
-RUN curl -fsSL https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.2/trufflehog_3.99.2_linux_amd64.tar.gz \
-    | tar xz -C /usr/local/bin trufflehog
+# Install TruffleHog (secret scanner), checked against the release's checksums.txt.
+ARG TRUFFLEHOG_VERSION=3.99.9
+ARG TRUFFLEHOG_SHA256=12050095c8063bf4d34f9f6cbce6ba9fa8d0deea9d503d0570364feba093658e
+RUN curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz" \
+        -o /tmp/trufflehog.tar.gz \
+    && echo "${TRUFFLEHOG_SHA256}  /tmp/trufflehog.tar.gz" | sha256sum -c - \
+    && tar xzf /tmp/trufflehog.tar.gz -C /usr/local/bin trufflehog \
+    && rm /tmp/trufflehog.tar.gz
 
 # Install .NET 10 runtime (required for DevSkim CLI — framework-dependent build)
 # Globalization-invariant mode avoids needing libicu (DevSkim is pattern-matching, locale-agnostic)
@@ -128,8 +133,8 @@ ENV DOTNET_ROOT=/usr/share/dotnet \
 # runtime above is enough — no SDK. We take the net10.0 build, keep only the
 # linux-x64 native libs (libgit2), and expose it via a `devskim` wrapper so the
 # scanner's argv is unchanged. The package hash is pinned.
-ARG DEVSKIM_VERSION=1.0.100
-ARG DEVSKIM_SHA256=11a08ca73ef1020c4dd8efaf4e34ce0d59df75eed4fcef478724bc6be28f04fd
+ARG DEVSKIM_VERSION=1.0.103
+ARG DEVSKIM_SHA256=ea8c70cca113563919909b64534b6d50f97af4b2941e1ea4bb434db7890a28af
 RUN curl -fsSL "https://api.nuget.org/v3-flatcontainer/microsoft.cst.devskim.cli/${DEVSKIM_VERSION}/microsoft.cst.devskim.cli.${DEVSKIM_VERSION}.nupkg" \
     -o /tmp/devskim.nupkg \
     && echo "${DEVSKIM_SHA256}  /tmp/devskim.nupkg" | sha256sum -c - \
