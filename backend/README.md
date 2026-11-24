@@ -237,6 +237,8 @@ Full-text index with text fields for search and `.keyword` fields for aggregatio
 | CAPEC | MITRE XML download | 7 days | Attack patterns |
 | CIRCL | CIRCL REST API | 120 min | Additional enrichment |
 | Advisory feeds | RSS / RDF / Atom of CERTs, vendors and community accounts | 120 min | Which CVEs they warn about |
+| Nuclei templates | `cves.json` of projectdiscovery/nuclei-templates | 1440 min | Which CVEs have a public template (`exploit_signals`) |
+| VulnCheck KEV | VulnCheck API (opt-in, `VULNCHECK_API_TOKEN`) | 360 min | Exploitation reports per CVE (`exploit_signals`) |
 | GHSA | GitHub Advisory API | 120 min | GitHub Security Advisories |
 | OSV | OSV.dev GCS bucket + REST API | 120 min + weekly full sync (Fri 02:00 UTC) | OSV vulnerabilities (hybrid: CVE enrichment + MAL / PYSEC / OSV entries, 11 ecosystems; per-run cursor advancement against cap-hit data loss) |
 
@@ -312,6 +314,8 @@ poetry run python -m app.cli sync-cwe       [--initial]
 poetry run python -m app.cli sync-capec     [--initial]
 poetry run python -m app.cli sync-circl     [--limit N]
 poetry run python -m app.cli sync-cert
+poetry run python -m app.cli sync-nuclei
+poetry run python -m app.cli sync-vulncheck-kev                           # needs VULNCHECK_API_TOKEN
 poetry run python -m app.cli sync-ghsa      [--limit N]   [--initial]
 poetry run python -m app.cli sync-osv       [--limit N]   [--initial]
 poetry run python -m app.cli enrich-mal     [--limit N]                   # deps.dev enrichment of existing MAL-* docs

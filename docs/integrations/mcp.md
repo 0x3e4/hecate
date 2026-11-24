@@ -125,7 +125,7 @@ question — you never name a tool by hand.
 
 | Family | Access | What it covers |
 | --- | --- | --- |
-| Vulnerability lookup | read | `search_vulnerabilities`, `get_vulnerability` — keyword/vendor/product/version/severity search and full CVE/GHSA/OSV detail. |
+| Vulnerability lookup | read | `search_vulnerabilities`, `get_vulnerability` — keyword/vendor/product/version/severity search and full CVE/GHSA/OSV detail, including its exploit signals (public Nuclei template, VulnCheck KEV). |
 | Reference catalogues | read | `search_cpe`, `search_vendors`, `search_products`, `get_cwe`, `get_capec`, `get_vulnerability_stats`. |
 | SCA findings & SBOM | read | `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`. |
 | Scans & history | read | `list_scan_targets`, `list_target_groups`, `list_scans`, `get_sca_scan`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `find_findings_by_cve`. |

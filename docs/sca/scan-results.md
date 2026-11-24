@@ -124,7 +124,8 @@ header counts them; a click there opens the SBOM tab filtered to that signal. Se
 [Supply-chain signals](../sca-scanning.md#supply-chain-signals).
 
 A library compiled into a prebuilt package (sharp's libvips and the libraries it links) gets its own row with
-**bundled in** and that package under the name; its CVEs appear in the Findings tab like any other. See
+**bundled in** and that package under the name. Its CVEs appear in the Findings tab with the same **bundled in** line
+under the package: the fix is an update of the package that brought the library in (sharp). See
 [Bundled native libraries](../sca-scanning.md#bundled-native-libraries).
 
 Two export buttons produce a standards-compliant bill of materials: **CycloneDX 1.5** and **SPDX 2.3** JSON. Next to
