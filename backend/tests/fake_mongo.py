@@ -112,6 +112,8 @@ class FakeCollection:
             result.matched_count += 1
             before = dict(doc)
             doc.update(update.get("$set", {}))
+            for key in update.get("$unset", {}):
+                doc.pop(key, None)
             if doc != before:
                 result.modified_count += 1
             if not many:

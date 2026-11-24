@@ -1075,6 +1075,7 @@ class ScanService:
         # across all scanner fan-out calls. Read by the _run_single_scanner
         # closure; stays None for container images and uploaded-archive scans.
         source_token: str | None = None
+        trufflehog_verification: bool | None = None
         # govulncheck reports of this scan: their package / module level
         # entries become reachability VEX once every scanner has stored its
         # findings (see app/services/reachability.py).
@@ -1095,6 +1096,7 @@ class ScanService:
                     scanners=[scanner_name],
                     source_archive_base64=source_archive_base64,
                     source_token=source_token,
+                    trufflehog_verification=trufflehog_verification if scanner_name == "trufflehog" else None,
                 )
                 if metadata and not scan_metadata:
                     scan_metadata = metadata
@@ -1195,6 +1197,13 @@ class ScanService:
         # contention and failing the whole scan). Container images and
         # uploaded-archive scans keep their existing path.
         use_shared_checkout = target_type == "source_repo" and not source_archive_base64
+        # The target's TruffleHog verification choice; None leaves it to the sidecar's default.
+        if "trufflehog" in scanners and not is_check_target(target_id):
+            try:
+                target_doc = await self.target_repo.get(target_id)
+                trufflehog_verification = (target_doc or {}).get("trufflehog_verification")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("scan_service.target_lookup_failed", target_id=target_id, error=str(exc))
         try:
             if use_shared_checkout:
                 source_token, clone_err = await self._prepare_source_checkout(target, target_type)
@@ -2814,6 +2823,10 @@ class ScanService:
         """Update auto_scan flag on a target."""
         return await self.target_repo.update_auto_scan(target_id, auto_scan)
 
+    async def update_target_trufflehog_verification(self, target_id: str, verify: bool | None) -> bool:
+        """Override (True/False) or reset (None) TruffleHog's secret verification for a target."""
+        return await self.target_repo.update_trufflehog_verification(target_id, verify)
+
     async def update_target_scanners(self, target_id: str, scanners: list[str]) -> bool:
         """Update default scanners on a target."""
         if not scanners:
@@ -3550,12 +3563,15 @@ class ScanService:
         scanners: list[str],
         source_archive_base64: str | None = None,
         source_token: str | None = None,
+        trufflehog_verification: bool | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Call the scanner sidecar HTTP API. Returns (results, metadata).
 
         `source_token` (from /prepare-source) and `source_archive_base64` are
         mutually exclusive — the token points the sidecar at a checkout cloned
-        once for the whole scan instead of cloning per scanner."""
+        once for the whole scan instead of cloning per scanner.
+        `trufflehog_verification` is sent only when the target overrides the
+        sidecar's TRUFFLEHOG_NO_VERIFICATION."""
         url = f"{settings.sca_scanner_url}/scan"
         payload = {
             "target": target,
@@ -3566,6 +3582,8 @@ class ScanService:
             payload["sourceArchiveBase64"] = source_archive_base64
         if source_token:
             payload["sourceToken"] = source_token
+        if trufflehog_verification is not None:
+            payload["trufflehogVerification"] = trufflehog_verification
         timeout = self._resolve_sidecar_http_timeout(scanners)
         async with scanner_client(timeout=timeout) as client:
             response = await client.post(url, json=payload)

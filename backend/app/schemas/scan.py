@@ -245,6 +245,12 @@ class ScanTargetResponse(BaseModel):
     vex_source_status: VexSourceStatusSchema | None = Field(
         default=None, alias="vexSourceStatus", serialization_alias="vexSourceStatus"
     )
+    trufflehog_verification: bool | None = Field(
+        default=None,
+        alias="trufflehogVerification",
+        serialization_alias="trufflehogVerification",
+        description="TruffleHog checks found secrets against their provider; null = the scanner's default",
+    )
 
     model_config = {"populate_by_name": True}
 

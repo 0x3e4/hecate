@@ -33,12 +33,14 @@ def client(monkeypatch, tmp_path):
         created_dirs.append(str(d))
         return str(d)
 
-    async def fake_run_scanner(scanner_name, target, target_type, source_dir=None):
+    async def fake_run_scanner(scanner_name, target, target_type, source_dir=None, trufflehog_verification=None):
         # Record which dir each scanner saw so tests can assert sharing.
         fake_run_scanner.seen.append((scanner_name, source_dir))
+        fake_run_scanner.verification.append(trufflehog_verification)
         return ScannerResult(scanner=scanner_name, format="trivy-json", report={}, error=None)
 
     fake_run_scanner.seen = []
+    fake_run_scanner.verification = []
 
     async def fake_commit_sha(source_dir):
         return "deadbeef"
@@ -50,6 +52,7 @@ def client(monkeypatch, tmp_path):
     c = TestClient(main.app)
     c.created_dirs = created_dirs
     c.seen = fake_run_scanner.seen
+    c.verification = fake_run_scanner.verification
     yield c
     main._source_checkouts.clear()
 
@@ -186,3 +189,13 @@ def test_clone_repo_uses_configurable_timeout(monkeypatch):
     assert "--no-tags" in captured["cmd"]
     assert "--single-branch" in captured["cmd"]
     assert "--depth" in captured["cmd"]
+
+
+def test_scan_passes_the_targets_trufflehog_choice(client):
+    token = client.post("/prepare-source", json={"target": "https://x/r.git", "type": "source_repo"}).json()["sourceToken"]
+    body = {"target": "https://x/r.git", "type": "source_repo", "scanners": ["trufflehog"], "sourceToken": token}
+
+    assert client.post("/scan", json={**body, "trufflehogVerification": False}).status_code == 200
+    assert client.post("/scan", json=body).status_code == 200
+    # False reaches the scanner; a request without the field leaves it to the env.
+    assert client.verification == [False, None]

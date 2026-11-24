@@ -857,6 +857,8 @@ export interface ScanTarget {
   /** https URLs of VEX documents applied to this target's findings after every scan. */
   vexSources?: string[];
   vexSourceStatus?: VexSourceStatus | null;
+  /** TruffleHog checks found secrets against their provider; null = the scanner's default. */
+  trufflehogVerification?: boolean | null;
 }
 
 export interface VexSourceResult {

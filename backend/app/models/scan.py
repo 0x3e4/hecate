@@ -44,6 +44,11 @@ class ScanTargetDocument(BaseModel):
     vex_source_status: dict[str, Any] | None = Field(
         default=None, description="Outcome of the last fetch: counts plus one entry per source"
     )
+    # Whether TruffleHog checks the secrets it finds against their provider for
+    # this target. None follows the sidecar's TRUFFLEHOG_NO_VERIFICATION.
+    trufflehog_verification: bool | None = Field(
+        default=None, description="TruffleHog secret verification: None = scanner default"
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_scan_at: datetime | None = None

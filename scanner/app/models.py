@@ -22,6 +22,11 @@ class ScanRequest(BaseModel):
     source_token: str | None = Field(
         default=None, alias="sourceToken", serialization_alias="sourceToken"
     )
+    # The scan target's choice for TruffleHog verification; None falls back to
+    # TRUFFLEHOG_NO_VERIFICATION.
+    trufflehog_verification: bool | None = Field(
+        default=None, alias="trufflehogVerification", serialization_alias="trufflehogVerification"
+    )
 
     model_config = {"populate_by_name": True}
 

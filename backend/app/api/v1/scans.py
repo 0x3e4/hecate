@@ -468,7 +468,7 @@ async def update_target(
     _auth: None = Depends(require_target_write_path),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetResponse:
-    """Update target settings (e.g., name, auto_scan, scanners, group)."""
+    """Update target settings (e.g., name, auto_scan, scanners, group, trufflehogVerification)."""
     if body and "name" in body:
         name = normalize_target_name(body.get("name"))
         if name is None:
@@ -484,6 +484,11 @@ async def update_target(
             raise HTTPException(status_code=400, detail=str(exc))
     if body and "group" in body:
         await service.update_target_group(target_id, body.get("group"))
+    if body and "trufflehogVerification" in body:
+        verify = body["trufflehogVerification"]
+        if verify is not None and not isinstance(verify, bool):
+            raise HTTPException(status_code=400, detail="trufflehogVerification must be true, false or null")
+        await service.update_target_trufflehog_verification(target_id, verify)
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -1502,6 +1507,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         write_password_set=bool(doc.get("write_password_hash")),
         vex_sources=doc.get("vex_sources") or [],
         vex_source_status=doc.get("vex_source_status") or None,
+        trufflehog_verification=doc.get("trufflehog_verification"),
     )
 
 

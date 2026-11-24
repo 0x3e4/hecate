@@ -412,7 +412,13 @@ async def _scan(request: ScanRequest) -> ScanResponse:
     _active_scans += 1
     try:
         for scanner_name in dict.fromkeys(request.scanners):
-            result = await run_scanner(scanner_name, request.target, request.type, source_dir=source_dir)
+            result = await run_scanner(
+                scanner_name,
+                request.target,
+                request.type,
+                source_dir=source_dir,
+                trufflehog_verification=request.trufflehog_verification,
+            )
             results.append(result)
 
         # Collect metadata

@@ -77,6 +77,9 @@ class ScanTargetRepository:
             for field in ("vex_sources", "vex_source_status"):
                 if existing.get(field) and not payload.get(field):
                     payload[field] = existing[field]
+            # And the TruffleHog setting, where False is a choice, not a gap.
+            if existing.get("trufflehog_verification") is not None and payload.get("trufflehog_verification") is None:
+                payload["trufflehog_verification"] = existing["trufflehog_verification"]
 
         try:
             result = await self.collection.replace_one(
@@ -178,6 +181,23 @@ class ScanTargetRepository:
             return result.modified_count > 0
         except PyMongoError as exc:
             log.warning("scan_target_repository.update_auto_scan_failed", target_id=target_id, error=str(exc))
+            return False
+
+    async def update_trufflehog_verification(self, target_id: str, verify: bool | None) -> bool:
+        """Set or (None) clear the target's TruffleHog verification override."""
+        now = datetime.now(tz=UTC)
+        update: dict[str, Any] = (
+            {"$unset": {"trufflehog_verification": ""}, "$set": {"updated_at": now}}
+            if verify is None
+            else {"$set": {"trufflehog_verification": verify, "updated_at": now}}
+        )
+        try:
+            result = await self.collection.update_one({"_id": target_id}, update)
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning(
+                "scan_target_repository.update_trufflehog_verification_failed", target_id=target_id, error=str(exc)
+            )
             return False
 
     async def update_name(self, target_id: str, name: str) -> bool:

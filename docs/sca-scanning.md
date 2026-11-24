@@ -90,7 +90,7 @@ scanners chosen at its first scan and reuses them for later auto-scans.
 | dive | Image-layer analysis, container images (Layer Analysis tab) |
 | semgrep | SAST for source repositories |
 | devskim | Microsoft SAST, strong .NET coverage (shares the SAST tab) |
-| trufflehog | Secret scanning for source repositories; verifies each candidate against its provider unless `TRUFFLEHOG_NO_VERIFICATION=true` |
+| trufflehog | Secret scanning for source repositories; verifies each candidate against its provider unless the target or `TRUFFLEHOG_NO_VERIFICATION` turns it off ([secret verification](#secret-verification)) |
 
 In a repository scan the dependency scanners read lockfiles and manifests. SBOM or VEX files committed
 to the repository (`*.cdx.json`, `*.spdx.json`, `bom.json`) are not treated as the repository's
@@ -110,6 +110,27 @@ across all scanners (rather than cloned once per scanner), so a scan no longer f
 concurrent `git clone` of the same repo that could contend for bandwidth and trip the clone timeout.
 The clone budget is `GIT_CLONE_TIMEOUT_SECONDS` (default 300 s); a clone failure surfaces as a single
 clean error and marks the scan failed.
+
+## Secret verification
+
+TruffleHog checks each secret it finds by sending it to the provider it belongs to: a login against the
+AWS, GitHub, Slack or Stripe API. A secret that works is reported **verified** (critical), one that
+doesn't or can't be checked **unverified** (high). That tells you which leaks are still live, but the
+secret leaves your network to do it, and some repositories hold credentials that must not: one-time
+tokens, or S3 keys for a local Ceph that would be sent to AWS.
+
+So it is set per repository. On the target page, **Secret verification** offers:
+
+| Setting | TruffleHog runs |
+| --- | --- |
+| Scanner default | as `TRUFFLEHOG_NO_VERIFICATION` on the scanner says (verification on unless it is `true`) |
+| Verify found secrets | with verification, whatever the scanner default |
+| Don't verify | with `--no-verification`: nothing is sent, every secret is unverified (high) |
+
+Changing it needs the same rights as the target's other settings (admin, editor, or the target's
+password) and lands in the
+[audit log](admin/audit.md). It applies from the next scan. Checks (scans without a target, uploaded
+archives) always use the scanner default.
 
 ## Go reachability (govulncheck)
 

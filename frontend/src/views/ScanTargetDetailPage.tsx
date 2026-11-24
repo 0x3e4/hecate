@@ -30,6 +30,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
 import { TargetRenameDialog } from "../components/TargetRenameDialog";
 import { VexSourcesCard } from "../components/VexSourcesCard";
+import { SecretVerificationCard } from "../components/SecretVerificationCard";
 import { TargetReleases } from "../components/TargetReleases";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
@@ -684,6 +685,11 @@ export const ScanTargetDetailPage = () => {
 
       {/* VEX sources: the vendor's statements, applied after every scan */}
       <VexSourcesCard target={target} onUpdated={setTarget} notify={showToast} />
+
+      {/* TruffleHog: whether found secrets are checked against their provider */}
+      {target.type === "source_repo" && (
+        <SecretVerificationCard target={target} onUpdated={setTarget} notify={showToast} />
+      )}
 
       {/* History */}
       <Section

@@ -80,3 +80,18 @@ async def test_trufflehog_verification_switch(recorded, tmp_path, monkeypatch, v
     # The path stays the last argument.
     assert cmd[-1] == str(tmp_path)
     assert cmd[:4] == ["trufflehog", "filesystem", "--json", "--no-update"]
+
+
+@pytest.mark.parametrize(
+    ("env", "verify", "expected"),
+    [("true", True, False), ("false", False, True), ("true", None, True), (None, False, True), (None, True, False)],
+)
+async def test_the_targets_choice_overrides_the_env(recorded, tmp_path, monkeypatch, env, verify, expected):
+    if env is None:
+        monkeypatch.delenv("TRUFFLEHOG_NO_VERIFICATION", raising=False)
+    else:
+        monkeypatch.setenv("TRUFFLEHOG_NO_VERIFICATION", env)
+
+    await scanners._run_trufflehog("x", "source_repo", source_dir=str(tmp_path), verify=verify)
+
+    assert ("--no-verification" in recorded[0]["cmd"]) is expected

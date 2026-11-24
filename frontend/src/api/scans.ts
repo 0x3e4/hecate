@@ -233,7 +233,13 @@ export const clearTargetWritePassword = async (targetId: string): Promise<ScanTa
 
 export const updateScanTarget = async (
   targetId: string,
-  data: { name?: string; autoScan?: boolean; scanners?: string[]; group?: string | null }
+  data: {
+    name?: string;
+    autoScan?: boolean;
+    scanners?: string[];
+    group?: string | null;
+    trufflehogVerification?: boolean | null;
+  }
 ): Promise<ScanTarget> => {
   const response = await api.patch<ScanTarget>(
     `/v1/scans/targets/${encodeURIComponent(targetId)}`,

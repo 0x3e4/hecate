@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- SCA: **Secret verification** per scan target. On the target page of a repository, TruffleHog can verify the secrets it finds, skip that (`--no-verification`, nothing leaves the network), or follow the scanner's `TRUFFLEHOG_NO_VERIFICATION`. `PATCH /api/v1/scans/targets/{id}` takes `trufflehogVerification` (`true`, `false` or `null`), the target response carries it, and MCP `list_scan_targets` shows it. Scanner and backend have to be updated together for the setting to reach TruffleHog; an older scanner ignores it.
+
 ### Changed
 
 ### Fixed

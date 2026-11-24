@@ -207,6 +207,7 @@ async def run_scanner(
     target: str,
     target_type: str,
     source_dir: str | None = None,
+    trufflehog_verification: bool | None = None,
 ) -> ScannerResult:
     """Run a scanner tool and return parsed results."""
     if scanner_name == "trivy":
@@ -226,7 +227,7 @@ async def run_scanner(
     elif scanner_name == "semgrep":
         return await _run_semgrep(target, target_type, source_dir)
     elif scanner_name == "trufflehog":
-        return await _run_trufflehog(target, target_type, source_dir)
+        return await _run_trufflehog(target, target_type, source_dir, verify=trufflehog_verification)
     elif scanner_name == "devskim":
         return await _run_devskim(target, target_type, source_dir)
     elif scanner_name == "govulncheck":
@@ -1130,8 +1131,13 @@ async def _run_trufflehog(
     target: str,
     target_type: str,
     source_dir: str | None = None,
+    verify: bool | None = None,
 ) -> ScannerResult:
-    """Run TruffleHog secret scanner. Only supports source repos."""
+    """Run TruffleHog secret scanner. Only supports source repos.
+
+    ``verify`` is the scan target's own choice; None falls back to
+    TRUFFLEHOG_NO_VERIFICATION.
+    """
     if target_type == "container_image":
         return ScannerResult(
             scanner="trufflehog", format="trufflehog-json", report={},
@@ -1146,7 +1152,8 @@ async def _run_trufflehog(
             scan_dir = clone_dir
 
         cmd = ["trufflehog", "filesystem", "--json", "--no-update"]
-        if _trufflehog_no_verification():
+        no_verification = _trufflehog_no_verification() if verify is None else not verify
+        if no_verification:
             cmd.append("--no-verification")
         cmd.append(scan_dir)
 
