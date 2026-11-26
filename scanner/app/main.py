@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import json
 import logging
 import os
 import shutil
+import tempfile
 import time
 import tomllib
 import uuid
@@ -35,6 +37,7 @@ from app.models import (
     CleanupSourceResponse,
     PrepareSourceRequest,
     PrepareSourceResponse,
+    SbomScanRequest,
     ScanMetadata,
     ScanRequest,
     ScanResponse,
@@ -47,7 +50,9 @@ from app.scanners import (
     get_git_commit_sha,
     get_image_digest,
     get_remote_commit_sha,
+    run_sbom_scanner,
     run_scanner,
+    SBOM_SCANNERS,
     setup_auth,
 )
 from app.target_validation import UnsafeScanTarget, validate_scan_target
@@ -351,6 +356,29 @@ async def cleanup_source(request: CleanupSourceRequest) -> CleanupSourceResponse
         return CleanupSourceResponse(removed=False)
     await asyncio.to_thread(shutil.rmtree, entry["dir"], ignore_errors=True)
     return CleanupSourceResponse(removed=True)
+
+
+@app.post("/scan-sbom", response_model=ScanResponse)
+async def scan_sbom(request: SbomScanRequest) -> ScanResponse:
+    """Match an imported SBOM (a host, a Kubernetes node) with Grype and/or Trivy.
+
+    The document is only data: written to a private temp file, read by the
+    scanners, removed afterwards. Nothing is cloned or pulled.
+    """
+    scanners = list(dict.fromkeys(request.scanners))
+    invalid = set(scanners) - SBOM_SCANNERS
+    if invalid or not scanners:
+        raise HTTPException(status_code=400, detail=f"SBOM scanners are {', '.join(sorted(SBOM_SCANNERS))}")
+    work_dir = tempfile.mkdtemp(prefix="hecate-sbom-")
+    try:
+        sbom_path = os.path.join(work_dir, "sbom.json")
+        with open(sbom_path, "w", encoding="utf-8") as fh:
+            json.dump(request.sbom, fh)
+        async with _scan_slots:
+            results = [await run_sbom_scanner(name, sbom_path) for name in scanners]
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+    return ScanResponse(target="sbom", type="sbom", results=results)
 
 
 @app.post("/scan", response_model=ScanResponse)

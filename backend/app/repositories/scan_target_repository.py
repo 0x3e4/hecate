@@ -82,6 +82,9 @@ class ScanTargetRepository:
                 payload["trufflehog_verification"] = existing["trufflehog_verification"]
             if existing.get("no_external_lookups") and not payload.get("no_external_lookups"):
                 payload["no_external_lookups"] = True
+            for field in ("kind", "exposure"):
+                if existing.get(field) and not payload.get(field):
+                    payload[field] = existing[field]
 
         try:
             result = await self.collection.replace_one(
@@ -200,6 +203,23 @@ class ScanTargetRepository:
             log.warning(
                 "scan_target_repository.update_trufflehog_verification_failed", target_id=target_id, error=str(exc)
             )
+            return False
+
+    async def update_classification(self, target_id: str, fields: dict[str, str | None]) -> bool:
+        """Set or (None) clear ``kind`` / ``exposure``; other keys are ignored."""
+        allowed = {k: v for k, v in fields.items() if k in ("kind", "exposure")}
+        if not allowed:
+            return True
+        to_set = {k: v for k, v in allowed.items() if v is not None}
+        to_unset = {k: "" for k, v in allowed.items() if v is None}
+        update: dict[str, Any] = {"$set": {**to_set, "updated_at": datetime.now(tz=UTC)}}
+        if to_unset:
+            update["$unset"] = to_unset
+        try:
+            result = await self.collection.update_one({"_id": target_id}, update)
+            return result.matched_count > 0
+        except PyMongoError as exc:
+            log.warning("scan_target_repository.update_classification_failed", target_id=target_id, error=str(exc))
             return False
 
     async def update_no_external_lookups(self, target_id: str, enabled: bool) -> bool:

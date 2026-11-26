@@ -2,6 +2,7 @@ import "../screens/dashboard.css";
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { usePersistentState } from "../hooks/usePersistentState";
 import { LuCheck, LuChevronLeft, LuChevronRight, LuCopy, LuSearch, LuTriangleAlert, LuX } from "react-icons/lu";
 
 import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types";
@@ -1302,6 +1303,9 @@ const AttentionPanel = ({
     const findings = quietFindings(data.items, (item) => Boolean(scanCveScan[item.vulnId]));
     return { total: findings.length, groups: groupCves(findings, (item) => productKey(item)) };
   }, [data.items, scanCveScan]);
+  // Open by default: whoever looks only at their own containers wants these first.
+  // Folded once, it stays folded in this browser.
+  const [quietOpen, setQuietOpen] = usePersistentState("hecate.dashboard.quietFindingsOpen", true);
 
   if (rows.length === 0 && quiet.total === 0) return null;
 
@@ -1336,7 +1340,11 @@ const AttentionPanel = ({
         ))}
       />
       {quiet.total > 0 && (
-        <details className="dashboard-list-more">
+        <details
+          className="dashboard-list-more"
+          open={quietOpen}
+          onToggle={(event) => setQuietOpen(event.currentTarget.open)}
+        >
           <summary className="dashboard-disclosure">
             <LuChevronRight className="dashboard-disclosure-icon" aria-hidden="true" />
             {t(

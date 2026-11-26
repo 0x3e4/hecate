@@ -31,6 +31,7 @@ import { TargetPasswordDialog } from "../components/TargetPasswordDialog";
 import { TargetRenameDialog } from "../components/TargetRenameDialog";
 import { VexSourcesCard } from "../components/VexSourcesCard";
 import { ExternalLookupsCard } from "../components/ExternalLookupsCard";
+import { TargetClassCard } from "../components/TargetClassCard";
 import { TargetReleases } from "../components/TargetReleases";
 import { Toast, useToast } from "../components/Toast";
 import { useI18n } from "../i18n/context";
@@ -687,6 +688,8 @@ export const ScanTargetDetailPage = () => {
       <VexSourcesCard target={target} onUpdated={setTarget} notify={showToast} />
 
       {/* What scans may send out: no external lookups, TruffleHog verification */}
+      <TargetClassCard target={target} onUpdated={setTarget} notify={showToast} />
+
       <ExternalLookupsCard target={target} onUpdated={setTarget} notify={showToast} />
 
       {/* History */}

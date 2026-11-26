@@ -861,6 +861,10 @@ export interface ScanTarget {
   trufflehogVerification?: boolean | null;
   /** Scans of this target send no package names, module paths or secrets out. */
   noExternalLookups?: boolean;
+  /** host | kubernetes-node | container | other; null = unknown. */
+  kind?: string | null;
+  /** internet | internal; null = unknown. */
+  exposure?: string | null;
 }
 
 export interface VexSourceResult {
@@ -1227,6 +1231,10 @@ export interface AffectedScanTarget {
   cvssScore?: number | null;
   /** "finding" = confirmed scan finding; "sbom" = in the SBOM at an affected version, no finding yet. */
   matchType?: "finding" | "sbom" | string;
+  /** From the target: host | kubernetes-node | container | other. */
+  kind?: string | null;
+  /** From the target: internet | internal. Internet-facing rows come first. */
+  exposure?: string | null;
 }
 
 export interface ScanComparisonFinding {
@@ -1466,7 +1474,7 @@ export interface MalwareFeedResponse {
   entries: MalwareFeedEntry[];
 }
 
-export type ApiTokenScope = "scan:submit" | "inventory:report";
+export type ApiTokenScope = "scan:submit" | "inventory:report" | "sbom:import";
 
 export interface ApiToken {
   id: string;

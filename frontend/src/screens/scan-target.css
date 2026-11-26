@@ -78,7 +78,7 @@
 
 /* Target Access panel (System, Access Control) */
 .scan-target-access h2 { max-width: none; text-wrap: balance; }
-.scan-target-access-intro { margin-top: var(--space-2xs); max-width: 75ch; color: var(--color-muted); font-size: var(--text-sm); }
+.scan-target-access-intro { margin-top: var(--space-2xs); max-width: none; color: var(--color-muted); font-size: var(--text-sm); }
 .scan-target-access .scan-target-scroll { margin-top: var(--space-md); }
 .scan-target-access-name { font-weight: 600; overflow-wrap: anywhere; }
 .scan-target-access-id { color: var(--color-muted); overflow-wrap: anywhere; }
@@ -119,6 +119,7 @@
 /* VEX sources card */
 .scan-target-vex-intro { max-width: 80ch; margin: 0 0 var(--space-sm); font-size: var(--text-sm); }
 .scan-target-vex-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.scan-target-class-fields { display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); }
 .scan-target-lookups-switch { display: inline-flex; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-sm); font-size: var(--text-sm); }
 .scan-target-secret-verification { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--text-sm); }
 .scan-target-vex-form { display: grid; gap: var(--space-xs); max-width: 80ch; }

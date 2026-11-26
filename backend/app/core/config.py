@@ -322,6 +322,10 @@ class Settings(BaseSettings):
     sca_bundled_libraries_timeout_seconds: int = 90
     sca_bundled_libraries_max_download_mb: int = 64
     sca_bundled_libraries_registry_url: str = "https://registry.npmjs.org"
+    # Imported SBOMs (hosts, Kubernetes nodes) are also matched by these sidecar
+    # scanners, which know distribution advisories (backported fixes); CSV of
+    # grype / trivy, empty = only Hecate's own database.
+    sca_sbom_import_scanners: str = "grype"
     sca_fresh_release_days: int = 7
     sca_unmaintained_days: int = 730
     sca_release_info_cache_ttl_hours: int = 24

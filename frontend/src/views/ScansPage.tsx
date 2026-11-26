@@ -35,6 +35,7 @@ import { useI18n } from "../i18n/context";
 import { BusyLabel, EmptyState, ErrorState, IconButton, PageHeader, SeverityTag, Spinner, Stat } from "../ui/primitives";
 import { TargetRenameDialog } from "../components/TargetRenameDialog";
 import { DocsLink } from "../components/DocsLink";
+import { TargetClassChips } from "../components/TargetClassChips";
 import { TabPill } from "../ui/TabPill";
 import { formatDateTime } from "../utils/dateFormat";
 import { safeHref } from "../utils/safeHref";
@@ -2308,6 +2309,11 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
             )}
             {isRunning && <ScanningBadge status={target.runningScanStatus} />}
           </div>
+          {(target.kind || target.exposure === "internet") && (
+            <div className="scans-target-class">
+              <TargetClassChips kind={target.kind} exposure={target.exposure} />
+            </div>
+          )}
           <div className="scans-sub scans-target-meta">
             <span className="scans-target-type">
               {target.type === "container_image"

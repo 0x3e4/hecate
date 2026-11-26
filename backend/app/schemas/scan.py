@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -28,6 +28,11 @@ def normalize_scanners(scanners: list[str]) -> list[str]:
 
 
 TARGET_NAME_MAX_LENGTH = 200
+
+# What a target is and whether the internet reaches it ("where does the nginx with
+# the RCE run, and is it exposed"). Both are optional; unset means unknown.
+TargetKind = Literal["host", "kubernetes-node", "container", "other"]
+TargetExposure = Literal["internet", "internal"]
 
 
 def normalize_target_name(value: object) -> str | None:
@@ -124,6 +129,12 @@ class ImportSbomRequest(BaseModel):
         description="Reuse existing target ID",
     )
     check: bool = Field(default=False, description="Import as a check: no target, report only, expires")
+    kind: TargetKind | None = Field(
+        default=None, description="What the SBOM describes; set on the target, left as it is when omitted",
+    )
+    exposure: TargetExposure | None = Field(
+        default=None, description="internet when the system is reachable from the internet; left as it is when omitted",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -257,6 +268,10 @@ class ScanTargetResponse(BaseModel):
         serialization_alias="noExternalLookups",
         description="Scans of this target send nothing about the scanned code (package names, module paths, secrets) out",
     )
+    kind: TargetKind | None = Field(default=None, description="host, kubernetes-node, container or other; null = unknown")
+    exposure: TargetExposure | None = Field(
+        default=None, description="internet = reachable from the internet, internal = not; null = unknown",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -280,6 +295,10 @@ class ScanTargetUpdateRequest(BaseModel):
     no_external_lookups: bool | None = Field(
         default=None, alias="noExternalLookups", serialization_alias="noExternalLookups",
         description="Scan without external lookups: no package names, module paths or secrets leave the network",
+    )
+    kind: TargetKind | None = Field(default=None, description="host, kubernetes-node, container or other; null clears")
+    exposure: TargetExposure | None = Field(
+        default=None, description="internet or internal; null clears (unknown)",
     )
 
     model_config = {"populate_by_name": True}
@@ -713,6 +732,9 @@ class AffectedScanTarget(BaseModel):
     match_type: str = Field(
         default="finding", alias="matchType", serialization_alias="matchType"
     )
+    # From the target: what it is and whether the internet reaches it.
+    kind: TargetKind | None = None
+    exposure: TargetExposure | None = None
 
     model_config = {"populate_by_name": True}
 

@@ -62,6 +62,13 @@ class CleanupSourceResponse(BaseModel):
     removed: bool = False
 
 
+class SbomScanRequest(BaseModel):
+    """An SBOM document to match with the SBOM scanners (Grype, Trivy)."""
+
+    sbom: dict[str, Any] = Field(description="CycloneDX or SPDX JSON")
+    scanners: list[str] = Field(default_factory=lambda: ["grype"], description="grype and/or trivy")
+
+
 class ScannerResult(BaseModel):
     scanner: str
     format: str

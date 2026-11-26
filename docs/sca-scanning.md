@@ -43,6 +43,9 @@ minutes a watchdog cancels a scan that lost its task or ran past its maximum run
 (`SCA_SCAN_MAX_RUNTIME_SECONDS`; by default derived from the selected scanners' timeouts, about 90
 minutes). The scan's error says why, and the target stops showing a scan in progress.
 
+Servers, VMs, workstations and Kubernetes nodes push their own SBOMs instead, and appliances go into
+the inventory: see [hosts, nodes and other systems](sca/hosts.md).
+
 ## Checks
 
 A **check** scans something once without registering it as a target: an image or repository you want

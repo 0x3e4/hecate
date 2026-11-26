@@ -240,6 +240,8 @@ export const updateScanTarget = async (
     group?: string | null;
     trufflehogVerification?: boolean | null;
     noExternalLookups?: boolean;
+    kind?: string | null;
+    exposure?: string | null;
   }
 ): Promise<ScanTarget> => {
   const response = await api.patch<ScanTarget>(

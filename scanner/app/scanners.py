@@ -1493,3 +1493,35 @@ async def _run_govulncheck(
         await asyncio.to_thread(_force_rmtree, work_dir)
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+# Scanners that match a ready SBOM themselves (distro-aware: Debian, Ubuntu,
+# RHEL, Alpine advisories), used for SBOMs imported from hosts and nodes.
+SBOM_SCANNERS = frozenset({"grype", "trivy"})
+
+
+async def run_sbom_scanner(scanner_name: str, sbom_path: str) -> ScannerResult:
+    """Match an SBOM file with Grype (``grype sbom:``) or Trivy (``trivy sbom``).
+
+    An imported SBOM of a Linux host lists dpkg / rpm / apk packages with the
+    distribution's own versions (``nginx 1.22.1-9+deb12u2``); only a distro-aware
+    matcher knows which of those carry a backported fix.
+    """
+    if scanner_name == "grype":
+        cmd = ["grype", f"sbom:{sbom_path}", "-o", "json", "--quiet"]
+        fmt, timeout = "grype-json", _scanner_timeout("grype", default=1800)
+    elif scanner_name == "trivy":
+        cmd = ["trivy", "sbom", "--format", "json", "--quiet", sbom_path]
+        fmt, timeout = "trivy-json", _scanner_timeout("trivy")
+    else:
+        return ScannerResult(scanner=scanner_name, format="unknown", report={}, error=f"Not an SBOM scanner: {scanner_name}")
+    try:
+        stdout, stderr, rc = await _run_command(cmd, timeout=timeout)
+    except RuntimeError as exc:
+        return ScannerResult(scanner=scanner_name, format=fmt, report={}, error=str(exc))
+    if rc != 0 and not stdout.strip():
+        return ScannerResult(
+            scanner=scanner_name, format=fmt, report={},
+            error=f"{scanner_name} failed (exit {rc}): {_sanitize_error(stderr)}",
+        )
+    return await _parse_json_output(stdout, scanner_name, fmt)

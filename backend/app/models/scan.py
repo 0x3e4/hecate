@@ -52,6 +52,10 @@ class ScanTargetDocument(BaseModel):
     # Nothing about the scanned code (package names, module paths, found
     # secrets) leaves the network for this target; see docs/sca-scanning.md.
     no_external_lookups: bool = Field(default=False, description="Scan without external lookups")
+    # What the target is (host, kubernetes-node, container, other) and whether the
+    # internet reaches it (internet / internal). None = unknown.
+    kind: str | None = Field(default=None, description="host, kubernetes-node, container or other")
+    exposure: str | None = Field(default=None, description="internet or internal")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_scan_at: datetime | None = None

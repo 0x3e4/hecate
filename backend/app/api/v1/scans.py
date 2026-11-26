@@ -55,6 +55,8 @@ from app.schemas.scan import (
     ScanTargetListResponse,
     ScanTargetResponse,
     ScanTargetUpdateRequest,
+    TargetExposure,
+    TargetKind,
     SubmitScanRequest,
     SubmitScanResponse,
     SupplyChainSummarySchema,
@@ -492,6 +494,9 @@ async def update_target(
         await service.update_target_trufflehog_verification(target_id, body.trufflehog_verification)
     if "no_external_lookups" in sent and body.no_external_lookups is not None:
         await service.update_target_no_external_lookups(target_id, body.no_external_lookups)
+    classification = {field: getattr(body, field) for field in ("kind", "exposure") if field in sent}
+    if classification:
+        await service.target_repo.update_classification(target_id, classification)
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -715,6 +720,8 @@ async def import_sbom(
             target_name=request.target_name,
             target_id=request.target_id,
             check=request.check,
+            kind=request.kind,
+            exposure=request.exposure,
         )
         summary = result.get("summary")
         return SubmitScanResponse(
@@ -737,6 +744,8 @@ async def import_sbom_upload(
     target_name: str | None = Query(default=None, alias="targetName"),
     format: str | None = Query(default=None),
     check: bool = Query(default=False, description="Import as a check: no target, report only, expires"),
+    kind: TargetKind | None = Query(default=None, description="host, kubernetes-node, container or other"),
+    exposure: TargetExposure | None = Query(default=None, description="internet or internal"),
     _auth: None = Depends(require_target_write_sbom_upload),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
@@ -757,6 +766,8 @@ async def import_sbom_upload(
             format=format,
             target_name=target_name,
             check=check,
+            kind=kind,
+            exposure=exposure,
         )
         summary = result.get("summary")
         return SubmitScanResponse(
@@ -1532,6 +1543,8 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         vex_source_status=doc.get("vex_source_status") or None,
         trufflehog_verification=doc.get("trufflehog_verification"),
         no_external_lookups=bool(doc.get("no_external_lookups")),
+        kind=doc.get("kind"),
+        exposure=doc.get("exposure"),
     )
 
 

@@ -76,6 +76,7 @@ nav:
   - SCA Scanning:
       - sca-scanning.md
       - Reading Scan Results: sca/scan-results.md
+      - Hosts, Nodes & Other Systems: sca/hosts.md
       - Attack Chain: sca/attack-chain.md
       - Malware Detection & Feed: sca/malware.md
       - License Compliance: sca/licenses.md

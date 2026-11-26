@@ -55,7 +55,7 @@ from app.core.auth_throttle import (
 )
 from app.core.config import settings
 from app.core.passwords import secret_equals, verify_password
-from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SCAN_SUBMIT
+from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SBOM_IMPORT, SCOPE_SCAN_SUBMIT
 from app.services.api_token_service import get_api_token_service, looks_like_token
 from app.services.scan_service import resolve_sbom_import_target, ScanService, get_scan_service
 
@@ -549,10 +549,29 @@ async def require_target_password_change(
     )
 
 
+async def _authorize_sbom_import_token(
+    request: Request, x_api_key: str, target_id: str | None, service: ScanService
+) -> None:
+    """An ``sbom:import`` token: a new target, a check or an existing SBOM-import target.
+
+    Hosts and Kubernetes nodes push their SBOMs from cron or Ansible with it,
+    so it must not reach further: a repository or image target is refused, and
+    a wrong token fails outright instead of falling through to the password gate.
+    """
+    key = enforce_auth_throttle(request, API_KEY_SECRET)
+    if await _authorize_api_token(request, x_api_key, SCOPE_SBOM_IMPORT, key) is None:
+        record_auth_result(key, False)
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    target = await service.target_repo.get(target_id) if target_id else None
+    if target and target.get("type") != "sbom-import":
+        raise HTTPException(status_code=403, detail="An sbom:import token only writes SBOM-import targets.")
+
+
 async def require_target_write_sbom_import(
     request: Request,
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
     """An SBOM import into an existing target takes that target's password; a new target takes the admin's.
@@ -575,6 +594,9 @@ async def require_target_write_sbom_import(
     if body.get("check") is True:
         # A check writes into no target: an editor or the admin, never a target password.
         target_id = None
+    if x_api_key is not None:
+        await _authorize_sbom_import_token(request, x_api_key, target_id, service)
+        return
     await _authorize_target(
         request,
         target_id,
@@ -597,6 +619,7 @@ async def require_target_write_sbom_upload(
     check: bool = Query(default=False),
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
     x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     service: ScanService = Depends(get_scan_service),
 ) -> None:
     """An SBOM upload into an existing target takes that target's password; a new target takes the admin's.
@@ -615,6 +638,9 @@ async def require_target_write_sbom_upload(
         if not (target_name and target_name.strip()):
             sbom = await _uploaded_sbom(request)
         _, target_id = resolve_sbom_import_target(sbom, format, target_name, None)
+    if x_api_key is not None:
+        await _authorize_sbom_import_token(request, x_api_key, target_id, service)
+        return
     await _authorize_target(
         request,
         target_id,

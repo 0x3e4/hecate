@@ -30,6 +30,7 @@ from app.repositories.scan_sbom_repository import ScanSbomRepository
 from app.repositories.scan_target_repository import ScanTargetRepository
 from app.services.audit_service import AuditService
 from app.services.http.scanner import scanner_client
+from app.services.dependency_scope import purl_type
 from app.services.notification_service import get_notification_service
 from app.services.scan_parser import (
     parse_cyclonedx_sbom,
@@ -49,6 +50,26 @@ from app.services.scan_checks import check_expires_at, is_check_target, new_chec
 from app.services.scan_target_validation import validate_scan_target
 
 log = structlog.get_logger()
+
+# Distribution packages: their versions carry the distribution's backports, so an
+# imported SBOM leaves them to a distro-aware scanner when one answered.
+_OS_PURL_TYPES = frozenset({"deb", "rpm", "apk", "alpm"})
+
+def drop_os_package_matches(findings: list[Any], components: list[Any]) -> list[Any]:
+    """Hecate's own matches without those for distribution packages (deb, rpm, apk, alpm).
+
+    A Debian / RHEL / Alpine package carries the distribution's version
+    (``nginx 1.22.1-9+deb12u2``); matched by name against upstream ranges it
+    reports what the distribution already fixed by backport. Used only when a
+    distro-aware scanner answered for the same SBOM.
+    """
+    os_packages = {
+        (getattr(c, "name", None), getattr(c, "version", None))
+        for c in components
+        if purl_type(getattr(c, "purl", None)) in _OS_PURL_TYPES
+    }
+    return [f for f in findings if (f.package_name, f.package_version) not in os_packages]
+
 
 # Module-level dict to track running scan tasks across ScanService instances
 _running_scan_tasks: dict[str, asyncio.Task] = {}
@@ -686,8 +707,14 @@ class ScanService:
         target_name: str | None = None,
         target_id: str | None = None,
         check: bool = False,
+        kind: str | None = None,
+        exposure: str | None = None,
     ) -> dict[str, Any]:
         """Import an external SBOM file. Creates target + scan + components + matched findings.
+
+        ``kind`` / ``exposure`` describe the system (a host, a Kubernetes node,
+        internet-facing or not). Given, they are stored on the target; omitted,
+        the target keeps what it has, so a cron job need not repeat them.
 
         As a check no target is created: the name only labels the report, and
         the scan expires like every check (scan_checks.py).
@@ -720,8 +747,14 @@ class ScanService:
                 name=target_name,
                 scanners=["sbom-import"],
                 auto_scan=False,
+                kind=kind,
+                exposure=exposure,
             )
             await self.target_repo.upsert(target_doc)
+        elif existing_target and (kind or exposure):
+            await self.target_repo.update_classification(
+                target_id, {k: v for k, v in (("kind", kind), ("exposure", exposure)) if v},
+            )
 
         # Create scan record
         started_at = datetime.now(tz=UTC)
@@ -750,15 +783,22 @@ class ScanService:
         if components:
             await self.sbom_repo.bulk_insert(components)
 
-        # Match vulnerabilities for imported components
+        # Match vulnerabilities for imported components: the sidecar's distro-aware
+        # scanners first, then Hecate's own database for what they don't own.
         all_findings: list[Any] = []
+        scanner_findings, scanner_names = await self._scan_imported_sbom(sbom_data, scan_id_val, target_id)
         try:
             findings = await self._match_vulnerabilities_for_components(scan_id_val, target_id, components)
+            if scanner_names:
+                findings = drop_os_package_matches(findings, components)
+            findings = [*scanner_findings, *findings]
             if findings:
                 await self.finding_repo.bulk_insert(findings)
                 all_findings = findings
         except Exception:
             log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
+        if scanner_names:
+            await self.scan_repo.update_fields(scan_id_val, {"scanners": ["sbom-import", *scanner_names]})
         no_external_lookups = False
         if not check:
             target_doc = await self.target_repo.get(target_id) or {}
@@ -939,6 +979,45 @@ class ScanService:
                         ),
                     ))
         return findings
+
+    async def _scan_imported_sbom(
+        self, sbom_data: dict[str, Any], scan_id: str, target_id: str
+    ) -> tuple[list[ScanFindingDocument], list[str]]:
+        """Findings of the sidecar's SBOM scanners for an imported SBOM, and which of them answered.
+
+        Fail-soft: without a sidecar, or when it fails, the import keeps Hecate's
+        own matches. Runs inside the import request, so the client waits for it.
+        """
+        wanted = [s.strip() for s in (settings.sca_sbom_import_scanners or "").split(",") if s.strip()]
+        wanted = [s for s in dict.fromkeys(wanted) if s in ("grype", "trivy")]
+        if not wanted or not settings.sca_enabled:
+            return [], []
+        try:
+            async with scanner_client(timeout=self._resolve_sidecar_http_timeout(wanted)) as client:
+                response = await client.post(
+                    f"{settings.sca_scanner_url}/scan-sbom", json={"sbom": sbom_data, "scanners": wanted},
+                )
+                response.raise_for_status()
+                results = response.json().get("results") or []
+        except Exception as exc:  # noqa: BLE001 - the import works without it
+            log.warning("scan_service.sbom_import_scan_failed", scan_id=scan_id, error=str(exc) or type(exc).__name__)
+            return [], []
+        findings: list[ScanFindingDocument] = []
+        answered: list[str] = []
+        for result in results:
+            name, report = result.get("scanner"), result.get("report")
+            if result.get("error") or not isinstance(report, dict):
+                log.warning("scan_service.sbom_import_scanner_error", scanner=name, error=result.get("error"))
+                continue
+            if result.get("format") == "grype-json":
+                found, _ = parse_grype_json(report, scan_id, target_id)
+            elif result.get("format") == "trivy-json":
+                found, _, _ = parse_trivy_json(report, scan_id, target_id)
+            else:
+                continue
+            findings.extend(found)
+            answered.append(name)
+        return findings, answered
 
     async def _match_vulnerabilities_for_components(
         self,
@@ -2619,6 +2698,39 @@ class ScanService:
         return base
 
     async def affected_scan_targets_for_vuln(
+        self,
+        vuln_ids: list[str],
+        *,
+        impacted_products: list[dict[str, Any]] | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """The affected targets, each with its kind and exposure, internet-facing first.
+
+        "Where does the nginx with the RCE run, and is it exposed": the rows of
+        :meth:`_affected_scan_target_rows`, with what the target says it is.
+        """
+        rows = await self._affected_scan_target_rows(vuln_ids, impacted_products=impacted_products, limit=limit)
+        return await self._with_target_classification(rows)
+
+    async def _with_target_classification(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Add ``kind`` / ``exposure`` from the target documents; internet-facing rows first (stable)."""
+        target_ids = list({row["targetId"] for row in rows if row.get("targetId")})
+        classes: dict[str, dict[str, Any]] = {}
+        if target_ids:
+            try:
+                cursor = self.target_repo.collection.find({"_id": {"$in": target_ids}}, {"kind": 1, "exposure": 1})
+                async for doc in cursor:
+                    classes[doc["_id"]] = doc
+            except Exception as exc:  # noqa: BLE001 - the rows are still worth showing
+                log.warning("scan_service.target_classification_failed", error=str(exc))
+        for row in rows:
+            doc = classes.get(row.get("targetId"), {})
+            row["kind"] = doc.get("kind")
+            row["exposure"] = doc.get("exposure")
+        rows.sort(key=lambda row: row.get("exposure") != "internet")
+        return rows
+
+    async def _affected_scan_target_rows(
         self,
         vuln_ids: list[str],
         *,
