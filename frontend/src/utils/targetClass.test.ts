@@ -7,14 +7,14 @@ const en = (english: string) => english;
 describe("targetClassChips", () => {
   it("puts internet-facing first, then the kind", () => {
     expect(targetClassChips("host", "internet", en)).toEqual([
-      { key: "exposure", label: "Internet-facing", exposed: true },
-      { key: "kind", label: "Host", exposed: false },
+      { key: "exposure", label: "Internet", title: "Internet-facing", exposed: true },
+      { key: "kind", label: "Host", title: "Host", exposed: false },
     ]);
   });
 
   it("adds nothing for internal or unknown exposure", () => {
     expect(targetClassChips("kubernetes-node", "internal", en)).toEqual([
-      { key: "kind", label: "Kubernetes node", exposed: false },
+      { key: "kind", label: "Kubernetes node", title: "Kubernetes node", exposed: false },
     ]);
     expect(targetClassChips(null, null, en)).toEqual([]);
   });

@@ -2307,13 +2307,9 @@ const TargetRow = ({ target, colSpan, groupSuggestions = [], onDelete, onRescan,
                 <LuPencil aria-hidden="true" />
               </IconButton>
             )}
+            <TargetClassChips kind={target.kind} exposure={target.exposure} />
             {isRunning && <ScanningBadge status={target.runningScanStatus} />}
           </div>
-          {(target.kind || target.exposure === "internet") && (
-            <div className="scans-target-class">
-              <TargetClassChips kind={target.kind} exposure={target.exposure} />
-            </div>
-          )}
           <div className="scans-sub scans-target-meta">
             <span className="scans-target-type">
               {target.type === "container_image"

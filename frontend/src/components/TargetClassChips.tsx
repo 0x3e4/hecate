@@ -11,7 +11,7 @@ export const TargetClassChips = ({ kind, exposure }: { kind?: string | null; exp
   return (
     <span className="target-class-chips">
       {chips.map((chip) => (
-        <span key={chip.key} className={chip.exposed ? "chip target-class-exposed" : "chip"}>
+        <span key={chip.key} className={chip.exposed ? "chip target-class-exposed" : "chip"} title={chip.title}>
           {chip.exposed && <LuGlobe aria-hidden="true" />}
           {chip.label}
         </span>

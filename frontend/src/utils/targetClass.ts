@@ -31,9 +31,12 @@ export const targetClassChips = (
   kind: string | null | undefined,
   exposure: string | null | undefined,
   t: Translate,
-): { key: string; label: string; exposed: boolean }[] => {
-  const chips: { key: string; label: string; exposed: boolean }[] = [];
-  if (exposure === "internet") chips.push({ key: "exposure", label: exposureLabel("internet", t), exposed: true });
-  if (kind) chips.push({ key: "kind", label: kindLabel(kind, t), exposed: false });
+): { key: string; label: string; title: string; exposed: boolean }[] => {
+  const chips: { key: string; label: string; title: string; exposed: boolean }[] = [];
+  // Short on the chip (it sits next to the name, with a globe), in full as its title.
+  if (exposure === "internet") {
+    chips.push({ key: "exposure", label: "Internet", title: exposureLabel("internet", t), exposed: true });
+  }
+  if (kind) chips.push({ key: "kind", label: kindLabel(kind, t), title: kindLabel(kind, t), exposed: false });
   return chips;
 };
