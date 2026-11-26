@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveCveScanId, scanChip } from "./CoverageChips";
+import { isInStack, resolveCveScanId, scanChip } from "./CoverageChips";
 
 describe("resolveCveScanId", () => {
   const cveScan = { "CVE-1": "scan-finding" };
@@ -26,5 +26,17 @@ describe("scanChip", () => {
   it("labels the chip with the target name and links to the scan", () => {
     expect(scanChip("s1", { s1: "web" }, "SCA scan")).toEqual({ label: "web", href: "/scans/s1", scan: true, title: "web" });
     expect(scanChip("s2", {}, "SCA scan").label).toBe("SCA scan");
+  });
+});
+
+describe("isInStack", () => {
+  it("counts an inventory hit, a scan finding or a version-checked SBOM hit", () => {
+    expect(isInStack({ vulnId: "CVE-1", inventoryMatchIds: ["inv-1"] }, {})).toBe(true);
+    expect(isInStack({ vulnId: "CVE-2" }, { "CVE-2": "scan-1" })).toBe(true);
+    expect(isInStack({ vulnId: "CVE-3", sbomScanId: "scan-2" }, {})).toBe(true);
+  });
+
+  it("leaves out a CVE that only names a product you run", () => {
+    expect(isInStack({ vulnId: "CVE-4", productSlugs: ["lodash"], inventoryMatchIds: [], sbomScanId: null }, {})).toBe(false);
   });
 });

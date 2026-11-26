@@ -24,6 +24,9 @@
 
 /* Day navigation */
 .dashboard-date-nav { display: flex; align-items: center; gap: var(--space-2xs); }
+.dashboard-date-input { width: auto; min-height: var(--control-height); padding-inline: var(--space-xs); font-size: var(--text-sm); font-variant-numeric: tabular-nums; color-scheme: dark; }
+.dashboard-scope-change { padding: 0; border: 0; background: none; color: var(--color-ink-2); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.dashboard-scope-change:hover { color: var(--color-ink); }
 
 /* Headline figures */
 .dashboard-stats { margin-bottom: var(--space-lg); }
@@ -167,7 +170,10 @@ details[open] > summary .dashboard-disclosure-icon { transform: rotate(90deg); }
 @media (max-width: 40rem) {
   .dashboard .page-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-xs) var(--space-sm); }
   .dashboard .page-header-actions { display: contents; }
-  .dashboard-date-nav { grid-column: 2; grid-row: 1; margin-right: calc(-1 * var(--space-xs)); }
+  /* With the date field the day controls need their own row under the title. */
+  .dashboard .page-header { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-date-nav { grid-column: 1 / -1; }
+  .dashboard-date-input { flex: 1 1 auto; min-width: 0; }
   .dashboard-search { grid-column: 1 / -1; flex: 0 1 auto; }
   .dashboard .dashboard-search-field .dashboard-search-input { min-height: 44px; padding-right: var(--space-2xl); }
   .dashboard-search-icon { left: var(--space-sm); }

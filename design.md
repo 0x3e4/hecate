@@ -29,6 +29,7 @@ The spacing scale, the type scale, the easings and the durations are the scaffol
 - Severity (`--sev-*`): severity, and only severity. A tool, a source or a link never borrows these colours.
 - `--color-success` and `--color-error`: an outcome (scan finished, request failed).
 - `--color-info`: state that is neither of the above. Everything else is neutral.
+- `--flag-*`: the two flags beside the language names in the preferences panel, as inline SVG ([LanguageFlag](frontend/src/components/LanguageFlag.tsx)), never an emoji. Nothing else uses them.
 - A severity is never colour alone: the word or its letter stays next to it.
 
 ## Type

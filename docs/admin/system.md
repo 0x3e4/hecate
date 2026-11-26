@@ -37,8 +37,9 @@ linked in the last column.
 The General tab collects the personal and instance-wide preferences that shape how the rest of Hecate
 behaves, plus the health checks and data exports you reach for occasionally.
 
-**Language and timezone** are not on this page: they belong to each person's browser, so everyone
-sets them under **Language** at the bottom of the sidebar, without admin rights. Hecate ships in
+**Language and timezone** are not on this page: they are personal, so everyone sets them under
+**Preferences** at the bottom of the sidebar, without admin rights (see
+[Preferences & Profile](../guide/preferences.md); signed in, they are kept on the account). Hecate ships in
 English and German; the interface language defaults to your browser language. The timezone controls
 how *every* timestamp is rendered — it defaults to your browser's timezone, and you can type or pick
 any IANA zone (for example `Europe/Vienna`). **Use browser default** clears an explicit choice.

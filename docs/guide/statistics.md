@@ -96,7 +96,7 @@ vulnerability can name several of them, those don't add up to 100 %.
 
 !!! note "Days follow your timezone"
     The publication trend and historical overview count vulnerabilities per day, week (starting
-    Monday) and month in the timezone you set under **Language** in the sidebar, and label them that way, so
+    Monday) and month in the timezone you set under **Preferences** in the sidebar, and label them that way, so
     a day on the chart is the same day as on the dashboard's **Today** card. An unknown timezone falls
     back to UTC.
 

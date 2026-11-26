@@ -46,7 +46,7 @@ The checkboxes above the filters choose which kinds are shown, each with its num
 
 Search covers products, vendors, CVE IDs and advisory titles. You can also narrow the list to one source, one severity or **Only my stack**, and pick the last 7, 30 or 90 days.
 
-**Only my stack** narrows each topic to the CVEs you actually use: an inventory match, a scan finding, or a package in a scan's SBOM at a version the CVE affects. The topic's title, severity and CVE table then come from those CVEs only, so a topic that merged YOOtheme Pro and Brotli shows up as Brotli when only Brotli is in your stack, and a note says how many of its other CVEs are hidden. Topics with none of your CVEs disappear; the advisories behind a topic stay listed in full.
+**Only my stack** narrows each topic to the CVEs you actually use: an inventory match, a scan finding, or a package in a scan's SBOM at a version the CVE affects. The topic's title, severity and CVE table then come from those CVEs only, so a topic that merged YOOtheme Pro and Brotli shows up as Brotli when only Brotli is in your stack, and a note says how many of its other CVEs are hidden. Topics with none of your CVEs disappear; the advisories behind a topic stay listed in full. The page remembers the choice in this browser; the dashboard has its own setting under [Preferences](preferences.md).
 
 Feeds only offer their latest entries, so history builds up from the day Hecate starts reading them. A 90-day view fills in over time.
 

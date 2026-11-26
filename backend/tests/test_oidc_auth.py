@@ -832,3 +832,64 @@ def test_signing_in_again_replaces_the_old_session(client: TestClient, idp: Fake
     sessions = [doc for doc in repo.docs.values() if doc.get("kind") == "session"]
     assert len(sessions) == 1
     assert client.cookies.get("hecate_session") != first
+
+
+# --- Personal preferences -------------------------------------------------------
+
+
+class FakePreferencesRepo:
+    def __init__(self) -> None:
+        self.docs: dict[str, dict[str, Any]] = {}
+
+    async def get(self, key: str) -> dict[str, Any] | None:
+        return self.docs.get(key)
+
+    async def save(self, key: str, preferences: dict[str, Any]) -> Any:
+        from datetime import UTC, datetime
+
+        now = datetime(2026, 11, 26, 9, 0, tzinfo=UTC)
+        self.docs[key] = {"_id": key, "preferences": preferences, "updated_at": now}
+        return now
+
+
+@pytest.fixture
+def prefs_repo(monkeypatch: pytest.MonkeyPatch) -> FakePreferencesRepo:
+    repo = FakePreferencesRepo()
+
+    async def get_repo() -> FakePreferencesRepo:
+        return repo
+
+    monkeypatch.setattr(auth_api, "get_user_preferences_repository", get_repo)
+    return repo
+
+
+def test_preferences_need_a_sign_in(client: TestClient, prefs_repo: FakePreferencesRepo) -> None:
+    response = client.get("/api/v1/auth/me/preferences")
+    assert response.status_code == 401
+    assert response.headers["X-Auth-Required"] == "login"
+    assert client.put("/api/v1/auth/me/preferences", json={}, headers=CSRF).status_code == 401
+
+
+def test_preferences_are_kept_per_account(
+    client: TestClient, idp: FakeIdp, audit: FakeAudit, prefs_repo: FakePreferencesRepo
+) -> None:
+    _login_as(client, idp, ["hecate-viewers-none"])
+    assert client.get("/api/v1/auth/me/preferences").json() == {
+        "language": None, "timezone": None, "dashboardOnlyMyStack": False, "updatedAt": None,
+    }
+    body = {"language": "de", "timezone": "Europe/Vienna", "dashboardOnlyMyStack": True}
+    assert client.put("/api/v1/auth/me/preferences", json=body).status_code == 403  # no CSRF header
+    saved = client.put("/api/v1/auth/me/preferences", json=body, headers=CSRF)
+    assert saved.status_code == 200, saved.text
+    assert client.get("/api/v1/auth/me/preferences").json() == {**body, "updatedAt": "2026-11-26T09:00:00Z"}
+    (key,) = prefs_repo.docs
+    assert key == f"{ISSUER}|{idp.claims['sub']}"
+    written = [e for e in _api_events(audit) if e["metadata"]["route"] == "/auth/me/preferences"]
+    assert [e["metadata"]["outcome"] for e in written] == ["denied", "success"]
+
+
+def test_preferences_refuse_unknown_values(client: TestClient, idp: FakeIdp, prefs_repo: FakePreferencesRepo) -> None:
+    _login_as(client, idp, ["hecate-viewers-none"])
+    for body in ({"timezone": "Mars/Olympus"}, {"language": "fr"}, {"theme": "light"}):
+        assert client.put("/api/v1/auth/me/preferences", json=body, headers=CSRF).status_code == 422
+    assert prefs_repo.docs == {}

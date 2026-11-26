@@ -417,6 +417,7 @@ class Settings(BaseSettings):
     auth_session_idle_minutes: int = 120
     auth_cookie_name: str = "hecate_session"
     mongo_auth_sessions_collection: str = "auth_sessions"
+    mongo_user_preferences_collection: str = "user_preferences"
 
     trusted_proxy_ips_raw: str | None = Field(default=None, alias="trusted_proxy_ips")
     trusted_proxy_forward_header: str = "x-forwarded-for"

@@ -37,6 +37,11 @@ export const resolveCveScanId = (
   scanCveScan: Record<string, string>,
 ): string | undefined => scanCveScan[cve.vulnId] || cve.sbomScanId || undefined;
 
+// "Only my stack": an inventory hit, a scan finding or a version-checked SBOM hit.
+// Never a bare name match.
+export const isInStack = (cve: CoverageCve, scanCveScan: Record<string, string>): boolean =>
+  cveMatchesInventory(cve) || Boolean(resolveCveScanId(cve, scanCveScan));
+
 // An "in scans" chip labelled with the covering scan's target name (truncated),
 // linking to that scan's detail page. Falls back to a generic label.
 export const scanChip = (

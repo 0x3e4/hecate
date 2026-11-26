@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { LuLayoutDashboard, LuRadioTower,
-  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart, LuLogIn, LuLogOut, LuUser, LuLanguages } from "react-icons/lu";
+  LuShieldAlert, LuWrench, LuBrain, LuLogs, LuFileChartColumnIncreasing, LuHistory, LuSettings, LuChevronLeft, LuChevronRight, LuScanLine, LuX, LuBookOpen, LuBox, LuHeart, LuLogIn, LuUser, LuSlidersHorizontal } from "react-icons/lu";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { version } from "../../package.json";
@@ -11,7 +11,8 @@ import { useSSE } from "../hooks/useSSE";
 import { useServerConfig } from "../server-config/context";
 import { api } from "../api/client";
 import { useAuth } from "../auth/context";
-import { PreferencesDialog } from "../components/PreferencesDialog";
+import { roleLabel } from "../auth/roleLabel";
+import { usePreferences } from "../preferences/context";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -94,7 +95,7 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
   const currentParamsKey = useMemo(() => normalizeSearchParams(location.search), [location.search]);
   const { jobs, snapshotSeq } = useSSE();
   const auth = useAuth();
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const { triggerProps } = usePreferences();
   const { aiEnabled, scaEnabled, supportPageEnabled, docsUrl } = useServerConfig();
   const navSections = useMemo(
     () => buildNavSections(aiEnabled, scaEnabled, supportPageEnabled, docsUrl),
@@ -326,28 +327,25 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
         <div className="sidebar-user">
           {auth.user ? (
             <>
-              <span className="sidebar-user-who" title={auth.user.email ?? auth.user.name}>
+              {/* The whole row opens the account panel: preferences and signing out. */}
+              <button
+                type="button"
+                className="sidebar-user-who"
+                {...triggerProps()}
+                title={auth.user.email ?? auth.user.name}
+                aria-label={t(`Account and preferences of ${auth.user.name}`, `Konto und Einstellungen von ${auth.user.name}`)}
+              >
                 <LuUser aria-hidden="true" className="sidebar-user-icon" />
                 <span className="sidebar-user-text">
                   <span className="sidebar-user-name">{auth.user.name}</span>
                   <span className="sidebar-user-role">{roleLabel(auth.user.role, t)}</span>
                 </span>
-              </span>
-              <button
-                type="button"
-                className="sidebar-user-action"
-                onClick={() => void auth.signOut()}
-                title={t("Sign out", "Abmelden")}
-                aria-label={t("Sign out", "Abmelden")}
-              >
-                <LuLogOut aria-hidden="true" />
-                <span className="sidebar-user-action-label">{t("Sign out", "Abmelden")}</span>
               </button>
             </>
           ) : (
             <button
               type="button"
-              className="sidebar-user-action"
+              className="sidebar-user-action sidebar-user-signin"
               onClick={() => auth.signIn()}
               title={t(`Sign in with ${auth.providerLabel}`, `Mit ${auth.providerLabel} anmelden`)}
               aria-label={t("Sign in", "Anmelden")}
@@ -360,19 +358,21 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
       )}
       <div className="sidebar-footer">
         <div className="sidebar-version">{collapsed ? `v${version}` : `Hecate v${version}`}</div>
+        {/* Signed in, the account row above opens the same panel. */}
+        {!auth.user && (
         <button
           type="button"
           className="sidebar-prefs-button"
-          onClick={() => setPrefsOpen(true)}
-          title={t("Language and time", "Sprache und Zeit")}
-          aria-label={t("Language and time", "Sprache und Zeit")}
-          aria-haspopup="dialog"
+          {...triggerProps()}
+          title={t("Preferences: language, time, dashboard", "Einstellungen: Sprache, Zeit, Dashboard")}
+          aria-label={t("Preferences", "Einstellungen")}
         >
           <span aria-hidden="true" className="sidebar-collapse-icon">
-            <LuLanguages />
+            <LuSlidersHorizontal />
           </span>
-          <span className="sidebar-prefs-label">{t("Language", "Sprache")}</span>
+          <span className="sidebar-prefs-label">{t("Preferences", "Einstellungen")}</span>
         </button>
+        )}
         <button
           type="button"
           className="sidebar-collapse-button"
@@ -386,22 +386,8 @@ export const Sidebar = ({ collapsed, onToggleCollapse, mobileMenuOpen, onMobileM
           <span className="sidebar-collapse-label">{collapsed ? t("Expand", "Ausklappen") : t("Collapse", "Einklappen")}</span>
         </button>
       </div>
-      {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
     </aside>
   );
-};
-
-const roleLabel = (role: string, t: (english: string, german: string) => string): string => {
-  switch (role) {
-    case "admin":
-      return t("Admin", "Admin");
-    case "editor":
-      return t("Editor", "Editor");
-    case "viewer":
-      return t("Viewer", "Leser");
-    default:
-      return role;
-  }
 };
 
 const normalizeSearchParams = (raw: string): string => {

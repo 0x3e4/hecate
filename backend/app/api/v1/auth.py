@@ -3,7 +3,8 @@
 ``GET /auth/login`` starts the Authorization Code + PKCE flow, ``GET
 /auth/callback`` finishes it and sets the session cookie, ``GET /auth/me``
 says who is signed in, ``POST /auth/logout`` ends the session. All four stay
-reachable when login is required. See docs/admin/authentication.md.
+reachable when login is required. ``GET`` / ``PUT /auth/me/preferences`` keep
+the signed-in user's display preferences. See docs/admin/authentication.md.
 """
 from __future__ import annotations
 
@@ -18,8 +19,17 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from app.core.auth_context import CSRF_HEADER, get_auth_context, public_base_url
+from app.core.auth_context import (
+    AUTH_REQUIRED_HEADER,
+    CSRF_HEADER,
+    SessionUser,
+    current_user,
+    get_auth_context,
+    public_base_url,
+)
 from app.core.config import settings
+from app.repositories.user_preferences_repository import get_user_preferences_repository, user_key
+from app.schemas.user_preferences import UserPreferences, UserPreferencesResponse
 from app.services.audit_service import get_audit_service
 from app.services.auth_session_service import get_auth_session_service
 from app.services.oidc_client import (
@@ -115,6 +125,40 @@ async def me(request: Request) -> AuthMeResponse:
         auth_required=settings.auth_login_required,
         provider_label=settings.oidc_provider_label,
     )
+
+
+async def _signed_in(request: Request) -> SessionUser:
+    user = await current_user(request)
+    if user is None:
+        raise HTTPException(
+            status_code=401, detail="Sign in to keep preferences.", headers={AUTH_REQUIRED_HEADER: "login"}
+        )
+    return user
+
+
+@router.get("/me/preferences")
+async def get_preferences(request: Request) -> UserPreferencesResponse:
+    """The signed-in user's preferences; defaults (and no ``updatedAt``) when none were saved yet."""
+    user = await _signed_in(request)
+    document = await (await get_user_preferences_repository()).get(user_key(user.issuer, user.sub))
+    if not document:
+        return UserPreferencesResponse()
+    try:
+        stored = UserPreferences.model_validate(document.get("preferences") or {})
+    except ValueError:
+        # A value an older release accepted: the defaults instead of a failing page.
+        stored = UserPreferences()
+    return UserPreferencesResponse(**stored.model_dump(), updated_at=document.get("updated_at"))
+
+
+@router.put("/me/preferences")
+async def put_preferences(request: Request, body: UserPreferences) -> UserPreferencesResponse:
+    """Replace the signed-in user's preferences. Recorded in the audit log like every write."""
+    user = await _signed_in(request)
+    updated_at = await (await get_user_preferences_repository()).save(
+        user_key(user.issuer, user.sub), body.model_dump(by_alias=True)
+    )
+    return UserPreferencesResponse(**body.model_dump(), updated_at=updated_at)
 
 
 @router.get(

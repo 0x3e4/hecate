@@ -47,7 +47,7 @@ way to get oriented:
 5. **System** (admins) — notifications, data sync, advisory feeds, license policies and VEX rules,
    API tokens and per-target write passwords.
 
-Language and display timezone are set per browser under **Language** at the bottom of the sidebar.
+Language and display timezone are set under **Preferences** at the bottom of the sidebar (see [Preferences & Profile](guide/preferences.md)).
 
 ## Next steps
 

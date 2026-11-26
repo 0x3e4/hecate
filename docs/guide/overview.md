@@ -124,5 +124,5 @@ sending you back to the dashboard, and a page that crashes shows **Reload page**
 **Copy details** for a bug report while the sidebar keeps working.
 
 **Language, timezone and date format follow your settings.** Hecate speaks English and German, and
-every timestamp is rendered in the timezone you pick. Set both under **Language** at the bottom of
-the sidebar; they are stored in your browser.
+every timestamp is rendered in the timezone you pick. Set both under **Preferences** at the bottom of
+the sidebar; they are stored in your browser, and on your account when you are [signed in](preferences.md).

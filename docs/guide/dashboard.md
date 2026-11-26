@@ -159,10 +159,28 @@ if your last scan predates it. Both tags are **clickable**: the "in inventory" t
 the named target) that covers the item.
 
 The day boundary is **timezone-aware**: "today" begins at local midnight in the timezone you set
-under **System → General**, not at UTC midnight. This matters near midnight, where a UTC-based view
-would briefly show the wrong day. Arrows beside the header let you step back to previous days
-(`‹` / `›`), and a **Today** button returns you to the current day. If a day has no newly published
+under [Preferences](preferences.md), not at UTC midnight. This matters near midnight, where a UTC-based view
+would briefly show the wrong day. Arrows beside the header step a day back or forward (`‹` / `›`),
+the date field between them jumps to any day (your browser's own calendar, keyboard included; a
+future date lands on today), and a **Today** button returns you to the current day. On a past day
+the title reads *Dashboard*; the date field names the day. If a day has no newly published
 CVEs, the page shows only the date navigator and *Needs attention*.
+
+### Only my stack
+
+**Dashboard: only my stack**, under [Preferences](preferences.md), narrows the whole page
+to the CVEs that hit your inventory or your scans: an inventory match, a finding in a latest scan, or a package in a latest scan's SBOM at a
+version the CVE affects. A CVE that only shares a product's name with something you run doesn't count.
+With it on, a line under the title says so, and **Change** opens the preferences right there:
+
+- the figures count only those CVEs (*In your stack* replaces the day's total, and the severity
+  figures are no longer links, since the list they open covers the whole day);
+- *Needs attention*, *CVEs by severity*, *Vendors* and *Products* keep only those CVEs and the vendors
+  and products they belong to;
+- *Latest findings* is hidden, because it lists the newest records of the whole database.
+
+Like every preference it is kept in this browser, and on your account when you are signed in.
+**Only my stack** on the [Advisories](cert.md) page is a separate filter of that page.
 
 !!! note
     The day view counts vulnerabilities by their **publication** date, so a CVE that existed

@@ -14,7 +14,7 @@ import {
   type FeedSource,
 } from "../api/cert";
 import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
-import { ChipLinks, cveMatchesInventory, uniqueChips, useCveChips, type CoverageChip } from "../components/CoverageChips";
+import { ChipLinks, isInStack, uniqueChips, useCveChips, type CoverageChip } from "../components/CoverageChips";
 import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -54,7 +54,7 @@ export const CertPage = () => {
   const [source, setSource] = useState("");
   const [kinds, setKinds] = usePersistentState<FeedKind[]>("hecate.advisories.kinds", DEFAULT_KINDS);
   const [severity, setSeverity] = useState("");
-  const [stackOnly, setStackOnly] = useState(false);
+  const [stackOnly, setStackOnly] = usePersistentState("hecate.advisories.stackOnly", false);
   const [coverage, setCoverage] = useState<ScanCoverage>({ cveScan: {}, scanTargets: {} });
 
   useEffect(() => {
@@ -121,10 +121,7 @@ export const CertPage = () => {
 
   // In your stack: an inventory hit, a scan finding, or an SBOM package at a version the CVE
   // affects (sbomScanId, checked by the backend; a bare name match never counts).
-  const cveInStack = useCallback(
-    (cve: CertCve) => cveMatchesInventory(cve) || Boolean(coverage.cveScan[cve.vulnId]) || Boolean(cve.sbomScanId),
-    [coverage.cveScan],
-  );
+  const cveInStack = useCallback((cve: CertCve) => isInStack(cve, coverage.cveScan), [coverage.cveScan]);
   const inStack = useCallback((topic: CertTopic) => topic.cves.some(cveInStack), [cveInStack]);
   // With "only my stack" a topic shows just the CVEs you use: its title, severity and table follow.
   const stackTopics = useMemo(() => (stackOnly ? narrowToStack(topics, cveInStack) : topics), [stackOnly, topics, cveInStack]);

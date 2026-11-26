@@ -73,6 +73,7 @@ nav:
       - Environment Inventory: guide/inventory.md
       - AI Analysis & Attack Paths: guide/ai-analysis.md
       - Statistics & Changelog: guide/statistics.md
+      - Preferences & Profile: guide/preferences.md
   - SCA Scanning:
       - sca-scanning.md
       - Reading Scan Results: sca/scan-results.md

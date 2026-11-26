@@ -94,14 +94,18 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .sidebar-recent-remove:hover { background: var(--overlay-3); color: var(--color-ink); }
 /* Signed-in user (OIDC): name, role, sign-out; or a sign-in button when login is optional */
 .sidebar-user { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs); border-top: var(--rule-hair) solid var(--color-rule); }
-.sidebar-user-who { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; padding: 0 var(--space-xs); }
+/* Both rows take the full width and hover like a navigation link, so the whole row is the target. */
+.sidebar-user-who { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-xs); min-width: 0; min-height: var(--control-height); padding: var(--space-3xs) var(--space-xs); border: 0; border-radius: var(--radius-control); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
+.sidebar-user-who:hover { background: var(--overlay-2); }
 .sidebar-user-icon { flex-shrink: 0; color: var(--color-muted); }
 .sidebar-user-text { display: flex; flex-direction: column; min-width: 0; }
 .sidebar-user-name { overflow: hidden; color: var(--color-ink); font-size: var(--text-sm); white-space: nowrap; text-overflow: ellipsis; }
 .sidebar-user-role { color: var(--color-muted); font-size: var(--text-xs); }
 .sidebar-user-action { display: inline-flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; min-height: var(--control-height); padding: 0 var(--space-xs); border: 0; border-radius: var(--radius-control); background: none; color: var(--color-muted); font-size: var(--text-sm); cursor: pointer; transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
 .sidebar-user-action:hover { background: var(--overlay-2); color: var(--color-ink); }
-.sidebar-user-who + .sidebar-user-action .sidebar-user-action-label { display: none; }
+.sidebar-user-signin { flex: 1 1 auto; justify-content: flex-start; }
+/* The sidebar's column gap would sit between this row and the footer's rule: 4px above the row, 12px below. */
+.sidebar-user + .sidebar-footer { margin-top: calc(-1 * var(--space-xs)); }
 .app-sidebar.collapsed .sidebar-user { flex-direction: column; padding-inline: 0; }
 .app-sidebar.collapsed .sidebar-user-text, .app-sidebar.collapsed .sidebar-user-action-label { display: none; }
 /* Pinned under the scrolling list: a rule marks the seam, so a clipped link reads as more to scroll */
@@ -187,11 +191,6 @@ table td { font-variant-numeric: tabular-nums; }
 .dialog-danger, .dialog-danger:hover { border-color: var(--color-error); color: var(--color-error); }
 .dialog-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: var(--color-muted); cursor: pointer; }
 .dialog-close:hover { background: var(--overlay-2); color: var(--color-ink); }
-.preferences-dialog { width: min(440px, 90vw); }
-.preferences-field { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2xs); margin-bottom: var(--space-md); }
-.preferences-field label { color: var(--color-ink-2); font-size: var(--text-sm); }
-.preferences-input { width: 100%; font-size: var(--text-sm); }
-.preferences-note { margin: 0; font-size: var(--text-xs); }
 @media (max-width: 40rem) { .dialog { min-width: 0; width: 100%; max-width: 100%; padding: var(--space-md); } .dialog-actions { flex-direction: column-reverse; } table th, table td { padding: var(--space-2xs) var(--space-xs); } }
 
 /* Loading, one family for every screen (design.md, "Loading").

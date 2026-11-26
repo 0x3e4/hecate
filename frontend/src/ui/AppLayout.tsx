@@ -1,3 +1,4 @@
+import { PreferencesProvider } from "../preferences/context";
 import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
@@ -30,6 +31,7 @@ export const AppLayout = () => {
     <SavedSearchesProvider>
       <WriteAuthProvider>
       <ToastProvider>
+      <PreferencesProvider>
       <div className="app-shell">
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -55,6 +57,7 @@ export const AppLayout = () => {
         )}
         <ScrollToTop />
       </div>
+      </PreferencesProvider>
       </ToastProvider>
       </WriteAuthProvider>
     </SavedSearchesProvider>

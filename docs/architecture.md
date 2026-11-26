@@ -297,7 +297,7 @@ overdue without aborting them.
 
 ### Persistence
 
-#### MongoDB (26 collections)
+#### MongoDB (32 collections)
 
 | Collection | Description |
 | --- | --- |
@@ -325,6 +325,11 @@ overdue without aborting them.
 | `license_policies` | License policies (allowed, denied, review-required) |
 | `api_tokens` | Scoped API tokens, stored as a SHA-256 hash and a display prefix |
 | `app_settings` | Runtime-editable settings that override env defaults |
+| `auth_sessions` | Sign-in sessions (OIDC), stored by the SHA-256 of the cookie, removed by a TTL index |
+| `package_releases` | Cached release dates, latest versions and npm publishers for the supply-chain signals |
+| `vex_rules` | Automatic VEX rules (conditions, action, priority) |
+| `exploit_signals` | Nuclei templates and VulnCheck KEV entries per CVE |
+| `user_preferences` | Personal preferences of signed-in users (language, timezone, dashboard view), keyed by issuer and subject |
 | `environment_inventory_history` | Append-only change log of inventory items, kept after an item is deleted. |
 | `environment_inventory` | User-declared product / version inventory with deployment / environment / instance count |
 | `malware_intel` | Dynamic malware-intel entries (reserved for future threat-intel pipelines) |
@@ -609,8 +614,8 @@ and Flexbox throughout, with the sidebar collapsing to an overlay on mobile.
 Hecate ships German and English through a small home-grown i18n built on the Context API and the
 `t(english, german)` pattern, with browser-language detection and `localStorage` persistence — no
 external framework. Dates render as `DD.MM.YYYY HH:mm` (de-DE) or `MM/DD/YYYY` (en-US). The timezone is
-a per-browser setting under **Language** in the sidebar (persisted under `hecate.ui_timezone`, defaulting to the browser
-timezone), and `formatDate` reads the current value per call.
+a personal setting under **Preferences** in the sidebar (persisted under `hecate.ui_timezone`, defaulting to the browser
+timezone, and with OIDC also on the account through `/api/v1/auth/me/preferences`), and `formatDate` reads the current value per call.
 
 ### Code splitting
 

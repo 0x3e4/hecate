@@ -3,6 +3,8 @@ import "../screens/dashboard.css";
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { usePreferences } from "../preferences/context";
+import { dayOffsetFor } from "../utils/dayOffset";
 import { LuCheck, LuChevronLeft, LuChevronRight, LuCopy, LuSearch, LuTriangleAlert, LuX } from "react-icons/lu";
 
 import { VulnerabilityPreview, type VulnerabilityRefreshStatus } from "../types";
@@ -22,6 +24,7 @@ import { fetchScanCoverage, type ScanCoverage } from "../api/scans";
 import {
   ChipLinks,
   cveMatchesInventory,
+  isInStack,
   resolveCveScanId,
   scanChip,
   uniqueChips,
@@ -344,6 +347,8 @@ export const DashboardPage = () => {
   }, []);
 
   const attentionIds = useMemo(() => new Set((attention?.items ?? []).map((item) => item.vulnId)), [attention]);
+  // "Only my stack" (a personal preference): every panel keeps the CVEs that hit your inventory or scans.
+  const { dashboardOnlyMyStack: onlyMyStack, triggerProps } = usePreferences();
   const handlePickSuggestion = useCallback(
     (vulnId: string) => {
       setQueryInput("");
@@ -361,6 +366,7 @@ export const DashboardPage = () => {
         scanCveScan={scanCoverage.cveScan}
         scanTargets={scanCoverage.scanTargets}
         refreshKey={sseRefreshKey}
+        onlyMyStack={onlyMyStack}
         attention={
           attention && attention.items.length > 0 ? (
             <AttentionPanel
@@ -368,9 +374,11 @@ export const DashboardPage = () => {
               data={attention}
               scanCveScan={scanCoverage.cveScan}
               scanTargets={scanCoverage.scanTargets}
+              onlyMyStack={onlyMyStack}
             />
           ) : null
         }
+        preferencesTrigger={triggerProps()}
         headerActions={
           <SingleVulnQuery
             t={t}
@@ -390,7 +398,8 @@ export const DashboardPage = () => {
           />
         }
       />
-      <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />
+      {/* The latest records of the whole database: nothing to narrow to a stack. */}
+      {!onlyMyStack && <VulnerabilityList vulnerabilities={vulnerabilities} loading={loading} t={t} />}
 
       <Toast toast={toast} onDismiss={dismiss} />
     </div>
@@ -744,6 +753,8 @@ const TodayStats = ({
   refreshKey,
   attention,
   headerActions,
+  preferencesTrigger,
+  onlyMyStack,
 }: {
   t: TranslateFn;
   locale: string;
@@ -752,6 +763,8 @@ const TodayStats = ({
   refreshKey: number;
   attention: ReactNode;
   headerActions: ReactNode;
+  preferencesTrigger: ReturnType<ReturnType<typeof usePreferences>["triggerProps"]>;
+  onlyMyStack: boolean;
 }) => {
   const [data, setData] = useState<TodaySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -788,14 +801,6 @@ const TodayStats = ({
     // widgets pick up freshly-published (and possibly inventory-relevant) CVEs.
   }, [dayOffset, refreshKey]);
 
-  const formatDisplayDate = (offset: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - offset);
-    return d.toLocaleDateString(locale, {
-      weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone: getCurrentTimezone(),
-    });
-  };
-
   const dateNav = (
     <div className="dashboard-date-nav">
       {!isToday && (
@@ -811,6 +816,18 @@ const TodayStats = ({
       <IconButton label={t("Previous day", "Vorheriger Tag")} onClick={() => setDayOffset((o) => o + 1)}>
         <LuChevronLeft aria-hidden="true" />
       </IconButton>
+      {/* The browser's own date picker: keyboard, locale format and calendar come with it. */}
+      <input
+        type="date"
+        className="dashboard-date-input"
+        aria-label={t("Day", "Tag")}
+        value={selectedDate}
+        max={getDateForOffset(0)}
+        onChange={(event) => {
+          const offset = dayOffsetFor(getDateForOffset(0), event.target.value);
+          if (offset !== null) setDayOffset(offset);
+        }}
+      />
       <IconButton
         label={t("Next day", "Nächster Tag")}
         onClick={() => setDayOffset((o) => Math.max(0, o - 1))}
@@ -823,7 +840,18 @@ const TodayStats = ({
 
   const header = (
     <PageHeader
-      title={isToday ? t("Today", "Heute") : formatDisplayDate(dayOffset)}
+      // A past day is named by the date field; the title stays the page's name.
+      title={isToday ? t("Today", "Heute") : t("Dashboard", "Dashboard")}
+      description={
+        onlyMyStack ? (
+          <>
+            {t("Only CVEs in your inventory or scans.", "Nur CVEs aus Ihrem Inventar oder Ihren Scans.")}{" "}
+            <button type="button" className="dashboard-scope-change" {...preferencesTrigger}>
+              {t("Change", "Ändern")}
+            </button>
+          </>
+        ) : undefined
+      }
       actions={
         <>
           {dateNav}
@@ -934,7 +962,14 @@ const TodayStats = ({
   const scanCveCount = cveToScan.size;
   const hasMatchedCves = invCveCount > 0 || scanCveCount > 0;
 
-  const severityCounts = new Map(data.severities.map((s) => [s.key, s.doc_count]));
+  // With "only my stack" the day's figures and lists count only CVEs that hit
+  // your inventory or scans; the severity tally then comes from those rows.
+  const shownCves = onlyMyStack ? data.cves.filter((c) => isInStack(c, scanCveScan)) : data.cves;
+  const severityCounts = onlyMyStack
+    ? shownCves.reduce((counts, c) => counts.set(c.severity, (counts.get(c.severity) ?? 0) + 1), new Map<string, number>())
+    : new Map(data.severities.map((s) => [s.key, s.doc_count]));
+  const shownVendors = onlyMyStack ? sortedVendors.filter((v) => vendorChips(v).length > 0) : sortedVendors;
+  const shownProducts = onlyMyStack ? sortedProducts.filter((p) => productChips(p).length > 0) : sortedProducts;
 
   const productsBySlug = new Map(data.products.map((p) => [p.slug, p.name]));
   const vendorsBySlug = new Map(data.vendors.map((v) => [v.slug, v.name]));
@@ -964,7 +999,11 @@ const TodayStats = ({
               value={scanCveCount.toLocaleString(locale)}
             />
           )}
-          <Stat label={t("Vulnerabilities", "Schwachstellen")} value={data.total.toLocaleString(locale)} />
+          {onlyMyStack ? (
+            <Stat label={t("In your stack", "In Ihrem Stack")} value={shownCves.length.toLocaleString(locale)} />
+          ) : (
+            <Stat label={t("Vulnerabilities", "Schwachstellen")} value={data.total.toLocaleString(locale)} />
+          )}
           {SEVERITY_ORDER.map((severity) => {
             const count = severityCounts.get(severity);
             if (!count) return null;
@@ -974,9 +1013,13 @@ const TodayStats = ({
                 label={severityLabel(severity, t)}
                 tone={severityLevel(severity)}
                 value={
-                  <Link to={severityDql(severity, todayDate)} className="dashboard-stat-link">
-                    {count.toLocaleString(locale)}
-                  </Link>
+                  onlyMyStack ? (
+                    count.toLocaleString(locale)
+                  ) : (
+                    <Link to={severityDql(severity, todayDate)} className="dashboard-stat-link">
+                      {count.toLocaleString(locale)}
+                    </Link>
+                  )
                 }
               />
             );
@@ -1003,26 +1046,35 @@ const TodayStats = ({
         )}
 
         <Section title={t("CVEs by severity", "CVEs nach Schweregrad")}>
+          {onlyMyStack && shownCves.length === 0 ? (
+            <EmptyState
+              title={t(
+                "Nothing published this day touches your inventory or scans.",
+                "Nichts an diesem Tag Veröffentlichte betrifft Ihr Inventar oder Ihre Scans.",
+              )}
+            />
+          ) : (
           <TodayCveList
             t={t}
-            cves={data.cves}
+            cves={shownCves}
             scanCveScan={scanCveScan}
             scanTargets={scanTargets}
             invLabel={invLabel}
             scanFallback={scanFallback}
             describeCve={describeCve}
           />
+          )}
         </Section>
 
         <div className="dashboard-support">
           <TodayMiniCard title={t("Vendors", "Hersteller")}>
-            {sortedVendors.length === 0 ? (
+            {shownVendors.length === 0 ? (
               <EmptyState title={t("No vendor data.", "Keine Vendor-Daten.")} />
             ) : (
               <TodayListPreview
                 t={t}
-                matched={sortedVendors.filter((v) => vendorChips(v).length > 0).length}
-                rows={sortedVendors.map((v) => (
+                matched={shownVendors.filter((v) => vendorChips(v).length > 0).length}
+                rows={shownVendors.map((v) => (
                   <TodayListItem
                     key={v.slug}
                     to={vendorDql(v.slug)}
@@ -1036,13 +1088,13 @@ const TodayStats = ({
           </TodayMiniCard>
 
           <TodayMiniCard title={t("Products", "Produkte")}>
-            {sortedProducts.length === 0 ? (
+            {shownProducts.length === 0 ? (
               <EmptyState title={t("No product data.", "Keine Produkt-Daten.")} />
             ) : (
               <TodayListPreview
                 t={t}
-                matched={sortedProducts.filter((p) => productChips(p).length > 0).length}
-                rows={sortedProducts.map((p) => (
+                matched={shownProducts.filter((p) => productChips(p).length > 0).length}
+                rows={shownProducts.map((p) => (
                   <TodayListItem
                     key={`${p.vendorSlug}:${p.slug}`}
                     to={productDql(p.vendorSlug, p.slug)}
@@ -1280,11 +1332,13 @@ const AttentionPanel = ({
   data,
   scanCveScan,
   scanTargets,
+  onlyMyStack,
 }: {
   t: TranslateFn;
   data: AttentionResponse;
   scanCveScan: Record<string, string>;
   scanTargets: Record<string, string>;
+  onlyMyStack: boolean;
 }) => {
   const chipsByCve = useCveChips(
     data.items,
@@ -1298,7 +1352,10 @@ const AttentionPanel = ({
     (item: AttentionItem) => (cveMatchesInventory(item) || scanCveScan[item.vulnId] ? 2 : chipsByCve.has(item.vulnId) ? 1 : 0),
     [chipsByCve, scanCveScan],
   );
-  const rows = useMemo(() => attentionRows(data.items, stackRank), [data.items, stackRank]);
+  const rows = useMemo(() => {
+    const ranked = attentionRows(data.items, stackRank);
+    return onlyMyStack ? ranked.filter((item) => isInStack(item, scanCveScan)) : ranked;
+  }, [data.items, stackRank, onlyMyStack, scanCveScan]);
   const quiet = useMemo(() => {
     const findings = quietFindings(data.items, (item) => Boolean(scanCveScan[item.vulnId]));
     return { total: findings.length, groups: groupCves(findings, (item) => productKey(item)) };

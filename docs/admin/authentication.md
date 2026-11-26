@@ -34,6 +34,10 @@ The backend is the OIDC client; the browser never sees a token.
    browser there to end the IdP session as well (RP-initiated logout). Signing in or out also clears the
    system, target and AI passwords this browser saved, so the next person's writes do not carry them.
 
+A signed-in user's [preferences](../guide/preferences.md) (language, timezone, dashboard view) are
+kept per account in `user_preferences`, keyed by issuer and subject; clicking your name in the
+sidebar opens them together with **Sign out**.
+
 Sessions end after `AUTH_SESSION_LIFETIME_HOURS` (default 12) at the latest, or after
 `AUTH_SESSION_IDLE_MINUTES` (default 120) without a request. A TTL index removes them from MongoDB.
 
