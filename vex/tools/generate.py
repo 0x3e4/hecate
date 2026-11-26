@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import sys
 import tomllib
 import uuid
@@ -194,6 +195,10 @@ def merged_findings(name: str) -> list[Finding]:
     by_key: dict[tuple[str, str, str, str], Finding] = {}
     alias_to_id: dict[str, str] = {}
     raw = load_trivy(WORK / name / "trivy.json") + load_grype(WORK / name / "grype.json")
+    # Hecate's scanner runs Grype on a Syft SBOM of the image; that path names some
+    # matches differently (GHSA / GO ids) and finds a few more, so both are covered.
+    if (WORK / name / "grype-sbom.json").exists():
+        raw += load_grype(WORK / name / "grype-sbom.json")
     # Grype names GHSA findings by their CVE; let Trivy's GHSA ids join them.
     for f in raw:
         canonical = _canonical(f.aliases | {f.vuln_id})
@@ -634,7 +639,7 @@ def status_section(name: str, rows: list[tuple[Finding, Statement]], digest: str
     title = "Repository (source)" if name == "source" else f"hecate-{name}"
     lines = [f"## {title}", ""]
     if digest:
-        lines += [f"Scanned: `{digest}`", ""]
+        lines += [f"Scanned: `{digest}` on {_now()[:10]}", ""]
     if not rows:
         return "\n".join(lines + ["No findings from Trivy or Grype.", ""])
     ids_by_status: dict[str, set[str]] = defaultdict(set)
@@ -748,9 +753,33 @@ def main() -> int:
         f"Last generated: {_now()[:10]}",
         "",
     ]
-    if set(args.names) == set(NAMES):
-        (VEX_DIR / "STATUS.md").write_text("\n".join(header + sections), encoding="utf-8", newline="\n")
+    status_path = VEX_DIR / "STATUS.md"
+    if set(args.names) == set(NAMES) or not status_path.exists():
+        text = "\n".join(header + sections)
+    else:
+        # Only some images were regenerated: replace their sections, keep the others as they are.
+        text = splice_sections(status_path.read_text(encoding="utf-8"), dict(zip(args.names, sections)))
+    status_path.write_text(text, encoding="utf-8", newline="\n")
     return 0
+
+
+def splice_sections(status: str, new: dict[str, str]) -> str:
+    """STATUS.md with the sections of ``new`` (name -> section text) replaced, in the usual order."""
+    head, *chunks = re.split(r"(?m)^(?=## )", status)
+    current: dict[str, str] = {}
+    for chunk in chunks:
+        title = chunk.splitlines()[0][3:].strip()
+        name = "source" if title.startswith("Repository") else title.removeprefix("hecate-")
+        current[name] = chunk
+    # Sections from a run before the per-section date carry the old header's date.
+    old = re.search(r"(?m)^Last generated: (\d{4}-\d{2}-\d{2})$", head)
+    for name, chunk in current.items():
+        if old:
+            current[name] = re.sub(r"(?m)^(Scanned: `[^`]*`)$", rf"\1 on {old.group(1)}", chunk)
+    for name, section in new.items():
+        current[name] = section if section.endswith("\n") else section + "\n"
+    head = re.sub(r"(?m)^Last generated: .*$", "Last generated: per image, see the date after Scanned", head)
+    return head + "".join(current[name].rstrip("\n") + "\n\n" for name in NAMES if name in current).rstrip("\n") + "\n"
 
 
 if __name__ == "__main__":

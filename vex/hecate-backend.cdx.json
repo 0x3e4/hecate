@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:c0514e70-1fde-5299-bc9d-6ec2a0100f2c",
-  "version": 2,
+  "serialNumber": "urn:uuid:5b7b1583-591d-5e0c-a172-1f1f014729e7",
+  "version": 4,
   "metadata": {
-    "timestamp": "2026-11-05T18:02:10Z",
+    "timestamp": "2026-11-26T21:42:44Z",
     "tools": {
       "components": [
         {
@@ -70,6 +70,13 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:deb/debian/dpkg@1.22.22",
+      "name": "dpkg",
+      "version": "1.22.22",
+      "purl": "pkg:deb/debian/dpkg@1.22.22"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:deb/debian/gcc-14-base@14.2.0-19",
       "name": "gcc-14-base",
       "version": "14.2.0-19",
@@ -112,17 +119,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4",
+      "bom-ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5",
       "name": "libc-bin",
-      "version": "2.41-12+deb13u4",
-      "purl": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+      "version": "2.41-12+deb13u5",
+      "purl": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/libc6@2.41-12+deb13u4",
+      "bom-ref": "pkg:deb/debian/libc6@2.41-12+deb13u5",
       "name": "libc6",
-      "version": "2.41-12+deb13u4",
-      "purl": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+      "version": "2.41-12+deb13u5",
+      "purl": "pkg:deb/debian/libc6@2.41-12+deb13u5"
     },
     {
       "type": "library",
@@ -182,6 +189,13 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:deb/debian/libseccomp2@2.6.0-2",
+      "name": "libseccomp2",
+      "version": "2.6.0-2",
+      "purl": "pkg:deb/debian/libseccomp2@2.6.0-2"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:deb/debian/libsmartcols1@2.41.5-0+deb13u1",
       "name": "libsmartcols1",
       "version": "2.41.5-0+deb13u1",
@@ -193,6 +207,13 @@
       "name": "libsqlite3-0",
       "version": "3.46.1-7+deb13u2",
       "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7+deb13u2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1",
+      "name": "libssl3t64",
+      "version": "3.5.9-1~deb13u1",
+      "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
     },
     {
       "type": "library",
@@ -231,10 +252,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/login.defs@4.17.4-2",
+      "bom-ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1",
       "name": "login.defs",
-      "version": "1:4.17.4-2",
-      "purl": "pkg:deb/debian/login.defs@4.17.4-2"
+      "version": "1:4.17.4-2+deb13u1",
+      "purl": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
     },
     {
       "type": "library",
@@ -266,10 +287,24 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/passwd@4.17.4-2",
+      "bom-ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1",
+      "name": "openssl-provider-legacy",
+      "version": "3.5.9-1~deb13u1",
+      "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1",
+      "name": "openssl",
+      "version": "3.5.9-1~deb13u1",
+      "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1",
       "name": "passwd",
-      "version": "1:4.17.4-2",
-      "purl": "pkg:deb/debian/passwd@4.17.4-2"
+      "version": "1:4.17.4-2+deb13u1",
+      "purl": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
     },
     {
       "type": "library",
@@ -301,17 +336,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1",
-      "name": "zlib1g",
-      "version": "1:1.3.dfsg+really1.3.1-1+b1",
-      "purl": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:generic/python@3.14.10",
       "name": "python",
       "version": "3.14.10",
       "purl": "pkg:generic/python@3.14.10"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/dnspython@2.9.1",
+      "name": "dnspython",
+      "version": "2.9.1",
+      "purl": "pkg:pypi/dnspython@2.9.1"
     }
   ],
   "vulnerabilities": [
@@ -337,10 +372,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+          "ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
         }
       ]
     },
@@ -352,10 +387,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -424,10 +459,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -439,10 +474,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -454,10 +489,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -469,10 +504,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -484,10 +519,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -499,10 +534,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
@@ -612,10 +647,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+          "ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
         }
       ]
     },
@@ -624,7 +659,7 @@
       "analysis": {
         "state": "not_affected",
         "justification": "code_not_reachable",
-        "detail": "The flaw is in a stdlib API the services do not call: html.parser, ftplib, imaplib, poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, or writing multi-line values with configparser."
+        "detail": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
       },
       "affects": [
         {
@@ -702,6 +737,21 @@
       ]
     },
     {
+      "id": "CVE-2026-100290",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
       "id": "CVE-2026-102010",
       "analysis": {
         "state": "in_triage",
@@ -746,12 +796,67 @@
     {
       "id": "CVE-2026-103995",
       "analysis": {
-        "state": "in_triage",
-        "detail": "Not analysed yet. Fixed upstream in 3.16.0."
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in http.client's chunked-body parsing. The backend makes every outbound request with httpx, whose HTTP/1.1 parser is h11 (backend/app/services/http/), and does not import http.client or urllib.request."
       },
       "affects": [
         {
           "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107493",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107494",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107496",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
         }
       ]
     },
@@ -810,11 +915,83 @@
       ]
     },
     {
+      "id": "CVE-2026-115456",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the backend (uvicorn) process loads or runs libgcc-s1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-115559",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-115791",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in the command-line interfaces of tarfile, zipfile and gzip (python -m tarfile ...). Neither image runs them; the services use the modules as libraries."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-115819",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
       "id": "CVE-2026-116566",
       "analysis": {
         "state": "not_affected",
         "justification": "requires_environment",
-        "detail": "Host names that Python itself resolves come from configuration (feed and API base URLs, notification and AI endpoints) set by the administrator. User-supplied scan targets are resolved by git, skopeo and the Go scanners, not by Python's getaddrinfo, after validate_scan_target has checked them."
+        "detail": "A truncated host name cannot redirect a request. Most names Python resolves come from configuration (API base URLs, notification and AI endpoints). The URLs users enter (VEX sources by a target's owner, advisory feeds and server lists by an admin) are fetched with httpx, which refuses a URL containing a null byte or any other control character before it connects; the public-host check (backend/app/services/http/public_host.py) may look up the shortened name, but no request follows. User-supplied scan targets are resolved by git, skopeo and the Go scanners after validate_scan_target has checked them, and the sidecar's own lookups go to fixed registry hosts."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-119170",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The regression only weakens hashlib's algorithm checks when OpenSSL runs in FIPS mode. The images' OpenSSL is not configured for FIPS mode. Fixed in CPython 3.14.11, which the images pick up on rebuild."
       },
       "affects": [
         {
@@ -953,6 +1130,172 @@
       ]
     },
     {
+      "id": "CVE-2026-121481",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-121482",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-121757",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-121758",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-124024",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-124249",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "protected_by_mitigating_control",
+        "detail": "A server can delete cookies of other domains from a shared http.cookiejar. The services' httpx clients keep such a jar, but nothing in it carries authority: every outbound request authenticates with headers (API keys, bearer tokens, http.extraHeader for git), never with cookies, so a deleted cookie changes nothing."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-124709",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-125709",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "gcc-14 is in use: the backend (uvicorn) process loads or runs libgcc-s1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+        },
+        {
+          "ref": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-126765",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+        },
+        {
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-128089",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in dnspython's zone-file text parser for WKS records. dnspython is only in the backend as pymongo's resolver for mongodb+srv:// connection strings (SRV and TXT lookups in wire format); nothing parses zone-file text."
+      },
+      "affects": [
+        {
+          "ref": "pkg:pypi/dnspython@2.9.1"
+        }
+      ],
+      "references": [
+        {
+          "id": "GHSA-vvf4-9x63-8xvv",
+          "source": {
+            "name": "alias"
+          }
+        }
+      ]
+    },
+    {
       "id": "CVE-2026-15059",
       "analysis": {
         "state": "not_affected",
@@ -982,6 +1325,19 @@
       ]
     },
     {
+      "id": "CVE-2026-16052",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "requires_environment",
+        "detail": "The flaw needs attacker-controlled cookie attribute values in http.cookies.Morsel. The backend sets two cookies (the sign-in and session cookies in backend/app/api/v1/auth.py) with fixed attributes and server-generated values; the sidecar sets none."
+      },
+      "affects": [
+        {
+          "ref": "pkg:generic/python@3.14.10"
+        }
+      ]
+    },
+    {
       "id": "CVE-2026-16742",
       "analysis": {
         "state": "not_affected",
@@ -994,21 +1350,6 @@
         },
         {
           "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-18374",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
         }
       ]
     },
@@ -1039,44 +1380,15 @@
       ]
     },
     {
-      "id": "CVE-2026-19499",
+      "id": "CVE-2026-19552",
       "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-19542",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-27171",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "zlib is in use: the backend (uvicorn) process loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+          "ref": "pkg:generic/python@3.14.10"
         }
       ]
     },
@@ -1117,18 +1429,33 @@
       ]
     },
     {
-      "id": "CVE-2026-40228",
+      "id": "CVE-2026-35190",
       "analysis": {
-        "state": "not_affected",
-        "justification": "code_not_reachable",
-        "detail": "libsystemd0 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json). libudev1 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-40558",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "perl-base is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
         }
       ]
     },
@@ -1180,21 +1507,6 @@
       "affects": [
         {
           "ref": "pkg:deb/debian/diffutils@3.10-4"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-5435",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
         }
       ]
     },
@@ -1297,51 +1609,6 @@
       ]
     },
     {
-      "id": "CVE-2026-6238",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-6368",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-6791",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-        }
-      ]
-    },
-    {
       "id": "CVE-2026-76642",
       "analysis": {
         "state": "in_triage",
@@ -1374,33 +1641,6 @@
         },
         {
           "ref": "pkg:deb/debian/util-linux@2.41.5-0+deb13u1"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-76844",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "zlib is in use: the backend (uvicorn) process loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-77117",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
         }
       ]
     },
@@ -1513,21 +1753,6 @@
       ]
     },
     {
-      "id": "CVE-2026-80489",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-        },
-        {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-        }
-      ]
-    },
-    {
       "id": "CVE-2026-82560",
       "analysis": {
         "state": "not_affected",
@@ -1548,67 +1773,95 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
         }
       ]
     },
     {
-      "id": "CVE-2026-85091",
+      "id": "CVE-2026-84785",
       "analysis": {
         "state": "in_triage",
-        "detail": "zlib is in use: the backend (uvicorn) process loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
         }
       ]
     },
     {
-      "id": "CVE-2026-8674",
+      "id": "CVE-2026-84786",
       "analysis": {
         "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
         }
       ]
     },
     {
-      "id": "CVE-2026-86805",
+      "id": "CVE-2026-88822",
       "analysis": {
         "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
         }
       ]
     },
     {
-      "id": "CVE-2026-89092",
+      "id": "CVE-2026-88823",
       "analysis": {
         "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-91094",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "dpkg is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/dpkg@1.22.22"
         }
       ]
     },
@@ -1644,32 +1897,147 @@
       ]
     },
     {
-      "id": "CVE-2026-95818",
+      "id": "CVE-2026-95690",
       "analysis": {
         "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
         }
       ]
     },
     {
-      "id": "CVE-2026-97399",
+      "id": "CVE-2026-95691",
       "analysis": {
         "state": "in_triage",
-        "detail": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-95692",
+      "analysis": {
+        "state": "in_triage",
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+        },
+        {
+          "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-402D17",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-414660",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-43231F",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-AE2C66",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-ED49F3",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-F88C7E",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
+        }
+      ]
+    },
+    {
+      "id": "TEMP-0000000-FCA4C0",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libseccomp2@2.6.0-2"
         }
       ]
     },
@@ -1708,10 +2076,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+          "ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
         }
       ]
     },

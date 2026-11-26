@@ -102,11 +102,15 @@ After an image changes (new base image, bumped tool, new dependency):
 
 ```sh
 vex/tools/collect.sh backend      # or frontend, docs, scanner, source; a local build as 2nd arg
-python vex/tools/generate.py      # all five, plus STATUS.md
+python vex/tools/generate.py      # all five, plus STATUS.md; or name some: generate.py backend scanner
 git diff vex/
 ```
 
-`collect.sh` needs only Docker: Trivy, Grype and govulncheck run from pinned images. Review the
+`collect.sh` needs only Docker: Trivy, Grype, Syft and govulncheck run from pinned images, the
+same versions `scanner/Dockerfile` ships, so the documents cover what Hecate itself reports. Grype
+runs twice for an image: on the image and on a Syft SBOM of it, the way Hecate's scanner does.
+Regenerating only some images replaces their sections in `STATUS.md` and keeps the others; each
+section says when it was scanned. Review the
 diff before you commit it. A new `under_investigation` row needs an assessment or an accepted
 open item. When the code a hand-written statement relies on changes, check that statement
 again. `generate.py` raises the document version only when a statement changes.

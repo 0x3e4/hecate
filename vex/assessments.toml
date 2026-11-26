@@ -100,21 +100,42 @@ vulnerabilities = [
   "CVE-2026-4360", "CVE-2026-114583",
 ]
 status = "not_affected"
-justification = "vulnerable_code_not_in_execute_path"
-impact = "The flaw is in the tarfile module. Neither service extracts tar archives: the sidecar unpacks uploaded sources with zipfile and its own path checks (extract_source_archive in scanner/app/scanners.py), the backend reads OSV exports with zipfile."
-reviewed = 2026-11-05
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "The flaw is in the tarfile module. Neither service extracts tar archives to disk, and no archive a user supplies reaches tarfile: the sidecar unpacks uploaded sources with zipfile and its own path checks (extract_source_archive in scanner/app/scanners.py), the backend reads OSV exports with zipfile. The backend's only tarfile use reads package/versions.json in memory from @img/sharp-libvips release tarballs (backend/app/services/bundled_libraries.py), downloaded from registry.npmjs.org and checked against the registry's sha512 integrity before tarfile opens them; only the owner of the @img npm scope can publish those."
+reviewed = 2026-11-26
 
 [[statement]]
 images = ["backend", "scanner"]
 packages = ["python"]
 vulnerabilities = [
-  "CVE-2026-15308", "CVE-2026-8328", "CVE-2025-15366", "CVE-2025-15367", "CVE-2026-12345",
+  "CVE-2026-8328", "CVE-2025-15366", "CVE-2025-15367", "CVE-2026-12345",
   "CVE-2026-15806", "CVE-2026-9669", "CVE-2026-18503", "CVE-2026-0864",
+  "CVE-2026-115559", "CVE-2026-19552",
 ]
 status = "not_affected"
 justification = "vulnerable_code_not_in_execute_path"
-impact = "The flaw is in a stdlib API the services do not call: html.parser, ftplib, imaplib, poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, or writing multi-line values with configparser."
-reviewed = 2026-11-05
+impact = "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
+reviewed = 2026-11-26
+
+# html.parser: the backend strips HTML from advisory-feed items with it
+# (plain_text in backend/app/services/ingestion/cert_feed_client.py).
+
+[[statement]]
+images = ["scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-15308"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in html.parser. No code in the sidecar imports it."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["backend"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-15308"]
+status = "affected"
+action = "The backend turns the description of advisory-feed items into plain text with html.parser (plain_text in backend/app/services/ingestion/cert_feed_client.py), and community feeds carry text anyone can post. A crafted item can cost the feed sync a lot of CPU (denial of service, no code execution). Feeds are added by admins only. Fixed with the CPython release that carries the fix, which the image picks up on rebuild."
+reviewed = 2026-11-26
 
 [[statement]]
 images = ["backend", "scanner"]
@@ -174,8 +195,73 @@ packages = ["python"]
 vulnerabilities = ["CVE-2026-116566"]
 status = "not_affected"
 justification = "vulnerable_code_cannot_be_controlled_by_adversary"
-impact = "Host names that Python itself resolves come from configuration (feed and API base URLs, notification and AI endpoints) set by the administrator. User-supplied scan targets are resolved by git, skopeo and the Go scanners, not by Python's getaddrinfo, after validate_scan_target has checked them."
-reviewed = 2026-11-05
+impact = "A truncated host name cannot redirect a request. Most names Python resolves come from configuration (API base URLs, notification and AI endpoints). The URLs users enter (VEX sources by a target's owner, advisory feeds and server lists by an admin) are fetched with httpx, which refuses a URL containing a null byte or any other control character before it connects; the public-host check (backend/app/services/http/public_host.py) may look up the shortened name, but no request follows. User-supplied scan targets are resolved by git, skopeo and the Go scanners after validate_scan_target has checked them, and the sidecar's own lookups go to fixed registry hosts."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-115791"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in the command-line interfaces of tarfile, zipfile and gzip (python -m tarfile ...). Neither image runs them; the services use the modules as libraries."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-119170"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The regression only weakens hashlib's algorithm checks when OpenSSL runs in FIPS mode. The images' OpenSSL is not configured for FIPS mode. Fixed in CPython 3.14.11, which the images pick up on rebuild."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["backend"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-103995"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in http.client's chunked-body parsing. The backend makes every outbound request with httpx, whose HTTP/1.1 parser is h11 (backend/app/services/http/), and does not import http.client or urllib.request."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-103995"]
+status = "not_affected"
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "The sidecar's http.client users are urllib.request calls to fixed hosts over verified TLS: pypi.org's JSON API when pinning requirements files (_get_latest_pypi_version in scanner/app/scanners.py) and HEAD requests to the package registries for typosquatting checks (scanner/app/malware_detector/typosquatting.py). A misparsed body could at most garble one version lookup."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-124249"]
+status = "not_affected"
+justification = "inline_mitigations_already_exist"
+impact = "A server can delete cookies of other domains from a shared http.cookiejar. The services' httpx clients keep such a jar, but nothing in it carries authority: every outbound request authenticates with headers (API keys, bearer tokens, http.extraHeader for git), never with cookies, so a deleted cookie changes nothing."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["backend", "scanner"]
+packages = ["python"]
+vulnerabilities = ["CVE-2026-16052"]
+status = "not_affected"
+justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+impact = "The flaw needs attacker-controlled cookie attribute values in http.cookies.Morsel. The backend sets two cookies (the sign-in and session cookies in backend/app/api/v1/auth.py) with fixed attributes and server-generated values; the sidecar sets none."
+reviewed = 2026-11-26
+
+# ------------------------------------------------------------------ backend: Python packages
+
+[[statement]]
+images = ["backend"]
+packages = ["dnspython"]
+vulnerabilities = ["CVE-2026-128089"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in dnspython's zone-file text parser for WKS records. dnspython is only in the backend as pymongo's resolver for mongodb+srv:// connection strings (SRV and TXT lookups in wire format); nothing parses zone-file text."
+reviewed = 2026-11-26
 
 # ------------------------------------------------------------------ scanner: Semgrep venv, DevSkim
 
@@ -202,6 +288,14 @@ status = "not_affected"
 justification = "vulnerable_code_not_in_execute_path"
 impact = "SharpCompress is only used when DevSkim extracts archives (--crawl-archives). The sidecar runs `devskim analyze` without that option (scanner/app/scanners.py), so DevSkim never extracts an archive."
 reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["wcmatch"]
+vulnerabilities = ["CVE-2026-132276"]
+status = "affected"
+action = "wcmatch is in the scanner as a dependency of Semgrep, which matches every file path of the scanned tree against its ignore and include globs. A repository can name files so that one comparison backtracks for a long time (CPU denial of service, no code execution). Semgrep runs as its own process under SEMGREP_TIMEOUT_SECONDS (scanner/app/scanners.py), so a hostile tree costs at most that scan's Semgrep result. Fixed in wcmatch 11.2, which arrives when Semgrep allows it."
+reviewed = 2026-11-26
 
 # ------------------------------------------------------------------ frontend, docs: busybox
 
@@ -264,3 +358,30 @@ vulnerabilities = ["GO-2026-5932"]
 status = "under_investigation"
 notes = "GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library."
 reviewed = 2026-11-05
+
+[[statement]]
+images = ["scanner"]
+packages = ["stdlib"]
+vulnerabilities = ["CVE-2026-97054", "GO-2026-6859"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The race is in net/http's HTTP/1 server (MaxBytesReader setting Connection: close). The Go tools in the sidecar run as command-line clients (trivy image / fs, grype, syft; scanner/app/scanners.py); none of them is started as a server, so no Go HTTP server handles a request."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["scanner"]
+packages = ["go.opentelemetry.io/otel"]
+vulnerabilities = ["CVE-2026-128086", "GO-2026-6975"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The cost is in parsing an incoming W3C baggage header (baggage.Parse, propagation.Baggage.Extract). The Go tools in the sidecar are command-line clients that receive no requests, so no baggage header reaches them."
+reviewed = 2026-11-26
+
+[[statement]]
+images = ["scanner"]
+packages = ["go.opentelemetry.io/otel/sdk", "go.opentelemetry.io/otel/trace"]
+vulnerabilities = ["CVE-2026-128085", "GO-2026-6974"]
+status = "not_affected"
+justification = "vulnerable_code_not_in_execute_path"
+impact = "The flaw is in the attribute-length truncation of recorded spans and log records. No OpenTelemetry SDK is set up in the sidecar (no OTEL_* exporter in its environment, Go telemetry off), so the tools' tracers are no-ops and record no attributes."
+reviewed = 2026-11-26

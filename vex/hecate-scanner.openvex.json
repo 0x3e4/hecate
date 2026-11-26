@@ -3,8 +3,8 @@
   "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-scanner.openvex.json",
   "author": "Hecate maintainers",
   "role": "Document Creator",
-  "timestamp": "2026-11-05T18:19:17Z",
-  "version": 6,
+  "timestamp": "2026-11-26T21:57:57Z",
+  "version": 10,
   "tooling": "vex/tools/generate.py",
   "statements": [
     {
@@ -70,10 +70,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -339,10 +339,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -359,16 +359,16 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u2"
             }
           ]
         }
@@ -385,10 +385,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -405,10 +405,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -425,10 +425,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -445,10 +445,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -465,10 +465,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -688,16 +688,16 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u2"
             }
           ]
         }
@@ -714,16 +714,16 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u2"
             }
           ]
         }
@@ -875,7 +875,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "The flaw is in a stdlib API the services do not call: html.parser, ftplib, imaplib, poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, or writing multi-line values with configparser."
+      "impact_statement": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
     },
     {
       "vulnerability": {
@@ -1116,6 +1116,26 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-100290"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-102010"
       },
       "products": [
@@ -1185,8 +1205,9 @@
           ]
         }
       ],
-      "status": "under_investigation",
-      "status_notes": "Not analysed yet. Fixed upstream in 3.16.0."
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "The sidecar's http.client users are urllib.request calls to fixed hosts over verified TLS: pypi.org's JSON API when pinning requirements files (_get_latest_pypi_version in scanner/app/scanners.py) and HEAD requests to the package registries for typosquatting checks (scanner/app/malware_detector/typosquatting.py). A misparsed body could at most garble one version lookup."
     },
     {
       "vulnerability": {
@@ -1205,6 +1226,26 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-105437"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1228,6 +1269,75 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-107493"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107494"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107496"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-107708"
       },
       "products": [
@@ -1235,16 +1345,16 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u2"
             }
           ]
         }
@@ -1261,16 +1371,16 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u2"
             },
             {
-              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
+              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u2"
             }
           ]
         }
@@ -1316,6 +1426,26 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-111760"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-113351"
       },
       "products": [
@@ -1331,6 +1461,86 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-113408"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-114466"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-114467"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-114469"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/git-man@2.47.3-0+deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/git@2.47.3-0+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "git is in use: the scanner sidecar and the scanners it runs loads or runs git (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1424,6 +1634,29 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-115456"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-115506"
       },
       "products": [
@@ -1442,6 +1675,83 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-115559"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115563",
+        "aliases": [
+          "GHSA-qx49-fqc8-xw99"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:pypi/mcp@1.29.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "mcp is a dependency of Semgrep's MCP server (`semgrep mcp`). The sidecar only runs `semgrep scan` (scanner/app/scanners.py), which does not start the MCP client or server code."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115791"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in the command-line interfaces of tarfile, zipfile and gzip (python -m tarfile ...). Neither image runs them; the services use the modules as libraries."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115819"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-116566"
       },
       "products": [
@@ -1456,13 +1766,14 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "impact_statement": "Host names that Python itself resolves come from configuration (feed and API base URLs, notification and AI endpoints) set by the administrator. User-supplied scan targets are resolved by git, skopeo and the Go scanners, not by Python's getaddrinfo, after validate_scan_target has checked them."
+      "impact_statement": "A truncated host name cannot redirect a request. Most names Python resolves come from configuration (API base URLs, notification and AI endpoints). The URLs users enter (VEX sources by a target's owner, advisory feeds and server lists by an admin) are fetched with httpx, which refuses a URL containing a null byte or any other control character before it connects; the public-host check (backend/app/services/http/public_host.py) may look up the shortened name, but no request follows. User-supplied scan targets are resolved by git, skopeo and the Go scanners after validate_scan_target has checked them, and the sidecar's own lookups go to fixed registry hosts."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-116587",
+        "name": "CVE-2026-116591",
         "aliases": [
-          "GHSA-mgcc-cww5-fp2q"
+          "GHSA-fpmh-frq8-7rj8",
+          "GO-2026-6865"
         ]
       },
       "products": [
@@ -1470,13 +1781,34 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:golang/github.com/go-jose/go-jose/v4@v4.1.5"
+              "@id": "pkg:golang/github.com/klauspost/compress@v1.18.7"
             }
           ]
         }
       ],
-      "status": "under_investigation",
-      "status_notes": "Not in the Go vulnerability database; not analysed yet. Fixed upstream in 4.1.6."
+      "status": "affected",
+      "action_statement": "/usr/local/bin/dive: affected. github.com/klauspost/compress v1.18.7 in /usr/local/bin/dive: govulncheck finds the vulnerable code of GO-2026-6865 in the binary (Compress, Compress1X, Compress4X, Decompress, …). Fixed upstream in 1.20.2. Taken in once the binary is rebuilt with it. /usr/local/bin/dockle: affected. github.com/klauspost/compress v1.18.7 in /usr/local/bin/dockle: govulncheck finds the vulnerable code of GO-2026-6865 in the binary (Compress, Compress1X, Compress4X, Decompress, …). Fixed upstream in 1.20.2. Taken in once the binary is rebuilt with it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-116591",
+        "aliases": [
+          "GHSA-fpmh-frq8-7rj8",
+          "GO-2026-6865"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/github.com/klauspost/compress@v1.20.1"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "github.com/klauspost/compress v1.20.1 in /usr/local/bin/trivy: govulncheck finds the vulnerable code of GO-2026-6865 in the binary (Compress, Compress1X, Compress4X, Decompress, …). Fixed upstream in 1.20.2. Taken in once the binary is rebuilt with it."
     },
     {
       "vulnerability": {
@@ -1579,32 +1911,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-11850"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5+deb13u1"
-            },
-            {
-              "@id": "pkg:deb/debian/libk5crypto3@1.21.3-5+deb13u1"
-            },
-            {
-              "@id": "pkg:deb/debian/libkrb5-3@1.21.3-5+deb13u1"
-            },
-            {
-              "@id": "pkg:deb/debian/libkrb5support0@1.21.3-5+deb13u1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "krb5 is in use: the scanner sidecar and the scanners it runs loads or runs libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-11856"
       },
       "products": [
@@ -1620,6 +1926,24 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "The flaw leaks or mixes up credentials that libcurl holds (Basic, Digest or Negotiate auth, .netrc, credentials in the URL) between transfers of one process. git in the sidecar holds none: scan targets with credentials in the URL are rejected (scanner/app/target_validation.py), there is no .netrc, no Kerberos ticket and no credential prompt (GIT_TERMINAL_PROMPT=0), and a SCANNER_AUTH token travels as an http.extraHeader, which libcurl sends as a plain header. Each clone runs in its own git process."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-119170"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The regression only weakens hashlib's algorithm checks when OpenSSL runs in FIPS mode. The images' OpenSSL is not configured for FIPS mode. Fixed in CPython 3.14.11, which the images pick up on rebuild."
     },
     {
       "vulnerability": {
@@ -1811,6 +2135,476 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-121481"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121482"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121757"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121758"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124024"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124249"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "A server can delete cookies of other domains from a shared http.cookiejar. The services' httpx clients keep such a jar, but nothing in it carries authority: every outbound request authenticates with headers (API keys, bearer tokens, http.extraHeader for git), never with cookies, so a deleted cookie changes nothing."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124317"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124851"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libzstd1@1.5.7+dfsg-1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "libzstd is in use: the scanner sidecar and the scanners it runs loads or runs libzstd1 (runtime evidence). Not analysed per CVE yet. Fixed upstream in 1.5.7+dfsg-1+deb13u1. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-125709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gcc-14 is in use: the scanner sidecar and the scanners it runs loads or runs libgcc-s1, libstdc++6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-126360",
+        "aliases": [
+          "GHSA-mf5v-w3w3-f6cg"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:pypi/opentelemetry-api@1.37.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in parsing W3C tracestate headers. Semgrep only traces with --trace, which the sidecar does not pass (metrics are off via SEMGREP_SEND_METRICS=off), and it receives no incoming trace context."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-126765"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-127039"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-127040"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-127231"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libgnutls30t64@3.8.9-3+deb13u4"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-128085",
+        "aliases": [
+          "GHSA-q7gw-24fr-5p69"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel/sdk@v1.46.0"
+            },
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel/trace@v1.35.0"
+            },
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel/trace@v1.45.0"
+            },
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel/trace@v1.46.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in the attribute-length truncation of recorded spans and log records. No OpenTelemetry SDK is set up in the sidecar (no OTEL_* exporter in its environment, Go telemetry off), so the tools' tracers are no-ops and record no attributes."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-128086",
+        "aliases": [
+          "GHSA-rrfc-gjm9-cgrj",
+          "GO-2026-6975"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel@v1.33.0"
+            },
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel@v1.35.0"
+            },
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel@v1.45.0"
+            },
+            {
+              "@id": "pkg:golang/go.opentelemetry.io/otel@v1.46.0"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The cost is in parsing an incoming W3C baggage header (baggage.Parse, propagation.Baggage.Extract). The Go tools in the sidecar are command-line clients that receive no requests, so no baggage header reaches them."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-128241"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-129483"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libsasl2-2@2.1.28+dfsg1-9"
+            },
+            {
+              "@id": "pkg:deb/debian/libsasl2-modules-db@2.1.28+dfsg1-9"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "cyrus-sasl2 is in use: the scanner sidecar and the scanners it runs loads or runs libsasl2-2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-132276",
+        "aliases": [
+          "GHSA-53pm-wgxf-c6qf"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:pypi/wcmatch@8.5.2"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "wcmatch is in the scanner as a dependency of Semgrep, which matches every file path of the scanned tree against its ignore and include globs. A repository can name files so that one comparison backtracks for a long time (CPU denial of service, no code execution). Semgrep runs as its own process under SEMGREP_TIMEOUT_SECONDS (scanner/app/scanners.py), so a hostile tree costs at most that scan's Semgrep result. Fixed in wcmatch 11.2, which arrives when Semgrep allows it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-134703"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-135901"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "login.defs is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-135901"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "passwd is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-13608"
       },
       "products": [
@@ -1954,6 +2748,24 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-16052"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "The flaw needs attacker-controlled cookie attribute values in http.cookies.Morsel. The backend sets two cookies (the sign-in and session cookies in backend/app/api/v1/auth.py) with fixed attributes and server-generated values; the sidecar sets none."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-16742"
       },
       "products": [
@@ -1987,26 +2799,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-18374"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2081,43 +2873,21 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-19499"
+        "name": "CVE-2026-19552"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:generic/python@3.14.10"
             }
           ]
         }
       ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-19542"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
     },
     {
       "vulnerability": {
@@ -2153,23 +2923,6 @@
       ],
       "status": "under_investigation",
       "status_notes": "openldap is in use: the scanner sidecar and the scanners it runs loads or runs libldap2 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-27171"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "zlib is in use: the scanner sidecar and the scanners it runs loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2263,43 +3016,105 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-40228"
+        "name": "CVE-2026-35190"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "libsystemd0 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-40228"
+        "name": "CVE-2026-40558"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+              "@id": "pkg:deb/debian/libperl5.40@5.40.1-6+deb13u1"
             }
           ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "libudev1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      "impact_statement": "libperl5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-41567"
+        "name": "CVE-2026-40558"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/perl@5.40.1-6+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "perl is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-40558"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "perl-base is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-40558"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/perl-modules-5.40@5.40.1-6+deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "perl-modules-5.40 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-41567",
+        "aliases": [
+          "GHSA-x86f-5xw2-fm2r"
+        ]
       },
       "products": [
         {
@@ -2320,7 +3135,10 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-41568"
+        "name": "CVE-2026-41568",
+        "aliases": [
+          "GHSA-vp62-88p7-qqf5"
+        ]
       },
       "products": [
         {
@@ -2358,7 +3176,10 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-42306"
+        "name": "CVE-2026-42306",
+        "aliases": [
+          "GHSA-rg2x-37c3-w2rh"
+        ]
       },
       "products": [
         {
@@ -2449,26 +3270,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "diffutils is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-5435"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2648,23 +3449,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-58055"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libnghttp2-14@1.64.0-1.1+deb13u1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "nghttp2 is in use: the scanner sidecar and the scanners it runs loads or runs libnghttp2-14 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-59951",
         "aliases": [
           "GHSA-84m7-p3x7-pcfv"
@@ -2686,46 +3470,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-6238"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-6368"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-67693"
       },
       "products": [
@@ -2740,26 +3484,6 @@
       ],
       "status": "under_investigation",
       "status_notes": "gnutls28 is in use: the scanner sidecar and the scanners it runs loads or runs libgnutls30t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-6791"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2801,43 +3525,6 @@
       ],
       "status": "under_investigation",
       "status_notes": "util-linux is in use: the scanner sidecar and the scanners it runs loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-76844"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "zlib is in use: the scanner sidecar and the scanners it runs loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-77117"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2964,40 +3651,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-78661"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:golang/golang.org/x/net@v0.61.0"
-            }
-          ]
-        }
-      ],
-      "status": "affected",
-      "action_statement": "/usr/local/bin/grype: affected. golang.org/x/net v0.61.0 in /usr/local/bin/grype: govulncheck finds the vulnerable code of GO-2026-6860 in the binary (Parse, ParseFragment, ParseFragmentWithOptions, ParseWithOptions). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it. /usr/local/bin/syft: affected. golang.org/x/net v0.61.0 in /usr/local/bin/syft: govulncheck finds the vulnerable code of GO-2026-6860 in the binary (Parse, ParseFragment, ParseFragmentWithOptions, ParseWithOptions). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-78661"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:golang/golang.org/x/net@v0.60.0"
-            }
-          ]
-        }
-      ],
-      "status": "affected",
-      "action_statement": "golang.org/x/net v0.60.0 in /usr/local/bin/trivy: govulncheck finds the vulnerable code of GO-2026-6860 in the binary (Parse, ParseFragment, ParseFragmentWithOptions, ParseWithOptions). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-80229"
       },
       "products": [
@@ -3049,26 +3702,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-80489"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -3187,10 +3820,10 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -3218,20 +3851,49 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-85091"
+        "name": "CVE-2026-84785"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "zlib is in use: the scanner sidecar and the scanners it runs loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-84786"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -3250,8 +3912,8 @@
           ]
         }
       ],
-      "status": "under_investigation",
-      "status_notes": "Not in the Go vulnerability database; not analysed yet. No fix available: no fixed package has been released yet."
+      "status": "affected",
+      "action_statement": "/usr/local/bin/dockle: affected. github.com/docker/distribution v2.8.3+incompatible in /usr/local/bin/dockle: govulncheck finds the vulnerable code of GO-2026-6778 in the binary (manifests.Get). No fix available: no fixed package has been released yet. Taken in once the binary is rebuilt with it. /usr/local/bin/skopeo: affected. github.com/docker/distribution v2.8.3+incompatible in /usr/local/bin/skopeo: govulncheck finds the vulnerable code of GO-2026-6778 in the binary (manifests.Get). No fix available: no fixed package has been released yet. Taken in once the binary is rebuilt with it."
     },
     {
       "vulnerability": {
@@ -3306,46 +3968,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "Both flaws need an HTTP proxy: one leaks libcurl-held origin credentials to the proxy, the other keeps cleared proxy credentials. Hecate configures no proxy, and git hands libcurl no origin credentials (a SCANNER_AUTH token is an http.extraHeader, which libcurl does not send in the CONNECT request). If you route the scanner through an authenticating proxy via HTTPS_PROXY, re-check CVE-2026-9079 for your setup."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-8674"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-86805"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -3473,23 +4095,49 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-89092"
+        "name": "CVE-2026-88822"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-88823"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -3562,6 +4210,24 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "The flaw needs a libcurl feature git does not switch on in the sidecar: an HSTS cache, a cookie file (http.cookieFile is unset), the MIME API, AWS SigV4 signing, CURLOPT_INTERFACE, HTTP/2 stream dependencies or server push, curl_easy_pause from a socket callback, HTTP/3 or Alt-Svc, a pinned public key, or client certificates."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-91094"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/dpkg@1.22.22"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "dpkg is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
     },
     {
       "vulnerability": {
@@ -3856,77 +4522,96 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-95818"
+        "name": "CVE-2026-95690"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-97045"
+        "name": "CVE-2026-95691"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:golang/golang.org/x/net@v0.61.0"
-            }
-          ]
-        }
-      ],
-      "status": "affected",
-      "action_statement": "/usr/local/bin/grype: affected. golang.org/x/net v0.61.0 in /usr/local/bin/grype: govulncheck finds the vulnerable code of GO-2026-6866 in the binary (Render). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it. /usr/local/bin/syft: affected. golang.org/x/net v0.61.0 in /usr/local/bin/syft: govulncheck finds the vulnerable code of GO-2026-6866 in the binary (Render). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-97045"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:golang/golang.org/x/net@v0.60.0"
-            }
-          ]
-        }
-      ],
-      "status": "affected",
-      "action_statement": "golang.org/x/net v0.60.0 in /usr/local/bin/trivy: govulncheck finds the vulnerable code of GO-2026-6866 in the binary (Render). Fixed upstream in 0.62.0. Taken in once the binary is rebuilt with it."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-97399"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the scanner sidecar and the scanners it runs loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-95692"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-97054",
+        "aliases": [
+          "GO-2026-6859"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:golang/stdlib@1.27.3"
+            },
+            {
+              "@id": "pkg:golang/stdlib@v1.27.3"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The race is in net/http's HTTP/1 server (MaxBytesReader setting Connection: close). The Go tools in the sidecar run as command-line clients (trivy image / fs, grype, syft; scanner/app/scanners.py); none of them is started as a server, so no Go HTTP server handles a request."
     },
     {
       "vulnerability": {
@@ -3943,24 +4628,150 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "/usr/local/bin/grype: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library. /usr/local/bin/osv-scanner: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library. /usr/local/bin/skopeo: not affected. GO-2026-5932 marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. skopeo is built with containers_image_openpgp (scanner/Dockerfile), so the package serves signature verification only, and that never runs: the signature policy is insecureAcceptAnything and the sidecar never asks skopeo to sign or verify (only `inspect` and `copy`). /usr/local/bin/syft: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library."
+      "status_notes": "/usr/local/bin/grype: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library. /usr/local/bin/osv-scanner: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library. /usr/local/bin/skopeo: not affected. GO-2026-5932 marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. skopeo is built with containers_image_openpgp (scanner/Dockerfile), so the package serves signature verification only, and that never runs: the signature policy is insecureAcceptAnything and the sidecar never asks skopeo to sign or verify (only `inspect` and `copy`). /usr/local/bin/syft: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library. /usr/local/bin/trivy: under investigation. GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library."
     },
     {
       "vulnerability": {
-        "name": "GO-2026-5932"
+        "name": "GO-2026-6905"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:golang/golang.org/x/crypto@v0.57.0"
+              "@id": "pkg:golang/github.com/blakesmith/ar@v0.0.0-20190502131153-809d4375e1fb"
             }
           ]
         }
       ],
-      "status": "under_investigation",
-      "status_notes": "GO-2026-5932 is not a single flaw: it marks the whole golang.org/x/crypto/openpgp package as unmaintained and unsafe by design. govulncheck finds the package in this upstream binary; which of its code paths use it (most likely go-git's commit-signature support) is not established yet. It goes away when the upstream project moves to a maintained OpenPGP library."
+      "status": "affected",
+      "action_statement": "/usr/local/bin/grype: affected. github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb in /usr/local/bin/grype: govulncheck finds the vulnerable code of GO-2026-6905 in the binary (Reader.Read). No fixed version known. Taken in once the binary is rebuilt with it. /usr/local/bin/syft: affected. github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb in /usr/local/bin/syft: govulncheck finds the vulnerable code of GO-2026-6905 in the binary (Reader.Read). No fixed version known. Taken in once the binary is rebuilt with it."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-402D17"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-414660"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-43231F"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-AE2C66"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-ED49F3"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-F88C7E"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-FCA4C0"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
     },
     {
       "vulnerability": {

@@ -1,5 +1,5 @@
 {
-  "image": "hecate-scanner@sha256:749a4e8ed560d03561cc4bd7cc2f65c635ab0d657ee2618ae2b3ad551ee5ec32",
+  "image": "ghcr.io/0x3e4/hecate-scanner@sha256:9be4f0538ae62839c20b7150f157afa04a12d3b4f486c169b66de72d3d563c22",
   "collectedWith": "vex/tools/collect.sh",
   "loadedPackages": [
     "coreutils",
@@ -47,13 +47,28 @@
     "zlib1g"
   ],
   "govulncheck": {
+    "asm": {
+      "vulnerableFunctionsPresent": [],
+      "moduleOnly": []
+    },
+    "cgo": {
+      "vulnerableFunctionsPresent": [],
+      "moduleOnly": []
+    },
+    "compile": {
+      "vulnerableFunctionsPresent": [],
+      "moduleOnly": []
+    },
     "dive": {
       "vulnerableFunctionsPresent": [
         "GO-2026-4883",
         "GO-2026-4887",
         "GO-2026-5617",
         "GO-2026-5668",
-        "GO-2026-5746"
+        "GO-2026-5746",
+        "GO-2026-6865",
+        "GO-2026-6974",
+        "GO-2026-6975"
       ],
       "moduleOnly": []
     },
@@ -65,63 +80,81 @@
         "GO-2026-4887",
         "GO-2026-5617",
         "GO-2026-5668",
-        "GO-2026-5746"
+        "GO-2026-5746",
+        "GO-2026-6778",
+        "GO-2026-6865",
+        "GO-2026-6975"
       ],
       "moduleOnly": [
         "GO-2025-4098"
       ]
     },
+    "go": {
+      "vulnerableFunctionsPresent": [],
+      "moduleOnly": []
+    },
+    "gofmt": {
+      "vulnerableFunctionsPresent": [],
+      "moduleOnly": []
+    },
+    "govulncheck": {
+      "vulnerableFunctionsPresent": [],
+      "moduleOnly": []
+    },
     "grype": {
       "vulnerableFunctionsPresent": [
-        "GO-2026-4883",
-        "GO-2026-4887",
-        "GO-2026-5617",
-        "GO-2026-5668",
-        "GO-2026-5746",
         "GO-2026-5932",
-        "GO-2026-6860",
-        "GO-2026-6866"
+        "GO-2026-6859",
+        "GO-2026-6905"
       ],
+      "moduleOnly": []
+    },
+    "link": {
+      "vulnerableFunctionsPresent": [],
       "moduleOnly": []
     },
     "osv-scanner": {
       "vulnerableFunctionsPresent": [
-        "GO-2026-5932"
+        "GO-2026-5932",
+        "GO-2026-6974",
+        "GO-2026-6975"
       ],
       "moduleOnly": []
     },
     "skopeo": {
       "vulnerableFunctionsPresent": [
-        "GO-2026-5932"
+        "GO-2026-5932",
+        "GO-2026-6778",
+        "GO-2026-6974",
+        "GO-2026-6975"
       ],
       "moduleOnly": []
     },
     "syft": {
       "vulnerableFunctionsPresent": [
         "GO-2026-5932",
-        "GO-2026-6860",
-        "GO-2026-6866"
+        "GO-2026-6859",
+        "GO-2026-6905"
       ],
       "moduleOnly": []
     },
     "trivy": {
       "vulnerableFunctionsPresent": [
         "GO-2026-5932",
-        "GO-2026-6860",
-        "GO-2026-6866"
+        "GO-2026-6859",
+        "GO-2026-6865",
+        "GO-2026-6974",
+        "GO-2026-6975"
       ],
-      "moduleOnly": [
-        "GO-2026-4919"
-      ]
+      "moduleOnly": []
     },
     "trufflehog": {
       "error": "govulncheck: unrecognized binary format"
     }
   },
   "statementBasis": {
-    "assessment": 67,
-    "default": 4,
-    "govulncheck": 8,
-    "runtime-evidence": 249
+    "assessment": 89,
+    "govulncheck": 9,
+    "runtime-evidence": 306
   }
 }

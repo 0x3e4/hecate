@@ -3,8 +3,8 @@
   "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-backend.openvex.json",
   "author": "Hecate maintainers",
   "role": "Document Creator",
-  "timestamp": "2026-11-05T18:02:10Z",
-  "version": 2,
+  "timestamp": "2026-11-26T21:42:44Z",
+  "version": 4,
   "tooling": "vex/tools/generate.py",
   "statements": [
     {
@@ -34,7 +34,7 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -52,7 +52,7 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+              "@id": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -70,10 +70,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -197,10 +197,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -217,10 +217,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -237,10 +237,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -257,10 +257,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -277,10 +277,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -297,10 +297,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -484,7 +484,7 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -502,7 +502,7 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+              "@id": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -527,7 +527,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "The flaw is in a stdlib API the services do not call: html.parser, ftplib, imaplib, poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, or writing multi-line values with configparser."
+      "impact_statement": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
     },
     {
       "vulnerability": {
@@ -710,6 +710,26 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-100290"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-102010"
       },
       "products": [
@@ -779,8 +799,78 @@
           ]
         }
       ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in http.client's chunked-body parsing. The backend makes every outbound request with httpx, whose HTTP/1.1 parser is h11 (backend/app/services/http/), and does not import http.client or urllib.request."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107493"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
       "status": "under_investigation",
-      "status_notes": "Not analysed yet. Fixed upstream in 3.16.0."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107494"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107496"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -853,6 +943,85 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-115456"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gcc-14 is in use: the backend (uvicorn) process loads or runs libgcc-s1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115559"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115791"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in the command-line interfaces of tarfile, zipfile and gzip (python -m tarfile ...). Neither image runs them; the services use the modules as libraries."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115819"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-116566"
       },
       "products": [
@@ -867,7 +1036,25 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "impact_statement": "Host names that Python itself resolves come from configuration (feed and API base URLs, notification and AI endpoints) set by the administrator. User-supplied scan targets are resolved by git, skopeo and the Go scanners, not by Python's getaddrinfo, after validate_scan_target has checked them."
+      "impact_statement": "A truncated host name cannot redirect a request. Most names Python resolves come from configuration (API base URLs, notification and AI endpoints). The URLs users enter (VEX sources by a target's owner, advisory feeds and server lists by an admin) are fetched with httpx, which refuses a URL containing a null byte or any other control character before it connects; the public-host check (backend/app/services/http/public_host.py) may look up the shortened name, but no request follows. User-supplied scan targets are resolved by git, skopeo and the Go scanners after validate_scan_target has checked them, and the sidecar's own lookups go to fixed registry hosts."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-119170"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The regression only weakens hashlib's algorithm checks when OpenSSL runs in FIPS mode. The images' OpenSSL is not configured for FIPS mode. Fixed in CPython 3.14.11, which the images pick up on rebuild."
     },
     {
       "vulnerability": {
@@ -1051,6 +1238,217 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-121481"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121482"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121757"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121758"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124024"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124249"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "A server can delete cookies of other domains from a shared http.cookiejar. The services' httpx clients keep such a jar, but nothing in it carries authority: every outbound request authenticates with headers (API keys, bearer tokens, http.extraHeader for git), never with cookies, so a deleted cookie changes nothing."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-125709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/gcc-14-base@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libgcc-s1@14.2.0-19"
+            },
+            {
+              "@id": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "gcc-14 is in use: the backend (uvicorn) process loads or runs libgcc-s1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-126765"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
+            },
+            {
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-128089",
+        "aliases": [
+          "GHSA-vvf4-9x63-8xvv"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:pypi/dnspython@2.9.1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in dnspython's zone-file text parser for WKS records. dnspython is only in the backend as pymongo's resolver for mongodb+srv:// connection strings (SRV and TXT lookups in wire format); nothing parses zone-file text."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-15059"
       },
       "products": [
@@ -1105,6 +1503,24 @@
     },
     {
       "vulnerability": {
+        "name": "CVE-2026-16052"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:generic/python@3.14.10"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "The flaw needs attacker-controlled cookie attribute values in http.cookies.Morsel. The backend sets two cookies (the sign-in and session cookies in backend/app/api/v1/auth.py) with fixed attributes and server-generated values; the sidecar sets none."
+    },
+    {
+      "vulnerability": {
         "name": "CVE-2026-16742"
       },
       "products": [
@@ -1138,26 +1554,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "libudev1 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-18374"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1197,60 +1593,21 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-19499"
+        "name": "CVE-2026-19552"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:generic/python@3.14.10"
             }
           ]
         }
       ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-19542"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-27171"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "zlib is in use: the backend (uvicorn) process loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in a stdlib API the services do not call: ftplib, imaplib (commands or STARTTLS), poplib, tempfile.TemporaryDirectory, urllib's HTTPPasswordMgr, reuse of a failed bz2.BZ2Decompressor, csv.Sniffer, writing multi-line values with configparser, or ssl.get_server_certificate."
     },
     {
       "vulnerability": {
@@ -1295,39 +1652,44 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-40228"
+        "name": "CVE-2026-35190"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "libsystemd0 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-40228"
+        "name": "CVE-2026-40558"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libudev1@257.13-1~deb13u1"
+              "@id": "pkg:deb/debian/perl-base@5.40.1-6+deb13u1"
             }
           ]
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "libudev1 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      "impact_statement": "perl-base is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
     },
     {
       "vulnerability": {
@@ -1399,26 +1761,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "diffutils is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-5435"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1600,66 +1942,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-6238"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-6368"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-6791"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-76642"
       },
       "products": [
@@ -1698,43 +1980,6 @@
       ],
       "status": "under_investigation",
       "status_notes": "util-linux is in use: the backend (uvicorn) process loads or runs libuuid1 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-76844"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "zlib is in use: the backend (uvicorn) process loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-77117"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1861,26 +2106,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-80489"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
-            },
-            {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-82560"
       },
       "products": [
@@ -1906,10 +2131,10 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u5"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u5"
             }
           ]
         }
@@ -1919,80 +2144,113 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-85091"
+        "name": "CVE-2026-84785"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/zlib1g@1.3.dfsg+really1.3.1-1+b1"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "zlib is in use: the backend (uvicorn) process loads or runs zlib1g (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-8674"
+        "name": "CVE-2026-84786"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-86805"
+        "name": "CVE-2026-88822"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-89092"
+        "name": "CVE-2026-88823"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-91094"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/dpkg@1.22.22"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "dpkg is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
     },
     {
       "vulnerability": {
@@ -2037,43 +2295,198 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-95818"
+        "name": "CVE-2026-95690"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-97399"
+        "name": "CVE-2026-95691"
       },
       "products": [
         {
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/libc-bin@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
             },
             {
-              "@id": "pkg:deb/debian/libc6@2.41-12+deb13u4"
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
             }
           ]
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-95692"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1"
+            },
+            {
+              "@id": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "under_investigation",
+      "status_notes": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-402D17"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-414660"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-43231F"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-AE2C66"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-ED49F3"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-F88C7E"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "TEMP-0000000-FCA4C0"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libseccomp2@2.6.0-2"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libseccomp2 is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
     },
     {
       "vulnerability": {
@@ -2120,7 +2533,7 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -2138,7 +2551,7 @@
           "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+              "@id": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
             }
           ]
         }

@@ -2,6 +2,8 @@
 # Collects everything vex/tools/generate.py needs for one image into
 # vex/.work/<name>/ (gitignored):
 #   trivy.json, grype.json   scanner findings (the two Hecate itself uses)
+#   grype-sbom.json          Grype on a Syft SBOM, the way Hecate's scanner runs it
+#                            (versions pinned to the ones scanner/Dockerfile ships)
 #   loaded.txt               OS packages the service loads or executes
 #   govulncheck/<bin>.json   govulncheck -mode=binary per Go binary
 #
@@ -10,10 +12,11 @@
 # scanners run from their pinned images, nothing is installed on the host.
 set -euo pipefail
 
-TRIVY_IMAGE=aquasec/trivy:0.76.1
-GRYPE_IMAGE=anchore/grype:v0.121.1
-GO_IMAGE=golang:1.27.3-trixie
-GOVULNCHECK_VERSION=v1.1.4
+TRIVY_IMAGE=aquasec/trivy:0.76.2
+GRYPE_IMAGE=anchore/grype:v0.122.0
+SYFT_IMAGE=anchore/syft:v1.57.2
+GO_IMAGE=golang:1.27.4-trixie
+GOVULNCHECK_VERSION=v1.9.0
 
 name=${1:?usage: collect.sh <backend|frontend|docs|scanner> [image-ref]}
 image=${2:-ghcr.io/0x3e4/hecate-$name:latest}
@@ -61,7 +64,12 @@ case "$name" in
                /usr/share/dotnet/dotnet '/usr/share/dotnet/shared/Microsoft.NETCore.App/*/*.so'
                '/usr/local/lib/devskim/runtimes/linux-x64/native/*.so'
                '/opt/semgrep/lib/python3.14/site-packages/semgrep/bin/*')
-        gobins=(trivy grype syft osv-scanner dive dockle trufflehog skopeo) ;;
+        # govulncheck's source mode runs `go list`, so the image carries a trimmed
+        # GOROOT: the go command and the four tools it asks for their version.
+        gobins=(trivy grype syft osv-scanner dive dockle trufflehog skopeo govulncheck
+                /usr/local/go/bin/go /usr/local/go/bin/gofmt
+                /usr/local/go/pkg/tool/linux_amd64/compile /usr/local/go/pkg/tool/linux_amd64/asm
+                /usr/local/go/pkg/tool/linux_amd64/cgo /usr/local/go/pkg/tool/linux_amd64/link) ;;
     frontend|docs)
         roots=-; semgrep=0
         execs=(nginx sh /docker-entrypoint.sh '/docker-entrypoint.d/*') ;;
@@ -74,6 +82,13 @@ docker run --rm -v "$sock:$sock" -v hecate-vex-trivy:/root/.cache "$TRIVY_IMAGE"
 echo "[$name] grype"
 docker run --rm -v "$sock:$sock" -v hecate-vex-grype:/root/.cache/grype "$GRYPE_IMAGE" \
     -q -o json "$image" > "$work/grype.json"
+# The way Hecate's scanner runs Grype on an image: on a Syft SBOM of it.
+echo "[$name] syft + grype sbom"
+docker run --rm -v "$sock:$sock" -v "$(hostpath "$work"):/w" "$SYFT_IMAGE" \
+    "$image" -q -o "cyclonedx-json=/w/syft.cdx.json"
+docker run --rm -v "$(hostpath "$work"):/w" -v hecate-vex-grype:/root/.cache/grype "$GRYPE_IMAGE" \
+    -q -o json sbom:/w/syft.cdx.json > "$work/grype-sbom.json"
+rm -f "$work/syft.cdx.json"
 
 echo "[$name] runtime evidence"
 docker run --rm --entrypoint sh -e SEMGREP="$semgrep" -v "$(hostpath "$here"):/vex-tools:ro" "$image" \
@@ -86,7 +101,8 @@ docker run --rm --entrypoint sh "$image" -c '
 if [ "${#gobins[@]}" -gt 0 ]; then
     echo "[$name] govulncheck"
     docker run --rm --entrypoint sh -v "$(hostpath "$work/gobin"):/out" "$image" \
-        -c 'for b in "$@"; do cp "$(command -v "$b")" /out/; done' sh "${gobins[@]}"
+        -c 'for b in "$@"; do p=$(command -v "$b") && cp "$p" /out/ || echo "not in the image: $b" >&2; done' \
+        sh "${gobins[@]}"
     docker run --rm -v "$(hostpath "$work"):/w" -v hecate-vex-go:/go "$GO_IMAGE" sh -c "
         go install golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION >/dev/null 2>&1
         for b in /w/gobin/*; do
