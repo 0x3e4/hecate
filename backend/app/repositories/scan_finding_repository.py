@@ -252,6 +252,22 @@ class ScanFindingRepository:
             log.warning("scan_finding_repository.list_by_scan_failed", scan_id=scan_id, error=str(exc))
             return 0, []
 
+    _BRIEF_FIELDS = (
+        "vulnerability_id", "title", "package_name", "package_version", "severity", "cvss_score",
+        "fix_version", "dismissed", "vex_status",
+    )
+
+    async def list_brief_by_scan(self, scan_id: str, limit: int = 50_000) -> list[dict[str, Any]]:
+        """The fields a report comparison needs, for every finding of a scan (dismissed ones too)."""
+        try:
+            cursor = self.collection.find(
+                {"scan_id": scan_id}, {field: 1 for field in self._BRIEF_FIELDS},
+            ).limit(limit)
+            return [doc async for doc in cursor]
+        except PyMongoError as exc:
+            log.warning("scan_finding_repository.list_brief_failed", scan_id=scan_id, error=str(exc))
+            return []
+
     async def count_by_severity(self, scan_id: str) -> dict[str, int]:
         """Return severity counts for a scan."""
         try:

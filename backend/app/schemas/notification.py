@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.schemas._utc import UtcDatetime
@@ -33,7 +35,7 @@ class NotificationRuleCreate(BaseModel):
     rule_type: str = Field(
         alias="ruleType",
         serialization_alias="ruleType",
-        description="event | saved_search | vendor | product | dql | scan | inventory | sca_malware_alert",
+        description="event | saved_search | vendor | product | dql | scan | inventory | sca_malware_alert | system",
     )
     apprise_tag: str = Field(
         default="all",
@@ -48,7 +50,8 @@ class NotificationRuleCreate(BaseModel):
         default_factory=list,
         alias="eventTypes",
         serialization_alias="eventTypes",
-        description="scan_completed, scan_failed, sync_failed, new_vulnerabilities",
+        description="event rules: scan_completed, scan_failed, sync_failed, new_vulnerabilities; "
+        "system rules: system_stale, system_findings, system_retired",
     )
 
     # saved_search
@@ -97,6 +100,26 @@ class NotificationRuleCreate(BaseModel):
         alias="inventoryItemIds",
         serialization_alias="inventoryItemIds",
         description="Restrict inventory rule to specific item ids; null/empty = all items",
+    )
+
+    # system
+    system_ids: list[str] | None = Field(
+        default=None,
+        alias="systemIds",
+        serialization_alias="systemIds",
+        description="Restrict a system rule to these systems; null/empty = all systems",
+    )
+    system_groups: list[str] | None = Field(
+        default=None,
+        alias="systemGroups",
+        serialization_alias="systemGroups",
+        description="Restrict a system rule to systems in any of these groups",
+    )
+    system_exposure: Literal["internet", "internal"] | None = Field(
+        default=None,
+        alias="systemExposure",
+        serialization_alias="systemExposure",
+        description="Restrict a system rule to internet-facing or internal systems",
     )
 
     model_config = {"populate_by_name": True}
@@ -149,6 +172,9 @@ class NotificationRuleResponse(BaseModel):
         alias="inventoryItemIds",
         serialization_alias="inventoryItemIds",
     )
+    system_ids: list[str] | None = Field(default=None, alias="systemIds", serialization_alias="systemIds")
+    system_groups: list[str] | None = Field(default=None, alias="systemGroups", serialization_alias="systemGroups")
+    system_exposure: str | None = Field(default=None, alias="systemExposure", serialization_alias="systemExposure")
 
     created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
     updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
@@ -209,7 +235,8 @@ class NotificationTemplateCreate(BaseModel):
         max_length=100,
         alias="eventKey",
         serialization_alias="eventKey",
-        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match, inventory_match, sca_malware_alert",
+        description="Event key: new_vulnerabilities, scan_completed, scan_failed, sync_failed, watch_rule_match, "
+        "inventory_match, sca_malware_alert, system_stale, system_findings, system_retired",
     )
     tag: str = Field(
         default="all",

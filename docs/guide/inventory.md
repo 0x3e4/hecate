@@ -40,6 +40,8 @@ Each row shows when the last report arrived and what it found:
 
 The list starts with the gaps (no recent report, then never reported), then internet-facing systems, then
 the ones with the most critical and high findings. The figures above it count the systems in each state.
+An [Inventory system notification rule](../integrations/notifications.md#inventory-system-rules) tells you
+when a system stops reporting, when a report brings new findings, or when a server list retires systems.
 The name opens the system's findings, SBOM and history; the number of findings opens its latest report.
 
 What a system is and whether the internet reaches it is kept in step with its findings: changing it here or
@@ -338,7 +340,7 @@ When you run an AI analysis on a CVE, the inventory match is folded into the pro
 
 ### In notifications
 
-A dedicated **inventory** notification rule type fires when a newly published CVE touches your inventory. You can scope a rule to all entries (the default) or to a chosen subset, so a team can be alerted only about the products they own. Rules are created and managed alongside the other rule types — see [Notifications](../integrations/notifications.md) for channels, templates and the full rule editor.
+A dedicated **inventory** notification rule type fires when a newly published CVE touches your inventory. You can scope a rule to all entries (the default) or to a chosen subset, so a team can be alerted only about the products they own. Rules are created and managed alongside the other rule types — see [Notifications](../integrations/notifications.md) for channels, templates and the full rule editor. Systems have their own rule type, [Inventory system](../integrations/notifications.md#inventory-system-rules).
 
 ## End-of-life and support status
 

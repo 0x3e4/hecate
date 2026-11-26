@@ -161,6 +161,16 @@ class FakeCollection:
     async def update_many(self, query: dict[str, Any], update: dict[str, Any]) -> _Result:
         return self._apply(query, update, many=True)
 
+    async def find_one_and_update(
+        self, query: dict[str, Any], update: dict[str, Any], **_kwargs: Any,
+    ) -> dict[str, Any] | None:
+        """Returns the document after the update (``ReturnDocument.AFTER``)."""
+        for doc in self.docs:
+            if matches(doc, query):
+                self._apply({"_id": doc["_id"]}, update, many=False)
+                return copy.deepcopy(doc)
+        return None
+
     async def replace_one(self, query: dict[str, Any], replacement: dict[str, Any], upsert: bool = False) -> _Result:
         for index, doc in enumerate(self.docs):
             if matches(doc, query):

@@ -224,6 +224,8 @@ class Settings(BaseSettings):
     inventory_list_source_timeout_seconds: int = Field(default=30, ge=5, le=300)
     # How often the scheduler looks for sources whose interval has passed.
     scheduler_inventory_list_sources_check_minutes: int = Field(default=5, ge=1, le=60)
+    # How often system notification rules look for systems that stopped reporting.
+    scheduler_inventory_system_watch_minutes: int = Field(default=60, ge=5, le=1440)
 
     # endoflife.date enrichment — annotates inventory items with support / EOL
     # status, latest release and "update available" hints. Uses the v1 API

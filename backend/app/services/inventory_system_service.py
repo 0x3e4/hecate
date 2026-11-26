@@ -21,6 +21,7 @@ change on one side is written to the other (``set_classification`` here,
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -400,6 +401,8 @@ class InventorySystemService:
                 # A list naming a host that already pushed: link it now, not on its next push.
                 for system_id, data in plan_create:
                     await self._link_existing_target(system_id, data["name"])
+            if retired:
+                _notify_retired(source, retired)
 
         cap = 200
         return InventorySystemImportResponse(
@@ -452,6 +455,24 @@ class InventorySystemService:
         if created:
             log.info("inventory_system.backfilled", systems=created)
         return created
+
+
+_notification_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _notify_retired(source: str, names: list[str]) -> None:
+    """``system_retired`` rules, after the caller has its answer. Never raises."""
+    if not settings.notifications_enabled:
+        return
+    try:
+        from app.services.notification_service import get_notification_service
+
+        task = asyncio.create_task(get_notification_service().notify_systems_retired(source=source, names=list(names)))
+    except Exception:  # noqa: BLE001
+        log.warning("inventory_system.retired_notification_failed", source=source, exc_info=True)
+        return
+    _notification_tasks.add(task)
+    task.add_done_callback(_notification_tasks.discard)
 
 
 _service: InventorySystemService | None = None

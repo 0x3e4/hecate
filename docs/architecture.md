@@ -319,7 +319,7 @@ overdue without aborting them.
 | `scan_findings` | Vulnerability findings from SCA scans |
 | `scan_sbom_components` | SBOM components from SCA scans |
 | `scan_layer_analysis` | Image-layer analysis from Dive scans |
-| `notification_rules` | Notification rules (event, watch, DQL, scan, inventory, sca_malware_alert) |
+| `notification_rules` | Notification rules (event, watch, DQL, scan, inventory, sca_malware_alert, system) |
 | `notification_channels` | Apprise channels (URL + tag) |
 | `notification_templates` | Title / body templates per event type |
 | `license_policies` | License policies (allowed, denied, review-required) |
@@ -506,8 +506,9 @@ events; configuration errors return 4xx, while provider outages surface as an SS
 are Apprise URLs with tags, stored in MongoDB and managed from the System page. **Rules** come in four
 flavours: event rules (`scan_completed`, `scan_failed`, `sync_failed`, `new_vulnerabilities`), watch
 rules (`saved_search`, `vendor`, `product`, `dql`, `inventory`), scan rules (with an optional severity
-threshold and target filter), and `sca_malware_alert` for the retroactive `MAL-*` hits injected by the
-continuous watcher. **Message templates** customise the title and body per event type with
+threshold and target filter), `sca_malware_alert` for the retroactive `MAL-*` hits injected by the
+continuous watcher, and `system` rules on the inventory's systems (stopped reporting, checked hourly by the
+`inventory_system_watch` job; new findings in a pushed report; systems retired by a server list). **Message templates** customise the title and body per event type with
 `{placeholder}` variables and `{#each}…{/each}` loops, resolving by exact tag match, then an `all`
 fallback, then a hard-coded default.
 

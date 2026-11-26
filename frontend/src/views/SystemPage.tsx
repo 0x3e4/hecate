@@ -61,7 +61,8 @@ import { VexRulesPanel } from "../components/VexRulesPanel";
 import { ApiTokenPanel } from "../components/ApiTokenPanel";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
 import { useToastContext } from "../components/ToastProvider";
-import { fetchInventoryItems } from "../api/inventory";
+import { fetchInventoryItems, fetchInventorySystems } from "../api/inventory";
+import { DocsLink } from "../components/DocsLink";
 import { useSavedSearches } from "../hooks/useSavedSearches";
 import { useSSE } from "../hooks/useSSE";
 import { useI18n, type TranslateFn } from "../i18n/context";
@@ -83,8 +84,17 @@ import type {
   LicenseGroups,
   ScanTarget,
   InventoryItem,
+  InventorySystem,
 } from "../types";
 import { formatDateTime } from "../utils/dateFormat";
+import {
+  SYSTEM_RULE_EVENTS,
+  knownGroups,
+  selectableSystems,
+  systemEventLabel,
+  systemRuleDescription,
+  systemRuleEvents,
+} from "../utils/systemRules";
 import { syncProgressView } from "../utils/syncProgress";
 
 type StatusTone = "ok" | "error" | "info" | "muted";
@@ -303,8 +313,12 @@ const SystemSettings = () => {
   const [formScanSeverityThreshold, setFormScanSeverityThreshold] = useState("");
   const [formScanTargetFilter, setFormScanTargetFilter] = useState("");
   const [formInventoryItemIds, setFormInventoryItemIds] = useState<string[]>([]);
+  const [formSystemIds, setFormSystemIds] = useState<string[]>([]);
+  const [formSystemGroups, setFormSystemGroups] = useState<string[]>([]);
+  const [formSystemExposure, setFormSystemExposure] = useState<"" | "internet" | "internal">("");
   const [scanTargets, setScanTargets] = useState<ScanTarget[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventorySystems, setInventorySystems] = useState<InventorySystem[]>([]);
 
   // Channel management state
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
@@ -398,6 +412,9 @@ const SystemSettings = () => {
     setFormScanSeverityThreshold("");
     setFormScanTargetFilter("");
     setFormInventoryItemIds([]);
+    setFormSystemIds([]);
+    setFormSystemGroups([]);
+    setFormSystemExposure("");
     setEditingRule(null);
   };
 
@@ -416,6 +433,9 @@ const SystemSettings = () => {
       setFormScanSeverityThreshold(rule.scanSeverityThreshold || "");
       setFormScanTargetFilter(rule.scanTargetFilter || "");
       setFormInventoryItemIds(rule.inventoryItemIds || []);
+      setFormSystemIds(rule.systemIds || []);
+      setFormSystemGroups(rule.systemGroups || []);
+      setFormSystemExposure(rule.systemExposure || "");
     } else {
       resetRuleForm();
     }
@@ -431,13 +451,18 @@ const SystemSettings = () => {
         enabled: formEnabled,
         ruleType: formType,
         appriseTag: formTag.trim() || "all",
-        eventTypes: formType === "event" ? formEventTypes : [],
+        eventTypes:
+          formType === "event"
+            ? formEventTypes.filter((e) => !e.startsWith("system_"))
+            : formType === "system"
+              ? systemRuleEvents(formEventTypes)
+              : [],
         savedSearchId: formType === "saved_search" ? formSavedSearchId || null : null,
         vendorSlug: formType === "vendor" ? formVendorSlug || null : null,
         productSlug: formType === "product" ? formProductSlug || null : null,
         dqlQuery: formType === "dql" ? formDqlQuery || null : null,
         scanSeverityThreshold:
-          formType === "scan" || formType === "sca_malware_alert"
+          formType === "scan" || formType === "sca_malware_alert" || formType === "system"
             ? formScanSeverityThreshold || null
             : null,
         scanTargetFilter:
@@ -445,6 +470,9 @@ const SystemSettings = () => {
             ? formScanTargetFilter || null
             : null,
         inventoryItemIds: formType === "inventory" ? (formInventoryItemIds.length ? formInventoryItemIds : null) : null,
+        systemIds: formType === "system" && formSystemIds.length ? formSystemIds : null,
+        systemGroups: formType === "system" && formSystemGroups.length ? formSystemGroups : null,
+        systemExposure: formType === "system" && formSystemExposure ? formSystemExposure : null,
       };
       if (editingRule) {
         await updateNotificationRule(editingRule.id, payload);
@@ -515,6 +543,7 @@ const SystemSettings = () => {
       case "scan": return t("SCA Scan", "SCA-Scan");
       case "inventory": return t("Inventory", "Inventar");
       case "sca_malware_alert": return t("SCA Malware Alert", "SCA-Malware-Alarm");
+      case "system": return t("Inventory system", "Inventar-System");
     }
   };
 
@@ -548,6 +577,7 @@ const SystemSettings = () => {
         if (ids.length === 0) return t("All inventory items", "Alle Inventar-Einträge");
         return t(`${ids.length} item(s)`, `${ids.length} Eintrag/Einträge`);
       }
+      case "system": return systemRuleDescription(rule, inventorySystems, t);
     }
   };
 
@@ -561,6 +591,9 @@ const SystemSettings = () => {
     { value: "watch_rule_match", label: "Watch Rule Match" },
     { value: "inventory_match", label: "Inventory Match" },
     { value: "sca_malware_alert", label: "SCA Malware Alert" },
+    { value: "system_findings", label: "System: New Findings" },
+    { value: "system_stale", label: "System: Stopped Reporting" },
+    { value: "system_retired", label: "System: Retired by a List" },
   ];
 
   const TEMPLATE_PLACEHOLDERS: Record<NotificationEventKey, { scalars: string; loops?: { label: string; fields: string }[] }> = {
@@ -600,6 +633,24 @@ const SystemSettings = () => {
         { label: "malware", fields: "{mal_id}, {package}, {version}, {ecosystem}, {severity}, {title}" },
       ],
     },
+    system_findings: {
+      scalars: "{icon}, {rule_name}, {system}, {system_id}, {kind}, {exposure}, {environment}, {owner}, {groups}, {scan_id}, {count}, {noun}, {first_report}, {critical}, {high}, {medium}, {low}, {time}",
+      loops: [
+        { label: "findings_list", fields: "{id}, {severity}, {cvss}, {package}, {version}, {fix}" },
+      ],
+    },
+    system_stale: {
+      scalars: "{icon}, {rule_name}, {count}, {noun}, {stale_after_days}, {time}",
+      loops: [
+        { label: "systems_list", fields: "{name}, {kind}, {exposure}, {environment}, {owner}, {groups}, {last_report}" },
+      ],
+    },
+    system_retired: {
+      scalars: "{icon}, {rule_name}, {source}, {count}, {noun}, {time}",
+      loops: [
+        { label: "systems_list", fields: "{name}, {kind}, {exposure}, {environment}, {owner}, {groups}, {last_report}" },
+      ],
+    },
   };
 
   const DEFAULT_TEMPLATES: Record<NotificationEventKey, { title: string; body: string }> = {
@@ -630,6 +681,18 @@ const SystemSettings = () => {
     sca_malware_alert: {
       title: "{icon} Hecate — {mal_count} new MAL-* {noun} on {target}",
       body: "Target: {target}\nScan: {scan_id}\nNew MAL-* findings: {mal_count}\nPackages: {packages_list}\nTime: {time}",
+    },
+    system_findings: {
+      title: "{icon} Hecate — {count} new {noun} on {system}",
+      body: "System: {system}\nNew findings: {count} (C:{critical} H:{high} M:{medium} L:{low})\n{#each findings_list}\n{id} — {severity} — {package} {version}\n{/each}\nTime: {time}",
+    },
+    system_stale: {
+      title: "{icon} Hecate — {count} {noun} stopped reporting",
+      body: "No SBOM or scanner report for {stale_after_days} days:\n{#each systems_list}\n{name} (last report: {last_report})\n{/each}\nTime: {time}",
+    },
+    system_retired: {
+      title: "{icon} Hecate — {count} {noun} retired by {source}",
+      body: "The server list {source} no longer names:\n{#each systems_list}\n{name} (last report: {last_report})\n{/each}\nTime: {time}",
     },
   };
 
@@ -940,6 +1003,7 @@ const SystemSettings = () => {
     void loadLicensePolicies();
     void fetchScanTargets({ limit: 200 }).then((r) => setScanTargets(r.items)).catch(() => {});
     void fetchInventoryItems().then((r) => setInventoryItems(r.items)).catch(() => {});
+    void fetchInventorySystems().then((r) => setInventorySystems(r.items)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1553,6 +1617,7 @@ const SystemSettings = () => {
                 <option value="scan">{t("SCA Scan", "SCA-Scan")}</option>
                 <option value="inventory">{t("Inventory", "Inventar")}</option>
                 <option value="sca_malware_alert">{t("SCA Malware Alert", "SCA-Malware-Alarm")}</option>
+                <option value="system">{t("Inventory system", "Inventar-System")}</option>
               </select>
             </Setting>
             <Setting
@@ -1723,6 +1788,98 @@ const SystemSettings = () => {
               </Setting>
             )}
 
+            {formType === "system" && (
+              <>
+                <Setting
+                  label={t("When", "Wann")}
+                  help={<DocsLink path="integrations/notifications/#inventory-system-rules">{t("What each one sends", "Was jeweils gesendet wird")}</DocsLink>}
+                >
+                  {SYSTEM_RULE_EVENTS.map((evt) => (
+                    <label key={evt} className="system-check">
+                      <input
+                        type="checkbox"
+                        checked={formEventTypes.includes(evt)}
+                        onChange={() => toggleEventType(evt)}
+                      />
+                      <span>{systemEventLabel(evt, t)}</span>
+                    </label>
+                  ))}
+                </Setting>
+                {formEventTypes.includes("system_findings") && (
+                  <Setting label={t("New findings from", "Neue Befunde ab")} htmlFor="system-rule-system-severity">
+                    <select
+                      id="system-rule-system-severity"
+                      className="system-input"
+                      value={formScanSeverityThreshold}
+                      onChange={(e) => setFormScanSeverityThreshold(e.target.value)}
+                    >
+                      <option value="">{t("Any severity", "Jedem Schweregrad")}</option>
+                      <option value="critical">{t("Critical", "Kritisch")}</option>
+                      <option value="high">{t("High", "Hoch")}</option>
+                      <option value="medium">{t("Medium", "Mittel")}</option>
+                      <option value="low">{t("Low", "Niedrig")}</option>
+                    </select>
+                  </Setting>
+                )}
+                <Setting label={t("Exposure", "Erreichbarkeit")} htmlFor="system-rule-exposure">
+                  <select
+                    id="system-rule-exposure"
+                    className="system-input"
+                    value={formSystemExposure}
+                    onChange={(e) => setFormSystemExposure(e.target.value as "" | "internet" | "internal")}
+                  >
+                    <option value="">{t("Any", "Alle")}</option>
+                    <option value="internet">{t("Internet-facing", "Aus dem Internet erreichbar")}</option>
+                    <option value="internal">{t("Internal", "Intern")}</option>
+                  </select>
+                </Setting>
+                {knownGroups(inventorySystems, formSystemGroups).length > 0 && (
+                  <Setting
+                    label={t("Groups", "Gruppen")}
+                    help={t("Any of them. None selected: every group.", "Eine davon. Keine gewählt: alle Gruppen.")}
+                    htmlFor="system-rule-groups"
+                  >
+                    <select
+                      id="system-rule-groups"
+                      className="system-input system-input--wide"
+                      multiple
+                      value={formSystemGroups}
+                      onChange={(e) => setFormSystemGroups(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                      size={Math.min(6, Math.max(3, knownGroups(inventorySystems, formSystemGroups).length))}
+                    >
+                      {knownGroups(inventorySystems, formSystemGroups).map((group) => (
+                        <option key={group} value={group}>{group}</option>
+                      ))}
+                    </select>
+                  </Setting>
+                )}
+                <Setting
+                  label={t("Systems", "Systeme")}
+                  help={t("None selected: every system.", "Keins gewählt: alle Systeme.")}
+                  htmlFor={inventorySystems.length ? "system-rule-systems" : undefined}
+                >
+                  {inventorySystems.length === 0 ? (
+                    <p className="system-setting-note">
+                      {t("No systems yet. The rule covers them once they are added.", "Noch keine Systeme. Die Regel gilt für sie, sobald sie angelegt sind.")}
+                    </p>
+                  ) : (
+                    <select
+                      id="system-rule-systems"
+                      className="system-input system-input--wide"
+                      multiple
+                      value={formSystemIds}
+                      onChange={(e) => setFormSystemIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                      size={Math.min(8, Math.max(3, selectableSystems(inventorySystems, formSystemIds).length))}
+                    >
+                      {selectableSystems(inventorySystems, formSystemIds).map((sys) => (
+                        <option key={sys.id} value={sys.id}>{sys.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </Setting>
+              </>
+            )}
+
             <Setting label={t("Enabled", "Aktiviert")} htmlFor="system-rule-enabled">
               <input
                 id="system-rule-enabled"
@@ -1733,7 +1890,7 @@ const SystemSettings = () => {
             </Setting>
 
             <div className="system-form-actions">
-              <button type="button" className="btn btn-primary" onClick={() => void handleSaveRule()} disabled={ruleSaving || !formName.trim()} aria-busy={ruleSaving || undefined}>
+              <button type="button" className="btn btn-primary" onClick={() => void handleSaveRule()} disabled={ruleSaving || !formName.trim() || (formType === "system" && systemRuleEvents(formEventTypes).length === 0)} aria-busy={ruleSaving || undefined}>
                 <BusyLabel busy={ruleSaving}>
                   {editingRule ? t("Update Rule", "Regel aktualisieren") : t("Create Rule", "Regel erstellen")}
                 </BusyLabel>

@@ -211,6 +211,18 @@ class SchedulerManager:
             coalesce=True,
         )
 
+        # Systems that stopped reporting (system notification rules). Cheap when no such rule exists.
+        if settings.notifications_enabled:
+            self.scheduler.add_job(
+                _scheduled_system_stale_check,
+                trigger=IntervalTrigger(minutes=settings.scheduler_inventory_system_watch_minutes),
+                id="inventory_system_watch",
+                next_run_time=datetime.now(tz=UTC) + timedelta(minutes=2),
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+
         if settings.nuclei_templates_enabled:
             self.scheduler.add_job(
                 _scheduled_nuclei_templates_sync,
@@ -781,6 +793,15 @@ async def _scheduled_inventory_list_pull() -> None:
             log.info("scheduler.inventory_list_pull_completed", sources=ran)
     except Exception as exc:  # noqa: BLE001
         log.exception("scheduler.inventory_list_pull_failed", error=str(exc))
+
+
+async def _scheduled_system_stale_check() -> None:
+    """Send ``system_stale`` notifications for systems that went silent since the last check."""
+    from app.services.notification_service import get_notification_service
+
+    sent = await get_notification_service().evaluate_system_stale_rules()
+    if sent:
+        log.info("scheduler.system_stale_notified", notifications=sent)
 
 
 async def _scheduled_cert_feeds_sync() -> None:

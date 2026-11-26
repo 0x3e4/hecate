@@ -66,8 +66,8 @@ choose a **Type**, set the **Apprise Tag** (which must match a channel tag you c
 listed in a table showing its type, a one-line summary of its parameters, the tag, an *Active* / *Disabled*
 status you can click to toggle, when it last fired, and **Edit** / **Delete** actions.
 
-There are eight rule types. The first — *System Event* — reacts to things Hecate does; the rest watch the
-vulnerability index or your scans for new matches.
+There are nine rule types. The first — *System Event* — reacts to things Hecate does; the rest watch the
+vulnerability index, your scans or your inventory's systems.
 
 | Rule type | Fires when… |
 | --- | --- |
@@ -79,6 +79,7 @@ vulnerability index or your scans for new matches.
 | **SCA Scan** | An SCA scan completes with findings, optionally only at or above a severity threshold and/or for a chosen target. |
 | **Inventory** | A newly published CVE touches an entry in your [environment inventory](../guide/inventory.md), optionally scoped to specific items. |
 | **SCA Malware Alert** | The [continuous MAL-\* watcher](../sca/malware.md) retroactively flags a package in a previously completed scan as malicious. |
+| **Inventory system** | A [system](../guide/inventory.md#systems) stops reporting, a report brings new findings, or a server list retires systems. |
 
 ### System-event rules
 
@@ -118,6 +119,28 @@ of your most recent completed scans and finds that a package you already shipped
 *after the fact*. It only fires for genuinely new findings — a re-run that re-discovers the same hit stays
 silent. See [Malware Detection & Feed](../sca/malware.md) for how that watcher works.
 
+### Inventory system rules
+
+An *Inventory system* rule watches the servers, VMs and nodes of the [inventory](../guide/inventory.md#systems).
+Tick what it reports:
+
+- **New findings in a report**: an SBOM or scanner report a system pushed has findings its previous report
+  did not have. The same vulnerability in the same package counts as known, also at a newer version, so a
+  host that pushes the same 40 findings every night stays quiet. Dismissed findings and those whose VEX
+  status is *not affected* or *fixed* are not news. A system's first report counts in full. **New findings
+  from** sets the lowest severity that is reported. One message per system and report, sent right after the
+  import.
+- **Stopped reporting**: a system that reported before has sent nothing for the stale window (three days by
+  default, `INVENTORY_SYSTEM_STALE_DAYS`). Hecate checks every hour
+  (`SCHEDULER_INVENTORY_SYSTEM_WATCH_MINUTES`) and sends one message with every system that fell silent
+  since the last check; a system is reported again only after it reported and fell silent anew. Systems
+  that never reported are left out, since a server list usually names hosts that do not push SBOMs.
+- **Retired by a server list**: a list applied in *Retire* mode, imported, pushed or fetched, retired
+  systems. One message per list run.
+
+**Exposure**, **Groups** (any of them) and **Systems** narrow which systems the rule covers; leave them
+empty for all. Messages use the event keys `system_findings`, `system_stale` and `system_retired`.
+
 ### The anti-storm bootstrap
 
 The first time a watch rule (or any rule that scans for new matches) is evaluated, it does **not** send
@@ -150,8 +173,9 @@ The **Tag** decides which rules a template applies to. Resolution is layered: He
 template whose tag exactly matches the rule's Apprise tag, then falls back to a template tagged `all`, and
 finally to the built-in default if neither exists. So a template tagged `slack` overrides messages sent to
 your Slack channel, while a template tagged `all` becomes your global default for that event. Templates are
-keyed by **event** — the seven event keys are `new_vulnerabilities`, `scan_completed`, `scan_failed`,
-`sync_failed`, `watch_rule_match`, `inventory_match`, and `sca_malware_alert` — and several rule types feed
+keyed by **event** — the ten event keys are `new_vulnerabilities`, `scan_completed`, `scan_failed`,
+`sync_failed`, `watch_rule_match`, `inventory_match`, `sca_malware_alert`, `system_findings`, `system_stale`
+and `system_retired` — and several rule types feed
 the same event key (every watch rule renders through `watch_rule_match`, for instance).
 
 Each saved template appears in a table with its event, tag, a preview of the title and body, and **Edit** /
@@ -164,5 +188,5 @@ Notifications live alongside the rest of Hecate's administration on the System p
 System tabs — General, Access Control, Notifications, Data, and Policies — see [System Settings](../admin/system.md). The
 rule types lean on features documented elsewhere: saved-search rules build on the
 [Search & Query Builder](../guide/search.md), inventory rules on the
-[Environment Inventory](../guide/inventory.md), and malware-alert rules on
-[Malware Detection & Feed](../sca/malware.md).
+[Environment Inventory](../guide/inventory.md), system rules on its [systems](../guide/inventory.md#systems),
+and malware-alert rules on [Malware Detection & Feed](../sca/malware.md).

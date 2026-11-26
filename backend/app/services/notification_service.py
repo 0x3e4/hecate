@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -226,6 +227,9 @@ class NotificationService:
             "scan_severity_threshold": payload.scan_severity_threshold,
             "scan_target_filter": payload.scan_target_filter,
             "inventory_item_ids": payload.inventory_item_ids,
+            "system_ids": payload.system_ids,
+            "system_groups": payload.system_groups,
+            "system_exposure": payload.system_exposure,
             "last_evaluated_at": None,
             "last_triggered_at": None,
         }
@@ -250,7 +254,14 @@ class NotificationService:
             "scan_severity_threshold": payload.scan_severity_threshold,
             "scan_target_filter": payload.scan_target_filter,
             "inventory_item_ids": payload.inventory_item_ids,
+            "system_ids": payload.system_ids,
+            "system_groups": payload.system_groups,
+            "system_exposure": payload.system_exposure,
         }
+        if existing.get("rule_type") != payload.rule_type:
+            # A rule that becomes another type starts over: its first evaluation
+            # only sets the watermark instead of sending everything since then.
+            updates["last_evaluated_at"] = None
         await repo.update(rule_id, updates)
         doc = await repo.get(rule_id)
         return self._map_rule(doc) if doc else None
@@ -545,6 +556,225 @@ class NotificationService:
                     rule_id=str(rule.get("_id", "")),
                     error=str(exc),
                 )
+
+    # ------------------------------------------------------------------
+    # System rules (rule_type="system", see app/services/system_notifications.py)
+    # ------------------------------------------------------------------
+
+    async def _system_rules(self, event: str) -> tuple[NotificationRuleRepository | None, list[dict[str, Any]]]:
+        if not self.enabled:
+            return None, []
+        repo = await NotificationRuleRepository.create()
+        rules = [r for r in await repo.list_enabled_by_type("system") if event in (r.get("event_types") or [])]
+        return repo, rules
+
+    @staticmethod
+    def _system_line(system: Any, now_fmt: Any) -> dict[str, str]:
+        return {
+            "name": system.name,
+            "kind": system.kind or "N/A",
+            "exposure": system.exposure or "N/A",
+            "environment": system.environment or "N/A",
+            "owner": system.owner or "N/A",
+            "groups": ", ".join(system.groups) or "N/A",
+            "last_report": now_fmt(system.last_report_at) if system.last_report_at else "never",
+        }
+
+    def _format_datetime(self, dt: datetime) -> str:
+        import os
+        tz = ZoneInfo(os.environ.get("TZ", "UTC"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
+
+    async def notify_system_report(
+        self,
+        *,
+        system_id: str,
+        scan_id: str,
+        load_findings: Callable[[], Awaitable[tuple[list[dict[str, Any]], list[dict[str, Any]] | None]]],
+    ) -> int:
+        """``system_findings``: a system's report brought findings its previous one did not have.
+
+        ``load_findings`` returns the report's findings and the previous
+        report's (``None`` for a system's first report); it only runs when a
+        rule covers the system. Returns the number of notifications sent. Never
+        raises.
+        """
+        from app.services.inventory_system_service import get_inventory_system_service
+        from app.services.system_notifications import new_findings, severity_counts, system_matches
+
+        sent = 0
+        try:
+            repo, rules = await self._system_rules("system_findings")
+            if not rules or repo is None:
+                return 0
+            system = await get_inventory_system_service().get_system(system_id)
+            if system is None:
+                return 0
+            rules = [r for r in rules if system_matches(system, r)]
+            if not rules:
+                return 0
+            current, previous = await load_findings()
+            now = datetime.now(tz=UTC)
+            now_str = self._format_now()
+            for rule in rules:
+                found = new_findings(current, previous or [], rule.get("scan_severity_threshold"))
+                if not found:
+                    continue
+                counts = severity_counts(found)
+                tag = rule.get("apprise_tag", self._tags)
+                first = previous is None
+                variables: dict[str, Any] = {
+                    "icon": "\U0001f5a5",
+                    "rule_name": rule.get("name", ""),
+                    "system": system.name,
+                    "system_id": system.id,
+                    "kind": system.kind or "N/A",
+                    "exposure": system.exposure or "N/A",
+                    "environment": system.environment or "N/A",
+                    "owner": system.owner or "N/A",
+                    "groups": ", ".join(system.groups) or "N/A",
+                    "scan_id": scan_id,
+                    "count": str(len(found)),
+                    "noun": "finding" if len(found) == 1 else "findings",
+                    "first_report": "yes" if first else "no",
+                    **{k: str(v) for k, v in counts.items()},
+                    "time": now_str,
+                    "findings_list": [
+                        {
+                            "id": f.get("vulnerability_id") or f.get("title") or "N/A",
+                            "severity": f.get("severity") or "unknown",
+                            "cvss": str(f["cvss_score"]) if f.get("cvss_score") is not None else "N/A",
+                            "package": f.get("package_name") or "N/A",
+                            "version": f.get("package_version") or "N/A",
+                            "fix": f.get("fix_version") or "N/A",
+                        }
+                        for f in found[:10]
+                    ],
+                }
+                lead = "first report" if first else "new since the previous report"
+                default_title = f"\U0001f5a5 Hecate \u2014 {len(found)} new {variables['noun']} on {system.name}"
+                lines = [
+                    f"System: {system.name}",
+                    f"Findings ({lead}): {len(found)} (C:{counts['critical']} H:{counts['high']} "
+                    f"M:{counts['medium']} L:{counts['low']})",
+                    "",
+                ]
+                for entry in variables["findings_list"]:
+                    lines.append(
+                        f"  \u2022 {entry['id']} \u2014 {entry['severity']} \u2014 {entry['package']} {entry['version']}"
+                        + (f" (fix {entry['fix']})" if entry["fix"] != "N/A" else "")
+                    )
+                if len(found) > 10:
+                    lines.append(f"  ... and {len(found) - 10} more")
+                lines.append(f"\nScan: {scan_id}\nTime: {now_str}")
+                title, body = await self._apply_template(
+                    "system_findings", tag, variables, default_title, "\n".join(lines),
+                )
+                notify_type = "failure" if counts["critical"] or counts["high"] else "warning"
+                if await self.send(title=title, body=body, notify_type=notify_type, tag=tag):
+                    sent += 1
+                await repo.update(str(rule["_id"]), {"last_triggered_at": now})
+        except Exception:  # noqa: BLE001 - fire-and-forget
+            log.warning("notification.system_findings_failed", system_id=system_id, exc_info=True)
+        return sent
+
+    async def notify_systems_retired(self, *, source: str, names: list[str]) -> int:
+        """``system_retired``: a server list in replace mode retired these systems. Never raises."""
+        from app.services.inventory_system_service import get_inventory_system_service
+        from app.services.system_notifications import system_matches
+
+        sent = 0
+        try:
+            repo, rules = await self._system_rules("system_retired")
+            if not rules or repo is None or not names:
+                return 0
+            wanted = {n.casefold() for n in names}
+            listing = await get_inventory_system_service().list_systems()
+            retired = [s for s in listing.items if s.name.casefold() in wanted]
+            now = datetime.now(tz=UTC)
+            now_str = self._format_now()
+            for rule in rules:
+                hits = [s for s in retired if system_matches(s, rule)]
+                if not hits:
+                    continue
+                tag = rule.get("apprise_tag", self._tags)
+                variables: dict[str, Any] = {
+                    "icon": "\U0001f5c4",
+                    "rule_name": rule.get("name", ""),
+                    "source": source,
+                    "count": str(len(hits)),
+                    "noun": "system" if len(hits) == 1 else "systems",
+                    "time": now_str,
+                    "systems_list": [self._system_line(s, self._format_datetime) for s in hits[:25]],
+                }
+                default_title = f"\U0001f5c4 Hecate \u2014 {len(hits)} {variables['noun']} retired by {source}"
+                lines = [f"The server list {source} no longer names:", ""]
+                lines += [f"  \u2022 {line['name']} (last report: {line['last_report']})" for line in variables["systems_list"]]
+                if len(hits) > 25:
+                    lines.append(f"  ... and {len(hits) - 25} more")
+                lines.append(f"\nTime: {now_str}")
+                title, body = await self._apply_template(
+                    "system_retired", tag, variables, default_title, "\n".join(lines),
+                )
+                if await self.send(title=title, body=body, notify_type="info", tag=tag):
+                    sent += 1
+                await repo.update(str(rule["_id"]), {"last_triggered_at": now})
+        except Exception:  # noqa: BLE001 - fire-and-forget
+            log.warning("notification.system_retired_failed", source=source, exc_info=True)
+        return sent
+
+    async def evaluate_system_stale_rules(self, now: datetime | None = None) -> int:
+        """``system_stale``: systems that went silent since each rule's last evaluation. Never raises."""
+        from app.services.inventory_system_service import get_inventory_system_service
+        from app.services.system_notifications import system_matches, went_stale
+
+        sent = 0
+        try:
+            repo, rules = await self._system_rules("system_stale")
+            if not rules or repo is None:
+                return 0
+            listing = await get_inventory_system_service().list_systems()
+            now = now or datetime.now(tz=UTC)
+            now_str = self._format_now()
+            days = listing.stale_after_days
+            for rule in rules:
+                rule_id = str(rule["_id"])
+                prev: datetime | None = rule.get("last_evaluated_at")
+                if not await repo.claim_evaluation(rule_id, prev, now):
+                    continue
+                if prev is None:
+                    log.info("notification.system_rule_bootstrapped", rule_id=rule_id)
+                    continue
+                hits = [s for s in listing.items if system_matches(s, rule) and went_stale(s, prev, now, days)]
+                if not hits:
+                    continue
+                tag = rule.get("apprise_tag", self._tags)
+                variables: dict[str, Any] = {
+                    "icon": "\u23f8",
+                    "rule_name": rule.get("name", ""),
+                    "count": str(len(hits)),
+                    "noun": "system" if len(hits) == 1 else "systems",
+                    "stale_after_days": str(days),
+                    "time": now_str,
+                    "systems_list": [self._system_line(s, self._format_datetime) for s in hits[:25]],
+                }
+                default_title = f"\u23f8 Hecate \u2014 {len(hits)} {variables['noun']} stopped reporting"
+                lines = [f"No SBOM or scanner report for {days} days:", ""]
+                lines += [f"  \u2022 {line['name']} (last report: {line['last_report']})" for line in variables["systems_list"]]
+                if len(hits) > 25:
+                    lines.append(f"  ... and {len(hits) - 25} more")
+                lines.append(f"\nTime: {now_str}")
+                title, body = await self._apply_template(
+                    "system_stale", tag, variables, default_title, "\n".join(lines),
+                )
+                if await self.send(title=title, body=body, notify_type="warning", tag=tag):
+                    sent += 1
+                await repo.update(rule_id, {"last_triggered_at": now})
+        except Exception:  # noqa: BLE001 - fire-and-forget
+            log.warning("notification.system_stale_failed", exc_info=True)
+        return sent
 
     async def notify_sync_failed(self, *, job_name: str, error: str) -> None:
         now_str = self._format_now()
@@ -1295,6 +1525,9 @@ class NotificationService:
             scan_severity_threshold=doc.get("scan_severity_threshold"),
             scan_target_filter=doc.get("scan_target_filter"),
             inventory_item_ids=doc.get("inventory_item_ids"),
+            system_ids=doc.get("system_ids"),
+            system_groups=doc.get("system_groups"),
+            system_exposure=doc.get("system_exposure"),
             created_at=doc.get("created_at", datetime.now(tz=UTC)),
             updated_at=doc.get("updated_at", datetime.now(tz=UTC)),
             last_evaluated_at=doc.get("last_evaluated_at"),

@@ -16,6 +16,7 @@ from app.schemas.notification import (
     NotificationTestResponse,
 )
 from app.services.notification_service import NotificationService, get_notification_service
+from app.services.system_notifications import SYSTEM_EVENTS
 
 router = APIRouter()
 
@@ -115,6 +116,21 @@ async def remove_channel(
 
 # --- Notification Rules CRUD ---
 
+VALID_RULE_TYPES = {"event", "saved_search", "vendor", "product", "dql", "scan", "inventory", "sca_malware_alert", "system"}
+
+
+def _check_rule(payload: NotificationRuleCreate) -> None:
+    if payload.rule_type not in VALID_RULE_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid rule_type. Must be one of: {', '.join(sorted(VALID_RULE_TYPES))}",
+        )
+    if payload.rule_type == "system":
+        unknown = set(payload.event_types) - set(SYSTEM_EVENTS)
+        if not payload.event_types or unknown:
+            raise HTTPException(
+                status_code=400, detail=f"A system rule needs eventTypes from: {', '.join(SYSTEM_EVENTS)}",
+            )
+
 
 @router.get("/rules", response_model=NotificationRuleListResponse)
 async def list_rules(
@@ -129,9 +145,7 @@ async def create_rule(
     payload: NotificationRuleCreate,
     service: NotificationService = Depends(get_notification_service),
 ) -> NotificationRuleResponse:
-    valid_types = {"event", "saved_search", "vendor", "product", "dql", "scan", "inventory", "sca_malware_alert"}
-    if payload.rule_type not in valid_types:
-        raise HTTPException(status_code=400, detail=f"Invalid rule_type. Must be one of: {', '.join(sorted(valid_types))}")
+    _check_rule(payload)
     return await service.create_rule(payload)
 
 
@@ -152,6 +166,7 @@ async def update_rule(
     payload: NotificationRuleCreate,
     service: NotificationService = Depends(get_notification_service),
 ) -> NotificationRuleResponse:
+    _check_rule(payload)
     result = await service.update_rule(rule_id, payload)
     if result is None:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -171,7 +186,10 @@ async def delete_rule(
 # --- Message Templates CRUD ---
 
 
-VALID_EVENT_KEYS = {"new_vulnerabilities", "scan_completed", "scan_failed", "sync_failed", "watch_rule_match", "inventory_match", "sca_malware_alert"}
+VALID_EVENT_KEYS = {
+    "new_vulnerabilities", "scan_completed", "scan_failed", "sync_failed", "watch_rule_match", "inventory_match",
+    "sca_malware_alert", *SYSTEM_EVENTS,
+}
 
 
 @router.get("/templates", response_model=NotificationTemplateListResponse)

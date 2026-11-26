@@ -1403,7 +1403,10 @@ export interface NotificationTestResponse {
   message: string;
 }
 
-export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan" | "inventory" | "sca_malware_alert";
+export type NotificationRuleType = "event" | "saved_search" | "vendor" | "product" | "dql" | "scan" | "inventory" | "sca_malware_alert" | "system";
+
+/** What a `system` rule watches: a system that stopped reporting, new findings in a report, systems a server list retired. */
+export type SystemRuleEvent = "system_stale" | "system_findings" | "system_retired";
 
 export interface NotificationRule {
   id: string;
@@ -1419,6 +1422,9 @@ export interface NotificationRule {
   scanSeverityThreshold?: string | null;
   scanTargetFilter?: string | null;
   inventoryItemIds?: string[] | null;
+  systemIds?: string[] | null;
+  systemGroups?: string[] | null;
+  systemExposure?: "internet" | "internal" | null;
   createdAt: string;
   updatedAt: string;
   lastEvaluatedAt?: string | null;
@@ -1443,6 +1449,9 @@ export interface NotificationRuleCreate {
   scanSeverityThreshold?: string | null;
   scanTargetFilter?: string | null;
   inventoryItemIds?: string[] | null;
+  systemIds?: string[] | null;
+  systemGroups?: string[] | null;
+  systemExposure?: "internet" | "internal" | null;
 }
 
 export interface NotificationChannel {
@@ -1456,7 +1465,7 @@ export interface NotificationChannelListResponse {
   items: NotificationChannel[];
 }
 
-export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match" | "inventory_match" | "sca_malware_alert";
+export type NotificationEventKey = "new_vulnerabilities" | "scan_completed" | "scan_failed" | "sync_failed" | "watch_rule_match" | "inventory_match" | "sca_malware_alert" | SystemRuleEvent;
 
 export interface NotificationTemplate {
   id: string;

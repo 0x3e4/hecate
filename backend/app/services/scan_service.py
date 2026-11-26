@@ -622,16 +622,39 @@ class ScanService:
             await self._clear_running_state(target_id, scan_id)
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
+    async def _previous_completed_scan_id(self, target_id: str, scan_id: str) -> str | None:
+        """The target's completed scan before ``scan_id`` (among its two newest)."""
+        _, prev_scans = await self.scan_repo.list_by_target(target_id, limit=2)
+        for ps in prev_scans:
+            ps_id = str(ps.get("_id", ""))
+            if ps_id != scan_id and ps.get("status") == "completed":
+                return ps_id
+        return None
+
+    def _schedule_system_report_notification(self, system_id: str, scan_id: str, previous_scan_id: str | None) -> None:
+        """``system_findings`` rules for a system's new report, after the response. Never fails the caller."""
+        if not settings.notifications_enabled:
+            return
+
+        async def load() -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+            current = await self.finding_repo.list_brief_by_scan(scan_id)
+            previous = await self.finding_repo.list_brief_by_scan(previous_scan_id) if previous_scan_id else None
+            return current, previous
+
+        try:
+            task = asyncio.create_task(
+                get_notification_service().notify_system_report(system_id=system_id, scan_id=scan_id, load_findings=load)
+            )
+        except Exception:
+            log.warning("scan_service.system_notification_schedule_failed", scan_id=scan_id, exc_info=True)
+            return
+        _release_info_tasks.add(task)
+        task.add_done_callback(_release_info_tasks.discard)
+
     async def _carry_forward_from_previous(self, target_id: str, scan_id: str) -> None:
         """Copy VEX statuses and dismissals from the target's previous completed scan; never fails the caller."""
         try:
-            _, prev_scans = await self.scan_repo.list_by_target(target_id, limit=2)
-            prev_scan_id = None
-            for ps in prev_scans:
-                ps_id = str(ps.get("_id", ""))
-                if ps_id != scan_id and ps.get("status") == "completed":
-                    prev_scan_id = ps_id
-                    break
+            prev_scan_id = await self._previous_completed_scan_id(target_id, scan_id)
             if not prev_scan_id:
                 return
             from app.services.vex_service import VexService
@@ -960,8 +983,14 @@ class ScanService:
             # The system it describes (inventory_system_service.link_import).
             from app.services.inventory_system_service import get_inventory_system_service
 
-            await get_inventory_system_service().link_import(target_id, target_name, kind, exposure)
+            system_id = await get_inventory_system_service().link_import(target_id, target_name, kind, exposure)
             await self.apply_vex_sources(target_id)
+            if system_id:
+                try:
+                    previous_scan_id = await self._previous_completed_scan_id(target_id, scan_id_val)
+                except Exception:
+                    previous_scan_id = None
+                self._schedule_system_report_notification(system_id, scan_id_val, previous_scan_id)
             if not no_external_lookups:
                 self._schedule_release_info(scan_id_val)
 

@@ -369,7 +369,7 @@ scanner/
 
 - Apprise REST-API integration with bundled Docker sidecar or external service.
 - Channel routing via Apprise tags (Slack, Discord, email, Telegram, Signal, webhooks, …).
-- **Rule types**: `event`, `saved_search`, `vendor`, `product`, `dql`, `scan`, `inventory`, `sca_malware_alert` (retroactive MAL-* hits injected by the continuous watcher).
+- **Rule types**: `event`, `saved_search`, `vendor`, `product`, `dql`, `scan`, `inventory`, `sca_malware_alert` (retroactive MAL-* hits injected by the continuous watcher), `system` (an inventory system stopped reporting, a report brought new findings, a server list retired systems; scoped by systems, groups and exposure).
 - Customisable title and body templates per event with `{variable}` and `{#each list}{/each}` loops.
 - Watch rules evaluated after every ingestion with concurrency-safe compare-and-set claim.
 - Fire-and-forget: notification failures never break primary workflows.
