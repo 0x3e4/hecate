@@ -159,6 +159,26 @@ class InventorySystemService:
     async def system_ids(self) -> set[str]:
         return {str(d["_id"]) for d in await (await self.repo()).list_all()}
 
+    async def find_system(self, ref: str) -> dict[str, Any] | None:
+        """The system with this id, else with this name (case-insensitive)."""
+        ref = (ref or "").strip()
+        if not ref:
+            return None
+        repo = await self.repo()
+        return await repo.get(ref) or await repo.get_by_name(ref)
+
+    async def resolve_refs(self, refs: list[str]) -> tuple[list[str], list[str]]:
+        """Ids for system ids or names, in order without repeats, and the refs that matched nothing."""
+        ids: list[str] = []
+        unknown: list[str] = []
+        for ref in refs:
+            doc = await self.find_system(ref)
+            if doc is None:
+                unknown.append(ref)
+            elif str(doc["_id"]) not in ids:
+                ids.append(str(doc["_id"]))
+        return ids, unknown
+
     # ---------------------------------------------------------------- writes
 
     async def create_system(self, payload: InventorySystemCreateRequest) -> InventorySystemResponse:

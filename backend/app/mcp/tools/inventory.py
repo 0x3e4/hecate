@@ -32,6 +32,15 @@ def register(mcp: FastMCP) -> None:
             item_dict["eol"] = None
         return item_dict
 
+    async def _system_ids(refs: list[str]) -> tuple[list[str], str | None]:
+        """System ids for ids or names; an error text when one matches no system."""
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        ids, unknown = await get_inventory_system_service().resolve_refs(refs)
+        if unknown:
+            return ids, "No system named " + ", ".join(repr(r) for r in unknown[:5]) + "."
+        return ids, None
+
     @mcp.tool()
     async def list_inventory_items(
         search: str | None = None,
@@ -151,12 +160,14 @@ def register(mcp: FastMCP) -> None:
         owner: str | None = None,
         notes: str | None = None,
         eol_product: str | None = None,
+        systems: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create an environment inventory item. Requires write scope.
 
         `deployment` ∈ onprem|cloud|hybrid. `version` is exact (`8.0.25`) or a
         wildcard (`8.0.*`). Leave `eol_product` unset to auto-link the
         endoflife.date product by name; set it to override, or "" to leave unlinked.
+        `systems` links the item to inventory systems, by id or name.
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {"name": name, "vendor_slug": vendor_slug, "product_slug": product_slug, "version": version}
@@ -198,6 +209,14 @@ def register(mcp: FastMCP) -> None:
             # lets the service auto-match the endoflife.date product.
             if eol_product is not None:
                 payload["eolProduct"] = eol_product
+            if systems:
+                payload["systemIds"], unknown = await _system_ids(systems)
+                if unknown:
+                    await log_tool_invocation(
+                        tool_name="create_inventory_item", inputs=tool_inputs,
+                        success=False, error=unknown, started_at=started_at,
+                    )
+                    return {"error": unknown}
 
             service = await get_inventory_service()
             item = await service.create_item(
@@ -234,6 +253,7 @@ def register(mcp: FastMCP) -> None:
         notes: str | None = None,
         eol_product: str | None = None,
         change_note: str | None = None,
+        systems: list[str] | None = None,
     ) -> dict[str, Any]:
         """Update an inventory item (partial). Requires write scope.
 
@@ -241,6 +261,7 @@ def register(mcp: FastMCP) -> None:
         current link (auto re-matches only if the product changed), set a value
         to override, or "" to unlink. `change_note` (a ticket, the server, why)
         goes into the history entry of this change, not onto the item.
+        `systems` replaces the systems the item runs on (ids or names; [] unlinks all).
         """
         started_at = datetime.now(tz=UTC)
         tool_inputs = {"item_id": item_id}
@@ -282,6 +303,14 @@ def register(mcp: FastMCP) -> None:
             ):
                 if value is not None:
                     payload[key] = value
+            if systems is not None:
+                payload["systemIds"], unknown = await _system_ids(systems)
+                if unknown:
+                    await log_tool_invocation(
+                        tool_name="update_inventory_item", inputs=tool_inputs,
+                        success=False, error=unknown, started_at=started_at,
+                    )
+                    return {"error": unknown}
 
             if not payload:
                 return {"error": "No fields to update."}

@@ -27,7 +27,7 @@ export const McpInfoPage = () => {
         )}
       />
       <div className="info-tags">
-        <span className="tag">{t("47 tools", "47 Tools")}</span>
+        <span className="tag">{t("53 tools", "53 Tools")}</span>
         <span className="tag">OAuth 2.0 + PKCE</span>
         <span className="tag">{t("Rate limited", "Rate-limitiert")}</span>
         <span className="tag">{t("Audit logged", "Audit-protokolliert")}</span>
@@ -289,6 +289,12 @@ claude mcp get hecate`} />
               <tr><td><code>create_inventory_item</code></td><td>{t("Create an inventory item (write scope)", "Inventar-Eintrag anlegen (Schreib-Scope)")}</td></tr>
               <tr><td><code>update_inventory_item</code></td><td>{t("Update an inventory item (write scope)", "Inventar-Eintrag aktualisieren (Schreib-Scope)")}</td></tr>
               <tr><td><code>delete_inventory_item</code></td><td>{t("Delete an inventory item (write scope)", "Inventar-Eintrag löschen (Schreib-Scope)")}</td></tr>
+              <tr><td><code>list_inventory_systems</code></td><td>{t("List the inventory's systems with report status and latest findings", "Systeme des Inventars mit Meldestatus und letzten Ergebnissen auflisten")}</td></tr>
+              <tr><td><code>get_inventory_system</code></td><td>{t("Fetch one system by id or name", "Ein System per ID oder Name abrufen")}</td></tr>
+              <tr><td><code>create_inventory_system</code></td><td>{t("Add a system (write scope)", "System anlegen (Schreib-Scope)")}</td></tr>
+              <tr><td><code>update_inventory_system</code></td><td>{t("Change a system (write scope)", "System ändern (Schreib-Scope)")}</td></tr>
+              <tr><td><code>delete_inventory_system</code></td><td>{t("Remove a system; its scan history stays (write scope)", "System entfernen; der Scan-Verlauf bleibt (Schreib-Scope)")}</td></tr>
+              <tr><td><code>import_inventory_system_list</code></td><td>{t("Apply a server list; previews unless told to apply (write scope)", "Serverliste anwenden; zeigt erst die Vorschau (Schreib-Scope)")}</td></tr>
               <tr><td><code>set_finding_vex</code></td><td>{t("Set or clear the VEX status of findings, by finding ids or target + vulnerability, with an optional re-review date (write scope)", "VEX-Status von Ergebnissen setzen oder entfernen, per Ergebnis-IDs oder Target + Schwachstelle, optional mit Wiedervorlage-Datum (Schreib-Scope)")}</td></tr>
               <tr><td><code>import_vex</code></td><td>{t("Import a CycloneDX VEX or OpenVEX document into a target (write scope)", "CycloneDX-VEX- oder OpenVEX-Dokument in ein Target importieren (Schreib-Scope)")}</td></tr>
               <tr><td><code>get_target_vex_sources</code></td><td>{t("A target's VEX source URLs and the result of their last fetch", "VEX-Quellen eines Targets und das Ergebnis ihres letzten Abrufs")}</td></tr>

@@ -122,7 +122,7 @@ Several routes in `scans` are order-sensitive: collection-style routes such as
 suffix and 404s.
 
 In addition, the MCP server under `app/mcp/` is mounted as a separate ASGI sub-app at `/mcp` with
-**46 tools** spanning CVE search and detail, the asset catalogue, CWE/CAPEC, stats, environment-inventory
+**53 tools** spanning CVE search and detail, the asset catalogue, CWE/CAPEC, stats, environment-inventory
 CRUD (with endoflife.date status), VEX statuses, imports and sources, the full range of
 SCA scan lookups, and the AI-analysis prepare/save pairs plus scan/sync triggers. The server is
 initialised as `FastMCP("hecate", ...)`. Its auth middleware is path-aware — it processes only paths

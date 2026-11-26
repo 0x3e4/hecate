@@ -42,6 +42,7 @@ def create_mcp_server() -> FastMCP:
     from app.mcp.tools.cwe_capec import register as register_cwe_capec
     from app.mcp.tools.scans import register as register_scans
     from app.mcp.tools.inventory import register as register_inventory
+    from app.mcp.tools.inventory_systems import register as register_inventory_systems
     from app.mcp.tools.vex import register as register_vex
     from app.mcp.tools.packages import register as register_packages
 
@@ -52,6 +53,7 @@ def create_mcp_server() -> FastMCP:
     register_cwe_capec(mcp)
     register_scans(mcp)
     register_inventory(mcp)
+    register_inventory_systems(mcp)
     register_vex(mcp)
     register_packages(mcp)
 

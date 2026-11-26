@@ -215,7 +215,7 @@ flowchart TB
 | **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type, with a change history (each change can carry a note such as a ticket or server), version reports from your deployment pipeline, and a duplicate action for the next server of the same product. |
 | **API tokens** | Named tokens with scopes (`scan:submit`, `inventory:report`) and an optional expiry, managed on System → Access Control. |
 | **Sign-in (OIDC) & audit trail** | Optional web sign-in through any OIDC provider (Keycloak, Authelia, Authentik, Zitadel, Pocket ID, Entra ID) with admin / editor / viewer roles mapped from groups, server-side sessions, an optional login requirement for reads, and every API write recorded with the person or credential behind it. Passwords and tokens keep working alongside. |
-| **MCP server** | 46 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
+| **MCP server** | 53 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
 | **Notifications** | Apprise integration with rules, watch queries, message templates, and per-tag channel routing. |
 | **Bilingual UI** | German + English, browser detection, no external i18n framework. |
 | **AI analysis (optional)** | Disabled unless a provider is configured; local models supported (Ollama, vLLM, LM Studio and other OpenAI-compatible endpoints) as well as OpenAI, Anthropic and Gemini. Adds narrative and triage text to the deterministic results, in the web UI or through the MCP server with your own assistant. |
@@ -241,7 +241,7 @@ The tools solve different problems: Dependency-Track manages SBOM components, De
 | Supply-chain malware | Heuristics, MAL-* feed, SBOM watcher | Integrity check only | Not documented | Not documented | OpenSSF malicious-packages data | Malicious packages in DB | Scanning (Pro+), Safe Chain |
 | AI features | Optional, off by default, local models | None | Optional summaries, local models | None (Pro only) | Optional, local models | Built in; no local models documented | Built in; local only on appliance |
 | Works fully without AI | Yes | Yes | Yes | Yes | Yes | ? | Partly / ? |
-| MCP server | Built in, 46 tools | None official | None | Separate repo; built in on Pro | Separate repo (VulnMCP) | In the CLI | `@aikidosec/mcp` |
+| MCP server | Built in, 53 tools | None official | None | Separate repo; built in on Pro | Separate repo (VulnMCP) | In the CLI | `@aikidosec/mcp` |
 | Notifications / integrations | Apprise, REST, CI; no ticketing | Email, Slack, Teams, Jira, Kafka, webhooks, DefectDojo | Email, Slack, webhooks | Email, Slack, Teams, Jira/GitHub two-way | Email/webhooks, RSS, MISP | SCM, CI, IDE, Jira, Slack | Slack, Teams, 14 trackers, CI, SIEM |
 | Project started | 2025 | 2013 | 2020 | 2015 | 2022 | 2015 | 2022 |
 | Policy engine | License policies, CI severity gate | CEL policies, build gates | ? | ? | ? | ? | ? |
@@ -548,10 +548,10 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `GET  /mcp/oauth/idp/callback` — IdP callback (internal redirect endpoint)
 - `POST /mcp/oauth/token` — token exchange with PKCE (S256)
 
-**46 tools** (server name: `hecate`):
+**53 tools** (server name: `hecate`):
 
 - *Read-only*: `search_vulnerabilities`, `get_vulnerability`, `search_cpe`, `search_vendors`, `search_products`, `get_vulnerability_stats`, `get_cwe`, `get_capec`, `get_scan_findings`, `get_scan_findings_by_scan`, `get_security_alerts`, `get_scan_sbom`, `get_sbom_components`, `get_sbom_facets`, `get_target_scan_history`, `compare_scans`, `get_layer_analysis`, `list_scan_targets`, `list_target_groups`, `list_scans`, `find_findings_by_cve`, `get_sca_scan`, `list_inventory_items`, `get_inventory_item`, `get_target_vex_sources`, `export_scan_vex`, `prepare_vulnerability_ai_analysis`, `prepare_vulnerabilities_ai_batch_analysis`, `prepare_scan_ai_analysis`, `prepare_attack_path_analysis`, `refine_attack_path_analysis`, `prepare_scan_attack_chain_analysis`
-- *Write* (source IP must be in `MCP_WRITE_IP_SAFELIST` at authorize time): `trigger_scan`, `trigger_sync`, `create_inventory_item`, `update_inventory_item`, `delete_inventory_item`, `set_finding_vex`, `import_vex`, `set_target_vex_sources`, `apply_target_vex_sources`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`, `save_scan_attack_chain_analysis`
+- *Write* (source IP must be in `MCP_WRITE_IP_SAFELIST` at authorize time): `trigger_scan`, `trigger_sync`, `create_inventory_item`, `update_inventory_item`, `delete_inventory_item`, `create_inventory_system`, `update_inventory_system`, `delete_inventory_system`, `import_inventory_system_list`, `set_finding_vex`, `import_vex`, `set_target_vex_sources`, `apply_target_vex_sources`, `save_vulnerability_ai_analysis`, `save_vulnerabilities_ai_batch_analysis`, `save_scan_ai_analysis`, `save_attack_path_analysis`, `save_scan_attack_chain_analysis`
 
 > [!IMPORTANT]
 > AI analysis over MCP uses **prepare/save pairs**: `prepare_*` returns Hecate's predefined prompts plus context, the calling assistant generates the analysis with its own model, then writes it back through the matching `save_*` tool. The provider keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GEMINI_API_KEY`) are only used by the web-UI flows.

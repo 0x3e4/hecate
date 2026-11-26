@@ -211,6 +211,14 @@ A product can name the systems it runs on (**Runs on** in the product dialog). T
 *on web-01, web-02*, and the system lists its products. The link is a description, not a match: a product's
 CVEs come from its own version, a system's findings from its own report.
 
+### Systems through an assistant
+
+The MCP server lists, adds, changes and removes systems, addressed by id or by name, so an assistant can
+answer "which internet-facing hosts stopped reporting?" or "add db-02 to the vienna group". It can also
+apply a server list pasted into the chat: that tool shows what would change first and applies only when
+asked again. Server lists Hecate fetches itself are managed in the web UI only. The tools are listed in
+[MCP Server](../integrations/mcp.md#read-tools-vs-write-tools).
+
 ## Finding the right product
 
 The catalog holds about 240,000 products, and popular names come with many look-alikes: searching for `wordpress` matches around 1,700 plugins and themes. Results are ranked by how well they fit, so the exact name comes first, then names starting with the term, then names containing it as a word. Each result shows the number of known vulnerabilities, which tells apart entries that read the same, such as `WordPress` and `WordPress Foundation`.
