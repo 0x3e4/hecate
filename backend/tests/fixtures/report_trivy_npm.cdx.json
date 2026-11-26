@@ -1,0 +1,571 @@
+{
+ "$schema": "http://cyclonedx.org/schema/bom-1.7.schema.json",
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.7",
+ "version": 1,
+ "metadata": {
+  "timestamp": "2026-11-26T13:25:14+00:00",
+  "tools": {
+   "components": [
+    {
+     "type": "application",
+     "manufacturer": {
+      "name": "Aqua Security Software Ltd."
+     },
+     "group": "aquasecurity",
+     "name": "trivy",
+     "version": "0.76.2"
+    }
+   ]
+  },
+  "component": {
+   "bom-ref": "668350ae-f4fe-4c26-ab87-f9290a6180a0",
+   "type": "application",
+   "name": "demo-shop",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SchemaVersion",
+     "value": "2"
+    }
+   ]
+  }
+ },
+ "components": [
+  {
+   "bom-ref": "73bd8a23-e6cd-4494-837d-6e88221ea8dd",
+   "type": "application",
+   "name": "package-lock.json",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:Class",
+     "value": "lang-pkgs"
+    },
+    {
+     "name": "aquasecurity:trivy:Type",
+     "value": "npm"
+    }
+   ]
+  },
+  {
+   "bom-ref": "pkg:npm/lodash@4.17.20",
+   "type": "library",
+   "name": "lodash",
+   "version": "4.17.20",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "purl": "pkg:npm/lodash@4.17.20",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:PkgID",
+     "value": "lodash@4.17.20"
+    },
+    {
+     "name": "aquasecurity:trivy:PkgType",
+     "value": "npm"
+    }
+   ]
+  },
+  {
+   "bom-ref": "pkg:npm/minimist@1.2.5",
+   "type": "library",
+   "name": "minimist",
+   "version": "1.2.5",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "purl": "pkg:npm/minimist@1.2.5",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:PkgID",
+     "value": "minimist@1.2.5"
+    },
+    {
+     "name": "aquasecurity:trivy:PkgType",
+     "value": "npm"
+    }
+   ]
+  }
+ ],
+ "dependencies": [
+  {
+   "ref": "668350ae-f4fe-4c26-ab87-f9290a6180a0",
+   "dependsOn": [
+    "73bd8a23-e6cd-4494-837d-6e88221ea8dd"
+   ]
+  },
+  {
+   "ref": "73bd8a23-e6cd-4494-837d-6e88221ea8dd",
+   "dependsOn": [
+    "pkg:npm/lodash@4.17.20",
+    "pkg:npm/minimist@1.2.5"
+   ]
+  },
+  {
+   "ref": "pkg:npm/lodash@4.17.20",
+   "dependsOn": []
+  },
+  {
+   "ref": "pkg:npm/minimist@1.2.5",
+   "dependsOn": []
+  }
+ ],
+ "vulnerabilities": [
+  {
+   "id": "CVE-2020-28500",
+   "source": {
+    "name": "ghsa",
+    "url": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+   },
+   "ratings": [
+    {
+     "source": {
+      "name": "ghsa"
+     },
+     "score": 5.3,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 5,
+     "severity": "medium",
+     "method": "CVSSv2",
+     "vector": "AV:N/AC:L/Au:N/C:N/I:N/A:P"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 5.3,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+    },
+    {
+     "source": {
+      "name": "redhat"
+     },
+     "score": 5.3,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+    },
+    {
+     "source": {
+      "name": "ruby-advisory-db"
+     },
+     "severity": "medium"
+    },
+    {
+     "source": {
+      "name": "ubuntu"
+     },
+     "severity": "medium"
+    }
+   ],
+   "description": "Lodash versions prior to 4.17.21 are vulnerable to Regular Expression Denial of Service (ReDoS) via the toNumber, trim and trimEnd functions.",
+   "recommendation": "Upgrade lodash to version 4.17.21",
+   "advisories": [
+    {
+     "url": "https://avd.aquasec.com/nvd/cve-2020-28500"
+    },
+    {
+     "url": "https://access.redhat.com/security/cve/CVE-2020-28500"
+    },
+    {
+     "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-637483.pdf"
+    }
+   ],
+   "published": "2021-02-15T11:15:12+00:00",
+   "updated": "2026-10-08T22:16:59+00:00",
+   "affects": [
+    {
+     "ref": "pkg:npm/lodash@4.17.20",
+     "versions": [
+      {
+       "version": "4.17.20",
+       "status": "affected"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "CVE-2021-23337",
+   "source": {
+    "name": "ghsa",
+    "url": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+   },
+   "ratings": [
+    {
+     "source": {
+      "name": "ghsa"
+     },
+     "score": 7.2,
+     "severity": "high",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 6.5,
+     "severity": "medium",
+     "method": "CVSSv2",
+     "vector": "AV:N/AC:L/Au:S/C:P/I:P/A:P"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 7.2,
+     "severity": "high",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "redhat"
+     },
+     "score": 7.2,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "ruby-advisory-db"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "ubuntu"
+     },
+     "severity": "medium"
+    }
+   ],
+   "cwes": [
+    94
+   ],
+   "description": "Lodash versions prior to 4.17.21 are vulnerable to Command Injection via the template function.",
+   "recommendation": "Upgrade lodash to version 4.17.21",
+   "advisories": [
+    {
+     "url": "https://avd.aquasec.com/nvd/cve-2021-23337"
+    },
+    {
+     "url": "https://access.redhat.com/security/cve/CVE-2021-23337"
+    },
+    {
+     "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-637483.pdf"
+    }
+   ],
+   "published": "2021-02-15T13:15:12+00:00",
+   "updated": "2026-10-08T22:17:07+00:00",
+   "affects": [
+    {
+     "ref": "pkg:npm/lodash@4.17.20",
+     "versions": [
+      {
+       "version": "4.17.20",
+       "status": "affected"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "CVE-2021-44906",
+   "source": {
+    "name": "ghsa",
+    "url": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+   },
+   "ratings": [
+    {
+     "source": {
+      "name": "alma"
+     },
+     "severity": "medium"
+    },
+    {
+     "source": {
+      "name": "ghsa"
+     },
+     "score": 9.8,
+     "severity": "critical",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 7.5,
+     "severity": "high",
+     "method": "CVSSv2",
+     "vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 9.8,
+     "severity": "critical",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "oracle-oval"
+     },
+     "severity": "medium"
+    },
+    {
+     "source": {
+      "name": "redhat"
+     },
+     "score": 3.1,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:N"
+    },
+    {
+     "source": {
+      "name": "rocky"
+     },
+     "severity": "medium"
+    }
+   ],
+   "cwes": [
+    1321
+   ],
+   "description": "Minimist <=1.2.5 is vulnerable to Prototype Pollution via file index.js, function setKey() (lines 69-95).",
+   "recommendation": "Upgrade minimist to version 1.2.6, 0.2.4",
+   "advisories": [
+    {
+     "url": "https://avd.aquasec.com/nvd/cve-2021-44906"
+    },
+    {
+     "url": "https://access.redhat.com/errata/RHSA-2023:0321"
+    },
+    {
+     "url": "https://access.redhat.com/security/cve/CVE-2021-44906"
+    }
+   ],
+   "published": "2022-03-17T16:15:07+00:00",
+   "updated": "2026-10-08T21:17:42+00:00",
+   "affects": [
+    {
+     "ref": "pkg:npm/minimist@1.2.5",
+     "versions": [
+      {
+       "version": "1.2.5",
+       "status": "affected"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "CVE-2025-13465",
+   "source": {
+    "name": "ghsa",
+    "url": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+   },
+   "ratings": [
+    {
+     "source": {
+      "name": "alma"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "ghsa"
+     },
+     "score": 6.5,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L"
+    },
+    {
+     "source": {
+      "name": "ghsa"
+     },
+     "score": 6.9,
+     "severity": "medium",
+     "method": "CVSSv4",
+     "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:L/VA:L/SC:H/SI:H/SA:H/E:P"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 5.3,
+     "severity": "medium",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+    },
+    {
+     "source": {
+      "name": "oracle-oval"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "redhat"
+     },
+     "score": 8.2,
+     "severity": "high",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H"
+    },
+    {
+     "source": {
+      "name": "rocky"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "ubuntu"
+     },
+     "severity": "medium"
+    }
+   ],
+   "cwes": [
+    1321
+   ],
+   "description": "The _.unset and _.omit functions in Lodash are vulnerable to prototype pollution. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes. The issue permits dele",
+   "recommendation": "Upgrade lodash to version 4.17.23",
+   "advisories": [
+    {
+     "url": "https://avd.aquasec.com/nvd/cve-2025-13465"
+    },
+    {
+     "url": "https://access.redhat.com/errata/RHSA-2026:11414"
+    },
+    {
+     "url": "https://access.redhat.com/errata/RHSA-2026:13542"
+    }
+   ],
+   "published": "2026-01-21T20:16:05+00:00",
+   "updated": "2026-10-15T07:17:53+00:00",
+   "affects": [
+    {
+     "ref": "pkg:npm/lodash@4.17.20",
+     "versions": [
+      {
+       "version": "4.17.20",
+       "status": "affected"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "CVE-2026-4800",
+   "source": {
+    "name": "ghsa",
+    "url": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+   },
+   "ratings": [
+    {
+     "source": {
+      "name": "alma"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "ghsa"
+     },
+     "score": 8.1,
+     "severity": "high",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "nvd"
+     },
+     "score": 9.8,
+     "severity": "critical",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "oracle-oval"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "redhat"
+     },
+     "score": 8.1,
+     "severity": "high",
+     "method": "CVSSv31",
+     "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    },
+    {
+     "source": {
+      "name": "rocky"
+     },
+     "severity": "high"
+    },
+    {
+     "source": {
+      "name": "ubuntu"
+     },
+     "severity": "medium"
+    }
+   ],
+   "cwes": [
+    94
+   ],
+   "description": "The fix for CVE-2021-23337 added validation for the variable option in _.template but did not apply the same validation to options.imports key names, and both paths flow into the same Function() const",
+   "recommendation": "Upgrade lodash to version 4.18.0",
+   "advisories": [
+    {
+     "url": "https://avd.aquasec.com/nvd/cve-2026-4800"
+    },
+    {
+     "url": "https://access.redhat.com/errata/RHBA-2026:21387"
+    },
+    {
+     "url": "https://access.redhat.com/errata/RHSA-2026:10131"
+    }
+   ],
+   "published": "2026-03-31T20:16:29+00:00",
+   "updated": "2026-10-15T07:18:00+00:00",
+   "affects": [
+    {
+     "ref": "pkg:npm/lodash@4.17.20",
+     "versions": [
+      {
+       "version": "4.17.20",
+       "status": "affected"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -768,6 +768,9 @@ class ScanService:
         from app.services.scan_report_import import (
             REPORT_FORMATS,
             REPORT_SCANNERS,
+            cyclonedx_has_vulnerabilities,
+            cyclonedx_scanner,
+            parse_cyclonedx_vulnerabilities,
             parse_report,
             report_package_count,
         )
@@ -780,11 +783,17 @@ class ScanService:
             )
         if format not in (*SBOM_FORMATS, *REPORT_FORMATS):
             raise ValueError(f"Unknown format {format!r}; use one of {', '.join((*SBOM_FORMATS, *REPORT_FORMATS))}.")
-        is_report = format in REPORT_FORMATS
+        # A CycloneDX file that states its vulnerabilities (Trivy's or Grype's
+        # CycloneDX output, another Hecate's export) is a report as well.
+        cyclonedx_report = format == "cyclonedx-json" and cyclonedx_has_vulnerabilities(sbom_data)
+        is_report = format in REPORT_FORMATS or cyclonedx_report
         # Checked before anything is written: the body limit alone admits about
         # a million minimal components.
         limit = settings.sca_sbom_import_max_components
-        if is_report:
+        vulns = sbom_data.get("vulnerabilities") if cyclonedx_report else None
+        if isinstance(vulns, list) and len(vulns) > limit:
+            raise ValueError(f"Document has {len(vulns)} vulnerabilities; the limit is {limit} (SCA_SBOM_IMPORT_MAX_COMPONENTS).")
+        if format in REPORT_FORMATS:
             count = report_package_count(sbom_data, format)
             if count > limit:
                 raise ValueError(
@@ -797,6 +806,15 @@ class ScanService:
 
         # Create or reuse target (the write gate resolved the same one)
         target_name, target_id = resolve_sbom_import_target(sbom_data, format, target_name, target_id)
+        # Parsed before anything is written: a document whose vulnerabilities
+        # name none of its components is refused (ValueError -> 400).
+        cyclonedx_findings = parse_cyclonedx_vulnerabilities(sbom_data, "", "") if cyclonedx_report else []
+        if format in REPORT_FORMATS:
+            scan_scanners = [REPORT_SCANNERS[format]]
+        elif cyclonedx_report:
+            scan_scanners = sorted({f.scanner for f in cyclonedx_findings}) or [cyclonedx_scanner(sbom_data)]
+        else:
+            scan_scanners = ["sbom-import"]
         if check:
             target_id = new_check_target_id()
 
@@ -828,7 +846,7 @@ class ScanService:
             target_name=target_name,
             check=check,
             expires_at=check_expires_at(started_at) if check else None,
-            scanners=[REPORT_SCANNERS[format]] if is_report else ["sbom-import"],
+            scanners=scan_scanners,
             status="completed",
             source="sbom-import",
             started_at=started_at,
@@ -839,11 +857,14 @@ class ScanService:
 
         # Parse components (and, for a report, its findings)
         report_findings: list[ScanFindingDocument] = []
-        if is_report:
+        if format in REPORT_FORMATS:
             report_findings, components = parse_report(sbom_data, format, scan_id_val, target_id)
             comp_count = len({(c.name, c.version) for c in components})
         elif format == "cyclonedx-json":
             components, comp_count = parse_cyclonedx_sbom(sbom_data, scan_id_val, target_id)
+            for finding in cyclonedx_findings:
+                finding.scan_id, finding.target_id = scan_id_val, target_id
+            report_findings = cyclonedx_findings
         else:
             components, comp_count = parse_spdx_sbom(sbom_data, scan_id_val, target_id)
 

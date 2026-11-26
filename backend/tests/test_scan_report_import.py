@@ -241,3 +241,106 @@ async def test_oversized_reports_and_unknown_formats_are_refused(monkeypatch: py
     with pytest.raises(ValueError, match="Trivy, Grype or OSV-Scanner"):
         await service.import_sbom({"hello": "world"})
     assert stored["scans"] == []
+
+
+# ---------------------------------------------------------------- CycloneDX with vulnerabilities
+
+TRIVY_CDX = _load("report_trivy_npm.cdx.json")
+
+
+def test_trivy_cyclonedx_findings_point_at_their_components() -> None:
+    from app.services.scan_report_import import cyclonedx_scanner, parse_cyclonedx_vulnerabilities
+
+    assert cyclonedx_scanner(TRIVY_CDX) == "trivy"
+    findings = parse_cyclonedx_vulnerabilities(TRIVY_CDX, "scan-1", "t")
+    assert len(findings) == 5
+    lodash = next(f for f in findings if f.vulnerability_id == "CVE-2020-28500")
+    assert (lodash.package_name, lodash.package_version, lodash.package_type) == ("lodash", "4.17.20", "npm")
+    assert lodash.fix_version == "4.17.21" and lodash.fix_state == "fixed"
+    assert lodash.cvss_vector and lodash.cvss_vector.startswith("CVSS:3.1/")
+    assert all(f.scanner == "trivy" and f.vex_status is None for f in findings)
+
+
+def test_a_hecate_export_comes_back_with_its_scanners_and_statuses() -> None:
+    from datetime import UTC, datetime
+
+    from app.services.sbom_export import build_cyclonedx_json
+    from app.services.scan_report_import import parse_cyclonedx_vulnerabilities
+
+    doc = build_cyclonedx_json(
+        {"_id": "s", "target_name": "web-01"}, None,
+        [{"name": "openssl", "version": "3.0.1", "purl": "pkg:deb/debian/openssl@3.0.1"}],
+        findings=[{
+            "vulnerability_id": "CVE-2024-0001", "scanner": "grype", "package_name": "openssl",
+            "package_version": "3.0.1", "severity": "high", "fix_version": "3.0.2",
+            "vex_status": "not_affected", "vex_justification": "code_not_reachable",
+            "vex_detail": "never loaded", "vex_updated_at": datetime(2026, 11, 1, tzinfo=UTC),
+        }],
+    )
+    [finding] = parse_cyclonedx_vulnerabilities(doc, "scan-2", "t", now=datetime(2026, 11, 26, tzinfo=UTC))
+    assert (finding.scanner, finding.severity, finding.fix_version) == ("grype", "high", "3.0.2")
+    assert (finding.vex_status, finding.vex_justification, finding.vex_detail, finding.vex_updated_by) == (
+        "not_affected", "vulnerable_code_not_in_execute_path", "never loaded", "vex-import",
+    )
+
+
+def test_ratings_take_the_worst_severity_and_a_cvss_vector() -> None:
+    from app.services.scan_report_import import _rating_fields
+
+    ratings = [
+        {"source": {"name": "FIRST"}, "score": 0.08, "method": "other"},
+        {"source": {"name": "ghsa"}, "score": 6.1, "severity": "medium", "method": "CVSSv31", "vector": "CVSS:3.1/A"},
+        {"source": {"name": "nvd"}, "score": 9.8, "severity": "critical", "method": "CVSSv31", "vector": "CVSS:3.1/N"},
+        {"source": {"name": "nvd"}, "score": 7.5, "severity": "high", "method": "CVSSv2", "vector": "AV:N"},
+    ]
+    assert _rating_fields(ratings) == ("critical", 9.8, "CVSS:3.1/N")
+    assert _rating_fields([{"score": 7.2, "method": "CVSSv4", "vector": "CVSS:4.0/X"}]) == ("high", 7.2, "CVSS:4.0/X")
+    assert _rating_fields([]) == ("unknown", None, None)
+
+
+def test_a_vex_document_is_not_a_report() -> None:
+    from app.services.scan_report_import import parse_cyclonedx_vulnerabilities
+
+    vex = {"bomFormat": "CycloneDX", "vulnerabilities": [
+        {"id": "CVE-2024-0001", "analysis": {"state": "not_affected"}, "affects": [{"ref": "openssl"}]},
+    ]}
+    with pytest.raises(ValueError, match="VEX import"):
+        parse_cyclonedx_vulnerabilities(vex, "s", "t")
+
+
+async def test_cyclonedx_with_vulnerabilities_is_imported_as_a_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    service, stored = _service(monkeypatch, calls)
+
+    result = await service.import_sbom(TRIVY_CDX, kind="host")
+
+    assert result["target_id"] == "sbom-import-demo-shop"
+    assert result["findings_count"] == 5
+    assert stored["scans"][0].scanners == ["trivy"]
+    assert {f.scan_id for f in stored["findings"]} == {result["scan_id"]}
+    assert {f.target_id for f in stored["findings"]} == {"sbom-import-demo-shop"}
+    assert "sidecar" not in calls and "severity" in calls
+
+
+async def test_cyclonedx_without_vulnerabilities_is_still_matched_by_hecate(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    service, stored = _service(monkeypatch, calls)
+
+    async def no_matches(*_a: Any, **_k: Any) -> list[Any]:
+        return []
+
+    monkeypatch.setattr(service, "_match_vulnerabilities_for_components", no_matches)
+    sbom = {key: value for key, value in TRIVY_CDX.items() if key != "vulnerabilities"}
+    await service.import_sbom(sbom)
+    assert stored["scans"][0].scanners == ["sbom-import"] and "sidecar" in calls
+
+
+async def test_a_vex_document_on_the_sbom_import_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    service, stored = _service(monkeypatch, calls)
+    vex = {"bomFormat": "CycloneDX", "components": [], "vulnerabilities": [
+        {"id": "CVE-2024-0001", "analysis": {"state": "not_affected"}, "affects": [{"ref": "openssl"}]},
+    ]}
+    with pytest.raises(ValueError, match="VEX import"):
+        await service.import_sbom(vex)
+    assert stored["scans"] == [] and stored["targets"] == {}

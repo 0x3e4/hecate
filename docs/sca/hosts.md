@@ -112,6 +112,13 @@ If a system or a pipeline already runs Trivy, Grype or OSV-Scanner, push its JSO
 SBOM, to the same endpoints with the same token. Hecate recognises the format on its own (or take
 `format=trivy-json`, `grype-json` or `osv-scanner-json`).
 
+A CycloneDX file that lists vulnerabilities next to its components counts as a report too: Trivy's
+`--format cyclonedx --scanners vuln`, Grype's `-o cyclonedx-json`, or the
+[CycloneDX + vulnerabilities export](../integrations/defectdojo.md) of another Hecate. Its `analysis`
+blocks come along as VEX statuses, so a file moved between two instances keeps what was assessed.
+A CycloneDX VEX document (vulnerabilities without components) is not a report; it goes to the VEX
+import of a scan.
+
 === "Trivy"
 
     ```bash
