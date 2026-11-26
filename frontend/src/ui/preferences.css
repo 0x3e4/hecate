@@ -53,6 +53,12 @@
 .prefs-action:active { background: var(--overlay-3); }
 .prefs-action:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 
+/* Phones set fields at 16px (no iOS zoom); a narrower label column keeps the
+   time zone placeholder whole. 4.5rem still fits the longest label, "Dashboard". */
+@media (max-width: 40rem) {
+  .prefs-row { grid-template-columns: 4.5rem minmax(0, 1fr); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .prefs-switch input, .prefs-switch input::before, .prefs-segment, .prefs-action { transition: none; }
 }
