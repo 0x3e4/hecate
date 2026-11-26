@@ -122,7 +122,18 @@ Two rules hold throughout:
 - **A signed-in user with too low a role gets `403`** with the header `X-Auth-Role-Required: admin`
   or `editor`, and the web app shows a notice instead of a password prompt. Someone not signed in gets
   `401` with `X-Auth-Required: login`; when a password would also do, the response carries the usual
-  `X-Write-Auth-Required` marker and the password dialog offers **Sign in instead**.
+  `X-Write-Auth-Required` marker.
+- **The action you started continues after the sign-in.** On such a `401` the web app asks you to
+  sign in (with **Use a password** as the alternative where the backend takes one). The sign-in
+  opens your IdP in a small window and ends on `/signed-in`, which closes itself; the page you were
+  on keeps its state, and the refused request is sent again with the new session. Several requests
+  refused at once share one prompt. If the browser blocks the window, **Sign in on this page** takes
+  the old route: a full-page sign-in that returns to the page, after which you start the action
+  again. An expired session is handled the same way, so you no longer lose a half-filled form.
+
+!!! note "`/signed-in` needs no IdP setting"
+    The sign-in window goes through the same `/api/v1/auth/callback`; `/signed-in` is only the page
+    it returns to, so the redirect URI at the IdP stays as it is.
 
 !!! note "The AI password stays a cost lock"
     When `AI_ANALYSIS_PASSWORD` is set, everyone needs it to start an AI analysis, admins included,

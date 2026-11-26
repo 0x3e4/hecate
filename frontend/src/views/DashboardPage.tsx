@@ -32,6 +32,10 @@ import { ReservedBadge } from "../components/ReservedBadge";
 import { SuggestionList, SUGGESTION_MIN_LENGTH, useVulnerabilitySuggestions } from "../components/SearchSuggestions";
 import { rankSuggestions } from "../utils/searchSuggestions";
 import { isAdvisoryId } from "../utils/advisoryId";
+import { authDenial, authDenialMessage } from "../utils/apiError";
+import { useAuth } from "../auth/context";
+import { api } from "../api/client";
+import { getAdminPassword } from "../api/writeAuth";
 import { useI18n, type TranslateFn } from "../i18n/context";
 import { getCurrentTimezone } from "../timezone/storage";
 import { useSSE } from "../hooks/useSSE";
@@ -156,8 +160,15 @@ export const DashboardPage = () => {
       navigate(`/vulnerability/${encodeURIComponent(vulnIdForRoute)}`);
     } catch (error: unknown) {
       const axiosError = error as { response?: { status?: number } };
+      const denial = authDenial(error);
       if (axiosError.response?.status === 404) {
         setQueryNotFound(trimmed);
+      } else if (denial) {
+        // Only reached when the sign-in / password prompt was cancelled; a role
+        // denial is already toasted by the API client
+        if (denial.kind !== "role") {
+          setToast({ type: "error", message: authDenialMessage(denial, t(`Opening ${trimmed}`, `${trimmed} öffnen`), t) });
+        }
       } else {
         setToast({ type: "error", message: t(`Failed to fetch: ${trimmed}`, `Fehler beim Abrufen: ${trimmed}`) });
       }
@@ -236,6 +247,20 @@ export const DashboardPage = () => {
       }
       setSyncLoading(false);
     } catch (error) {
+      setSyncLoading(false);
+      // Refused, not missing upstream: say what would open it
+      const denial = authDenial(error);
+      if (denial) {
+        // Only reached when the sign-in / password prompt was cancelled; a role
+        // denial is already toasted by the API client
+        if (denial.kind !== "role") {
+          setToast({
+            type: "error",
+            message: authDenialMessage(denial, t("Loading from the sources", "Laden von den Quellen"), t),
+          });
+        }
+        return;
+      }
       console.error("Manual sync failed", error);
       setToast({
         type: "error",
@@ -244,7 +269,6 @@ export const DashboardPage = () => {
           "Synchronisation fehlgeschlagen. NVD/EUVD/GHSA haben diese Schwachstelle möglicherweise nicht."
         ),
       });
-      setSyncLoading(false);
     }
   }, [queryNotFound, navigate, t]);
 
@@ -410,6 +434,33 @@ const SingleVulnQuery = ({
   const showNotFound = queryNotFound && !queryLoading;
   const placeholder = t("Search by ID, product or keyword", "Nach ID, Produkt oder Stichwort suchen");
   const navigate = useNavigate();
+  const auth = useAuth();
+  // Fetching from the sources is an editor write. Say before the click what it
+  // will ask for, in the terms of this instance: a sign-in where OIDC is set
+  // up, the system password where that is all there is. Either way the fetch
+  // runs on its own once the prompt is answered (the API client retries it).
+  const syncNeedsSignIn = auth.enabled && !auth.user;
+  // A stored system password still opens it for a lower role (backend escape hatch)
+  const syncNeedsRole = auth.enabled && auth.user !== null && !auth.hasRole("editor") && !getAdminPassword();
+  const [syncNeedsPassword, setSyncNeedsPassword] = useState(false);
+  useEffect(() => {
+    if (!showNotFound || auth.enabled || getAdminPassword()) {
+      setSyncNeedsPassword(false);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<{ required: boolean }>("/v1/status/system-auth")
+      .then((response) => {
+        if (!cancelled) setSyncNeedsPassword(response.data.required);
+      })
+      .catch(() => {
+        /* unknown: the prompt still appears if the backend asks for it */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showNotFound, auth.enabled]);
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -519,13 +570,15 @@ const SingleVulnQuery = ({
         )}
       </div>
 
-      {/* Status messages */}
+      {/* Status messages float below the field, so the page under the header stays put */}
       {queryLoading && (
-        <LoadingState inline label={t("Searching local database…", "Suche in lokaler Datenbank…")} />
+        <div className="dashboard-search-status">
+          <LoadingState inline label={t("Searching local database…", "Suche in lokaler Datenbank…")} />
+        </div>
       )}
 
       {showNotFound && (
-        <div className="well dashboard-search-notice">
+        <div className="dashboard-search-status dashboard-search-notice">
           {syncLoading ? (
             <div className="dashboard-search-notice-row">
               <Spinner className="dashboard-search-notice-icon" />
@@ -548,10 +601,27 @@ const SingleVulnQuery = ({
                     "This vulnerability has not been synchronized yet. Load it from official sources?",
                     "Die Schwachstelle wurde noch nicht synchronisiert. Soll sie von den offiziellen Quellen abgerufen werden?"
                   )}
+                  {syncNeedsSignIn &&
+                    t(
+                      ` You will be asked to sign in with ${auth.providerLabel} first; the fetch then starts on its own.`,
+                      ` Zuerst wirst du gebeten, dich mit ${auth.providerLabel} anzumelden; danach startet der Abruf von selbst.`
+                    )}
+                  {syncNeedsPassword &&
+                    t(
+                      " You will be asked for the system password first; the fetch then starts on its own.",
+                      " Zuerst wirst du nach dem System-Passwort gefragt; danach startet der Abruf von selbst."
+                    )}
+                  {syncNeedsRole &&
+                    t(
+                      " Your role cannot do this: fetching needs at least the editor role.",
+                      " Deine Rolle darf das nicht: Abrufen braucht mindestens die Editor-Rolle."
+                    )}
                 </p>
                 <div className="dashboard-search-notice-actions">
-                  <button type="button" onClick={onSync} className="btn-primary">
-                    {t("Load from NVD/EUVD/GHSA", "Von NVD/EUVD/GHSA laden")}
+                  <button type="button" onClick={onSync} className="btn-primary" disabled={syncNeedsRole}>
+                    {syncNeedsSignIn
+                      ? t("Sign in and load", "Anmelden und laden")
+                      : t("Load from NVD/EUVD/GHSA", "Von NVD/EUVD/GHSA laden")}
                   </button>
                   <button type="button" onClick={onClear} className="btn">
                     {t("Cancel", "Abbrechen")}

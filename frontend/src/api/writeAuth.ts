@@ -120,11 +120,10 @@ export const extractTargetIdFromUrl = (url: string | undefined): string | null =
   }
 };
 
-// --- 401 password prompt bridge (axios <-> React) -----------------------------
-// The WriteAuthProvider registers a resolver here; the response interceptor
-// calls it to obtain a password (or null if the user cancels).
-
-export type WritePromptContext = { targetId: string | null };
+// --- 401 access prompt bridge (axios <-> React) -------------------------------
+// The WriteAuthProvider registers a prompt here; the response interceptor calls
+// it on a refused request and retries the request with the answer, so the
+// action the user started runs once they signed in or entered the password.
 
 /**
  * Which password a write-gate rejection asks for, from its `X-Write-Auth-Required`
@@ -137,17 +136,68 @@ export const writePromptTarget = (marker: unknown, targetId: string | null): str
   if (value === "1") return targetId;
   return undefined;
 };
-type WritePrompt = (ctx: WritePromptContext) => Promise<string | null>;
+/** What would let a refused request through. */
+export type AccessPrompt = {
+  /** Sign-in is configured and would open it (`X-Auth-Required: login`). */
+  signIn: boolean;
+  /** A password would open it too (`X-Write-Auth-Required`). */
+  password: boolean;
+  /** The target whose password is accepted; null = the system password. */
+  targetId: string | null;
+};
 
-let _prompt: WritePrompt | null = null;
+export type AccessAnswer = { kind: "password"; password: string } | { kind: "signed-in" } | null;
 
-export const registerWritePrompt = (fn: WritePrompt | null): void => {
+/**
+ * The prompt a refused request calls for, from the backend's markers, or
+ * `undefined` when neither a sign-in nor a password helps (a role denial,
+ * a wrong password typed into a page's own unlock dialog, any other error).
+ */
+export const accessPromptFor = (
+  status: number | undefined,
+  headers: Record<string, unknown>,
+  targetId: string | null,
+): AccessPrompt | undefined => {
+  if (status !== 401) return undefined;
+  const passwordTarget = writePromptTarget(headers["x-write-auth-required"], targetId);
+  const signIn = String(headers["x-auth-required"] ?? "") === "login";
+  if (!signIn && passwordTarget === undefined) return undefined;
+  return { signIn, password: passwordTarget !== undefined, targetId: passwordTarget ?? null };
+};
+
+type AccessPromptFn = (prompt: AccessPrompt) => Promise<AccessAnswer>;
+
+let _prompt: AccessPromptFn | null = null;
+let _inflight: { key: string; promise: Promise<AccessAnswer> } | null = null;
+
+export const registerWritePrompt = (fn: AccessPromptFn | null): void => {
   _prompt = fn;
 };
 
-export const requestWritePassword = async (
-  ctx: WritePromptContext
-): Promise<string | null> => {
+export const hasAccessPrompt = (): boolean => _prompt !== null;
+
+const promptKey = (p: AccessPrompt): string => `${p.signIn}|${p.password}|${p.targetId ?? ""}`;
+
+/**
+ * Asks once for several refused requests: a page often fires a few writes or
+ * reads together, and each would otherwise open (and overwrite) its own dialog.
+ * Requests waiting on the same prompt share its answer; a sign-in answers every
+ * waiting request, since the session now covers them all.
+ */
+export const requestAccess = async (prompt: AccessPrompt): Promise<AccessAnswer> => {
+  const key = promptKey(prompt);
+  while (_inflight) {
+    const current = _inflight;
+    const answer = await current.promise;
+    if (_inflight === current) _inflight = null;
+    if (current.key === key || answer?.kind === "signed-in") return answer;
+  }
   if (!_prompt) return null;
-  return _prompt(ctx);
+  const promise = _prompt(prompt);
+  _inflight = { key, promise };
+  try {
+    return await promise;
+  } finally {
+    if (_inflight?.promise === promise) _inflight = null;
+  }
 };

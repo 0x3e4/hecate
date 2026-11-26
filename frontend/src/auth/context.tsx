@@ -7,6 +7,7 @@ import { useI18n } from "../i18n/context";
 import { useServerConfig } from "../server-config/context";
 import { LoadingState } from "../ui/primitives";
 import { currentReturnPath, loginUrl, roleAtLeast, type AuthRole } from "./returnTo";
+import { SIGNED_IN_PATH, announceSignedIn, onSignedInElsewhere } from "./signInWindow";
 import "../screens/auth.css";
 
 export interface AuthUser {
@@ -26,6 +27,8 @@ interface AuthContextValue {
   hasRole: (role: AuthRole) => boolean;
   signIn: (returnTo?: string) => void;
   signOut: () => Promise<void>;
+  /** Asks the backend who is signed in now (after a sign-in in another window). */
+  refresh: () => Promise<AuthUser | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,13 +60,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    api
-      .get<{ authenticated: boolean; user: AuthUser | null }>("/v1/auth/me")
-      .then((res) => {
-        if (!cancelled) setUser(res.data.authenticated ? res.data.user : null);
-      })
-      .catch(() => {
-        if (!cancelled) setUser(null);
+    fetchMe()
+      .then((me) => {
+        if (!cancelled) setUser(me);
       })
       .finally(() => {
         if (!cancelled) setLoaded(true);
@@ -72,6 +71,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
     };
   }, [enabled]);
+
+  const refresh = useCallback(async () => {
+    if (!enabled) return null;
+    const me = await fetchMe();
+    setUser(me);
+    return me;
+  }, [enabled]);
+
+  // A sign-in finished in another window (the sign-in popup, another tab):
+  // the sidebar and role checks here follow without a reload.
+  useEffect(() => {
+    if (!enabled) return;
+    return onSignedInElsewhere(() => void refresh());
+  }, [enabled, refresh]);
+
+  const signInLanding = enabled && loaded && typeof window !== "undefined" && window.location.pathname === SIGNED_IN_PATH;
+  useEffect(() => {
+    if (!signInLanding || !user) return;
+    announceSignedIn();
+    // Closes the popup; a window the browser won't let close shows the note below.
+    const id = window.setTimeout(() => window.close(), 400);
+    return () => window.clearTimeout(id);
+  }, [signInLanding, user]);
 
   const signIn = useCallback((returnTo?: string) => {
     // A new account starts without the previous person's write secrets.
@@ -97,8 +119,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const hasRole = useCallback((role: AuthRole) => roleAtLeast(user?.role, role), [user]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ enabled, required, providerLabel, user, hasRole, signIn, signOut }),
-    [enabled, required, providerLabel, user, hasRole, signIn, signOut],
+    () => ({ enabled, required, providerLabel, user, hasRole, signIn, signOut, refresh }),
+    [enabled, required, providerLabel, user, hasRole, signIn, signOut, refresh],
   );
 
   if (!loaded) {
@@ -106,6 +128,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       <div className="auth-splash">
         <LoadingState />
       </div>
+    );
+  }
+
+  if (signInLanding && !authError) {
+    return (
+      <AuthContext.Provider value={value}>
+        <SignedInScreen user={user} onSignIn={() => signIn(SIGNED_IN_PATH)} />
+      </AuthContext.Provider>
     );
   }
 
@@ -141,6 +171,47 @@ export const useAuth = (): AuthContextValue => {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return ctx;
+};
+
+const fetchMe = async (): Promise<AuthUser | null> => {
+  try {
+    const res = await api.get<{ authenticated: boolean; user: AuthUser | null }>("/v1/auth/me");
+    return res.data.authenticated ? res.data.user : null;
+  } catch {
+    return null;
+  }
+};
+
+// Where the sign-in window lands: the page that asked for the sign-in is
+// still open in the other window and continues on its own.
+const SignedInScreen = ({ user, onSignIn }: { user: AuthUser | null; onSignIn: () => void }) => {
+  const { t } = useI18n();
+  return (
+    <main className="auth-screen">
+      <div className="auth-card" role="status">
+        <img src="/logo.png" alt="" width={48} height={48} />
+        <h1 className="auth-title">Hecate Cyber Defense</h1>
+        {user ? (
+          <p className="auth-lead">
+            {t(
+              `Signed in as ${user.name}. You can close this window; Hecate continues in the other one.`,
+              `Angemeldet als ${user.name}. Du kannst dieses Fenster schließen; Hecate macht im anderen weiter.`,
+            )}
+          </p>
+        ) : (
+          <>
+            <p className="auth-error">{t("The sign-in did not complete.", "Die Anmeldung wurde nicht abgeschlossen.")}</p>
+            <div className="auth-actions">
+              <button type="button" className="btn btn-primary" onClick={onSignIn}>
+                <LuLogIn aria-hidden="true" />
+                {t("Sign in again", "Erneut anmelden")}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </main>
+  );
 };
 
 const LoginScreen = ({

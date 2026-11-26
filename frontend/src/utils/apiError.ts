@@ -52,7 +52,55 @@ export const describeError = (err: unknown): DescribedError => {
   return { kind: "unknown", status: null, detail: null, request: null, message };
 };
 
+/**
+ * Why the backend refused a request, from the markers its gates set
+ * (backend app/core/write_auth.py):
+ * - `login`: a sign-in would open it (`X-Auth-Required: login`, no password offered)
+ * - `login_or_password`: a sign-in or the system / target password would
+ * - `password`: only a password would (no sign-in configured)
+ * - `role`: signed in, but the role is too low (`X-Auth-Role-Required`)
+ * `null` for anything else, a 404 or a server error included.
+ */
+export type AuthDenial =
+  | { kind: "login" }
+  | { kind: "login_or_password" }
+  | { kind: "password" }
+  | { kind: "role"; role: string };
+
+export const authDenial = (err: unknown): AuthDenial | null => {
+  if (!isAxiosError(err) || !err.response) return null;
+  const { status } = err.response;
+  const headers = (err.response.headers ?? {}) as Record<string, unknown>;
+  const login = String(headers["x-auth-required"] ?? "") === "login";
+  const password = Boolean(headers["x-write-auth-required"]);
+  if (status === 403 && headers["x-auth-role-required"]) {
+    return { kind: "role", role: String(headers["x-auth-role-required"]) };
+  }
+  if (status !== 401) return null;
+  if (login && password) return { kind: "login_or_password" };
+  if (login) return { kind: "login" };
+  if (password) return { kind: "password" };
+  return null;
+};
+
 type Translate = (english: string, german: string) => string;
+
+/** One sentence naming what the refused action needs, e.g. for a toast. */
+export const authDenialMessage = (denial: AuthDenial, action: string, t: Translate): string => {
+  switch (denial.kind) {
+    // With sign-in configured that is the way in; the password stays an
+    // alternative in the prompt, not in the message.
+    case "login":
+    case "login_or_password":
+      return t(`${action}: sign in first.`, `${action}: bitte zuerst anmelden.`);
+    case "password":
+      return t(`${action}: the system password is needed.`, `${action}: dafür ist das System-Passwort nötig.`);
+    case "role":
+      return denial.role === "admin"
+        ? t(`${action}: this needs the admin role.`, `${action}: dafür ist die Admin-Rolle nötig.`)
+        : t(`${action}: this needs at least the editor role.`, `${action}: dafür ist mindestens die Editor-Rolle nötig.`);
+  }
+};
 
 /** One sentence on what happened and what helps, per kind. */
 export const errorHint = (described: DescribedError, t: Translate): string => {

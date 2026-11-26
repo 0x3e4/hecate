@@ -5,7 +5,9 @@
 .dashboard .page-header-actions { flex: 1 1 24rem; justify-content: flex-end; align-items: flex-start; }
 
 /* Search and quick refresh */
-.dashboard-search { display: flex; flex-direction: column; gap: var(--space-xs); flex: 0 1 26rem; min-width: 0; }
+.dashboard-search { position: relative; display: flex; flex-direction: column; gap: var(--space-xs); flex: 0 1 26rem; min-width: 0; }
+/* Loading line and not-found notice pop over the page like the suggestions, instead of pushing it down */
+.dashboard-search-status { position: absolute; top: calc(100% + var(--space-2xs)); right: 0; z-index: var(--z-dropdown); width: 100%; min-width: min(24rem, calc(100vw - 2 * var(--gutter))); padding: var(--space-sm) var(--space-md); background: var(--color-paper-3); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-card); box-shadow: var(--shadow-pop); }
 .dashboard-search-field { position: relative; }
 .dashboard-search-icon { position: absolute; top: 50%; left: var(--space-sm); width: 16px; height: 16px; margin-top: -8px; color: var(--color-muted); pointer-events: none; }
 .dashboard .dashboard-search-field .dashboard-search-input { display: block; width: 100%; padding-inline: var(--space-xl); border-color: var(--color-field-edge); background: var(--color-paper-2); font-family: var(--font-outlier); font-size: var(--text-sm); }

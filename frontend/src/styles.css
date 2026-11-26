@@ -179,7 +179,7 @@ table td { font-variant-numeric: tabular-nums; }
 
 .dialog { min-width: min(400px, 100%); max-width: 90vw; padding: var(--space-lg); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-card); }
 .dialog--wide { width: min(760px, 90vw); max-width: 90vw; max-height: 90dvh; overflow-y: auto; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs); }
 .dialog-danger, .dialog-danger:hover { border-color: var(--color-error); color: var(--color-error); }
 .dialog-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: var(--color-muted); cursor: pointer; }
 .dialog-close:hover { background: var(--overlay-2); color: var(--color-ink); }
@@ -228,6 +228,7 @@ button[aria-busy="true"]:disabled, .btn[aria-busy="true"]:disabled { opacity: 0.
 .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-md); }
 .dialog h2, .dialog h3 { margin-bottom: var(--space-sm); font-size: var(--text-lg); }
 .dialog p { margin-bottom: var(--space-md); color: var(--color-ink-2); font-size: var(--text-sm); }
+.dialog p.dialog-note { color: var(--color-ink); }
 .dialog input[type="text"], .dialog input[type="password"] { box-sizing: border-box; width: 100%; margin-bottom: var(--space-md); }
 .dialog--wide input[type="text"], .dialog--wide input[type="number"], .dialog--wide textarea { margin-bottom: 0; }
 

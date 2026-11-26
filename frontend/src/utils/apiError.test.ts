@@ -2,15 +2,20 @@ import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { describe, expect, it } from "vitest";
 
 import { isAdvisoryId, normalizeAdvisoryId } from "./advisoryId";
-import { describeError, errorHint } from "./apiError";
+import { authDenial, authDenialMessage, describeError, errorHint } from "./apiError";
 
 const t = (en: string) => en;
 
-const axiosError = (status: number | null, detail?: unknown, code?: string): AxiosError => {
+const axiosError = (
+  status: number | null,
+  detail?: unknown,
+  code?: string,
+  headers: Record<string, string> = {},
+): AxiosError => {
   const config = { method: "get", url: "/v1/vulnerabilities/CVE-1", headers: new AxiosHeaders() };
   const response = status === null
     ? undefined
-    : ({ status, statusText: "", data: detail === undefined ? {} : { detail }, headers: {}, config } as AxiosResponse);
+    : ({ status, statusText: "", data: detail === undefined ? {} : { detail }, headers, config } as AxiosResponse);
   return new AxiosError("Request failed", code, config, null, response);
 };
 
@@ -50,6 +55,33 @@ describe("describeError", () => {
 
   it("names the status in the hint where it helps", () => {
     expect(errorHint(describeError(axiosError(502)), t)).toContain("HTTP 502");
+  });
+});
+
+describe("authDenial", () => {
+  const denied = (status: number, headers: Record<string, string>) => authDenial(axiosError(status, undefined, undefined, headers));
+
+  it("reads what the backend gates ask for", () => {
+    expect(denied(401, { "x-auth-required": "login" })).toEqual({ kind: "login" });
+    expect(denied(401, { "x-auth-required": "login", "x-write-auth-required": "admin" })).toEqual({ kind: "login_or_password" });
+    expect(denied(401, { "x-write-auth-required": "1" })).toEqual({ kind: "password" });
+    expect(denied(403, { "x-auth-role-required": "editor" })).toEqual({ kind: "role", role: "editor" });
+  });
+
+  it("leaves unmarked refusals and other errors alone", () => {
+    expect(denied(401, {})).toBeNull();
+    expect(denied(403, {})).toBeNull();
+    expect(denied(404, { "x-auth-required": "login" })).toBeNull();
+    expect(authDenial(axiosError(null))).toBeNull();
+    expect(authDenial(new Error("boom"))).toBeNull();
+  });
+
+  it("names the action and what opens it", () => {
+    expect(authDenialMessage({ kind: "login_or_password" }, "Loading from the sources", t)).toBe(
+      "Loading from the sources: sign in first.",
+    );
+    expect(authDenialMessage({ kind: "password" }, "Loading from the sources", t)).toContain("system password");
+    expect(authDenialMessage({ kind: "role", role: "admin" }, "Deleting", t)).toContain("admin role");
   });
 });
 

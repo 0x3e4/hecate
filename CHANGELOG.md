@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Dashboard search: loading an unknown ID from the sources without the right to do so no longer ends in "NVD/EUVD/GHSA may not contain this vulnerability". The not-found notice says beforehand what the fetch will ask for, in the instance's terms (a sign-in with OIDC, otherwise the system password), a role below editor disables it, and a cancelled prompt names what was missing. The notice and the "Searching…" line now open over the page like the suggestions instead of pushing the dashboard down.
+- Web app: an action that needs a sign-in now continues after it. A `401` that a sign-in would open used to send the whole page to the identity provider, losing what you were doing; the app now asks first, signs you in through a small window (ending on `/signed-in`, no IdP change needed) and sends the refused request again, so the save, scan or fetch you clicked goes through. With sign-in configured the dialog leads with it and offers the password as an alternative where the backend takes one; without it, it asks for the password as before. Requests refused together share one prompt (a second one used to replace the first, which then never finished). An expired session is handled the same way.
+
 ## [2.4.0] - 2026-11-24
 
 > **Existing instances: rebuild the search index after updating.** Case-insensitive vendor / product / alias search and the product-line slugs in `productSlugs` (Dynamics 365 Finance and Operations) only reach records when they are indexed again. Run once, after the new backend is up:

@@ -289,6 +289,13 @@ again and shown at once. Only a really unknown ID is fetched from **NVD, EUVD, C
 IDs are recognised in the CVE, GHSA, MAL, EUVD, PYSEC, GO, OSV and RUSTSEC formats; anything else
 is not fetched.
 
+The dashboard search offers the same fetch for an unknown ID (**Load from NVD/EUVD/GHSA**). Fetching
+is an editor action, and the notice says up front what it will ask for: a sign-in where sign-in is
+configured (the button then reads **Sign in and load**), the system password where that is all there
+is. Once you signed in or entered the password, the fetch starts on its own. A role below editor
+disables the button; if you cancel the prompt, the message names what was missing instead of
+reporting the ID as unknown upstream.
+
 ### Sharing and copying
 
 The share button in the page header takes the entry elsewhere:

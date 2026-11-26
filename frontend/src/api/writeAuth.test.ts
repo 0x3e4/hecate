@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  accessPromptFor,
   AI_PASSWORD_KEY,
   clearWriteSecrets,
   getAdminPassword,
   getTargetPassword,
   isAdminReadUrl,
+  registerWritePrompt,
+  requestAccess,
   setAdminPassword,
   setTargetPassword,
   writePromptTarget,
@@ -82,4 +85,87 @@ describe("isAdminReadUrl", () => {
       expect(isAdminReadUrl(url)).toBe(false);
     },
   );
+});
+
+describe("accessPromptFor", () => {
+  it("leads with sign-in where OIDC would open the request", () => {
+    expect(accessPromptFor(401, { "x-auth-required": "login" }, null)).toEqual({ signIn: true, password: false, targetId: null });
+  });
+
+  it("keeps the password as an alternative where the gate takes one", () => {
+    expect(accessPromptFor(401, { "x-auth-required": "login", "x-write-auth-required": "1" }, "t1")).toEqual({
+      signIn: true,
+      password: true,
+      targetId: "t1",
+    });
+  });
+
+  it("asks for the password alone without sign-in", () => {
+    expect(accessPromptFor(401, { "x-write-auth-required": "admin" }, "t1")).toEqual({ signIn: false, password: true, targetId: null });
+  });
+
+  it.each([
+    [401, {}],
+    [403, { "x-auth-role-required": "admin" }],
+    [403, { "x-auth-required": "login" }],
+    [500, { "x-write-auth-required": "1" }],
+    [undefined, {}],
+  ])("prompts for nothing on %s %o", (status, headers) => {
+    expect(accessPromptFor(status, headers, null)).toBeUndefined();
+  });
+});
+
+describe("requestAccess", () => {
+  afterEach(() => registerWritePrompt(null));
+
+  it("answers nothing without a mounted prompt", async () => {
+    expect(await requestAccess({ signIn: true, password: false, targetId: null })).toBeNull();
+  });
+
+  it("asks once for requests refused together", async () => {
+    let resolve: (value: { kind: "signed-in" }) => void = () => undefined;
+    const prompt = vi.fn(() => new Promise<{ kind: "signed-in" }>((r) => (resolve = r)));
+    registerWritePrompt(prompt);
+    const ask = { signIn: true, password: false, targetId: null };
+    const first = requestAccess(ask);
+    const second = requestAccess(ask);
+    resolve({ kind: "signed-in" });
+    expect(await first).toEqual({ kind: "signed-in" });
+    expect(await second).toEqual({ kind: "signed-in" });
+    expect(prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a sign-in answer a waiting request that asked for something else", async () => {
+    let resolve: (value: { kind: "signed-in" }) => void = () => undefined;
+    const prompt = vi.fn(() => new Promise<{ kind: "signed-in" }>((r) => (resolve = r)));
+    registerWritePrompt(prompt);
+    const first = requestAccess({ signIn: true, password: false, targetId: null });
+    const second = requestAccess({ signIn: true, password: true, targetId: "t1" });
+    resolve({ kind: "signed-in" });
+    await first;
+    expect(await second).toEqual({ kind: "signed-in" });
+    expect(prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again for another target after a password", async () => {
+    const answers = ["one", "two"];
+    const prompt = vi.fn(async () => ({ kind: "password" as const, password: answers.shift() ?? "" }));
+    registerWritePrompt(prompt);
+    const first = requestAccess({ signIn: false, password: true, targetId: "t1" });
+    const second = requestAccess({ signIn: false, password: true, targetId: "t2" });
+    expect(await first).toEqual({ kind: "password", password: "one" });
+    expect(await second).toEqual({ kind: "password", password: "two" });
+    expect(prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels every request that waited on the same prompt", async () => {
+    let resolve: (value: null) => void = () => undefined;
+    registerWritePrompt(() => new Promise<null>((r) => (resolve = r)));
+    const ask = { signIn: false, password: true, targetId: null };
+    const first = requestAccess(ask);
+    const second = requestAccess(ask);
+    resolve(null);
+    expect(await first).toBeNull();
+    expect(await second).toBeNull();
+  });
 });

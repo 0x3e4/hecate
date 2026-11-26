@@ -1,17 +1,18 @@
-import axios from "axios";
+import axios, { AxiosHeaders } from "axios";
 
 import { currentReturnPath, loginUrl } from "../auth/returnTo";
 import { readStoredLanguage } from "../i18n/language";
 import { emitToast } from "./toastBridge";
 import {
+  accessPromptFor,
   extractTargetIdFromUrl,
   getAdminPassword,
   getTargetPassword,
+  hasAccessPrompt,
   isAdminReadUrl,
-  requestWritePassword,
+  requestAccess,
   setAdminPassword,
   setTargetPassword,
-  writePromptTarget,
 } from "./writeAuth";
 
 // Callers can declare the owning target of a write so the per-target password
@@ -79,11 +80,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response: on a 401 that the backend marked as a write-gate rejection, prompt
-// for the password, then retry once. We gate on the `X-Write-Auth-Required`
-// marker (not just any 401 on a mutating request) so that wrong AI/system
-// passwords typed into a page's own unlock dialog — e.g. POST /status/ai-auth —
-// are handled by that page, not hijacked by the global write-password prompt.
+const PASSWORD_HEADERS = ["X-System-Password", "X-Target-Password"];
+
+// Response: on a 401 that a sign-in or a password would open (the backend marks
+// those with `X-Auth-Required: login` / `X-Write-Auth-Required`), ask through the
+// access prompt, then retry once, so the action the user started still runs.
+// Only marked 401s: a wrong AI / system password typed into a page's own unlock
+// dialog (POST /status/ai-auth) stays with that page.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -95,37 +98,45 @@ api.interceptors.response.use(
       emitToast(roleDeniedMessage(String(headers["x-auth-role-required"])), "error");
       return Promise.reject(error);
     }
-    // Only a sign-in helps (session expired, or a write without one): go to the
-    // identity provider and come back here. A 401 that also offers a password
-    // goes to the password prompt below, which has its own sign-in button.
-    if (status === 401 && headers["x-auth-required"] === "login" && !headers["x-write-auth-required"]) {
-      if (!loginRedirectStarted && typeof window !== "undefined") {
+    const prompt = config ? accessPromptFor(status, headers, resolveTargetId(config)) : undefined;
+    if (!config || prompt === undefined || config._writeRetried) {
+      return Promise.reject(error);
+    }
+    // No prompt mounted (outside the app shell): the old full-page sign-in.
+    if (!hasAccessPrompt()) {
+      if (prompt.signIn && !loginRedirectStarted && typeof window !== "undefined") {
         loginRedirectStarted = true;
         window.location.assign(loginUrl(baseURL, currentReturnPath()));
       }
       return Promise.reject(error);
     }
-    const targetId = config
-      ? writePromptTarget(error?.response?.headers?.["x-write-auth-required"], resolveTargetId(config))
-      : undefined;
-    if (!config || status !== 401 || targetId === undefined || config._writeRetried) {
+    const answer = await requestAccess(prompt);
+    if (!answer) {
       return Promise.reject(error);
     }
-    const password = await requestWritePassword({ targetId });
-    if (!password) {
-      return Promise.reject(error);
+    config._writeRetried = true;
+    config.headers = config.headers ?? new AxiosHeaders();
+    const requestHeaders = config.headers as AxiosHeaders | Record<string, string>;
+    if (answer.kind === "signed-in") {
+      // The session authorizes the retry; a password left on the first attempt
+      // belonged to whoever used this browser before the sign-in.
+      for (const name of PASSWORD_HEADERS) {
+        if (requestHeaders instanceof AxiosHeaders) requestHeaders.delete(name);
+        else delete requestHeaders[name];
+      }
+      return api(config);
     }
     // Persist into the matching slot for future requests, and send both headers
     // on the retry so it works whether this is the admin or the target secret.
-    if (targetId) {
-      setTargetPassword(targetId, password);
+    if (prompt.targetId) {
+      setTargetPassword(prompt.targetId, answer.password);
     } else {
-      setAdminPassword(password);
+      setAdminPassword(answer.password);
     }
-    config._writeRetried = true;
-    config.headers = config.headers ?? {};
-    (config.headers as Record<string, string>)["X-System-Password"] = password;
-    (config.headers as Record<string, string>)["X-Target-Password"] = password;
+    for (const name of PASSWORD_HEADERS) {
+      if (requestHeaders instanceof AxiosHeaders) requestHeaders.set(name, answer.password);
+      else requestHeaders[name] = answer.password;
+    }
     return api(config);
   }
 );
