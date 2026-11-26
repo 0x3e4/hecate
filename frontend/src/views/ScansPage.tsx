@@ -683,12 +683,16 @@ export const ScansPage = () => {
   // Filter by the name/URL search box before grouping. Matches name,
   // target id (URL/image ref), repository URL, registry, and group.
   const targetQuery = targetSearch.trim().toLowerCase();
+  // Hosts and nodes that push their SBOMs live under Inventory → Systems; the
+  // other tabs keep them (filters, findings), the Targets tab lists what Hecate scans.
+  const scanTargets = targets.filter(tgt => !tgt.systemId);
+  const systemTargetCount = targets.length - scanTargets.length;
   const visibleTargets = targetQuery
-    ? targets.filter(tgt =>
+    ? scanTargets.filter(tgt =>
         [tgt.name, tgt.id, tgt.repositoryUrl, tgt.registry, tgt.group]
           .some(v => (v || "").toLowerCase().includes(targetQuery)),
       )
-    : targets;
+    : scanTargets;
   const visibleSummary = sumSummary(visibleTargets);
   const targetColumns = scaAutoScanEnabled ? 7 : 6;
 
@@ -711,7 +715,7 @@ export const ScansPage = () => {
       {/* Tab navigation */}
       <div className="scans-tabs">
         {([
-          { key: "targets" as Tab, label: t("Targets", "Ziele"), count: targets.length || undefined },
+          { key: "targets" as Tab, label: t("Targets", "Ziele"), count: scanTargets.length || undefined },
           { key: "scans" as Tab, label: t("Scans", "Scans"), count: scanTotal || undefined },
           { key: "findings" as Tab, label: t("Findings", "Funde"), count: findingsBadgeTotal || undefined },
           { key: "sbom" as Tab, label: "SBOM", count: sbomBadgeTotal || undefined },
@@ -736,7 +740,7 @@ export const ScansPage = () => {
       {tab === "targets" && (
         <div>
           <div className="scans-lead">
-            {targets.length > 0 && (
+            {scanTargets.length > 0 && (
               <dl className={`stat-row${loading ? " is-refreshing" : ""}`} aria-busy={loading || undefined}>
                 <Stat label={t("Critical", "Kritisch")} value={visibleSummary.critical.toLocaleString()} tone={visibleSummary.critical ? "critical" : undefined} />
                 <Stat label={t("High", "Hoch")} value={visibleSummary.high.toLocaleString()} tone={visibleSummary.high ? "high" : undefined} />
@@ -758,10 +762,19 @@ export const ScansPage = () => {
               <SkeletonRows rows={8} height={56} />
             </LoadingRegion>
           )}
-          {!loading && targets.length === 0 && (
+          {systemTargetCount > 0 && (
+            <p className="scans-systems-note">
+              {t(
+                `${systemTargetCount} ${systemTargetCount === 1 ? "system sends its SBOM" : "systems send their SBOMs"} to the inventory: `,
+                `${systemTargetCount} ${systemTargetCount === 1 ? "System sendet sein SBOM" : "Systeme senden ihre SBOMs"} ans Inventar: `,
+              )}
+              <Link to="/inventory?tab=systems">{t("Inventory → Systems", "Inventar → Systeme")}</Link>
+            </p>
+          )}
+          {!loading && scanTargets.length === 0 && (
             <EmptyState title={t("No scan targets registered yet.", "Noch keine Scan-Ziele registriert.")} />
           )}
-          {targets.length > 0 && (() => {
+          {scanTargets.length > 0 && (() => {
             if (visibleTargets.length === 0) {
               return (
                 <EmptyState title={<>{t("No targets match", "Keine Ziele passen zu")} “{targetSearch.trim()}”.</>} />

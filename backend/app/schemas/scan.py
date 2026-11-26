@@ -276,6 +276,10 @@ class ScanTargetResponse(BaseModel):
     exposure: TargetExposure | None = Field(
         default=None, description="internet = reachable from the internet, internal = not; null = unknown",
     )
+    system_id: str | None = Field(
+        default=None, alias="systemId", serialization_alias="systemId",
+        description="The inventory system this target reports for (its SBOM or scanner report pushes)",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -323,6 +327,12 @@ class TargetWritePasswordRequest(BaseModel):
 class ScanTargetListResponse(BaseModel):
     total: int
     items: list[ScanTargetResponse]
+    systems_hidden: int = Field(
+        default=0, alias="systemsHidden", serialization_alias="systemsHidden",
+        description="With systems=false: how many targets were left out because an inventory system holds them",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class ScanTargetGroupSchema(BaseModel):

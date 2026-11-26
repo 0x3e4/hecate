@@ -41,6 +41,8 @@ class InventoryBackupMetadata(BackupMetadata):
 class InventoryBackupPayload(BaseModel):
     metadata: InventoryBackupMetadata
     items: list[dict[str, Any]]
+    # Inventory systems (hosts, nodes); older backups have none.
+    systems: list[dict[str, Any]] = []
 
 
 class BackupRestoreSummary(BaseModel):

@@ -507,6 +507,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `GET    /api/v1/inventory/{id}` — fetch an item
 - `PUT    /api/v1/inventory/{id}` — update an item
 - `DELETE /api/v1/inventory/{id}` — delete an item
+- `GET|POST /api/v1/inventory/systems`, `GET|PUT|DELETE /api/v1/inventory/systems/{id}` — systems (servers, nodes) with their last report
 - `GET    /api/v1/inventory/{id}/affected-vulnerabilities` — currently affected CVEs for an item
 </details>
 

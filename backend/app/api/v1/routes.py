@@ -17,6 +17,7 @@ from app.api.v1 import (
     cwe,
     events,
     inventory,
+    inventory_systems,
     license_policies,
     malware,
     notifications,
@@ -87,6 +88,10 @@ api_router.include_router(
 )
 api_router.include_router(vex_rules.router, prefix="/vex-rules", tags=["vex-rules"], dependencies=_admin_write)
 api_router.include_router(inventory.report_router, prefix="/inventory", tags=["inventory"])
+# Before the inventory router: its /{item_id} would take "systems" for an item id.
+api_router.include_router(
+    inventory_systems.router, prefix="/inventory/systems", tags=["inventory"], dependencies=_editor_write
+)
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"], dependencies=_editor_write)
 api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(malware.router, prefix="/malware", tags=["malware"])

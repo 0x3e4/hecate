@@ -56,6 +56,13 @@ class InventoryItemCreateRequest(BaseModel):
         serialization_alias="eolProduct",
     )
 
+    system_ids: list[str] | None = Field(
+        default=None,
+        max_length=500,
+        alias="systemIds",
+        serialization_alias="systemIds",
+        description="Inventory systems this product runs on; unknown ids are dropped",
+    )
     # Why the change was made (ticket, server, change request). Kept in the
     # history entry, not on the item.
     change_note: str | None = Field(
@@ -108,6 +115,13 @@ class InventoryItemUpdateRequest(BaseModel):
         alias="eolProduct",
         serialization_alias="eolProduct",
     )
+    system_ids: list[str] | None = Field(
+        default=None,
+        max_length=500,
+        alias="systemIds",
+        serialization_alias="systemIds",
+        description="Inventory systems this product runs on; unknown ids are dropped",
+    )
     # Why the change was made (ticket, server, change request). Kept in the
     # history entry, not on the item.
     change_note: str | None = Field(
@@ -148,6 +162,10 @@ class InventoryItemResponse(BaseModel):
         default=None,
         alias="eolProduct",
         serialization_alias="eolProduct",
+    )
+    system_ids: list[str] = Field(
+        default_factory=list, alias="systemIds", serialization_alias="systemIds",
+        description="Inventory systems this product runs on",
     )
     created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
     updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")

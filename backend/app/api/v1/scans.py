@@ -230,14 +230,19 @@ async def list_targets(
     group: str | None = Query(default=None, description="Filter by application/group name; empty string for ungrouped"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    systems: bool = Query(
+        default=True,
+        description="false leaves out the targets of inventory systems (hosts, nodes pushing their SBOMs)",
+    ),
     service: ScanService = Depends(get_scan_service),
 ) -> ScanTargetListResponse:
     total, items = await service.list_targets(
-        type_filter=type, group_filter=group, limit=limit, offset=offset,
+        type_filter=type, group_filter=group, limit=limit, offset=offset, include_systems=systems,
     )
     return ScanTargetListResponse(
         total=total,
         items=[_map_target(item) for item in items],
+        systems_hidden=0 if systems else len(await service._system_links()),
     )
 
 
@@ -497,6 +502,9 @@ async def update_target(
     classification = {field: getattr(body, field) for field in ("kind", "exposure") if field in sent}
     if classification:
         await service.target_repo.update_classification(target_id, classification)
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        await get_inventory_system_service().mirror_target_classification(target_id, classification)
     target = await service.get_target(target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Scan target not found")
@@ -1566,6 +1574,7 @@ def _map_target(doc: dict[str, Any]) -> ScanTargetResponse:
         no_external_lookups=bool(doc.get("no_external_lookups")),
         kind=doc.get("kind"),
         exposure=doc.get("exposure"),
+        system_id=doc.get("system_id"),
     )
 
 

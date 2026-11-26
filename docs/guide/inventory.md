@@ -6,7 +6,53 @@ What makes this more than a keyword filter is the version matching. Hecate doesn
 
 Once an entry matches, the result surfaces in several places at once: an expandable list of affecting CVEs on the inventory row itself, a **Flagged CVEs** table rolling up every match across all your entries, a red "Affected in your environment" callout on the matching vulnerability detail pages, an environment-impact block injected into AI analyses, and an optional notification rule that alerts you when a newly published CVE touches your inventory. Each entry is also annotated with its **support / end-of-life status** from [endoflife.date](https://endoflife.date).
 
+The page has two tabs. **Systems** lists the servers, VMs and nodes you run and whether each one still
+sends its SBOM; **Products** holds the products and versions described below.
+
 ![The Environment Inventory page with declared items and their affecting CVEs](../img/hecate-inventory.png)
+
+## Systems
+
+A system is a place: a server, a VM, a Kubernetes node, a gateway. What is installed on it arrives as an
+SBOM or scanner report that the system pushes ([Hosts, Nodes & Other Systems](../sca/hosts.md)); the
+system keeps its latest findings and its history from those pushes.
+
+Systems get onto the list in two ways:
+
+- **By hand**, with **Add system**: the name (use the one the host sends as `targetName`, usually the
+  FQDN), what it is (host, Kubernetes node, container, other), whether the internet reaches it, the
+  environment, an owner, groups such as a cluster, a site or a team, and notes. A system entered this way
+  says *Never reported* until its first push arrives, and then picks it up on its own.
+- **By its first push**: an SBOM or report sent with a `kind` creates the system. A push without `kind` (an
+  application's SBOM, a vendor's product) stays an SCA target instead.
+
+Names are unique regardless of case, so `WEB-01` and `web-01` are one system.
+
+Each row shows when the last report arrived and what it found:
+
+| Report | Meaning |
+| --- | --- |
+| *today*, *yesterday*, *5 days ago* | The system reports. |
+| **No recent report** | The last report is older than three days (`INVENTORY_SYSTEM_STALE_DAYS`): the push stopped, or the host is gone. |
+| *Never reported* | Nothing has arrived yet. |
+
+The list starts with the gaps (no recent report, then never reported), then internet-facing systems, then
+the ones with the most critical and high findings. The figures above it count the systems in each state.
+The name opens the system's findings, SBOM and history; the number of findings opens its latest report.
+
+What a system is and whether the internet reaches it is kept in step with its findings: changing it here or
+on the target page changes both, and *Affected in your scans* on a vulnerability page lists internet-facing
+systems first.
+
+Removing a system takes it off the list. Its findings and history stay and appear under **SCA → Targets**
+again; remove them there if they should go too. The SCA target list leaves systems out, with a pointer to
+this tab.
+
+### Products on a system
+
+A product can name the systems it runs on (**Runs on** in the product dialog). The product row then says
+*on web-01, web-02*, and the system lists its products. The link is a description, not a match: a product's
+CVEs come from its own version, a system's findings from its own report.
 
 ## Finding the right product
 
@@ -141,4 +187,4 @@ The compact badge on the row shows the status, the **support-until date** for yo
 
 ## Backup and restore
 
-The inventory is included in Hecate's backup tooling. Under **System → General** you'll find an **Environment Inventory** row with export and upload buttons next to Vulnerabilities and Saved Searches. Exporting downloads every entry as a JSON file; restoring upserts by entry ID, so re-importing a backup overwrites entries that still exist and re-creates ones that were deleted, without producing duplicates. This makes the round trip — export, edit elsewhere, restore — safe to repeat.
+The inventory is included in Hecate's backup tooling. Under **System → General** you'll find an **Environment Inventory** row with export and upload buttons next to Vulnerabilities and Saved Searches. Exporting downloads every entry and every system as a JSON file, with the links between them; restoring upserts by ID, so re-importing a backup overwrites entries that still exist and re-creates ones that were deleted, without producing duplicates. This makes the round trip — export, edit elsewhere, restore — safe to repeat. Backups made before systems existed restore as before. A backup holds the systems, not their findings: those stay with the scans.

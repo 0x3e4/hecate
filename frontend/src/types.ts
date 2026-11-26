@@ -595,6 +595,8 @@ export interface InventoryItem {
   owner?: string | null;
   notes?: string | null;
   eolProduct?: string | null;
+  /** Inventory systems this product runs on. */
+  systemIds?: string[];
   createdAt: string;
   updatedAt: string;
   affectedVulnCount?: number | null;
@@ -603,6 +605,37 @@ export interface InventoryItem {
 export interface InventoryItemListResponse {
   items: InventoryItem[];
   total: number;
+}
+
+/** reporting: an SBOM or report arrived recently; stale: the last one is old; never: none yet. */
+export type InventorySystemReportStatus = "reporting" | "stale" | "never";
+
+/** A server, VM, node or other system you run (docs/guide/inventory.md#systems). */
+export interface InventorySystem {
+  id: string;
+  name: string;
+  kind?: "host" | "kubernetes-node" | "container" | "other" | null;
+  exposure?: "internet" | "internal" | null;
+  environment?: string | null;
+  owner?: string | null;
+  notes?: string | null;
+  groups: string[];
+  source: "manual" | "sbom-import";
+  /** The SBOM-import target holding its package list, findings and history. */
+  targetId?: string | null;
+  lastReportAt?: string | null;
+  reportStatus: InventorySystemReportStatus;
+  latestScanId?: string | null;
+  latestSummary?: ScanSummary | null;
+  products: { id: string; name: string; version: string }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventorySystemListResponse {
+  total: number;
+  staleAfterDays: number;
+  items: InventorySystem[];
 }
 
 export type EolStatusKind = "active" | "security" | "eol" | "unknown";
@@ -867,6 +900,8 @@ export interface ScanTarget {
   kind?: string | null;
   /** internet | internal; null = unknown. */
   exposure?: string | null;
+  /** The inventory system this target reports for. */
+  systemId?: string | null;
 }
 
 export interface VexSourceResult {
@@ -892,6 +927,8 @@ export interface VexSourceStatus {
 export interface ScanTargetListResponse {
   total: number;
   items: ScanTarget[];
+  /** With systems=false: targets left out because an inventory system holds them. */
+  systemsHidden?: number;
 }
 
 export interface ScanTargetGroup {

@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     mongo_license_policies_collection: str = "license_policies"
     mongo_environment_inventory_collection: str = "environment_inventory"
     mongo_environment_inventory_history_collection: str = "environment_inventory_history"
+    mongo_inventory_systems_collection: str = "inventory_systems"
     mongo_malware_intel_collection: str = "malware_intel"
     mongo_app_settings_collection: str = "app_settings"
     mongo_api_tokens_collection: str = "api_tokens"
@@ -212,6 +213,10 @@ class Settings(BaseSettings):
     deps_dev_rate_limit_seconds: float = 0.1  # 10 req/s default
     deps_dev_max_retries: int = 3
     deps_dev_retry_backoff_seconds: float = 2.0
+
+    # Inventory systems: a system whose last SBOM or scanner report is older
+    # than this many days is listed as "no report" (a push that stopped).
+    inventory_system_stale_days: int = Field(default=3, ge=1, le=365)
 
     # endoflife.date enrichment — annotates inventory items with support / EOL
     # status, latest release and "update available" hints. Uses the v1 API

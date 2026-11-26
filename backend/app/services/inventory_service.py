@@ -89,9 +89,21 @@ def _map_item(doc: dict[str, Any]) -> dict[str, Any]:
         "owner": doc.get("owner"),
         "notes": doc.get("notes"),
         "eolProduct": doc.get("eol_product"),
+        "systemIds": [s for s in doc.get("system_ids") or [] if isinstance(s, str)],
         "createdAt": doc.get("created_at"),
         "updatedAt": doc.get("updated_at"),
     }
+
+
+async def _known_system_ids(values: list[str] | None) -> list[str]:
+    """The given system ids that exist, in order, once each."""
+    wanted = list(dict.fromkeys(v for v in values or [] if isinstance(v, str) and v))
+    if not wanted:
+        return []
+    from app.services.inventory_system_service import get_inventory_system_service
+
+    known = await get_inventory_system_service().system_ids()
+    return [v for v in wanted if v in known]
 
 
 def _clean_note(value: str | None) -> str | None:
@@ -224,6 +236,7 @@ class InventoryService:
             "instance_count": payload.instance_count,
             "owner": payload.owner,
             "notes": payload.notes,
+            "system_ids": await _known_system_ids(payload.system_ids),
         }
         # endoflife.date link: honor an explicit eolProduct verbatim (empty =
         # unlink), otherwise auto-match by product wording. Fail-soft — a flaky
@@ -283,6 +296,8 @@ class InventoryService:
             updates["owner"] = payload.owner
         if payload.notes is not None:
             updates["notes"] = payload.notes
+        if payload.system_ids is not None:
+            updates["system_ids"] = await _known_system_ids(payload.system_ids)
 
         # endoflife.date link: explicit value wins (empty string unlinks);
         # otherwise re-auto-match ONLY when the product identity actually

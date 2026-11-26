@@ -141,6 +141,7 @@ def create_app() -> FastAPI:
         asyncio.create_task(_backfill_target_scan_state())
         asyncio.create_task(_backfill_target_summaries_v4())
         asyncio.create_task(_backfill_sbom_component_count_v2())
+        asyncio.create_task(_backfill_inventory_systems())
         asyncio.create_task(_reconcile_orphaned_target_data())
 
     async def _cancel_scans_left_by_restart() -> None:  # pragma: no cover - crash-recovery sweep
@@ -228,6 +229,12 @@ def create_app() -> FastAPI:
             import structlog
             log = structlog.get_logger()
             log.warning("startup.backfill_sbom_component_count_v2_failed", error=str(e))
+
+    async def _backfill_inventory_systems() -> None:  # pragma: no cover - idempotent migration
+        """SBOM-import targets that say what they are (host, node) become inventory systems."""
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        await get_inventory_system_service().backfill_from_targets()
 
     async def _reconcile_orphaned_target_data() -> None:  # pragma: no cover - crash-recovery sweep
         """Clean up scan data left behind by a target delete interrupted mid-cascade."""

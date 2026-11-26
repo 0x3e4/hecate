@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import Select from "react-select";
 import AsyncSelect from "react-select/async";
 import { LuArrowRight, LuChevronRight, LuCopy, LuPencil, LuPlus, LuTrash2, LuX } from "react-icons/lu";
 
@@ -11,6 +12,7 @@ import {
   fetchInventoryHistory,
   fetchInventoryItemHistory,
   fetchInventoryItems,
+  fetchInventorySystems,
   updateInventoryItem,
   type InventoryItemCreateInput,
 } from "../api/inventory";
@@ -18,6 +20,8 @@ import { fetchEolProducts, fetchInventoryEol } from "../api/endoflife";
 import { fetchProducts, fetchVendors } from "../api/assets";
 import { renderCatalogOption } from "../components/CatalogOption";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { InventorySystemsPanel } from "../components/InventorySystemsPanel";
+import { TabPill } from "../ui/TabPill";
 import { LoadingRegion, SkeletonBlock, SkeletonRows } from "../components/Skeleton";
 import { useToastContext } from "../components/ToastProvider";
 import { useServerConfig } from "../server-config/context";
@@ -33,6 +37,7 @@ import type {
   InventoryHistoryChange,
   InventoryHistoryEntry,
   InventoryItem,
+  InventorySystem,
 } from "../types";
 import {
   BusyLabel,
@@ -301,6 +306,7 @@ const emptyForm = (): InventoryItemCreateInput => ({
   instanceCount: 1,
   owner: "",
   notes: "",
+  systemIds: [],
   changeNote: "",
 });
 
@@ -372,6 +378,23 @@ const selectStyles = {
   singleValue: (provided: any) => ({
     ...provided,
     color: "var(--color-ink)",
+  }),
+  // "Runs on": the chosen systems as neutral chips.
+  multiValue: (provided: any) => ({
+    ...provided,
+    background: "var(--overlay-3)",
+    border: "var(--rule-hair) solid var(--color-rule-strong)",
+    borderRadius: "var(--radius-control)",
+  }),
+  multiValueLabel: (provided: any) => ({
+    ...provided,
+    color: "var(--color-ink)",
+    fontSize: "var(--text-sm)",
+  }),
+  multiValueRemove: (provided: any) => ({
+    ...provided,
+    color: "var(--color-muted)",
+    ":hover": { background: "var(--overlay-2)", color: "var(--color-ink)" },
   }),
   indicatorSeparator: () => ({
     display: "none",
@@ -689,6 +712,35 @@ export const InventoryPage = () => {
   const [selectedEol, setSelectedEol] = useState<EolOption | null>(null);
   const [eolTouched, setEolTouched] = useState(false);
 
+  // Systems tab: servers and nodes (InventorySystemsPanel); products link to them.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "systems" ? "systems" : "products";
+  const showTab = (next: "systems" | "products") => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "products") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true });
+  };
+  const [systems, setSystems] = useState<InventorySystem[]>([]);
+  const [systemsStaleDays, setSystemsStaleDays] = useState(3);
+  const [systemsLoaded, setSystemsLoaded] = useState(false);
+  const loadSystems = useCallback(async () => {
+    try {
+      const response = await fetchInventorySystems();
+      setSystems(response.items);
+      setSystemsStaleDays(response.staleAfterDays);
+    } catch {
+      // The products tab works without them; the systems tab shows its empty state.
+    } finally {
+      setSystemsLoaded(true);
+    }
+  }, []);
+  useEffect(() => {
+    void loadSystems();
+  }, [loadSystems]);
+  const systemNames = useMemo(() => new Map(systems.map((s) => [s.id, s.name])), [systems]);
+  const systemOptions = useMemo(() => systems.map((s) => ({ value: s.id, label: s.name })), [systems]);
+
   const loadItems = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -907,6 +959,7 @@ export const InventoryPage = () => {
       instanceCount: item.instanceCount,
       owner: item.owner ?? "",
       notes: item.notes ?? "",
+      systemIds: item.systemIds ?? [],
       changeNote: "",
     });
     setSelectedVendor({
@@ -982,6 +1035,7 @@ export const InventoryPage = () => {
       resetForm();
       await loadItems();
       void loadRecentChanges();
+      void loadSystems();
       showToast(
         editingId
           ? t("Inventory item updated.", "Inventar-Eintrag aktualisiert.")
@@ -1270,11 +1324,11 @@ export const InventoryPage = () => {
       <PageHeader
         title={t("Inventory", "Inventar")}
         description={t(
-          "Declare the products and versions you run. Hecate flags matching CVEs on every vulnerability page, enriches AI analyses with your environment impact, and fires notifications when a new CVE matches any item.",
-          "Deklarieren Sie die Produkte und Versionen, die Sie betreiben. Hecate markiert passende CVEs auf jeder Schwachstellen-Seite, reichert KI-Analysen mit Ihrer Umgebungswirkung an und sendet Benachrichtigungen, sobald ein neuer CVE zu einem Eintrag passt.",
+          "The systems you run and the products on them. Hecate flags matching CVEs on every vulnerability page, enriches AI analyses with your environment impact, and fires notifications when a new CVE matches.",
+          "Die Systeme, die Sie betreiben, und die Produkte darauf. Hecate markiert passende CVEs auf jeder Schwachstellen-Seite, reichert KI-Analysen mit Ihrer Umgebungswirkung an und sendet Benachrichtigungen, sobald ein neuer CVE passt.",
         )}
         actions={
-          <button
+          tab === "products" && <button
             type="button"
             className="btn btn-primary"
             onClick={() => {
@@ -1290,6 +1344,29 @@ export const InventoryPage = () => {
         }
       />
 
+      <nav className="inventory-tabs" aria-label={t("Inventory", "Inventar")}>
+        <TabPill active={tab === "systems"} onClick={() => showTab("systems")} count={systemsLoaded ? systems.length : null}>
+          {t("Systems", "Systeme")}
+        </TabPill>
+        <TabPill active={tab === "products"} onClick={() => showTab("products")} count={itemsLoaded ? totalItems : null}>
+          {t("Products", "Produkte")}
+        </TabPill>
+      </nav>
+
+      {tab === "systems" && (
+        <InventorySystemsPanel
+          systems={systems}
+          staleAfterDays={systemsStaleDays}
+          loaded={systemsLoaded}
+          environmentSuggestions={environmentSuggestions}
+          onChanged={async () => {
+            await loadSystems();
+            void loadItems();
+          }}
+        />
+      )}
+
+      {tab === "products" && (<>
       {totalItems > 0 && (
         <dl className="stat-row inventory-stats">
           <Stat
@@ -1507,6 +1584,12 @@ export const InventoryPage = () => {
                                   .join(" / ")}
                               </span>
                               {item.owner && <span>{item.owner}</span>}
+                              {(item.systemIds ?? []).length > 0 && (
+                                <span>
+                                  {t("on", "auf")}{" "}
+                                  {(item.systemIds ?? []).map((id) => systemNames.get(id)).filter(Boolean).join(", ")}
+                                </span>
+                              )}
                             </div>
                             {item.notes && <div className="inventory-notes">{item.notes}</div>}
                           </td>
@@ -1827,6 +1910,7 @@ export const InventoryPage = () => {
           </div>
         )}
       </Section>
+      </>)}
 
       {/* Add / edit modal, opened from the page header and the row edit action */}
       {deleteCandidate && (
@@ -2040,6 +2124,26 @@ export const InventoryPage = () => {
                   placeholder="platform-team"
                 />
               </div>
+
+              {systems.length > 0 && (
+                <div className="inventory-field">
+                  <label className="inventory-label" htmlFor="inventory-systems">
+                    {t("Runs on (optional)", "Läuft auf (optional)")}
+                  </label>
+                  <Select<{ value: string; label: string }, true>
+                    inputId="inventory-systems"
+                    isMulti
+                    options={systemOptions}
+                    value={systemOptions.filter((o) => (form.systemIds ?? []).includes(o.value))}
+                    onChange={(selected) => setForm({ ...form, systemIds: selected.map((o) => o.value) })}
+                    placeholder={t("Systems…", "Systeme…")}
+                    styles={selectStyles}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                    noOptionsMessage={() => t("No more systems", "Keine weiteren Systeme")}
+                  />
+                </div>
+              )}
 
               {eolEnabled && (
                 <div className="inventory-field">

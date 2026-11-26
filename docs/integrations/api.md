@@ -63,6 +63,8 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `GET` | `/api/v1/scans/{scanId}/sbom/export` | Export the SBOM as CycloneDX or SPDX; `vulnerabilities=true` adds the findings to the CycloneDX file ([DefectDojo](defectdojo.md)) |
 | `POST` | `/api/v1/inventory/report` | Report deployed versions (`inventory:report` token or the admin password) |
 | `GET` | `/api/v1/inventory/history` | Recent inventory changes, deleted items included |
+| `GET` / `POST` | `/api/v1/inventory/systems` | Systems (servers, VMs, nodes) with their last report and report status; add one (editor) |
+| `GET` / `PUT` / `DELETE` | `/api/v1/inventory/systems/{id}` | One system; change it (partial, `null` clears) or remove it (its findings stay) |
 | `GET` | `/api/v1/inventory/{id}/history` | The change log of one inventory item |
 | `GET` | `/api/v1/assets/vendors`, `/api/v1/assets/products` | Catalog search ranked by relevance; the first 25 hits carry `vulnerabilityCount` |
 | `GET` `POST` `DELETE` | `/api/v1/api-tokens` | List, create and revoke API tokens. Always needs `SYSTEM_PASSWORD`, also to read |

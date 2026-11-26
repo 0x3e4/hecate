@@ -181,6 +181,14 @@ def _service(monkeypatch: pytest.MonkeyPatch, calls: list[str]) -> tuple[ScanSer
 
     from app.db import mongo
     monkeypatch.setattr(mongo, "get_database", fake_db)
+    # The license check opens its own repository; without a database it would
+    # wait out the driver's server selection (it is optional and fail-soft).
+    from app.repositories.license_policy_repository import LicensePolicyRepository
+
+    async def no_policies() -> None:
+        raise RuntimeError("no database in tests")
+
+    monkeypatch.setattr(LicensePolicyRepository, "create", no_policies)
     return service, stored
 
 

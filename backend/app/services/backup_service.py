@@ -4,6 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, get_args
+from uuid import uuid4
 
 import structlog
 from pydantic import ValidationError
@@ -256,6 +257,7 @@ class BackupService:
                 "instance_count": int(doc.get("instance_count", 1) or 1),
                 "owner": doc.get("owner"),
                 "notes": doc.get("notes"),
+                "system_ids": [s for s in doc.get("system_ids") or [] if isinstance(s, str)],
                 "created_at": (
                     doc.get("created_at").isoformat()
                     if isinstance(doc.get("created_at"), datetime)
@@ -273,7 +275,52 @@ class BackupService:
             exported_at=datetime.now(tz=UTC),
             item_count=len(items),
         )
-        return InventoryBackupPayload(metadata=metadata, items=items)
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        systems = [
+            {
+                "id": str(doc["_id"]),
+                **{field: doc.get(field) for field in _SYSTEM_FIELDS},
+                "groups": doc.get("groups") or [],
+            }
+            for doc in await (await get_inventory_system_service().repo()).list_all()
+        ]
+        return InventoryBackupPayload(metadata=metadata, items=items, systems=systems)
+
+    async def _restore_systems(self, systems: list[Any]) -> set[str]:
+        """Upsert the backup's systems by id; the ids that exist afterwards. Bad rows are skipped."""
+        from app.repositories.inventory_system_repository import SystemNameTaken
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        repo = await get_inventory_system_service().repo()
+        restored: set[str] = set()
+        for row in systems:
+            if not isinstance(row, dict) or not isinstance(row.get("name"), str) or not row["name"].strip():
+                continue
+            data: dict[str, Any] = {"name": row["name"].strip()[:200], "groups": [
+                g.strip()[:60] for g in row.get("groups") or [] if isinstance(g, str) and g.strip()
+            ][:20]}
+            for field in _SYSTEM_FIELDS:
+                value = row.get(field)
+                if field != "name" and isinstance(value, str) and value.strip():
+                    data[field] = value.strip()[:2000]
+            if data.get("kind") not in (None, "host", "kubernetes-node", "container", "other"):
+                data.pop("kind")
+            if data.get("exposure") not in (None, "internet", "internal"):
+                data.pop("exposure")
+            system_id = row.get("id") if isinstance(row.get("id"), str) and row["id"].strip() else None
+            try:
+                if system_id and await repo.get(system_id):
+                    await repo.update(system_id, data)
+                else:
+                    system_id = system_id or str(uuid4())
+                    await repo.insert(system_id, data)
+                restored.add(system_id)
+            except SystemNameTaken as exc:
+                log.warning("backup.restore_system_name_taken", name=data["name"], error=str(exc))
+            except Exception as exc:  # noqa: BLE001 - one bad row, not the restore
+                log.warning("backup.restore_system_failed", name=data["name"], error=str(exc))
+        return restored
 
     async def _record_restore(
         self, item_id: str, data: dict[str, Any], action: str, changes: list[dict[str, Any]]
@@ -304,11 +351,18 @@ class BackupService:
         - Rows missing one of the required fields (name, vendor_slug,
           product_slug, version) are **skipped** with a warning.
         """
-        from uuid import uuid4
-
         inserted = 0
         updated = 0
         skipped = 0
+        # Systems first: the items' system_ids point at them. Only touched when the
+        # backup carries systems or links (older backups have neither).
+        if payload.systems:
+            await self._restore_systems(payload.systems)
+        system_ids: set[str] = set()
+        if payload.systems or any(isinstance(i, dict) and i.get("system_ids") for i in payload.items):
+            from app.services.inventory_system_service import get_inventory_system_service
+
+            system_ids = await get_inventory_system_service().system_ids()
 
         def _text(value: Any) -> str:
             # A backup file is hand-editable: anything but a string counts as missing.
@@ -356,6 +410,8 @@ class BackupService:
                 "owner": _optional(item.get("owner")),
                 "notes": _optional(item.get("notes")),
             }
+            if isinstance(item.get("system_ids"), list):
+                data["system_ids"] = [s for s in item["system_ids"] if isinstance(s, str) and s in system_ids]
 
             item_id = (item.get("id") or "").strip() if isinstance(item.get("id"), str) else None
 
@@ -396,6 +452,10 @@ class BackupService:
             skipped=skipped,
             total=inserted + updated,
         )
+
+
+# Stored fields of an inventory system that a backup carries (besides id and groups).
+_SYSTEM_FIELDS = ("name", "kind", "exposure", "environment", "owner", "notes", "source", "target_id")
 
 
 async def get_backup_service() -> BackupService:

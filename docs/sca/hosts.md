@@ -15,8 +15,10 @@ install.
 
 ## What you get
 
-- **One target per system.** Each system is an SBOM-import target, named after it (the host name, the
-  node, the workload). Every push is a new scan in its history.
+- **One system each, in the inventory.** A push with a `kind` lands on
+  [**Inventory → Systems**](../guide/inventory.md#systems), named after the system (the host name, the
+  node, the workload), and every push is a new scan in its history. The list shows which systems stopped
+  reporting. A system entered there by hand picks up its first push by name.
 - **Distribution-aware matching.** A Debian, Ubuntu, RHEL or Alpine package carries the distribution's
   own version (`nginx 1.22.1-9+deb12u2`), often with security fixes backported into an old upstream
   number. Hecate hands the SBOM to Grype in the scanner, which knows the distributions' advisories, and
@@ -177,11 +179,15 @@ or pull are better scanned as image targets (**New scan**), which also runs the 
 
 ## Where it shows
 
+- **Inventory → Systems**: every system, when it last reported, its worst finding and the products that
+  run on it.
 - The **vulnerability page**: *Affected in your scans* names the system, its kind and *Internet-facing*,
   exposed systems first.
 - The **target page** of each system: findings, SBOM, history, and the **System** card to set or
   change kind and exposure.
 - The **dashboard** and **Advisories** count these systems like any other scanned target.
+- **SCA → Targets** leaves them out and points to the inventory; the other SCA tabs (findings, SBOM,
+  alerts) include them.
 
 ## Settings
 
@@ -189,6 +195,7 @@ or pull are better scanned as image targets (**New scan**), which also runs the 
 | --- | --- | --- |
 | `SCA_SBOM_IMPORT_SCANNERS` | `grype` | Scanners that also match an imported SBOM: `grype`, `trivy`, or both (`grype,trivy`). Empty leaves only Hecate's own name match, which reads distribution packages less exactly. |
 | `SCA_SBOM_IMPORT_MAX_COMPONENTS` | `25000` | Largest SBOM accepted. |
+| `INVENTORY_SYSTEM_STALE_DAYS` | `3` | A system whose last report is older is listed as *No recent report*. |
 
 Without the scanner sidecar (`SCA_ENABLED=false` or unreachable), an import still works, matched by
 Hecate's own data only.

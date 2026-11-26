@@ -1,11 +1,12 @@
 """A tiny in-memory stand-in for a Motor collection (only what the tests use).
 
 Supports equality (``None`` also matches a missing field), ``$ne``, ``$in``,
-``$nin``, ``$regex``, ``$or`` and ``$and`` in filters (a scalar condition
-matches an element of an array field, as in MongoDB), ``$set`` updates, ``find`` with
-``limit``, ``find_one``, ``update_one`` / ``update_many``, ``replace_one``
+``$nin``, ``$regex``, ``$type: "string"``, ``$or`` and ``$and`` in filters (a scalar condition
+matches an element of an array field, as in MongoDB), ``$set`` / ``$unset`` / ``$pull`` updates, ``find`` with
+``limit``, ``find_one``, ``insert_one`` (``unique`` fields raise ``DuplicateKeyError``),
+``delete_one``, ``update_one`` / ``update_many``, ``replace_one``
 (with ``upsert``) and ``bulk_write`` with ``UpdateOne`` / ``UpdateMany``.
-Projections are ignored.
+Projections are ignored; ``create_index`` is a no-op.
 """
 from __future__ import annotations
 
@@ -38,6 +39,8 @@ def _matches_value(value: Any, cond: Any) -> bool:
                 return False
             if op == "$regex" and not (isinstance(value, str) and re.search(arg, value)):
                 return False
+            if op == "$type" and not (arg == "string" and isinstance(value, str)):
+                return False
         return True
     return _equals(value, cond)
 
@@ -62,6 +65,7 @@ class _Result:
     modified_count: int = 0
     matched_count: int = 0
     upserted_id: Any = None
+    deleted_count: int = 0
 
 
 class _Cursor:
@@ -70,6 +74,9 @@ class _Cursor:
 
     def limit(self, n: int) -> _Cursor:
         return _Cursor(self._docs[:n])
+
+    def skip(self, n: int) -> _Cursor:
+        return _Cursor(self._docs[n:])
 
     def sort(self, *_args: Any, **_kwargs: Any) -> _Cursor:
         return self
@@ -85,12 +92,37 @@ class _Cursor:
 
 
 class FakeCollection:
-    def __init__(self, docs: list[dict[str, Any]] | None = None) -> None:
+    def __init__(self, docs: list[dict[str, Any]] | None = None, unique: tuple[str, ...] = ()) -> None:
+        self.unique = unique
         self.docs: list[dict[str, Any]] = []
         for doc in docs or []:
             doc = dict(doc)
             doc.setdefault("_id", ObjectId())
             self.docs.append(doc)
+
+    async def count_documents(self, query: dict[str, Any] | None = None) -> int:
+        return sum(1 for d in self.docs if matches(d, query or {}))
+
+    async def create_index(self, *_args: Any, **_kwargs: Any) -> str:
+        return "index"
+
+    async def insert_one(self, doc: dict[str, Any]) -> _Result:
+        from pymongo.errors import DuplicateKeyError
+
+        doc = copy.deepcopy(doc)
+        doc.setdefault("_id", ObjectId())
+        for field in ("_id", *self.unique):
+            if doc.get(field) is not None and any(d.get(field) == doc[field] for d in self.docs):
+                raise DuplicateKeyError(f"duplicate {field}")
+        self.docs.append(doc)
+        return _Result(upserted_id=doc["_id"])
+
+    async def delete_one(self, query: dict[str, Any]) -> _Result:
+        for index, doc in enumerate(self.docs):
+            if matches(doc, query):
+                del self.docs[index]
+                return _Result(matched_count=1, deleted_count=1)
+        return _Result()
 
     def by_id(self, _id: Any) -> dict[str, Any]:
         return next(d for d in self.docs if d["_id"] == _id)
@@ -114,6 +146,9 @@ class FakeCollection:
             doc.update(update.get("$set", {}))
             for key in update.get("$unset", {}):
                 doc.pop(key, None)
+            for key, value in update.get("$pull", {}).items():
+                if isinstance(doc.get(key), list):
+                    doc[key] = [v for v in doc[key] if v != value]
             if doc != before:
                 result.modified_count += 1
             if not many:

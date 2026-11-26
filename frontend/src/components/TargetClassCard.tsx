@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { updateScanTarget } from "../api/scans";
 import { useI18n } from "../i18n/context";
@@ -46,6 +47,12 @@ export const TargetClassCard = ({
         )}{" "}
         <DocsLink path="sca/hosts/">{t("More", "Mehr")}</DocsLink>
       </p>
+      {target.systemId && (
+        <p className="scan-target-muted">
+          {t("This target is a system of the inventory, with its other systems in ", "Dieses Ziel ist ein System des Inventars, mit den anderen Systemen unter ")}
+          <Link to="/inventory?tab=systems">{t("Inventory → Systems", "Inventar → Systeme")}</Link>.
+        </p>
+      )}
       <div className="scan-target-class-fields">
         <div className="scan-target-secret-verification">
           <label htmlFor={kindId}>{t("Kind", "Art")}</label>

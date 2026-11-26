@@ -6,6 +6,8 @@ import type {
   InventoryHistoryResponse,
   InventoryItem,
   InventoryItemListResponse,
+  InventorySystem,
+  InventorySystemListResponse,
 } from "../types";
 
 export interface InventoryItemCreateInput {
@@ -21,11 +23,46 @@ export interface InventoryItemCreateInput {
   owner?: string | null;
   notes?: string | null;
   eolProduct?: string | null;
+  /** Inventory systems it runs on; unknown ids are dropped by the backend. */
+  systemIds?: string[];
   /** Why it changed (ticket, server); stored in the history entry, not on the item. */
   changeNote?: string | null;
 }
 
 export type InventoryItemUpdateInput = Partial<InventoryItemCreateInput>;
+
+export interface InventorySystemInput {
+  name: string;
+  kind?: InventorySystem["kind"];
+  exposure?: InventorySystem["exposure"];
+  environment?: string | null;
+  owner?: string | null;
+  notes?: string | null;
+  groups?: string[];
+}
+
+export async function fetchInventorySystems(): Promise<InventorySystemListResponse> {
+  const response = await api.get<InventorySystemListResponse>("/v1/inventory/systems");
+  return response.data;
+}
+
+export async function createInventorySystem(payload: InventorySystemInput): Promise<InventorySystem> {
+  const response = await api.post<InventorySystem>("/v1/inventory/systems", payload);
+  return response.data;
+}
+
+/** Partial; null clears kind, exposure, environment, owner and notes. */
+export async function updateInventorySystem(
+  systemId: string,
+  payload: Partial<InventorySystemInput>,
+): Promise<InventorySystem> {
+  const response = await api.put<InventorySystem>(`/v1/inventory/systems/${encodeURIComponent(systemId)}`, payload);
+  return response.data;
+}
+
+export async function deleteInventorySystem(systemId: string): Promise<void> {
+  await api.delete(`/v1/inventory/systems/${encodeURIComponent(systemId)}`);
+}
 
 export async function fetchInventoryItems(): Promise<InventoryItemListResponse> {
   const response = await api.get<InventoryItemListResponse>("/v1/inventory");

@@ -26,6 +26,8 @@ export const fetchScanTargets = async (params?: {
   group?: string;
   limit?: number;
   offset?: number;
+  /** false leaves out the targets inventory systems hold (hosts and nodes pushing SBOMs). */
+  systems?: boolean;
 }): Promise<ScanTargetListResponse> => {
   const response = await api.get<ScanTargetListResponse>("/v1/scans/targets", { params });
   return response.data;

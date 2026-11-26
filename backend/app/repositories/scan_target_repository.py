@@ -127,10 +127,13 @@ class ScanTargetRepository:
         group_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        exclude_ids: list[str] | None = None,
     ) -> tuple[int, list[dict[str, Any]]]:
         query: dict[str, Any] = {}
         if type_filter:
             query["type"] = type_filter
+        if exclude_ids:
+            query["_id"] = {"$nin": exclude_ids}
         if group_filter is not None:
             if group_filter == "":
                 query["$or"] = [{"group": None}, {"group": {"$exists": False}}, {"group": ""}]

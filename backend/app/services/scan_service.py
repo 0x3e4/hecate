@@ -957,6 +957,10 @@ class ScanService:
             # A host's SBOM comes in again every night: its VEX statuses and
             # dismissals must not start over each time.
             await self._carry_forward_from_previous(target_id, scan_id_val)
+            # The system it describes (inventory_system_service.link_import).
+            from app.services.inventory_system_service import get_inventory_system_service
+
+            await get_inventory_system_service().link_import(target_id, target_name, kind, exposure)
             await self.apply_vex_sources(target_id)
             if not no_external_lookups:
                 self._schedule_release_info(scan_id_val)
@@ -1811,16 +1815,32 @@ class ScanService:
             pass
         return summary
 
+    async def _system_links(self) -> dict[str, str]:
+        """target id -> id of the inventory system it reports for; empty on any error."""
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        try:
+            return await (await get_inventory_system_service().repo()).target_links()
+        except Exception:  # noqa: BLE001 - the target list stands without the links
+            log.warning("scan_service.system_links_failed", exc_info=True)
+            return {}
+
     async def list_targets(
         self,
         type_filter: str | None = None,
         group_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        include_systems: bool = True,
     ) -> tuple[int, list[dict[str, Any]]]:
+        """Targets, newest first. ``include_systems=False`` leaves out the ones an inventory system holds."""
+        links = await self._system_links()
         total, items = await self.target_repo.list_targets(
             type_filter=type_filter, group_filter=group_filter, limit=limit, offset=offset,
+            exclude_ids=None if include_systems else list(links),
         )
+        for item in items:
+            item["system_id"] = links.get(str(item.get("target_id") or item.get("_id") or ""))
         # Denormalized fields are on the target documents; fill defaults for un-migrated ones
         for item in items:
             item.setdefault("latest_summary", None)
@@ -1833,6 +1853,7 @@ class ScanService:
     async def get_target(self, target_id: str) -> dict[str, Any] | None:
         target = await self.target_repo.get(target_id)
         if target:
+            target["system_id"] = (await self._system_links()).get(target_id)
             latest = await self.scan_repo.get_latest_by_target(target_id)
             if latest:
                 target["latest_summary"] = await self._get_deduped_summary(latest)
@@ -1904,6 +1925,9 @@ class ScanService:
         deleted = await self.target_repo.delete(target_id)
         if not deleted:
             return False
+        from app.services.inventory_system_service import get_inventory_system_service
+
+        await get_inventory_system_service().target_deleted(target_id)
         task = asyncio.create_task(self._cleanup_target_data(target_id))
         _target_cleanup_tasks.add(task)
         task.add_done_callback(_target_cleanup_tasks.discard)

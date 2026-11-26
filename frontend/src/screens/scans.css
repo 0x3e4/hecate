@@ -330,3 +330,4 @@
 @media (prefers-reduced-motion: reduce) {
   .scans-segment, .scans-group-chevron, .scans-switch-track, .scans-switch-knob { transition: none; }
 }
+.scans-systems-note { margin: 0 0 var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }

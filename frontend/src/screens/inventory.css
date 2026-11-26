@@ -137,3 +137,34 @@ textarea.inventory-input { resize: vertical; }
   .inventory-history li { grid-template-columns: minmax(0, 1fr) auto; }
   .inventory-history time { grid-column: 1 / -1; }
 }
+
+/* Systems tab: servers and nodes, whether each still reports, what its last report found */
+.inventory-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2xs); margin-bottom: var(--space-lg); border-bottom: var(--rule-hair) solid var(--color-rule); }
+.inventory-systems { container-type: inline-size; }
+.inventory-systems-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-3xs) var(--space-xs); font-weight: 600; }
+.inventory-systems-name .target-class-chips { margin-left: 0; font-weight: 400; }
+.inventory-systems-sub { display: flex; flex-wrap: wrap; gap: 0 var(--space-sm); color: var(--color-muted); font-size: var(--text-xs); }
+.inventory-systems-notes { color: var(--color-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.inventory-systems-report { white-space: nowrap; }
+.inventory-systems-status { color: var(--color-ink-2); }
+.inventory-systems-status.is-stale { color: var(--color-ink); font-weight: 600; }
+.inventory-systems-status.is-never { color: var(--color-muted); }
+.inventory-systems-age { display: block; color: var(--color-muted); font-size: var(--text-xs); }
+.inventory-systems-findings { font-variant-numeric: tabular-nums; font-weight: 600; }
+.inventory-systems-products { max-width: 24ch; color: var(--color-ink-2); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.inventory-systems-none { color: var(--color-muted); font-weight: 400; }
+.dialog .inventory-systems-hint { margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
+.inventory-systems-error { margin: 0; color: var(--color-error); font-size: var(--text-sm); }
+.inventory-systems-table td { vertical-align: baseline; }
+
+@container (max-width: 60rem) {
+  .inventory-systems-table, .inventory-systems-table tbody, .inventory-systems-table tr, .inventory-systems-table td { display: block; }
+  .inventory-systems-table thead { display: none; }
+  .inventory-systems-table tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-sm); padding-block: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
+  .inventory-systems-table tr:last-child { border-bottom: var(--rule-hair) solid var(--color-rule); }
+  .inventory-systems-table td { padding: 0; border-bottom: 0; }
+  .inventory-systems-table .inventory-cell-name { order: -2; flex: 1 1 calc(100% - 8rem); min-width: 0; }
+  .inventory-systems-table .inventory-cell-actions { order: -1; }
+  .inventory-systems-table .inventory-systems-products { flex-basis: 100%; max-width: none; }
+  .inventory-systems-table td:empty, .inventory-systems-table td:has(> .inventory-systems-none:only-child) { display: none; }
+}

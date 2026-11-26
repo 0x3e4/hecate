@@ -61,6 +61,7 @@ export const ApiInfoPage = () => {
               <tr><td><code>GET</code></td><td><code>/api/v1/vulnerabilities</code></td><td>{t("Search vulnerabilities (DQL, pagination, sorting)", "Schwachstellen suchen (DQL, Paginierung, Sortierung)")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/vulnerabilities/{"{id}"}</code></td><td>{t("Get vulnerability details", "Schwachstellen-Details abrufen")}</td></tr>
               <tr><td><code>POST</code></td><td><code>/api/v1/inventory/report</code></td><td>{t("Report deployed versions (CI/CD)", "Ausgerollte Versionen melden (CI/CD)")}</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/v1/inventory/systems</code></td><td>{t("Systems with their last report", "Systeme mit ihrer letzten Meldung")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/stats</code></td><td>{t("Aggregated statistics", "Aggregierte Statistiken")}</td></tr>
               <tr><td><code>POST</code></td><td><code>/api/v1/scans</code></td><td>{t("Submit a scan (CI/CD)", "Scan einreichen (CI/CD)")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}</code></td><td>{t("Get scan status and summary", "Scan-Status und Zusammenfassung abrufen")}</td></tr>
