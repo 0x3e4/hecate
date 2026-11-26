@@ -18,7 +18,8 @@ install.
 - **One system each, in the inventory.** A push with a `kind` lands on
   [**Inventory → Systems**](../guide/inventory.md#systems), named after the system (the host name, the
   node, the workload), and every push is a new scan in its history. The list shows which systems stopped
-  reporting. A system entered there by hand picks up its first push by name.
+  reporting. A system entered there by hand, or named by a server list such as an Ansible inventory
+  ([Server lists](../guide/inventory.md#server-lists)), picks up its first push by name.
 - **Distribution-aware matching.** A Debian, Ubuntu, RHEL or Alpine package carries the distribution's
   own version (`nginx 1.22.1-9+deb12u2`), often with security fixes backported into an old upstream
   number. Hecate hands the SBOM to Grype in the scanner, which knows the distributions' advisories, and

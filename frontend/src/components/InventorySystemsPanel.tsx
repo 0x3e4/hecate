@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { LuPencil, LuPlus, LuTrash2, LuX } from "react-icons/lu";
+import { LuPencil, LuPlus, LuTrash2, LuUpload, LuX } from "react-icons/lu";
 
 import {
   createInventorySystem,
@@ -13,8 +13,9 @@ import type { InventorySystem, InventorySystemReportStatus } from "../types";
 import { BusyLabel, EmptyState, IconButton, Section, SeverityTag, Stat } from "../ui/primitives";
 import { describeError } from "../utils/apiError";
 import { severityLabel } from "../utils/cveGroups";
-import { formatDateTime } from "../utils/dateFormat";
+import { formatDateOnly, formatDateTime } from "../utils/dateFormat";
 import {
+  isRetired,
   matchesSystemFilters,
   parseGroups,
   reportAgeLabel,
@@ -25,6 +26,7 @@ import {
 } from "../utils/inventorySystems";
 import { TARGET_KINDS, exposureLabel, kindLabel } from "../utils/targetClass";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { InventorySystemListImport } from "./InventorySystemListImport";
 import { DocsLink } from "./DocsLink";
 import { TargetClassChips } from "./TargetClassChips";
 import { useToastContext } from "./ToastProvider";
@@ -88,6 +90,7 @@ export const InventorySystemsPanel = ({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<InventorySystem | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const stats = useMemo(() => systemStats(systems), [systems]);
   const visible = useMemo(
@@ -172,10 +175,16 @@ export const InventorySystemsPanel = ({
         title={t("Systems", "Systeme")}
         className="inventory-systems"
         actions={
-          <button type="button" className="btn btn-primary" onClick={() => open("new")}>
-            <LuPlus aria-hidden="true" />
-            {t("Add system", "System hinzufügen")}
-          </button>
+          <>
+            <button type="button" className="btn" onClick={() => setImporting(true)}>
+              <LuUpload aria-hidden="true" />
+              {t("Import list", "Liste importieren")}
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => open("new")}>
+              <LuPlus aria-hidden="true" />
+              {t("Add system", "System hinzufügen")}
+            </button>
+          </>
         }
       >
         <p className="inventory-note">
@@ -217,6 +226,16 @@ export const InventorySystemsPanel = ({
                 ))}
               </select>
             </label>
+            {stats.retired > 0 && (
+              <label className="inventory-control">
+                <input
+                  type="checkbox"
+                  checked={Boolean(filters.showRetired)}
+                  onChange={(e) => setFilters({ ...filters, showRetired: e.target.checked })}
+                />
+                <span>{t(`Show retired (${stats.retired})`, `Stillgelegte zeigen (${stats.retired})`)}</span>
+              </label>
+            )}
           </div>
         )}
 
@@ -246,8 +265,9 @@ export const InventorySystemsPanel = ({
               <tbody>
                 {visible.map((system) => {
                   const worst = worstSeverity(system);
+                  const retired = isRetired(system);
                   return (
-                    <tr key={system.id}>
+                    <tr key={system.id} className={retired ? "inventory-systems-retired" : undefined}>
                       <td className="inventory-cell-name">
                         <div className="inventory-systems-name">
                           {system.targetId ? (
@@ -257,21 +277,31 @@ export const InventorySystemsPanel = ({
                           )}
                           <TargetClassChips kind={system.kind} exposure={system.exposure} />
                         </div>
-                        {(system.groups.length > 0 || system.owner) && (
+                        {(system.groups.length > 0 || system.owner || (system.listSources ?? []).length > 0) && (
                           <div className="inventory-systems-sub">
                             {system.groups.length > 0 && <span>{system.groups.join(", ")}</span>}
                             {system.owner && <span>{system.owner}</span>}
+                            {(system.listSources ?? []).length > 0 && (
+                              <span>{t("list", "Liste")} {(system.listSources ?? []).join(", ")}</span>
+                            )}
                           </div>
                         )}
                         {system.notes && <div className="inventory-systems-notes">{system.notes}</div>}
                       </td>
                       <td className="inventory-systems-report" title={system.lastReportAt ? formatDateTime(system.lastReportAt) : undefined}>
-                        <span className={`inventory-systems-status is-${system.reportStatus}`}>
-                          {system.reportStatus === "reporting"
-                            ? reportAgeLabel(system.lastReportAt, t)
-                            : reportStatusLabel(system.reportStatus, t)}
+                        <span className={`inventory-systems-status is-${retired ? "retired" : system.reportStatus}`}>
+                          {retired
+                            ? t("Retired", "Stillgelegt")
+                            : system.reportStatus === "reporting"
+                              ? reportAgeLabel(system.lastReportAt, t)
+                              : reportStatusLabel(system.reportStatus, t)}
                         </span>
-                        {system.reportStatus === "stale" && (
+                        {retired && system.retiredAt && (
+                          <span className="inventory-systems-age">
+                            {t("on no list since", "auf keiner Liste seit")} {formatDateOnly(system.retiredAt)}
+                          </span>
+                        )}
+                        {!retired && system.reportStatus === "stale" && (
                           <span className="inventory-systems-age">{reportAgeLabel(system.lastReportAt, t)}</span>
                         )}
                       </td>
@@ -316,6 +346,10 @@ export const InventorySystemsPanel = ({
           </div>
         )}
       </Section>
+
+      {importing && (
+        <InventorySystemListImport onClose={() => setImporting(false)} onApplied={onChanged} />
+      )}
 
       {deleteCandidate && (
         <ConfirmDialog

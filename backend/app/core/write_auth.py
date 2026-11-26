@@ -55,7 +55,7 @@ from app.core.auth_throttle import (
 )
 from app.core.config import settings
 from app.core.passwords import secret_equals, verify_password
-from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_SBOM_IMPORT, SCOPE_SCAN_SUBMIT
+from app.schemas.api_token import SCOPE_INVENTORY_REPORT, SCOPE_INVENTORY_SYNC, SCOPE_SBOM_IMPORT, SCOPE_SCAN_SUBMIT
 from app.services.api_token_service import get_api_token_service, looks_like_token
 from app.services.scan_service import resolve_sbom_import_target, ScanService, get_scan_service
 
@@ -260,6 +260,29 @@ async def require_inventory_report(
         return None
     key = enforce_auth_throttle(request, API_KEY_SECRET)
     name = await _authorize_api_token(request, x_api_key, SCOPE_INVENTORY_REPORT, key)
+    if name is None:
+        record_auth_result(key, False)
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return name
+
+
+async def require_inventory_sync(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+) -> str | None:
+    """Authorize a server-list import and return the token's name, if any.
+
+    Scripts hold an ``inventory:sync`` token; people go through the editor gate
+    like any inventory change. As with the version report, a wrong token fails
+    outright instead of falling through to the (fail-open) password gate: a
+    replace import can retire systems.
+    """
+    if x_api_key is None:
+        await require_editor_write(request, x_system_password=x_system_password)
+        return None
+    key = enforce_auth_throttle(request, API_KEY_SECRET)
+    name = await _authorize_api_token(request, x_api_key, SCOPE_INVENTORY_SYNC, key)
     if name is None:
         record_auth_result(key, False)
         raise HTTPException(status_code=401, detail="Invalid API key")

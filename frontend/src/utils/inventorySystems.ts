@@ -33,34 +33,48 @@ export const reportStatusLabel = (status: InventorySystemReportStatus, t: Transl
   }
 };
 
+export const isRetired = (system: InventorySystem): boolean => Boolean(system.retiredAt);
+
 export interface SystemStats {
   total: number;
   reporting: number;
   stale: number;
   never: number;
   internet: number;
+  retired: number;
 }
 
-export const systemStats = (systems: InventorySystem[]): SystemStats => ({
-  total: systems.length,
-  reporting: systems.filter((s) => s.reportStatus === "reporting").length,
-  stale: systems.filter((s) => s.reportStatus === "stale").length,
-  never: systems.filter((s) => s.reportStatus === "never").length,
-  internet: systems.filter((s) => s.exposure === "internet").length,
-});
+/** Counts of the systems in use; retired ones only in ``retired``. */
+export const systemStats = (systems: InventorySystem[]): SystemStats => {
+  const active = systems.filter((s) => !isRetired(s));
+  return {
+    total: active.length,
+    reporting: active.filter((s) => s.reportStatus === "reporting").length,
+    stale: active.filter((s) => s.reportStatus === "stale").length,
+    never: active.filter((s) => s.reportStatus === "never").length,
+    internet: active.filter((s) => s.exposure === "internet").length,
+    retired: systems.length - active.length,
+  };
+};
 
 export interface SystemFilters {
   query: string;
   status: InventorySystemReportStatus | "";
   kind: string;
+  /** Retired systems (dropped by every list that named them) are hidden unless set. */
+  showRetired?: boolean;
 }
 
 export const matchesSystemFilters = (system: InventorySystem, filters: SystemFilters): boolean => {
+  if (isRetired(system) && !filters.showRetired) return false;
   if (filters.status && system.reportStatus !== filters.status) return false;
   if (filters.kind && (system.kind ?? "") !== filters.kind) return false;
   const query = filters.query.trim().toLocaleLowerCase();
   if (!query) return true;
-  const haystack = [system.name, system.environment, system.owner, system.notes, ...system.groups, ...system.products.map((p) => p.name)]
+  const haystack = [
+    system.name, system.environment, system.owner, system.notes,
+    ...system.groups, ...(system.listSources ?? []), ...system.products.map((p) => p.name),
+  ]
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase();
@@ -72,10 +86,12 @@ const STATUS_RANK: Record<InventorySystemReportStatus, number> = { stale: 0, nev
 
 /**
  * What needs a look first: systems without a recent report, then internet-facing
- * ones, then the most critical / high findings, then by name.
+ * ones, then the most critical / high findings, then by name. Retired ones last.
  */
 export const sortSystems = (systems: InventorySystem[]): InventorySystem[] =>
   [...systems].sort((a, b) => {
+    const retired = Number(isRetired(a)) - Number(isRetired(b));
+    if (retired) return retired;
     const status = STATUS_RANK[a.reportStatus] - STATUS_RANK[b.reportStatus];
     if (status) return status;
     const exposed = Number(b.exposure === "internet") - Number(a.exposure === "internet");

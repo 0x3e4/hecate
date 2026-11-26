@@ -620,7 +620,11 @@ export interface InventorySystem {
   owner?: string | null;
   notes?: string | null;
   groups: string[];
-  source: "manual" | "sbom-import";
+  source: "manual" | "sbom-import" | "list";
+  /** Server lists (import source names) that name it. */
+  listSources?: string[];
+  /** Set when the last list naming it dropped it; cleared when a list or a push names it again. */
+  retiredAt?: string | null;
   /** The SBOM-import target holding its package list, findings and history. */
   targetId?: string | null;
   lastReportAt?: string | null;
@@ -630,6 +634,26 @@ export interface InventorySystem {
   products: { id: string; name: string; version: string }[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type InventorySystemListFormat = "csv" | "text" | "ansible-ini" | "ansible-yaml" | "ansible-json" | "json";
+
+export interface InventorySystemImportResult {
+  format: InventorySystemListFormat;
+  source: string;
+  mode: "merge" | "replace";
+  dryRun: boolean;
+  listed: number;
+  created: string[];
+  updated: string[];
+  retired: string[];
+  restored: string[];
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  retiredCount: number;
+  restoredCount: number;
+  skipped: { where: string; reason: string }[];
 }
 
 export interface InventorySystemListResponse {
@@ -1513,7 +1537,7 @@ export interface MalwareFeedResponse {
   entries: MalwareFeedEntry[];
 }
 
-export type ApiTokenScope = "scan:submit" | "inventory:report" | "sbom:import";
+export type ApiTokenScope = "scan:submit" | "inventory:report" | "sbom:import" | "inventory:sync";
 
 export interface ApiToken {
   id: string;

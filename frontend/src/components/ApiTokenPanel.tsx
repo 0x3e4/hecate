@@ -56,6 +56,7 @@ export const ApiTokenPanel = () => {
     { value: "scan:submit", label: t("Submit scans", "Scans einreichen") },
     { value: "inventory:report", label: t("Report deployed versions", "Ausgerollte Versionen melden") },
     { value: "sbom:import", label: t("Import SBOMs (hosts, nodes)", "SBOMs importieren (Hosts, Nodes)") },
+    { value: "inventory:sync", label: t("Sync server lists", "Serverlisten abgleichen") },
   ];
 
   const toggleScope = (scope: ApiTokenScope) => {

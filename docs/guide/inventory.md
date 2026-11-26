@@ -17,7 +17,7 @@ A system is a place: a server, a VM, a Kubernetes node, a gateway. What is insta
 SBOM or scanner report that the system pushes ([Hosts, Nodes & Other Systems](../sca/hosts.md)); the
 system keeps its latest findings and its history from those pushes.
 
-Systems get onto the list in two ways:
+Systems get onto the list in three ways:
 
 - **By hand**, with **Add system**: the name (use the one the host sends as `targetName`, usually the
   FQDN), what it is (host, Kubernetes node, container, other), whether the internet reaches it, the
@@ -25,6 +25,8 @@ Systems get onto the list in two ways:
   says *Never reported* until its first push arrives, and then picks it up on its own.
 - **By its first push**: an SBOM or report sent with a `kind` creates the system. A push without `kind` (an
   application's SBOM, a vendor's product) stays an SCA target instead.
+- **From a server list**: an Ansible inventory, a CSV or a plain list of names, imported on the tab or sent
+  by a script ([Server lists](#server-lists)).
 
 Names are unique regardless of case, so `WEB-01` and `web-01` are one system.
 
@@ -47,6 +49,120 @@ systems first.
 Removing a system takes it off the list. Its findings and history stay and appear under **SCA → Targets**
 again; remove them there if they should go too. The SCA target list leaves systems out, with a pointer to
 this tab.
+
+### Server lists
+
+Most fleets already have a list somewhere: an Ansible inventory, a CMDB export, a spreadsheet. **Import
+list** on the Systems tab reads it, shows what would change, and applies it. A script can send the same
+list on a schedule, so the inventory follows the fleet without anyone editing it.
+
+| Format | What it looks like |
+| --- | --- |
+| CSV | A header row with `name` (or `host`, `hostname`, `fqdn`) and any of `kind`, `exposure`, `environment` (`env`), `owner`, `groups` (separated by `;` or `|`), `notes`. |
+| One name per line | Plain text; `#` starts a comment. |
+| Ansible INI | `[group]` sections, `[group:children]`, `[group:vars]`, ranges such as `web[01:20].example.com`. |
+| Ansible YAML | `all:` with `hosts`, `children` and `vars`. |
+| `ansible-inventory --list` | The JSON Ansible prints for any inventory, dynamic inventory plugins included. |
+| Hecate JSON | `{"systems": [{"name": "web-01", "kind": "host", "groups": ["dmz"]}]}`; the `systems` of an inventory backup read the same way. |
+
+The format is detected; pick it in the dialog (or send `format`) when the detection guesses wrong.
+
+In the Ansible formats a system's groups are the groups it is in, parents included (`all` and
+`ungrouped` are left out), and these variables set its fields, on a host or on a group for all of its hosts
+(the host's own value wins):
+
+```ini
+[web]
+web[01:03].example.com hecate_exposure=internet
+
+[prod:children]
+web
+
+[prod:vars]
+hecate_kind=host
+hecate_environment=prod
+hecate_owner=platform-team
+```
+
+`hecate_kind` (`host`, `kubernetes-node`, `container`, `other`), `hecate_exposure` (`internet`,
+`internal`), `hecate_environment`, `hecate_owner` and `hecate_notes`. A value that isn't one of these is
+left out and listed in the preview.
+
+What a list sets wins over what the system had: it is the record someone keeps. Groups are replaced when
+the list names any. The **list name** (for example `ansible-prod` or `cmdb`) decides what *Replace*
+affects:
+
+- **Keep them** (`merge`) adds new systems and updates the ones it names. Nothing is removed.
+- **Retire them** (`replace`) also retires the systems this list named last time and no longer does. A
+  retired system stays with its history and is hidden unless **Show retired** is ticked; it comes back as
+  soon as a list names it again or it pushes an SBOM. Only systems that no list names any more are
+  retired: a system on two lists stays while the other one keeps it, and systems added by hand or by a
+  push are never retired by a list.
+
+A *Replace* that would retire more than half of the systems the list named is refused (`409`): an empty
+export from a broken script would otherwise retire the fleet. Check the list, or send `force=true` (in
+the dialog: **Apply anyway**). **Preview** (`dryRun`) shows the outcome without changing anything.
+
+A list naming a system that already pushed an SBOM links the two right away.
+
+#### Sending a list from a script
+
+Create an API token with the scope **Sync server lists** (`inventory:sync`) on **System → Access
+Control**. It opens these two endpoints and nothing else:
+
+```bash
+# the file itself
+curl -fsS -X POST -H "X-API-Key: $HECATE_TOKEN" -F "file=@inventory/prod.ini" \
+  "https://hecate.example.com/api/v1/inventory/systems/import/upload?source=ansible-prod&mode=replace"
+
+# any Ansible inventory, plugins included, through ansible-inventory
+ansible-inventory -i inventory/ --list > /tmp/inventory.json
+curl -fsS -X POST -H "X-API-Key: $HECATE_TOKEN" -F "file=@/tmp/inventory.json" \
+  "https://hecate.example.com/api/v1/inventory/systems/import/upload?source=ansible-prod&mode=replace"
+```
+
+`POST /api/v1/inventory/systems/import` takes the same as JSON: `content` (the list as text), `format`,
+`source`, `mode`, `dryRun`, `force`. From Ansible, send the file: a JSON string in a `uri` body is turned
+back into data on the way. The answer counts what was added, changed, retired and brought back,
+and lists what was left out and why.
+
+With Ansible, one play can keep both sides current: the list from the control node, and each host's own
+SBOM ([Hosts, Nodes & Other Systems](../sca/hosts.md)) named after `inventory_hostname`, so the two meet:
+
+```yaml
+- name: Server list to Hecate
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Export the inventory
+      ansible.builtin.command: >-
+        ansible-inventory -i {{ ansible_inventory_sources | join(' -i ') }}
+        --list --output /tmp/hecate-inventory.json
+      changed_when: false
+    - name: Send it
+      ansible.builtin.command: >-
+        curl -fsS -X POST -H "X-API-Key: {{ hecate_sync_token }}" -F file=@/tmp/hecate-inventory.json
+        "https://hecate.example.com/api/v1/inventory/systems/import/upload?source=ansible-prod&mode=replace"
+      changed_when: false
+      no_log: true  # keeps the token out of the play's output
+
+- name: SBOMs to Hecate
+  hosts: all
+  tasks:
+    - name: Build the SBOM
+      ansible.builtin.command: >-
+        syft scan dir:/ --exclude './proc/**' --exclude './sys/**' --exclude './dev/**'
+        -o cyclonedx-json=/var/tmp/sbom.cdx.json
+      changed_when: false
+    - name: Send it
+      ansible.builtin.command: >-
+        curl -fsS -X POST -H "X-API-Key: {{ hecate_sbom_token }}" -F file=@/var/tmp/sbom.cdx.json
+        "https://hecate.example.com/api/v1/scans/import-sbom/upload?targetName={{ inventory_hostname }}"
+      changed_when: false
+      no_log: true
+```
+
+Hecate never runs a script itself: the list is produced where the inventory and its credentials live.
 
 ### Products on a system
 

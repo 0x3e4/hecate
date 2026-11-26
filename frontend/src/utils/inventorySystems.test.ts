@@ -51,7 +51,22 @@ describe("systems list", () => {
   ];
 
   it("counts", () => {
-    expect(systemStats(systems)).toEqual({ total: 5, reporting: 3, stale: 1, never: 1, internet: 2 });
+    expect(systemStats(systems)).toEqual({ total: 5, reporting: 3, stale: 1, never: 1, internet: 2, retired: 0 });
+  });
+
+  it("keeps retired systems out of the counts and the list unless asked", () => {
+    const gone = system({ name: "old-1", reportStatus: "stale", retiredAt: "2026-11-20T00:00:00Z", listSources: [] });
+    const all = [...systems, gone];
+    expect(systemStats(all)).toEqual({ total: 5, reporting: 3, stale: 1, never: 1, internet: 2, retired: 1 });
+    const base = { query: "", status: "" as const, kind: "" };
+    expect(all.filter((s) => matchesSystemFilters(s, base)).map((s) => s.name)).not.toContain("old-1");
+    const shown = sortSystems(all.filter((s) => matchesSystemFilters(s, { ...base, showRetired: true })));
+    expect(shown[shown.length - 1].name).toBe("old-1");
+  });
+
+  it("finds a system by the list that names it", () => {
+    const listed = system({ name: "web-7", listSources: ["ansible-prod"] });
+    expect(matchesSystemFilters(listed, { query: "ansible", status: "", kind: "" })).toBe(true);
   });
 
   it("puts gaps, then exposure, then findings first", () => {

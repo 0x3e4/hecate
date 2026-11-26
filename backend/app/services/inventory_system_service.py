@@ -29,16 +29,32 @@ import structlog
 
 from app.core.config import settings
 from app.repositories.inventory_repository import InventoryRepository
-from app.repositories.inventory_system_repository import InventorySystemRepository, SystemNameTaken
+from app.repositories.inventory_system_repository import InventorySystemRepository, SystemNameTaken, name_key
 from app.repositories.scan_target_repository import ScanTargetRepository
 from app.schemas.inventory_system import (
     InventorySystemCreateRequest,
+    InventorySystemImportResponse,
     InventorySystemListResponse,
     InventorySystemResponse,
     InventorySystemUpdateRequest,
 )
 
+from app.services.inventory_system_lists import ParsedList
+
 log = structlog.get_logger()
+
+
+class ListTooDestructive(ValueError):
+    """A replace would retire more than half of the systems its source named."""
+
+    def __init__(self, retiring: int, named: int) -> None:
+        super().__init__(
+            f"This list would retire {retiring} of the {named} systems it named before. "
+            "Check the list, or send force=true if that is right."
+        )
+        self.retiring = retiring
+        self.named = named
+
 
 _CLEARABLE = ("kind", "exposure", "environment", "owner", "notes")
 
@@ -124,6 +140,8 @@ class InventorySystemService:
                 "latestScanId": target.get("latest_scan_id"),
                 "latestSummary": target.get("latest_summary"),
                 "products": sorted(products.get(str(doc["_id"]), []), key=lambda p: p["name"].casefold()),
+                "listSources": doc.get("list_sources") or [],
+                "retiredAt": doc.get("retired_at"),
                 "createdAt": doc.get("created_at"),
                 "updatedAt": doc.get("updated_at"),
             }))
@@ -228,8 +246,9 @@ class InventorySystemService:
             system = await repo.get_by_target(target_id)
             if system is not None:
                 fields = {k: v for k, v in (("kind", kind), ("exposure", exposure)) if v}
-                if fields:
-                    await repo.update(str(system["_id"]), fields)
+                # A push from a retired system brings it back: it is evidently running.
+                if fields or system.get("retired_at"):
+                    await repo.update(str(system["_id"]), fields, ["retired_at"] if system.get("retired_at") else [])
                 return str(system["_id"])
             target = await (await self.target_repo()).get(target_id) or {}
             system = await repo.get_by_name(target_name)
@@ -238,7 +257,7 @@ class InventorySystemService:
                     # The name is taken by a system that reports through another target.
                     log.info("inventory_system.name_linked_elsewhere", target_id=target_id, system_id=system["_id"])
                     return None
-                await repo.update(str(system["_id"]), {"target_id": target_id})
+                await repo.update(str(system["_id"]), {"target_id": target_id}, ["retired_at"])
                 await self._sync_target_classification(target_id, system, target, kind=kind, exposure=exposure)
                 return str(system["_id"])
             kind = kind or target.get("kind")
@@ -276,6 +295,100 @@ class InventorySystemService:
             return
         await (await self.repo()).update(str(system["_id"]), merged)
         await (await self.target_repo()).update_classification(target_id, merged)
+
+    async def apply_list(
+        self,
+        parsed: ParsedList,
+        *,
+        source: str,
+        mode: str,
+        dry_run: bool = False,
+        force: bool = False,
+    ) -> InventorySystemImportResponse:
+        """Apply a server list: add and update its systems; in replace mode retire what it dropped.
+
+        A list's fields win over what a system has (it is the record someone
+        keeps); groups are set when the list names any. A system is retired only
+        when the last list naming it drops it, so a system added by hand or by a
+        push is never retired by a list it was never on. ``ListTooDestructive``
+        guards replace mode against a broken export retiring most of a fleet.
+        """
+        repo = await self.repo()
+        existing = {doc.get("name_key"): doc for doc in await repo.list_all()}
+        listed_keys = {name_key(s.name) for s in parsed.systems}
+        plan_create: list[tuple[str, dict[str, Any]]] = []
+        plan_update: list[tuple[dict[str, Any], dict[str, Any], list[str]]] = []
+        created, updated, restored, unchanged = [], [], [], 0
+        for system in parsed.systems:
+            doc = existing.get(name_key(system.name))
+            if doc is None:
+                data = {"name": system.name, "groups": system.groups, "source": "list",
+                        "list_sources": [source], **system.fields}
+                plan_create.append((str(uuid4()), data))
+                created.append(system.name)
+                continue
+            set_fields: dict[str, Any] = {k: v for k, v in system.fields.items() if doc.get(k) != v}
+            if system.groups and [g.casefold() for g in system.groups] != [g.casefold() for g in doc.get("groups") or []]:
+                set_fields["groups"] = system.groups
+            sources = list(doc.get("list_sources") or [])
+            if source not in sources:
+                set_fields["list_sources"] = [*sources, source]
+            unset = ["retired_at"] if doc.get("retired_at") else []
+            if unset:
+                restored.append(doc["name"])
+            if set_fields or unset:
+                plan_update.append((doc, set_fields, unset))
+                if set_fields.keys() - {"list_sources"}:
+                    updated.append(doc["name"])
+                elif not unset:
+                    unchanged += 1
+            else:
+                unchanged += 1
+
+        plan_retire: list[tuple[dict[str, Any], list[str]]] = []
+        if mode == "replace":
+            named_before = [doc for doc in existing.values() if source in (doc.get("list_sources") or [])]
+            for doc in named_before:
+                if doc.get("name_key") in listed_keys:
+                    continue
+                remaining = [s for s in doc.get("list_sources") or [] if s != source]
+                plan_retire.append((doc, remaining))
+            retiring = [doc for doc, remaining in plan_retire if not remaining and not doc.get("retired_at")]
+            if not force and named_before and len(retiring) * 2 > len(named_before):
+                raise ListTooDestructive(len(retiring), len(named_before))
+        retired = [doc["name"] for doc, remaining in plan_retire if not remaining and not doc.get("retired_at")]
+
+        if not dry_run:
+            now = datetime.now(tz=UTC)
+            for system_id, data in plan_create:
+                try:
+                    await repo.insert(system_id, data)
+                except SystemNameTaken:  # created meanwhile (a push); the next sync updates it
+                    created.remove(data["name"])
+            for doc, set_fields, unset in plan_update:
+                await repo.update(str(doc["_id"]), set_fields, unset)
+                if isinstance(doc.get("target_id"), str) and {"kind", "exposure"} & set_fields.keys():
+                    await (await self.target_repo()).update_classification(
+                        doc["target_id"], {k: set_fields[k] for k in ("kind", "exposure") if k in set_fields},
+                    )
+            for doc, remaining in plan_retire:
+                fields: dict[str, Any] = {"list_sources": remaining}
+                if not remaining and not doc.get("retired_at"):
+                    fields["retired_at"] = now
+                await repo.update(str(doc["_id"]), fields)
+            if plan_create:
+                # A list naming a host that already pushed: link it now, not on its next push.
+                for system_id, data in plan_create:
+                    await self._link_existing_target(system_id, data["name"])
+
+        cap = 200
+        return InventorySystemImportResponse(
+            format=parsed.format, source=source, mode=mode, dry_run=dry_run, listed=len(parsed.systems),
+            created=created[:cap], updated=updated[:cap], retired=retired[:cap], restored=restored[:cap],
+            created_count=len(created), updated_count=len(updated), unchanged_count=unchanged,
+            retired_count=len(retired), restored_count=len(restored),
+            skipped=parsed.skipped[:cap],
+        )
 
     async def mirror_target_classification(self, target_id: str, fields: dict[str, str | None]) -> None:
         """Kind / exposure set on the target page reach the target's system too. Never raises."""

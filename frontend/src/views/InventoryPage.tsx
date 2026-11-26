@@ -1345,7 +1345,7 @@ export const InventoryPage = () => {
       />
 
       <nav className="inventory-tabs" aria-label={t("Inventory", "Inventar")}>
-        <TabPill active={tab === "systems"} onClick={() => showTab("systems")} count={systemsLoaded ? systems.length : null}>
+        <TabPill active={tab === "systems"} onClick={() => showTab("systems")} count={systemsLoaded ? systems.filter((sys) => !sys.retiredAt).length : null}>
           {t("Systems", "Systeme")}
         </TabPill>
         <TabPill active={tab === "products"} onClick={() => showTab("products")} count={itemsLoaded ? totalItems : null}>

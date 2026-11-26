@@ -86,8 +86,8 @@ export const ApiInfoPage = () => {
           )}
           <code>X-API-Key</code>
           {t(
-            " header. The scope scan:submit opens scan submission, inventory:report the version report. Scan submission also accepts the ",
-            "-Header. Der Scope scan:submit öffnet die Scan-Einreichung, inventory:report die Versionsmeldung. Die Scan-Einreichung akzeptiert auch die Umgebungsvariable "
+            " header. The scope scan:submit opens scan submission, inventory:report the version report, sbom:import the SBOM and scanner report import, inventory:sync server lists. Scan submission also accepts the ",
+            "-Header. Der Scope scan:submit öffnet die Scan-Einreichung, inventory:report die Versionsmeldung, sbom:import den Import von SBOMs und Scanner-Berichten, inventory:sync Serverlisten. Die Scan-Einreichung akzeptiert auch die Umgebungsvariable "
           )}
           <code>SCA_API_KEY</code>
           {t(" environment variable.", ".")}

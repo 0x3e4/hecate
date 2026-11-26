@@ -89,6 +89,7 @@ api_router.include_router(
 api_router.include_router(vex_rules.router, prefix="/vex-rules", tags=["vex-rules"], dependencies=_admin_write)
 api_router.include_router(inventory.report_router, prefix="/inventory", tags=["inventory"])
 # Before the inventory router: its /{item_id} would take "systems" for an item id.
+api_router.include_router(inventory_systems.sync_router, prefix="/inventory/systems", tags=["inventory"])
 api_router.include_router(
     inventory_systems.router, prefix="/inventory/systems", tags=["inventory"], dependencies=_editor_write
 )

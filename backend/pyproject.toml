@@ -24,6 +24,7 @@ opensearch-protobufs = "1.2.0"
 mcp = {version = "^1.9", extras = ["cli"]}
 # ID token validation for the OIDC web login (already pulled in by mcp; declared because Hecate uses it directly).
 pyjwt = {version = "^2.10.1", extras = ["crypto"]}
+pyyaml = "^6.0.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "9.0.3"

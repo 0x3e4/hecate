@@ -10,13 +10,15 @@ SCOPE_SCAN_SUBMIT = "scan:submit"
 SCOPE_INVENTORY_REPORT = "inventory:report"
 # Push SBOMs (hosts, Kubernetes nodes, NeuVector exports) into SBOM-import targets.
 SCOPE_SBOM_IMPORT = "sbom:import"
+# Push server lists into the inventory's systems (static exports, Ansible, CMDB jobs).
+SCOPE_INVENTORY_SYNC = "inventory:sync"
 
-ApiTokenScope = Literal["scan:submit", "inventory:report", "sbom:import"]
+ApiTokenScope = Literal["scan:submit", "inventory:report", "sbom:import", "inventory:sync"]
 
 
 class ApiTokenCreateRequest(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
-    scopes: list[ApiTokenScope] = Field(min_length=1, max_length=3)
+    scopes: list[ApiTokenScope] = Field(min_length=1, max_length=4)
     expires_in_days: int | None = Field(default=None, ge=1, le=3650, alias="expiresInDays")
     model_config = {"populate_by_name": True}
 

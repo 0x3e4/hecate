@@ -7,6 +7,8 @@ import type {
   InventoryItem,
   InventoryItemListResponse,
   InventorySystem,
+  InventorySystemImportResult,
+  InventorySystemListFormat,
   InventorySystemListResponse,
 } from "../types";
 
@@ -57,6 +59,19 @@ export async function updateInventorySystem(
   payload: Partial<InventorySystemInput>,
 ): Promise<InventorySystem> {
   const response = await api.put<InventorySystem>(`/v1/inventory/systems/${encodeURIComponent(systemId)}`, payload);
+  return response.data;
+}
+
+/** Apply a server list (docs/guide/inventory.md#server-lists); dryRun only reports. */
+export async function importInventorySystemList(payload: {
+  content: string;
+  format?: InventorySystemListFormat | null;
+  source: string;
+  mode: "merge" | "replace";
+  dryRun?: boolean;
+  force?: boolean;
+}): Promise<InventorySystemImportResult> {
+  const response = await api.post<InventorySystemImportResult>("/v1/inventory/systems/import", payload);
   return response.data;
 }
 

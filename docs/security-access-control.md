@@ -154,6 +154,7 @@ touching the others. Create them on **System → Access Control**.
 | `scan:submit` | `POST /api/v1/scans` |
 | `inventory:report` | `POST /api/v1/inventory/report` |
 | `sbom:import` | `POST /api/v1/scans/import-sbom` and `/import-sbom/upload`, for new targets and SBOM-import targets only ([hosts, nodes and other systems](sca/hosts.md)) |
+| `inventory:sync` | `POST /api/v1/inventory/systems/import` and `/import/upload`: server lists for the inventory's systems, a replace can retire systems ([server lists](guide/inventory.md#server-lists)) |
 
 - **The token is shown once.** Hecate stores a SHA-256 hash and the first characters for telling
   tokens apart. A lost token is revoked and replaced.
