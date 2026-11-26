@@ -188,3 +188,142 @@ class InventorySystemImportResponse(BaseModel):
     skipped: list[ListSkip] = Field(description="Lines or values that were left out, and why (at most 200)")
 
     model_config = {"populate_by_name": True}
+
+
+# ---------------------------------------------------------------- list sources
+# Server lists Hecate fetches itself on a schedule (System -> Data); see
+# app/services/inventory_list_source_service.py.
+
+ListSourceStatus = Literal["ok", "error"]
+_HEADER_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+# Headers httpx sets itself or that would change what the request is.
+_RESERVED_HEADERS = {"host", "content-length", "transfer-encoding", "connection", "cookie", "user-agent", "accept"}
+
+
+def _header_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if value.casefold() in _RESERVED_HEADERS:
+        raise ValueError(f"{value} can't be used as the credential header")
+    return value
+
+
+class InventoryListSourceCreateRequest(BaseModel):
+    source: str = Field(
+        pattern=_SOURCE_PATTERN,
+        description="List name the systems carry (e.g. netbox); replace mode only retires systems this name listed",
+    )
+    url: str = Field(min_length=1, max_length=2048, description="http(s) URL without credentials in it")
+    format: ListFormat | None = Field(default=None, description="Detected on every fetch when omitted")
+    mode: ListMode = "merge"
+    interval_minutes: int = Field(
+        default=60, ge=15, le=10080, alias="intervalMinutes", serialization_alias="intervalMinutes",
+    )
+    enabled: bool = True
+    auth_header_name: str | None = Field(
+        default=None, pattern=_HEADER_NAME_PATTERN, alias="authHeaderName", serialization_alias="authHeaderName",
+        description="Header that carries the credential, e.g. Authorization; https only",
+    )
+    auth_header_value: str | None = Field(
+        default=None, max_length=4096, alias="authHeaderValue", serialization_alias="authHeaderValue",
+        description="Its value, e.g. 'Token abc'. Stored, never returned",
+    )
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("auth_header_name")
+    @classmethod
+    def _check_header(cls, value: str | None) -> str | None:
+        return _header_name(value)
+
+
+class InventoryListSourceUpdateRequest(BaseModel):
+    """Partial update. ``authHeaderValue: ""`` removes the credential."""
+
+    source: str | None = Field(default=None, pattern=_SOURCE_PATTERN)
+    url: str | None = Field(default=None, min_length=1, max_length=2048)
+    format: ListFormat | None = None
+    mode: ListMode | None = None
+    interval_minutes: int | None = Field(
+        default=None, ge=15, le=10080, alias="intervalMinutes", serialization_alias="intervalMinutes",
+    )
+    enabled: bool | None = None
+    auth_header_name: str | None = Field(
+        default=None, pattern=_HEADER_NAME_PATTERN, alias="authHeaderName", serialization_alias="authHeaderName",
+    )
+    auth_header_value: str | None = Field(
+        default=None, max_length=4096, alias="authHeaderValue", serialization_alias="authHeaderValue",
+    )
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("auth_header_name")
+    @classmethod
+    def _check_header(cls, value: str | None) -> str | None:
+        return _header_name(value)
+
+
+class InventoryListSourceResult(BaseModel):
+    """Counts of the last fetch that was applied."""
+
+    format: ListFormat
+    listed: int
+    created_count: int = Field(alias="createdCount", serialization_alias="createdCount")
+    updated_count: int = Field(alias="updatedCount", serialization_alias="updatedCount")
+    unchanged_count: int = Field(alias="unchangedCount", serialization_alias="unchangedCount")
+    retired_count: int = Field(alias="retiredCount", serialization_alias="retiredCount")
+    restored_count: int = Field(alias="restoredCount", serialization_alias="restoredCount")
+    skipped_count: int = Field(alias="skippedCount", serialization_alias="skippedCount")
+
+    model_config = {"populate_by_name": True}
+
+
+class InventoryListSourceResponse(BaseModel):
+    id: str
+    source: str
+    url: str = Field(description="Query values named like a key or token come back masked")
+    format: ListFormat | None = None
+    mode: ListMode
+    interval_minutes: int = Field(alias="intervalMinutes", serialization_alias="intervalMinutes")
+    enabled: bool
+    auth_header_name: str | None = Field(default=None, alias="authHeaderName", serialization_alias="authHeaderName")
+    auth_set: bool = Field(alias="authSet", serialization_alias="authSet", description="A credential is stored")
+    last_run_at: UtcDatetime | None = Field(default=None, alias="lastRunAt", serialization_alias="lastRunAt")
+    last_status: ListSourceStatus | None = Field(default=None, alias="lastStatus", serialization_alias="lastStatus")
+    last_error_kind: str | None = Field(default=None, alias="lastErrorKind", serialization_alias="lastErrorKind")
+    last_error: str | None = Field(default=None, alias="lastError", serialization_alias="lastError")
+    last_result: InventoryListSourceResult | None = Field(
+        default=None, alias="lastResult", serialization_alias="lastResult",
+    )
+    next_run_at: UtcDatetime | None = Field(
+        default=None, alias="nextRunAt", serialization_alias="nextRunAt",
+        description="When the scheduler fetches it next (null while switched off)",
+    )
+    created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+    updated_at: UtcDatetime = Field(alias="updatedAt", serialization_alias="updatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class InventoryListSourceListResponse(BaseModel):
+    items: list[InventoryListSourceResponse]
+    allow_private_hosts: bool = Field(alias="allowPrivateHosts", serialization_alias="allowPrivateHosts")
+
+    model_config = {"populate_by_name": True}
+
+
+class InventoryListSourcePullRequest(BaseModel):
+    dry_run: bool = Field(default=False, alias="dryRun", serialization_alias="dryRun", description="Fetch and report, change nothing")
+    force: bool = Field(default=False, description="Apply a replace that retires more than half of the source's systems")
+
+    model_config = {"populate_by_name": True}
+
+
+class InventoryListSourcePullResponse(BaseModel):
+    ok: bool
+    error_kind: str | None = Field(default=None, alias="errorKind", serialization_alias="errorKind")
+    error: str | None = None
+    result: InventorySystemImportResponse | None = None
+    source: InventoryListSourceResponse
+
+    model_config = {"populate_by_name": True}

@@ -1,0 +1,25 @@
+/* Server lists Hecate fetches (System, Data). Builds on advisory-feeds.css. Tokens only; see design.md. */
+.list-sources-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+
+.list-sources-mode { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-lg); margin: 0; padding: 0; border: 0; font-size: var(--text-sm); }
+.list-sources-mode legend { width: 100%; margin-bottom: var(--space-2xs); padding: 0; font-weight: 600; }
+.list-sources-mode label,
+.list-sources-remove { display: inline-flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
+.list-sources-remove { grid-column: 1 / -1; font-size: var(--text-sm); }
+.list-sources-mode input:focus-visible,
+.list-sources-remove input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.list-sources-url { display: block; max-width: 28rem; margin-top: var(--space-2xs); font-weight: 400; overflow-wrap: anywhere; }
+.list-sources-sub { display: block; max-width: 36ch; color: var(--color-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.list-sources-error { color: var(--color-error); }
+
+.list-sources-outcome td { padding-top: 0; border-top: 0; }
+.list-sources-outcome-body { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-md); font-size: var(--text-sm); }
+.list-sources-value { min-width: 0; }
+
+@media (max-width: 40rem) {
+  .list-sources-url { max-width: none; }
+  .list-sources-value { text-align: right; }
+  .list-sources-value .list-sources-sub { max-width: none; }
+  .list-sources-outcome td { padding-top: var(--space-2xs); }
+}

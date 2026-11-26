@@ -79,6 +79,7 @@ const ADMIN_READ_PREFIXES = [
   "/v1/backup",
   "/v1/sync",
   "/v1/advisory-feeds",
+  "/v1/inventory/systems/sources",
   "/v1/api-tokens",
   "/v1/audit",
 ];

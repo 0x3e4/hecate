@@ -6,6 +6,9 @@ import type {
   InventoryHistoryResponse,
   InventoryItem,
   InventoryItemListResponse,
+  InventoryListSource,
+  InventoryListSourceInput,
+  InventoryListSourcePullResult,
   InventorySystem,
   InventorySystemImportResult,
   InventorySystemListFormat,
@@ -72,6 +75,38 @@ export async function importInventorySystemList(payload: {
   force?: boolean;
 }): Promise<InventorySystemImportResult> {
   const response = await api.post<InventorySystemImportResult>("/v1/inventory/systems/import", payload);
+  return response.data;
+}
+
+/** Server lists Hecate fetches itself; admin only (System → Data). */
+export async function fetchInventoryListSources(): Promise<{ items: InventoryListSource[]; allowPrivateHosts: boolean }> {
+  const response = await api.get<{ items: InventoryListSource[]; allowPrivateHosts: boolean }>("/v1/inventory/systems/sources");
+  return response.data;
+}
+
+export async function createInventoryListSource(payload: InventoryListSourceInput): Promise<InventoryListSource> {
+  const response = await api.post<InventoryListSource>("/v1/inventory/systems/sources", payload);
+  return response.data;
+}
+
+export async function updateInventoryListSource(id: string, payload: InventoryListSourceInput): Promise<InventoryListSource> {
+  const response = await api.put<InventoryListSource>(`/v1/inventory/systems/sources/${encodeURIComponent(id)}`, payload);
+  return response.data;
+}
+
+export async function deleteInventoryListSource(id: string): Promise<void> {
+  await api.delete(`/v1/inventory/systems/sources/${encodeURIComponent(id)}`);
+}
+
+/** Fetch now; dryRun only reports. A failed fetch resolves with ok: false. */
+export async function pullInventoryListSource(
+  id: string,
+  options: { dryRun?: boolean; force?: boolean } = {},
+): Promise<InventoryListSourcePullResult> {
+  const response = await api.post<InventoryListSourcePullResult>(
+    `/v1/inventory/systems/sources/${encodeURIComponent(id)}/pull`,
+    { dryRun: options.dryRun ?? false, force: options.force ?? false },
+  );
   return response.data;
 }
 

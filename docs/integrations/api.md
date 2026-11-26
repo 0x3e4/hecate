@@ -65,6 +65,9 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `GET` | `/api/v1/inventory/history` | Recent inventory changes, deleted items included |
 | `GET` / `POST` | `/api/v1/inventory/systems` | Systems (servers, VMs, nodes) with their last report and report status; add one (editor) |
 | `POST` | `/api/v1/inventory/systems/import`, `/api/v1/inventory/systems/import/upload` | Apply a server list (CSV, text, Ansible INI / YAML / `--list` JSON, Hecate JSON); `merge` or `replace` per `source`, `dryRun`, `force`; `inventory:sync` token or an editor |
+| `GET` / `POST` | `/api/v1/inventory/systems/sources` | Server lists Hecate fetches on a schedule: list them with their last fetch, add one (admin; the credential is write-only) |
+| `PUT` / `DELETE` | `/api/v1/inventory/systems/sources/{id}` | Change (partial; send `url` only when it changed, `authHeaderValue: ""` removes the credential) or remove one (admin) |
+| `POST` | `/api/v1/inventory/systems/sources/{id}/pull` | Fetch now; `dryRun` reports, `force` passes the half-of-the-list guard; a failed fetch answers `ok: false` (admin) |
 | `GET` / `PUT` / `DELETE` | `/api/v1/inventory/systems/{id}` | One system; change it (partial, `null` clears) or remove it (its findings stay) |
 | `GET` | `/api/v1/inventory/{id}/history` | The change log of one inventory item |
 | `GET` | `/api/v1/assets/vendors`, `/api/v1/assets/products` | Catalog search ranked by relevance; the first 25 hits carry `vulnerabilityCount` |

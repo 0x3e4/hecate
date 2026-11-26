@@ -200,6 +200,17 @@ class SchedulerManager:
                 replace_existing=True,
             )
 
+        # Server lists Hecate fetches itself: each source has its own interval, this only looks for due ones.
+        self.scheduler.add_job(
+            _scheduled_inventory_list_pull,
+            trigger=IntervalTrigger(minutes=settings.scheduler_inventory_list_sources_check_minutes),
+            id="inventory_list_pull",
+            next_run_time=datetime.now(tz=UTC) + timedelta(minutes=1),
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
         if settings.nuclei_templates_enabled:
             self.scheduler.add_job(
                 _scheduled_nuclei_templates_sync,
@@ -758,6 +769,18 @@ async def _scheduled_vulncheck_kev_sync() -> None:
         await _notify_sync_failed("vulncheck_kev_sync", str(exc))
     finally:
         await pipeline.close()
+
+
+async def _scheduled_inventory_list_pull() -> None:
+    """Fetch the server lists whose interval has passed. Each failure stays on its source."""
+    from app.services.inventory_list_source_service import get_inventory_list_source_service
+
+    try:
+        ran = await (await get_inventory_list_source_service()).pull_due()
+        if ran:
+            log.info("scheduler.inventory_list_pull_completed", sources=ran)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("scheduler.inventory_list_pull_failed", error=str(exc))
 
 
 async def _scheduled_cert_feeds_sync() -> None:

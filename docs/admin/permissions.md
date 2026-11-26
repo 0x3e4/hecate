@@ -60,7 +60,7 @@ An admin can do everything an editor can, and also:
 - delete targets and scans,
 - give targets their first write password, and change or remove one without knowing it,
 - the whole **System** page: app settings, notification channels, rules and templates,
-  advisory feeds, license policies, VEX rules, backups and restores, sync triggers and re-syncs,
+  advisory feeds, server lists, license policies, VEX rules, backups and restores, sync triggers and re-syncs,
 - create and revoke **API tokens**,
 - read the **Audit** log.
 

@@ -56,6 +56,7 @@ import { fetchScanTargets } from "../api/scans";
 import { AdminGate } from "../components/AdminGate";
 import { LoadingRegion, SkeletonRows } from "../components/Skeleton";
 import { AdvisoryFeedsPanel } from "../components/AdvisoryFeedsPanel";
+import { InventoryListSourcesPanel } from "../components/InventoryListSourcesPanel";
 import { VexRulesPanel } from "../components/VexRulesPanel";
 import { ApiTokenPanel } from "../components/ApiTokenPanel";
 import { TargetAccessPanel } from "../components/TargetAccessPanel";
@@ -2127,6 +2128,8 @@ const SystemSettings = () => {
       </Section>
 
       <AdvisoryFeedsPanel />
+
+      <InventoryListSourcesPanel />
 
       <Section title={t("Vulnerability Re-Sync", "Vulnerability Re-Sync")}>
         <p className="system-section-help">

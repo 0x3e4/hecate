@@ -509,6 +509,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `DELETE /api/v1/inventory/{id}` — delete an item
 - `GET|POST /api/v1/inventory/systems`, `GET|PUT|DELETE /api/v1/inventory/systems/{id}` — systems (servers, nodes) with their last report
 - `POST /api/v1/inventory/systems/import`, `/import/upload` — apply a server list (CSV, Ansible inventory, …); `inventory:sync` token
+- `GET|POST /api/v1/inventory/systems/sources`, `PUT|DELETE …/{id}`, `POST …/{id}/pull` — server lists Hecate fetches on a schedule (admin)
 - `GET    /api/v1/inventory/{id}/affected-vulnerabilities` — currently affected CVEs for an item
 </details>
 

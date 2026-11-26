@@ -72,6 +72,8 @@ describe("isAdminReadUrl", () => {
     "/v1/backup/inventory/export",
     "/v1/sync/states",
     "/v1/advisory-feeds",
+    "/v1/inventory/systems/sources",
+    "/v1/inventory/systems/sources/abc/pull",
     "/v1/api-tokens",
     "/api/v1/sync/states?x=1",
     "/v1/audit/ingestion",
@@ -79,7 +81,7 @@ describe("isAdminReadUrl", () => {
     expect(isAdminReadUrl(url)).toBe(true);
   });
 
-  it.each([undefined, "/v1/vulnerabilities", "/v1/license-policies", "/v1/vex-rules", "/v1/notificationsX", "/v1/scans/targets"])(
+  it.each([undefined, "/v1/vulnerabilities", "/v1/license-policies", "/v1/vex-rules", "/v1/notificationsX", "/v1/scans/targets", "/v1/inventory/systems", "/v1/inventory/systems/abc"])(
     "leaves %s alone",
     (url) => {
       expect(isAdminReadUrl(url)).toBe(false);

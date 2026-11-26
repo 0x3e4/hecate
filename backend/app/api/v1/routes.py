@@ -17,6 +17,7 @@ from app.api.v1 import (
     cwe,
     events,
     inventory,
+    inventory_list_sources,
     inventory_systems,
     license_policies,
     malware,
@@ -90,6 +91,11 @@ api_router.include_router(vex_rules.router, prefix="/vex-rules", tags=["vex-rule
 api_router.include_router(inventory.report_router, prefix="/inventory", tags=["inventory"])
 # Before the inventory router: its /{item_id} would take "systems" for an item id.
 api_router.include_router(inventory_systems.sync_router, prefix="/inventory/systems", tags=["inventory"])
+# Server lists Hecate fetches itself: a credential and backend requests, so admins only.
+# Before the systems router: its /{system_id} would take "sources" for a system id.
+api_router.include_router(
+    inventory_list_sources.router, prefix="/inventory/systems/sources", tags=["inventory"], dependencies=_admin_all
+)
 api_router.include_router(
     inventory_systems.router, prefix="/inventory/systems", tags=["inventory"], dependencies=_editor_write
 )

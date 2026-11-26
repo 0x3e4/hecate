@@ -122,6 +122,8 @@ export const InventorySystemListImport = ({
                 "CSV, ein Name pro Zeile, ein Ansible-Inventar oder dessen --list-Ausgabe. ",
               )}
               <DocsLink path="guide/inventory/#server-lists">{t("Formats and push", "Formate und Push")}</DocsLink>
+              {". "}
+              <DocsLink path="guide/inventory/#fetched-lists">{t("Fetch it on a schedule", "Regelmäßig abrufen")}</DocsLink>
             </p>
           </div>
           <button type="button" className="dialog-close" onClick={close} aria-label={t("Close", "Schließen")}>

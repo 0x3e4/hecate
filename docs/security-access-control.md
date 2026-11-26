@@ -9,7 +9,7 @@ in the audit log. The passwords described here keep working alongside it.
 !!! info "Reads are open unless sign-in requires otherwise"
     Browsing, searching, viewing scans, findings, SBOMs and reports needs no password. The exceptions
     are the admin reads: the audit log, the System page's settings (notifications, backups, sync
-    states, advisory feeds) and API tokens need the system password or an admin session, and the AI
+    states, advisory feeds, server lists) and API tokens need the system password or an admin session, and the AI
     analysis history needs the AI password when one is set. With OIDC and `AUTH_REQUIRE_LOGIN=true`
     (its default), every read needs a session, an API key or the system password.
 
@@ -116,6 +116,12 @@ only, no credentials in the URL, every address the host resolves to must be publ
 the advisory feeds; `SCA_VEX_SOURCES_ALLOW_PRIVATE_HOSTS=true` lifts it for an intranet host), no
 redirects, at most `SCA_VEX_SOURCE_MAX_BYTES`, and a failure is reported only as a short category,
 since targets are public.
+
+**Server lists** Hecate fetches for the inventory (`/api/v1/inventory/systems/sources`) are admin-only,
+reads included: a list holds a credential and makes the backend send requests. Their URLs take the
+advisory feeds' host check (`INVENTORY_LIST_SOURCES_ALLOW_PRIVATE_HOSTS=true` lifts it), no
+credentials in the URL (a header instead, sent over https only, never returned), no redirects and a
+5 MB cap ([fetched lists](guide/inventory.md#fetched-lists)).
 
 ## AI is always gated by the AI password
 

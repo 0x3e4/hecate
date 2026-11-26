@@ -656,6 +656,57 @@ export interface InventorySystemImportResult {
   skipped: { where: string; reason: string }[];
 }
 
+/** A server list Hecate fetches itself (System → Data; docs/guide/inventory.md#fetched-lists). */
+export interface InventoryListSource {
+  id: string;
+  source: string;
+  /** Query values named like a key or token come back masked. */
+  url: string;
+  format: InventorySystemListFormat | null;
+  mode: "merge" | "replace";
+  intervalMinutes: number;
+  enabled: boolean;
+  authHeaderName: string | null;
+  authSet: boolean;
+  lastRunAt: string | null;
+  lastStatus: "ok" | "error" | null;
+  lastErrorKind: string | null;
+  lastError: string | null;
+  lastResult: {
+    format: InventorySystemListFormat;
+    listed: number;
+    createdCount: number;
+    updatedCount: number;
+    unchangedCount: number;
+    retiredCount: number;
+    restoredCount: number;
+    skippedCount: number;
+  } | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryListSourceInput {
+  source?: string;
+  url?: string;
+  format?: InventorySystemListFormat | null;
+  mode?: "merge" | "replace";
+  intervalMinutes?: number;
+  enabled?: boolean;
+  authHeaderName?: string | null;
+  /** Write-only; "" removes the stored credential. */
+  authHeaderValue?: string;
+}
+
+export interface InventoryListSourcePullResult {
+  ok: boolean;
+  errorKind: string | null;
+  error: string | null;
+  result: InventorySystemImportResult | null;
+  source: InventoryListSource;
+}
+
 export interface InventorySystemListResponse {
   total: number;
   staleAfterDays: number;

@@ -297,7 +297,7 @@ overdue without aborting them.
 
 ### Persistence
 
-#### MongoDB (33 collections)
+#### MongoDB (34 collections)
 
 | Collection | Description |
 | --- | --- |
@@ -331,6 +331,7 @@ overdue without aborting them.
 | `exploit_signals` | Nuclei templates and VulnCheck KEV entries per CVE |
 | `user_preferences` | Personal preferences of signed-in users (language, timezone, dashboard view), keyed by issuer and subject |
 | `environment_inventory_history` | Append-only change log of inventory items, kept after an item is deleted. |
+| `inventory_list_sources` | Server lists Hecate fetches for the inventory: URL, format, mode, interval, an optional credential header, and the last fetch's state. |
 | `inventory_systems` | Systems of the inventory (servers, VMs, nodes): name (unique, case-insensitive), kind, exposure, groups, and the SBOM-import target their pushes land on. |
 | `environment_inventory` | User-declared product / version inventory with deployment / environment / instance count |
 | `malware_intel` | Dynamic malware-intel entries (reserved for future threat-intel pipelines) |

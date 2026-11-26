@@ -25,8 +25,8 @@ Systems get onto the list in three ways:
   says *Never reported* until its first push arrives, and then picks it up on its own.
 - **By its first push**: an SBOM or report sent with a `kind` creates the system. A push without `kind` (an
   application's SBOM, a vendor's product) stays an SCA target instead.
-- **From a server list**: an Ansible inventory, a CSV or a plain list of names, imported on the tab or sent
-  by a script ([Server lists](#server-lists)).
+- **From a server list**: an Ansible inventory, a CSV or a plain list of names, imported on the tab, sent
+  by a script ([Server lists](#server-lists)) or fetched by Hecate on a schedule ([Fetched lists](#fetched-lists)).
 
 Names are unique regardless of case, so `WEB-01` and `web-01` are one system.
 
@@ -163,6 +163,47 @@ SBOM ([Hosts, Nodes & Other Systems](../sca/hosts.md)) named after `inventory_ho
 ```
 
 Hecate never runs a script itself: the list is produced where the inventory and its credentials live.
+
+### Fetched lists
+
+When the list is already published somewhere (a CMDB export, NetBox, an AWX inventory, a file on an
+internal web server), Hecate can fetch it itself. **System → Data → Server lists** takes a list name,
+a URL, the format (or *Detect*), what happens to systems the list no longer names (*Keep them* or
+*Retire them*, as above) and how often to fetch it: every 15 minutes up to weekly. A new list is
+fetched within a few minutes.
+
+Each fetch is applied exactly like an import under the list's name, so a fetched list and a pushed one
+with the same name are one list: a script can stop pushing and Hecate takes over. **Preview** fetches
+and shows what would change without changing anything; **Fetch now** applies it at once.
+
+A fetch that fails applies nothing and leaves the systems as they are: an unreachable server, an
+answer that is not a list, or a *Retire* that would retire more than half of the list's systems. The
+row shows why, the next fetch tries again, and the first failure in a row lands in the audit log and
+sends a *sync failed* notification. After the half-of-the-list refusal, **Apply anyway** applies that
+answer once.
+
+A list behind a login takes a credential: a header name (`Authorization` by default, or e.g.
+`X-API-Key`) and its value, such as `Token 0123…` for NetBox or `Bearer …` for AWX. It is only sent
+over https, stored on the server and never shown again; leave the field empty to keep it.
+
+The backend makes these requests, so only admins manage server lists, and the URL is held to the same
+rules as advisory feeds:
+
+- http or https, no `user:password@` in the URL (use the credential field), no redirects (give the
+  final URL), at most 5 MB, UTF-8 text;
+- every address the host resolves to must be public, checked when the list is saved and before every
+  fetch. Lists on the internal network, which is where most CMDBs live, need
+  `INVENTORY_LIST_SOURCES_ALLOW_PRIVATE_HOSTS=true` on the backend.
+
+Only the systems parsed from the answer reach the inventory; the answer itself is never shown.
+Removing a server list stops fetching it and retires nothing. Server lists are not part of the
+inventory backup.
+
+| Variable | Default | |
+| --- | --- | --- |
+| `INVENTORY_LIST_SOURCES_ALLOW_PRIVATE_HOSTS` | `false` | Allow lists on private, loopback or link-local addresses. |
+| `INVENTORY_LIST_SOURCE_TIMEOUT_SECONDS` | `30` | Timeout of one fetch. |
+| `SCHEDULER_INVENTORY_LIST_SOURCES_CHECK_MINUTES` | `5` | How often Hecate looks for lists whose interval has passed. |
 
 ### Products on a system
 

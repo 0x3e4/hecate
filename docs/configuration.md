@@ -136,6 +136,7 @@ Rarely needed; the defaults are:
 | `MONGO_LICENSE_POLICIES_COLLECTION` | `license_policies` |
 | `MONGO_ENVIRONMENT_INVENTORY_COLLECTION` | `environment_inventory` |
 | `MONGO_ENVIRONMENT_INVENTORY_HISTORY_COLLECTION` | `environment_inventory_history` |
+| `MONGO_INVENTORY_LIST_SOURCES_COLLECTION` | `inventory_list_sources` |
 | `MONGO_MALWARE_INTEL_COLLECTION` | `malware_intel` |
 | `MONGO_APP_SETTINGS_COLLECTION` | `app_settings` |
 | `MONGO_API_TOKENS_COLLECTION` | `api_tokens` |
@@ -377,6 +378,16 @@ Most sources share the same kinds of settings:
 | `DEPS_DEV_RATE_LIMIT_SECONDS` | `0.1` | |
 | `DEPS_DEV_MAX_RETRIES` | `3` | |
 | `DEPS_DEV_RETRY_BACKOFF_SECONDS` | `2.0` | |
+
+## Inventory server lists
+
+Lists Hecate fetches for the inventory's systems ([fetched lists](guide/inventory.md#fetched-lists)).
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `INVENTORY_LIST_SOURCES_ALLOW_PRIVATE_HOSTS` | `false` | Let server lists point at private, loopback or link-local addresses. Off, such a list is refused when saved and fails before every fetch. |
+| `INVENTORY_LIST_SOURCE_TIMEOUT_SECONDS` | `30` | Timeout of one fetch (5 to 300). |
+| `SCHEDULER_INVENTORY_LIST_SOURCES_CHECK_MINUTES` | `5` | How often the scheduler looks for lists whose own interval has passed. |
 
 ## Inventory enrichment (endoflife.date)
 
