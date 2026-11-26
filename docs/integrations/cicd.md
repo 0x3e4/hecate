@@ -100,6 +100,15 @@ curl -sS -X POST "${HECATE_URL}/api/v1/scans" \
 An SBOM is checked the same way: `"check": true` in the body of `POST /api/v1/scans/import-sbom`, or
 `?check=true` on `POST /api/v1/scans/import-sbom/upload`.
 
+A pipeline that already runs Trivy, Grype or OSV-Scanner can send that report to the same two
+endpoints instead of having Hecate scan again (an `sbom:import` token, see
+[scanner reports](../sca/hosts.md#scanner-reports)):
+
+```bash
+trivy image --format json --list-all-pkgs --output report.json "$IMAGE"
+curl -fsS -X POST -H "X-API-Key: ${HECATE_TOKEN}" -F "file=@report.json"   "${HECATE_URL}/api/v1/scans/import-sbom/upload?targetName=${IMAGE}"
+```
+
 ## A representative pipeline
 
 The shape of the integration is the same regardless of platform: submit, poll, then read the

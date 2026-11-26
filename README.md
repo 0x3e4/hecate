@@ -470,8 +470,8 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `GET  /api/v1/scans/{scanId}/sbom/export` — SBOM export (CycloneDX 1.5 or SPDX 2.3 JSON; `vulnerabilities=true` adds the findings for DefectDojo)
 - `GET  /api/v1/scans/{scanId}/findings/export` — findings export (SonarQube external issues)
 - `GET  /api/v1/scans/{scanId}/layers` — layer analysis (Dive)
-- `POST /api/v1/scans/import-sbom` — import an external SBOM (JSON)
-- `POST /api/v1/scans/import-sbom/upload` — import an external SBOM (file upload)
+- `POST /api/v1/scans/import-sbom` — import an external SBOM or a Trivy / Grype / OSV-Scanner JSON report (JSON)
+- `POST /api/v1/scans/import-sbom/upload` — import an external SBOM or scanner report (file upload)
 - `GET  /api/v1/scans/{scanId}/license-compliance` — license-compliance evaluation of a scan
 - `GET  /api/v1/scans/license-overview` — license-compliance overview across scans
 - `GET  /api/v1/scans/findings` — consolidated findings across all latest scans

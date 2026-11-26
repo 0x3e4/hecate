@@ -113,12 +113,16 @@ class SubmitScanRequest(BaseModel):
 
 
 class ImportSbomRequest(BaseModel):
-    """Request to import an external SBOM file."""
+    """Request to import an external SBOM file or scanner report."""
 
-    sbom: dict[str, Any] = Field(description="The SBOM document (CycloneDX or SPDX JSON)")
+    sbom: dict[str, Any] = Field(
+        description="The SBOM (CycloneDX or SPDX JSON) or a scanner's JSON report (Trivy, Grype, OSV-Scanner)",
+    )
     format: str | None = Field(
         default=None,
-        description="cyclonedx-json or spdx-json (auto-detected if omitted)",
+        description=(
+            "cyclonedx-json, spdx-json, trivy-json, grype-json or osv-scanner-json (auto-detected if omitted)"
+        ),
     )
     target_name: str | None = Field(
         default=None, alias="targetName", serialization_alias="targetName",

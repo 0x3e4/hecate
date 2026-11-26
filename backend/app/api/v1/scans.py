@@ -712,7 +712,11 @@ async def import_sbom(
     _auth: None = Depends(require_target_write_sbom_import),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
-    """Import an external SBOM file (CycloneDX or SPDX JSON)."""
+    """Import an external SBOM (CycloneDX or SPDX JSON) or a scanner report (Trivy, Grype or OSV-Scanner JSON).
+
+    An SBOM is matched against the vulnerability database; a report's findings
+    are taken as the scanner reported them.
+    """
     try:
         result = await service.import_sbom(
             sbom_data=request.sbom,
@@ -742,14 +746,17 @@ async def import_sbom(
 async def import_sbom_upload(
     file: UploadFile = File(...),
     target_name: str | None = Query(default=None, alias="targetName"),
-    format: str | None = Query(default=None),
+    format: str | None = Query(
+        default=None,
+        description="cyclonedx-json, spdx-json, trivy-json, grype-json or osv-scanner-json (auto-detected if omitted)",
+    ),
     check: bool = Query(default=False, description="Import as a check: no target, report only, expires"),
     kind: TargetKind | None = Query(default=None, description="host, kubernetes-node, container or other"),
     exposure: TargetExposure | None = Query(default=None, description="internet or internal"),
     _auth: None = Depends(require_target_write_sbom_upload),
     service: ScanService = Depends(get_scan_service),
 ) -> SubmitScanResponse:
-    """Import an external SBOM file via multipart file upload."""
+    """Import an external SBOM or scanner report (see ``POST /import-sbom``) via multipart file upload."""
 
     limit = settings.sca_source_archive_max_bytes
     content = await file.read(limit + 1)

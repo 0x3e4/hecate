@@ -290,6 +290,16 @@ def detect_sbom_format(sbom_data: dict[str, Any]) -> str | None:
     return None
 
 
+SBOM_FORMATS = ("cyclonedx-json", "spdx-json")
+
+
+def detect_import_format(data: dict[str, Any]) -> str | None:
+    """An SBOM format, or a scanner report format (``scan_report_import``)."""
+    from app.services.scan_report_import import detect_report_format
+
+    return detect_sbom_format(data) or detect_report_format(data)
+
+
 def resolve_sbom_import_target(
     sbom_data: dict[str, Any],
     format: str | None,
@@ -302,18 +312,24 @@ def resolve_sbom_import_target(
     the target through this same function or it authorizes one target while the
     import writes another.
     """
+    from app.services.scan_report_import import REPORT_FORMATS, REPORT_SCANNERS, report_target_name
+
     target_name = target_name if target_name and target_name.strip() else None
     target_id = target_id if target_id and target_id.strip() else None
     if not target_name:
         name: Any = None
-        fmt = format or detect_sbom_format(sbom_data)
+        fmt = format or detect_import_format(sbom_data)
+        default = "SBOM Import"
         if fmt == "cyclonedx-json":
             meta = sbom_data.get("metadata")
             comp = meta.get("component") if isinstance(meta, dict) else None
             name = comp.get("name") if isinstance(comp, dict) else None
         elif fmt == "spdx-json":
             name = sbom_data.get("name")
-        target_name = name if isinstance(name, str) and name.strip() else "SBOM Import"
+        elif fmt in REPORT_FORMATS:
+            name = report_target_name(sbom_data, fmt)
+            default = f"{REPORT_SCANNERS[fmt]} report"
+        target_name = name if isinstance(name, str) and name.strip() else default
     return target_name, target_id or sbom_import_target_id(target_name)
 
 
@@ -606,6 +622,30 @@ class ScanService:
             await self._clear_running_state(target_id, scan_id)
             publish_job_failed(f"sca_scan_{scan_id}", submitted_at, finished_at, error=str(exc))
 
+    async def _carry_forward_from_previous(self, target_id: str, scan_id: str) -> None:
+        """Copy VEX statuses and dismissals from the target's previous completed scan; never fails the caller."""
+        try:
+            _, prev_scans = await self.scan_repo.list_by_target(target_id, limit=2)
+            prev_scan_id = None
+            for ps in prev_scans:
+                ps_id = str(ps.get("_id", ""))
+                if ps_id != scan_id and ps.get("status") == "completed":
+                    prev_scan_id = ps_id
+                    break
+            if not prev_scan_id:
+                return
+            from app.services.vex_service import VexService
+
+            carried = await VexService(self.finding_repo, self.scan_repo).carry_forward_vex(prev_scan_id, scan_id)
+            if carried:
+                log.info("scan_service.vex_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried)
+            # Dismissal flags are independent of VEX annotations.
+            carried_dismissed = await self.finding_repo.carry_forward_dismissed(prev_scan_id, scan_id)
+            if carried_dismissed:
+                log.info("scan_service.dismissed_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried_dismissed)
+        except Exception:
+            log.warning("scan_service.vex_carry_forward_failed", scan_id=scan_id, exc_info=True)
+
     async def apply_vex_sources(self, target_id: str) -> dict[str, Any] | None:
         """Fetch and apply the target's VEX sources, then its VEX rules; never fails the caller.
 
@@ -710,7 +750,12 @@ class ScanService:
         kind: str | None = None,
         exposure: str | None = None,
     ) -> dict[str, Any]:
-        """Import an external SBOM file. Creates target + scan + components + matched findings.
+        """Import an external SBOM or scanner report. Creates target + scan + components + findings.
+
+        An SBOM (CycloneDX, SPDX) is matched here: the sidecar's SBOM scanners
+        and Hecate's own database. A scanner report (Trivy, Grype, OSV-Scanner
+        JSON, see scan_report_import.py) already is a scanner's answer: its
+        findings are stored and go through a scan's post-passes.
 
         ``kind`` / ``exposure`` describe the system (a host, a Kubernetes node,
         internet-facing or not). Given, they are stored on the target; omitted,
@@ -720,16 +765,35 @@ class ScanService:
         the scan expires like every check (scan_checks.py).
         """
         from app.services.scan_parser import parse_cyclonedx_sbom, parse_spdx_sbom
+        from app.services.scan_report_import import (
+            REPORT_FORMATS,
+            REPORT_SCANNERS,
+            parse_report,
+            report_package_count,
+        )
 
-        format = format or detect_sbom_format(sbom_data)
+        format = format or detect_import_format(sbom_data)
         if not format:
-            raise ValueError("Cannot auto-detect SBOM format. Provide 'format' parameter.")
+            raise ValueError(
+                "Cannot detect the format: expected a CycloneDX or SPDX JSON SBOM, "
+                "or a Trivy, Grype or OSV-Scanner JSON report."
+            )
+        if format not in (*SBOM_FORMATS, *REPORT_FORMATS):
+            raise ValueError(f"Unknown format {format!r}; use one of {', '.join((*SBOM_FORMATS, *REPORT_FORMATS))}.")
+        is_report = format in REPORT_FORMATS
         # Checked before anything is written: the body limit alone admits about
         # a million minimal components.
-        raw = sbom_data.get("components" if format == "cyclonedx-json" else "packages")
         limit = settings.sca_sbom_import_max_components
-        if isinstance(raw, list) and len(raw) > limit:
-            raise ValueError(f"SBOM has {len(raw)} components; the limit is {limit} (SCA_SBOM_IMPORT_MAX_COMPONENTS).")
+        if is_report:
+            count = report_package_count(sbom_data, format)
+            if count > limit:
+                raise ValueError(
+                    f"Report has {count} packages and matches; the limit is {limit} (SCA_SBOM_IMPORT_MAX_COMPONENTS)."
+                )
+        else:
+            raw = sbom_data.get("components" if format == "cyclonedx-json" else "packages")
+            if isinstance(raw, list) and len(raw) > limit:
+                raise ValueError(f"SBOM has {len(raw)} components; the limit is {limit} (SCA_SBOM_IMPORT_MAX_COMPONENTS).")
 
         # Create or reuse target (the write gate resolved the same one)
         target_name, target_id = resolve_sbom_import_target(sbom_data, format, target_name, target_id)
@@ -764,7 +828,7 @@ class ScanService:
             target_name=target_name,
             check=check,
             expires_at=check_expires_at(started_at) if check else None,
-            scanners=["sbom-import"],
+            scanners=[REPORT_SCANNERS[format]] if is_report else ["sbom-import"],
             status="completed",
             source="sbom-import",
             started_at=started_at,
@@ -773,8 +837,12 @@ class ScanService:
         )
         scan_id_val = await self.scan_repo.insert(scan_doc)
 
-        # Parse components
-        if format == "cyclonedx-json":
+        # Parse components (and, for a report, its findings)
+        report_findings: list[ScanFindingDocument] = []
+        if is_report:
+            report_findings, components = parse_report(sbom_data, format, scan_id_val, target_id)
+            comp_count = len({(c.name, c.version) for c in components})
+        elif format == "cyclonedx-json":
             components, comp_count = parse_cyclonedx_sbom(sbom_data, scan_id_val, target_id)
         else:
             components, comp_count = parse_spdx_sbom(sbom_data, scan_id_val, target_id)
@@ -783,22 +851,35 @@ class ScanService:
         if components:
             await self.sbom_repo.bulk_insert(components)
 
-        # Match vulnerabilities for imported components: the sidecar's distro-aware
-        # scanners first, then Hecate's own database for what they don't own.
         all_findings: list[Any] = []
-        scanner_findings, scanner_names = await self._scan_imported_sbom(sbom_data, scan_id_val, target_id)
-        try:
-            findings = await self._match_vulnerabilities_for_components(scan_id_val, target_id, components)
+        if is_report:
+            # The report is the scanner's answer: stored as it is, then the passes
+            # a scan's findings get (CVE fallback, fix versions, severity).
+            if report_findings:
+                await self.finding_repo.bulk_insert(report_findings)
+                all_findings = list(report_findings)
+                try:
+                    await self._match_cve_for_unmatched_findings(scan_id_val, report_findings, components)
+                    await self._fix_downgrade_fix_versions(scan_id_val, report_findings)
+                    await self._override_severity_from_vuln_db(scan_id_val, report_findings)
+                except Exception:
+                    log.warning("scan_service.import_report_passes_failed", scan_id=scan_id_val, exc_info=True)
+        else:
+            # Match vulnerabilities for imported components: the sidecar's distro-aware
+            # scanners first, then Hecate's own database for what they don't own.
+            scanner_findings, scanner_names = await self._scan_imported_sbom(sbom_data, scan_id_val, target_id)
+            try:
+                findings = await self._match_vulnerabilities_for_components(scan_id_val, target_id, components)
+                if scanner_names:
+                    findings = drop_os_package_matches(findings, components)
+                findings = [*scanner_findings, *findings]
+                if findings:
+                    await self.finding_repo.bulk_insert(findings)
+                    all_findings = findings
+            except Exception:
+                log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
             if scanner_names:
-                findings = drop_os_package_matches(findings, components)
-            findings = [*scanner_findings, *findings]
-            if findings:
-                await self.finding_repo.bulk_insert(findings)
-                all_findings = findings
-        except Exception:
-            log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
-        if scanner_names:
-            await self.scan_repo.update_fields(scan_id_val, {"scanners": ["sbom-import", *scanner_names]})
+                await self.scan_repo.update_fields(scan_id_val, {"scanners": ["sbom-import", *scanner_names]})
         no_external_lookups = False
         if not check:
             target_doc = await self.target_repo.get(target_id) or {}
@@ -852,6 +933,9 @@ class ScanService:
                 latest_scan_id=scan_id_val,
                 has_running_scan=False,
             )
+            # A host's SBOM comes in again every night: its VEX statuses and
+            # dismissals must not start over each time.
+            await self._carry_forward_from_previous(target_id, scan_id_val)
             await self.apply_vex_sources(target_id)
             if not no_external_lookups:
                 self._schedule_release_info(scan_id_val)
@@ -1444,26 +1528,8 @@ class ScanService:
         is_check = is_check_target(target_id)
 
         # VEX carry-forward: copy VEX annotations from previous scan
-        try:
-            _, prev_scans = (0, []) if is_check else await self.scan_repo.list_by_target(target_id, limit=2)
-            prev_scan_id = None
-            for ps in prev_scans:
-                ps_id = str(ps.get("_id", ""))
-                if ps_id != scan_id and ps.get("status") == "completed":
-                    prev_scan_id = ps_id
-                    break
-            if prev_scan_id:
-                from app.services.vex_service import VexService
-                vex_svc = VexService(self.finding_repo, self.scan_repo)
-                carried = await vex_svc.carry_forward_vex(prev_scan_id, scan_id)
-                if carried:
-                    log.info("scan_service.vex_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried)
-                # Carry forward dismissal flags (independent from VEX annotations)
-                carried_dismissed = await self.finding_repo.carry_forward_dismissed(prev_scan_id, scan_id)
-                if carried_dismissed:
-                    log.info("scan_service.dismissed_carried_forward", scan_id=scan_id, from_scan=prev_scan_id, count=carried_dismissed)
-        except Exception:
-            log.warning("scan_service.vex_carry_forward_failed", scan_id=scan_id, exc_info=True)
+        if not is_check:
+            await self._carry_forward_from_previous(target_id, scan_id)
 
         # Reachability between carry-forward and the VEX sources: govulncheck's
         # evidence fills empty findings and replaces its own or a VEX rule's

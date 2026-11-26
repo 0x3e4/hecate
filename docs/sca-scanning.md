@@ -337,7 +337,8 @@ still raise `GRYPE_TIMEOUT_SECONDS` and recreate the scanner.
 Each scan produces a software bill of materials you can export as **CycloneDX 1.5** or **SPDX 2.3** (CycloneDX
 also with the scan's vulnerabilities, for [DefectDojo](integrations/defectdojo.md)), and
 you can import an external SBOM to match its components against the vulnerability database without
-running a scanner. Findings can be annotated with **VEX** status (`not_affected`, `affected`, `fixed`,
+running a scanner, or the JSON report of a Trivy, Grype or OSV-Scanner run made elsewhere
+([scanner reports](sca/hosts.md#scanner-reports)). Findings can be annotated with **VEX** status (`not_affected`, `affected`, `fixed`,
 `under_investigation`) and dismissed when irrelevant — both carry forward automatically onto matching
 findings on the next rescan. VEX exports as CycloneDX VEX and imports from CycloneDX VEX or OpenVEX, either as a
 file or as a VEX source URL on the target that is read again after every scan. **License compliance** checks

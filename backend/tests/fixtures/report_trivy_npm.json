@@ -1,0 +1,356 @@
+{
+ "SchemaVersion": 2,
+ "Trivy": {
+  "Version": "0.76.2"
+ },
+ "ReportID": "01a217eb-ecfe-77b2-9132-d99a2d000e5c",
+ "CreatedAt": "2026-11-26T12:54:27.326505814Z",
+ "ArtifactName": "demo-shop",
+ "ArtifactType": "filesystem",
+ "Results": [
+  {
+   "Target": "package-lock.json",
+   "Class": "lang-pkgs",
+   "Type": "npm",
+   "Packages": [
+    {
+     "ID": "lodash@4.17.20",
+     "Name": "lodash",
+     "Identifier": {
+      "PURL": "pkg:npm/lodash@4.17.20",
+      "UID": "c86d2800a125fe38"
+     },
+     "Version": "4.17.20",
+     "Licenses": [
+      "MIT"
+     ],
+     "Relationship": "direct",
+     "Locations": [
+      {
+       "StartLine": 4,
+       "EndLine": 4
+      }
+     ],
+     "AnalyzedBy": "npm"
+    },
+    {
+     "ID": "minimist@1.2.5",
+     "Name": "minimist",
+     "Identifier": {
+      "PURL": "pkg:npm/minimist@1.2.5",
+      "UID": "7557aa1273404cbc"
+     },
+     "Version": "1.2.5",
+     "Licenses": [
+      "MIT"
+     ],
+     "Relationship": "direct",
+     "Locations": [
+      {
+       "StartLine": 5,
+       "EndLine": 5
+      }
+     ],
+     "AnalyzedBy": "npm"
+    }
+   ],
+   "Vulnerabilities": [
+    {
+     "VulnerabilityID": "CVE-2021-23337",
+     "VendorIDs": [
+      "GHSA-35jh-r3h4-6jhm"
+     ],
+     "PkgID": "lodash@4.17.20",
+     "PkgName": "lodash",
+     "PkgIdentifier": {
+      "PURL": "pkg:npm/lodash@4.17.20",
+      "UID": "c86d2800a125fe38"
+     },
+     "InstalledVersion": "4.17.20",
+     "FixedVersion": "4.17.21",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-23337",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory npm",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+     },
+     "Fingerprint": "sha256:547373a2e7c39aa91d2ad1d261b1c04962d23660fefc2d46a780d5b5699d7cfb",
+     "Title": "nodejs-lodash: command injection via template",
+     "Description": "Lodash versions prior to 4.17.21 are vulnerable to Command Injection via the template function.",
+     "Severity": "HIGH",
+     "CweIDs": [
+      "CWE-94"
+     ],
+     "VendorSeverity": {
+      "ghsa": 3,
+      "nvd": 3,
+      "redhat": 2,
+      "ruby-advisory-db": 3,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+       "V3Score": 7.2
+      },
+      "nvd": {
+       "V2Vector": "AV:N/AC:L/Au:S/C:P/I:P/A:P",
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+       "V2Score": 6.5,
+       "V3Score": 7.2
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+       "V3Score": 7.2
+      }
+     },
+     "References": [
+      "https://access.redhat.com/security/cve/CVE-2021-23337",
+      "https://cert-portal.siemens.com/productcert/pdf/ssa-637483.pdf",
+      "https://github.com/advisories/GHSA-35jh-r3h4-6jhm"
+     ],
+     "PublishedDate": "2021-02-15T13:15:12.56Z",
+     "LastModifiedDate": "2026-10-08T22:17:07.363Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2026-4800",
+     "VendorIDs": [
+      "GHSA-r5fr-rjxr-66jc"
+     ],
+     "PkgID": "lodash@4.17.20",
+     "PkgName": "lodash",
+     "PkgIdentifier": {
+      "PURL": "pkg:npm/lodash@4.17.20",
+      "UID": "c86d2800a125fe38"
+     },
+     "InstalledVersion": "4.17.20",
+     "FixedVersion": "4.18.0",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-4800",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory npm",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+     },
+     "Fingerprint": "sha256:466d31c07c1325acab934a5ae40b62a11d4f274b6e8e46d2c46f83999ee0819b",
+     "Title": "lodash: lodash: Arbitrary code execution via untrusted input in template imports",
+     "Description": "The fix for CVE-2021-23337 added validation for the variable option in _.template but did not apply the same validation to options.imports key names, and both paths flow into the same Function() const",
+     "Severity": "HIGH",
+     "CweIDs": [
+      "CWE-94"
+     ],
+     "VendorSeverity": {
+      "alma": 3,
+      "ghsa": 3,
+      "nvd": 4,
+      "oracle-oval": 3,
+      "redhat": 3,
+      "rocky": 3,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+       "V3Score": 8.1
+      },
+      "nvd": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+       "V3Score": 9.8
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+       "V3Score": 8.1
+      }
+     },
+     "References": [
+      "https://access.redhat.com/errata/RHBA-2026:21387",
+      "https://access.redhat.com/errata/RHSA-2026:10131",
+      "https://access.redhat.com/errata/RHSA-2026:10175"
+     ],
+     "PublishedDate": "2026-03-31T20:16:29.66Z",
+     "LastModifiedDate": "2026-10-15T07:18:00.61Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2020-28500",
+     "VendorIDs": [
+      "GHSA-29mw-wpgm-hmr9"
+     ],
+     "PkgID": "lodash@4.17.20",
+     "PkgName": "lodash",
+     "PkgIdentifier": {
+      "PURL": "pkg:npm/lodash@4.17.20",
+      "UID": "c86d2800a125fe38"
+     },
+     "InstalledVersion": "4.17.20",
+     "FixedVersion": "4.17.21",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2020-28500",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory npm",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+     },
+     "Fingerprint": "sha256:b92862a331d52ac5345a12fdc589c13914e37ca49f28f7a64a8795342c39bbb9",
+     "Title": "nodejs-lodash: ReDoS via the toNumber, trim and trimEnd functions",
+     "Description": "Lodash versions prior to 4.17.21 are vulnerable to Regular Expression Denial of Service (ReDoS) via the toNumber, trim and trimEnd functions.",
+     "Severity": "MEDIUM",
+     "VendorSeverity": {
+      "ghsa": 2,
+      "nvd": 2,
+      "redhat": 2,
+      "ruby-advisory-db": 2,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+       "V3Score": 5.3
+      },
+      "nvd": {
+       "V2Vector": "AV:N/AC:L/Au:N/C:N/I:N/A:P",
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+       "V2Score": 5,
+       "V3Score": 5.3
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+       "V3Score": 5.3
+      }
+     },
+     "References": [
+      "https://access.redhat.com/security/cve/CVE-2020-28500",
+      "https://cert-portal.siemens.com/productcert/pdf/ssa-637483.pdf",
+      "https://github.com/advisories/GHSA-29mw-wpgm-hmr9"
+     ],
+     "PublishedDate": "2021-02-15T11:15:12.397Z",
+     "LastModifiedDate": "2026-10-08T22:16:59.333Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2025-13465",
+     "VendorIDs": [
+      "GHSA-xxjr-mmjv-4gpg"
+     ],
+     "PkgID": "lodash@4.17.20",
+     "PkgName": "lodash",
+     "PkgIdentifier": {
+      "PURL": "pkg:npm/lodash@4.17.20",
+      "UID": "c86d2800a125fe38"
+     },
+     "InstalledVersion": "4.17.20",
+     "FixedVersion": "4.17.23",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-13465",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory npm",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+     },
+     "Fingerprint": "sha256:54dc8e4413f41bb97efb5f689718e3375b57c9cd1a6985a45821aee025a023ea",
+     "Title": "lodash: prototype pollution in _.unset and _.omit functions",
+     "Description": "The _.unset and _.omit functions in Lodash are vulnerable to prototype pollution. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes. The issue permits dele",
+     "Severity": "MEDIUM",
+     "CweIDs": [
+      "CWE-1321"
+     ],
+     "VendorSeverity": {
+      "alma": 3,
+      "ghsa": 2,
+      "nvd": 2,
+      "oracle-oval": 3,
+      "redhat": 3,
+      "rocky": 3,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L",
+       "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:L/VA:L/SC:H/SI:H/SA:H/E:P",
+       "V3Score": 6.5,
+       "V40Score": 6.9
+      },
+      "nvd": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+       "V3Score": 5.3
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H",
+       "V3Score": 8.2
+      }
+     },
+     "References": [
+      "https://access.redhat.com/errata/RHSA-2026:11414",
+      "https://access.redhat.com/errata/RHSA-2026:13542",
+      "https://access.redhat.com/errata/RHSA-2026:13548"
+     ],
+     "PublishedDate": "2026-01-21T20:16:05.25Z",
+     "LastModifiedDate": "2026-10-15T07:17:53.62Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2021-44906",
+     "VendorIDs": [
+      "GHSA-xvch-5gv4-984h"
+     ],
+     "PkgID": "minimist@1.2.5",
+     "PkgName": "minimist",
+     "PkgIdentifier": {
+      "PURL": "pkg:npm/minimist@1.2.5",
+      "UID": "7557aa1273404cbc"
+     },
+     "InstalledVersion": "1.2.5",
+     "FixedVersion": "1.2.6, 0.2.4",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-44906",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory npm",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+     },
+     "Fingerprint": "sha256:3ea9971ff8c07ceabe95a7e2452b34d51a096d9f05d73fca5e7a0cef672277c1",
+     "Title": "minimist: prototype pollution",
+     "Description": "Minimist <=1.2.5 is vulnerable to Prototype Pollution via file index.js, function setKey() (lines 69-95).",
+     "Severity": "CRITICAL",
+     "CweIDs": [
+      "CWE-1321"
+     ],
+     "VendorSeverity": {
+      "alma": 2,
+      "ghsa": 4,
+      "nvd": 4,
+      "oracle-oval": 2,
+      "redhat": 2,
+      "rocky": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+       "V3Score": 9.8
+      },
+      "nvd": {
+       "V2Vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+       "V2Score": 7.5,
+       "V3Score": 9.8
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:N",
+       "V3Score": 3.1
+      }
+     },
+     "References": [
+      "https://access.redhat.com/errata/RHSA-2023:0321",
+      "https://access.redhat.com/security/cve/CVE-2021-44906",
+      "https://bugzilla.redhat.com/2066009"
+     ],
+     "PublishedDate": "2022-03-17T16:15:07.51Z",
+     "LastModifiedDate": "2026-10-08T21:17:42.2Z"
+    }
+   ]
+  }
+ ]
+}

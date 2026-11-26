@@ -26,6 +26,8 @@ install.
   Kubernetes node, container or other, and as internet-facing or internal. A vulnerability's **Affected in your scans** block lists internet-facing systems first
   with an *Internet-facing* chip, so "where does the nginx with the RCE run, and is it exposed" is one
   page.
+- **Statuses that stay.** VEX statuses and dismissals set on a system's findings carry over to its next
+  push, as they do from scan to scan.
 
 ## 1. Create a token
 
@@ -103,6 +105,42 @@ with `hecate-sbom.sh` holding the two commands above and the token in a root-onl
 ```
 
 The exposure comes from your inventory (`public_ip` here), so it is set where you already know it.
+
+## Scanner reports
+
+If a system or a pipeline already runs Trivy, Grype or OSV-Scanner, push its JSON report instead of an
+SBOM, to the same endpoints with the same token. Hecate recognises the format on its own (or take
+`format=trivy-json`, `grype-json` or `osv-scanner-json`).
+
+=== "Trivy"
+
+    ```bash
+    trivy rootfs --format json --list-all-pkgs --output /var/tmp/report.json /
+    ```
+
+=== "Grype"
+
+    ```bash
+    grype dir:/ -o json --file /var/tmp/report.json
+    ```
+
+=== "OSV-Scanner"
+
+    ```bash
+    osv-scanner scan source --format json --all-packages -r /srv/app > /var/tmp/report.json
+    ```
+
+The report is that scanner's answer: its findings are stored as it reported them, no second scanner
+runs over them, and they get what a scan's findings get (the CVE behind a GHSA id, severity from
+Hecate's database, VEX sources and rules, statuses carried over). The scan names the scanner, so its
+findings sit next to those of Hecate's own Trivy or Grype runs.
+
+The system's SBOM is what the report lists. Trivy lists every package with `--list-all-pkgs`; Grype
+lists only the vulnerable ones, OSV-Scanner too without `--all-packages`. An advisory published later
+is matched against that SBOM (*Affected in your scans*, the malware watch), so a full list catches more;
+where a scanner cannot give one, push an SBOM as well, to a target of its own.
+
+Trivy and Grype name what they scanned; an OSV-Scanner report does not, so give it a `targetName`.
 
 ## Windows, macOS and other operating systems
 

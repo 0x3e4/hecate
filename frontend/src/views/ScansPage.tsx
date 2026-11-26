@@ -1458,7 +1458,12 @@ export const ScansPage = () => {
               }}
             >
               <div className="scans-import-text">
-                <h2 className="scans-import-title">{t("Import SBOM", "SBOM importieren")}</h2>
+                <h2 className="scans-import-title">
+                  {t("Import SBOM or scanner report", "SBOM oder Scanner-Bericht importieren")}{" "}
+                  <DocsLink path="sca/hosts/#scanner-reports" className="scans-muted">
+                    {t("Formats", "Formate")}
+                  </DocsLink>
+                </h2>
                 {sbomImportFile ? (
                   <div className="scans-import-file">
                     <span className="chip scans-import-filename">{sbomImportFile.name}</span>
@@ -1471,7 +1476,10 @@ export const ScansPage = () => {
                   </div>
                 ) : (
                   <label className="scans-import-browse">
-                    {t("Drop a CycloneDX / SPDX JSON file here or ", "CycloneDX / SPDX JSON-Datei hierher ziehen oder ")}
+                    {t(
+                      "Drop a CycloneDX / SPDX SBOM or a Trivy, Grype, OSV-Scanner JSON report here or ",
+                      "CycloneDX- / SPDX-SBOM oder Trivy-, Grype-, OSV-Scanner-JSON hierher ziehen oder ",
+                    )}
                     <span className="scans-import-link">{t("browse", "durchsuchen")}</span>
                     <input
                       type="file"
@@ -1492,13 +1500,16 @@ export const ScansPage = () => {
               </div>
               <div className="scans-import-controls">
                 <select
-                  aria-label={t("SBOM format", "SBOM-Format")}
+                  aria-label={t("Format", "Format")}
                   value={sbomImportFormat}
                   onChange={e => setSbomImportFormat(e.target.value)}
                 >
                   <option value="">{t("Auto-detect", "Auto")}</option>
                   <option value="cyclonedx-json">CycloneDX</option>
                   <option value="spdx-json">SPDX</option>
+                  <option value="trivy-json">Trivy JSON</option>
+                  <option value="grype-json">Grype JSON</option>
+                  <option value="osv-scanner-json">OSV-Scanner JSON</option>
                 </select>
                 <input
                   type="text"
@@ -1549,7 +1560,7 @@ export const ScansPage = () => {
             <div className="scans-import scans-import--done">
               <div className="scans-import-summary">
                 <span className="scans-outcome--ok scans-import-title">
-                  {t("SBOM imported!", "SBOM importiert!")}
+                  {t("Imported!", "Importiert!")}
                 </span>
                 <span className="scans-muted">
                   {sbomImportResult.sbomComponentCount} {t("components", "Komponenten")}
