@@ -1305,7 +1305,11 @@ async def get_scan_sbom(
 @router.get(
     "/{scan_id}/sbom/export",
     response_class=Response,
-    responses=download("application/json", "CycloneDX 1.5 or SPDX 2.3 JSON document of the scan's SBOM."),
+    responses=download(
+        "application/json",
+        "CycloneDX 1.5 or SPDX 2.3 JSON document of the scan's SBOM; with vulnerabilities=true a "
+        "CycloneDX BOM that also lists the scan's vulnerability findings.",
+    ),
 )
 async def export_scan_sbom(
     scan_id: str,
@@ -1315,11 +1319,21 @@ async def export_scan_sbom(
         pattern=r"^(cyclonedx-json|spdx-json)$",
         description="Export format: cyclonedx-json or spdx-json",
     ),
+    vulnerabilities: bool = Query(
+        default=False,
+        alias="vulnerabilities",
+        description=(
+            "CycloneDX only: also list the scan's vulnerability findings (severity, CVSS, CWEs, fix, "
+            "VEX analysis), each linked to its component. Dismissed findings are left out."
+        ),
+    ),
     service: ScanService = Depends(get_scan_service),
 ) -> Response:
-    """Export SBOM in CycloneDX 1.5 or SPDX 2.3 JSON format."""
+    """Export SBOM in CycloneDX 1.5 or SPDX 2.3 JSON format, optionally with vulnerabilities."""
+    if vulnerabilities and format != "cyclonedx-json":
+        raise HTTPException(status_code=400, detail="vulnerabilities=true needs format=cyclonedx-json")
     try:
-        doc, filename = await service.export_sbom(scan_id, format)
+        doc, filename = await service.export_sbom(scan_id, format, include_vulnerabilities=vulnerabilities)
     except ValueError:
         raise HTTPException(status_code=404, detail="Scan not found")
     return Response(

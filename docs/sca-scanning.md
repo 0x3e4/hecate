@@ -334,7 +334,8 @@ still raise `GRYPE_TIMEOUT_SECONDS` and recreate the scanner.
 
 ## SBOM, VEX & licenses
 
-Each scan produces a software bill of materials you can export as **CycloneDX 1.5** or **SPDX 2.3**, and
+Each scan produces a software bill of materials you can export as **CycloneDX 1.5** or **SPDX 2.3** (CycloneDX
+also with the scan's vulnerabilities, for [DefectDojo](integrations/defectdojo.md)), and
 you can import an external SBOM to match its components against the vulnerability database without
 running a scanner. Findings can be annotated with **VEX** status (`not_affected`, `affected`, `fixed`,
 `under_investigation`) and dismissed when irrelevant — both carry forward automatically onto matching

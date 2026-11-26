@@ -110,6 +110,64 @@ def cyclonedx_justification(text: Any) -> str | None:
     return VEX_TO_CYCLONEDX_JUSTIFICATION.get(key)
 
 
+# Hecate VEX status -> CycloneDX analysis.state. CycloneDX has no "affected";
+# its counterpart (as in CISA's OpenVEX mapping) is "exploitable", which the
+# import maps back to "affected".
+VEX_TO_CYCLONEDX_STATE = {
+    "not_affected": "not_affected",
+    "affected": "exploitable",
+    "fixed": "resolved",
+    "under_investigation": "in_triage",
+}
+# affects[].versions[].status has an enum of its own.
+VEX_TO_CYCLONEDX_VERSION_STATUS = {
+    "not_affected": "unaffected",
+    "affected": "affected",
+    "fixed": "unaffected",
+    "under_investigation": "unknown",
+}
+
+
+def cyclonedx_analysis(finding: dict[str, Any]) -> dict[str, Any] | None:
+    """The CycloneDX ``analysis`` block of a finding's VEX status, ``None`` without one.
+
+    CycloneDX only accepts its own justification enum: labels are mapped, free
+    text goes into ``detail`` rather than in as an invalid value.
+    """
+    status = finding.get("vex_status")
+    if not isinstance(status, str) or not status:
+        return None
+    analysis: dict[str, Any] = {"state": VEX_TO_CYCLONEDX_STATE.get(status, status)}
+    justification = finding.get("vex_justification")
+    cdx_justification = cyclonedx_justification(justification)
+    if cdx_justification:
+        analysis["justification"] = cdx_justification
+    detail = finding.get("vex_detail")
+    if not cdx_justification and isinstance(justification, str) and justification.strip():
+        detail = f"{justification.strip()}\n\n{detail}" if detail else justification.strip()
+    if detail:
+        analysis["detail"] = detail
+    if finding.get("vex_response"):
+        analysis["response"] = finding["vex_response"]
+    updated_at = finding.get("vex_updated_at")
+    if isinstance(updated_at, datetime):
+        analysis["lastUpdated"] = updated_at.isoformat()
+    return analysis
+
+
+def vex_review_properties(finding: dict[str, Any]) -> list[dict[str, str]]:
+    """Review evidence as CycloneDX properties: who set the status, at which version, re-review date."""
+    return [
+        {"name": name, "value": str(finding[key])}
+        for name, key in (
+            ("hecate:vex:updated-by", "vex_updated_by"),
+            ("hecate:vex:assessed-version", "vex_assessed_version"),
+            ("hecate:vex:review-due", "vex_review_due"),
+        )
+        if finding.get(key)
+    ]
+
+
 def vex_justification_label(text: Any) -> str | None:
     """The OpenVEX / CSAF justification a free-text or CycloneDX value stands for.
 

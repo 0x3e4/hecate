@@ -128,8 +128,10 @@ A library compiled into a prebuilt package (sharp's libvips and the libraries it
 under the package: the fix is an update of the package that brought the library in (sharp). See
 [Bundled native libraries](../sca-scanning.md#bundled-native-libraries).
 
-Two export buttons produce a standards-compliant bill of materials: **CycloneDX 1.5** and **SPDX 2.3** JSON. Next to
-them, the **VEX export** select writes the scan's VEX statements in one of three formats (see
+Two export buttons produce a standards-compliant bill of materials: **CycloneDX 1.5** and **SPDX 2.3** JSON.
+**CycloneDX + vulnerabilities** adds the scan's vulnerability findings to the CycloneDX file (severity, CVSS, CWEs,
+fix and VEX status, each pointing at its component), the report a platform like [DefectDojo](../integrations/defectdojo.md)
+imports. Next to them, the **VEX export** select writes the scan's VEX statements in one of three formats (see
 [Exporting VEX](#exporting-vex)).
 
 ### SAST, Secrets and Best Practices

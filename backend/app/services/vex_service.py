@@ -7,7 +7,11 @@ import structlog
 
 from app.repositories.scan_finding_repository import ScanFindingRepository
 from app.repositories.scan_repository import ScanRepository
-from app.services.vex_export import cyclonedx_justification
+from app.services.vex_export import (
+    VEX_TO_CYCLONEDX_VERSION_STATUS,
+    cyclonedx_analysis,
+    vex_review_properties,
+)
 
 log = structlog.get_logger()
 
@@ -51,68 +55,21 @@ class VexService:
         if not vex_findings:
             return {}
 
-        # Map VEX status to CycloneDX analysis.state. CycloneDX has no
-        # "affected"; its counterpart (as in CISA's OpenVEX mapping) is
-        # "exploitable", which the import maps back to "affected".
-        status_map = {
-            "not_affected": "not_affected",
-            "affected": "exploitable",
-            "fixed": "resolved",
-            "under_investigation": "in_triage",
-        }
-        # affects[].versions[].status has an enum of its own.
-        version_status_map = {
-            "not_affected": "unaffected",
-            "affected": "affected",
-            "fixed": "unaffected",
-            "under_investigation": "unknown",
-        }
-
         vulnerabilities: list[dict[str, Any]] = []
         for finding in vex_findings:
-            vuln_id = finding.get("vulnerability_id", "")
             vex_status = finding.get("vex_status", "")
-
             entry: dict[str, Any] = {
-                "id": vuln_id,
-                "analysis": {
-                    "state": status_map.get(vex_status, vex_status),
-                },
+                "id": finding.get("vulnerability_id", ""),
+                "analysis": cyclonedx_analysis(finding) or {},
                 "affects": [{
                     "ref": finding.get("package_name", ""),
                     "versions": [{
                         "version": finding.get("package_version", ""),
-                        "status": version_status_map.get(vex_status, "unknown"),
+                        "status": VEX_TO_CYCLONEDX_VERSION_STATUS.get(vex_status, "unknown"),
                     }] if finding.get("package_version") else [],
                 }],
             }
-
-            # CycloneDX only accepts its own justification enum: map labels,
-            # and carry free text in detail rather than as an invalid value.
-            justification = finding.get("vex_justification")
-            cdx_justification = cyclonedx_justification(justification)
-            if cdx_justification:
-                entry["analysis"]["justification"] = cdx_justification
-            detail = finding.get("vex_detail")
-            if not cdx_justification and isinstance(justification, str) and justification.strip():
-                detail = f"{justification.strip()}\n\n{detail}" if detail else justification.strip()
-            if detail:
-                entry["analysis"]["detail"] = detail
-            if finding.get("vex_response"):
-                entry["analysis"]["response"] = finding["vex_response"]
-            updated_at = finding.get("vex_updated_at")
-            if isinstance(updated_at, datetime):
-                entry["analysis"]["lastUpdated"] = updated_at.isoformat()
-            # Review evidence: who set the status, at which version, re-review date.
-            properties = [
-                {"name": name, "value": str(finding[key])}
-                for name, key in (
-                    ("hecate:vex:updated-by", "vex_updated_by"),
-                    ("hecate:vex:assessed-version", "vex_assessed_version"),
-                    ("hecate:vex:review-due", "vex_review_due"),
-                )
-                if finding.get(key)
-            ]
+            properties = vex_review_properties(finding)
             if properties:
                 entry["properties"] = properties
 

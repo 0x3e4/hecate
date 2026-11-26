@@ -397,7 +397,8 @@ scan are stored on the target and reused for auto-scans.
 Beyond raw scanning, the SCA layer adds several analysis and workflow features. **Scan compare**
 diffs two scans into added, removed and changed findings, where "changed" groups the same package
 under a different vulnerability. **SBOM export** produces CycloneDX 1.5 and SPDX 2.3 JSON from a
-pure-function builder (no external libraries), suitable for EU Cyber Resilience Act compliance, and
+pure-function builder (no external libraries), suitable for EU Cyber Resilience Act compliance; the
+CycloneDX file can also list the scan's vulnerabilities, which DefectDojo imports as a scan report, and
 **SBOM import** accepts external CycloneDX or SPDX uploads, auto-detects the format, matches the
 components against the vulnerability DB, and creates a target and scan of type `sbom-import`. It takes at
 most `SCA_SBOM_IMPORT_MAX_COMPONENTS` (25,000) components, and the write gate resolves the target exactly

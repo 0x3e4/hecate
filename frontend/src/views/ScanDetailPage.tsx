@@ -496,12 +496,12 @@ export const ScanDetailPage = () => {
   }, [sbomComponents, sbomSort, sbomFilterEco, sbomFilterLicense, sbomFilterType, sbomFilterProvenance, sbomFilterSignal, sbomFilterScope]);
   const hasAnyScope = useMemo(() => sbomComponents.some(c => !!c.scope), [sbomComponents]);
 
-  const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json") => {
+  const handleSbomExport = async (format: "cyclonedx-json" | "spdx-json", vulnerabilities = false) => {
     if (!scanId || sbomExporting) return;
-    setSbomExporting(format);
+    setSbomExporting(vulnerabilities ? "cyclonedx-vulnerabilities" : format);
     try {
-      const { data, filename } = await exportScanSbom(scanId, format);
-      const fallback = `sbom-${scanId}.${format === "spdx-json" ? "spdx" : "cdx"}.json`;
+      const { data, filename } = await exportScanSbom(scanId, format, { vulnerabilities });
+      const fallback = `sbom-${scanId}${vulnerabilities ? "-vulnerabilities" : ""}.${format === "spdx-json" ? "spdx" : "cdx"}.json`;
       const url = URL.createObjectURL(data);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -1692,6 +1692,21 @@ export const ScanDetailPage = () => {
                 aria-busy={sbomExporting === "spdx-json" || undefined}
               >
                 <BusyLabel busy={sbomExporting === "spdx-json"}>SPDX</BusyLabel>
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void handleSbomExport("cyclonedx-json", true)}
+                disabled={!!sbomExporting || sbomComponents.length === 0}
+                aria-busy={sbomExporting === "cyclonedx-vulnerabilities" || undefined}
+                title={t(
+                  "CycloneDX with the scan's vulnerabilities, for DefectDojo and other vulnerability platforms",
+                  "CycloneDX mit den Schwachstellen des Scans, für DefectDojo und andere Schwachstellen-Plattformen",
+                )}
+              >
+                <BusyLabel busy={sbomExporting === "cyclonedx-vulnerabilities"}>
+                  {t("CycloneDX + vulnerabilities", "CycloneDX + Schwachstellen")}
+                </BusyLabel>
               </button>
               {scanId && <VexExportMenu scanId={scanId} />}
             </div>

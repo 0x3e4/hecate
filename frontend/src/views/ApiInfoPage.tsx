@@ -66,7 +66,7 @@ export const ApiInfoPage = () => {
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}</code></td><td>{t("Get scan status and summary", "Scan-Status und Zusammenfassung abrufen")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/findings</code></td><td>{t("List scan findings", "Scan-Findings auflisten")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/sbom</code></td><td>{t("List SBOM components", "SBOM-Komponenten auflisten")}</td></tr>
-              <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/sbom/export</code></td><td>{t("Export SBOM (CycloneDX / SPDX)", "SBOM exportieren (CycloneDX / SPDX)")}</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/sbom/export</code></td><td>{t("Export SBOM (CycloneDX / SPDX); vulnerabilities=true adds the findings (DefectDojo)", "SBOM exportieren (CycloneDX / SPDX); vulnerabilities=true ergänzt die Findings (DefectDojo)")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/vex/export?format=cyclonedx|openvex|csaf</code></td><td>{t("Export VEX (CycloneDX / OpenVEX / CSAF 2.0)", "VEX exportieren (CycloneDX / OpenVEX / CSAF 2.0)")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/scans/{"{scanId}"}/evidence-bundle</code></td><td>{t("Evidence bundle (ZIP: SBOM, VEX, findings summary, manifest)", "Nachweis-Paket (ZIP: SBOM, VEX, Findings-Übersicht, Manifest)")}</td></tr>
               <tr><td><code>GET</code></td><td><code>/api/v1/changelog</code></td><td>{t("Vulnerability changelog", "Schwachstellen-Changelog")}</td></tr>

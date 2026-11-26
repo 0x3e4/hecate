@@ -59,7 +59,7 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `GET` | `/api/v1/scans/{scanId}` | Scan status and severity summary |
 | `GET` | `/api/v1/scans/{scanId}/findings` | List the findings of a scan |
 | `GET` | `/api/v1/scans/{scanId}/sbom` | List the SBOM components of a scan |
-| `GET` | `/api/v1/scans/{scanId}/sbom/export` | Export the SBOM as CycloneDX or SPDX |
+| `GET` | `/api/v1/scans/{scanId}/sbom/export` | Export the SBOM as CycloneDX or SPDX; `vulnerabilities=true` adds the findings to the CycloneDX file ([DefectDojo](defectdojo.md)) |
 | `POST` | `/api/v1/inventory/report` | Report deployed versions (`inventory:report` token or the admin password) |
 | `GET` | `/api/v1/inventory/history` | Recent inventory changes, deleted items included |
 | `GET` | `/api/v1/inventory/{id}/history` | The change log of one inventory item |

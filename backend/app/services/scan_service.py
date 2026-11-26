@@ -2465,9 +2465,17 @@ class ScanService:
     ) -> tuple[int, list[dict[str, Any]]]:
         return await self.sbom_repo.list_by_scan(scan_id, search=search, limit=limit, offset=offset)
 
-    async def export_sbom(self, scan_id: str, fmt: str) -> tuple[dict[str, Any], str]:
-        """Build SBOM document in the requested format. Returns (document, filename)."""
+    async def export_sbom(
+        self, scan_id: str, fmt: str, *, include_vulnerabilities: bool = False,
+    ) -> tuple[dict[str, Any], str]:
+        """Build SBOM document in the requested format. Returns (document, filename).
+
+        ``include_vulnerabilities`` (CycloneDX only) adds the scan's
+        vulnerability findings, dismissed ones left out, with the CWEs of
+        Hecate's records of them.
+        """
         from app.services.sbom_export import build_cyclonedx_json, build_spdx_json
+        from app.services.vex_export import MAX_EXPORT_FINDINGS
 
         scan = await self.scan_repo.get(scan_id)
         if not scan:
@@ -2483,11 +2491,44 @@ class ScanService:
         if fmt == "spdx-json":
             doc = build_spdx_json(scan, target, components)
             filename = f"{safe_name}-sbom-{date_str}.spdx.json"
+        elif include_vulnerabilities:
+            _, findings = await self.finding_repo.list_by_scan(
+                scan_id, limit=MAX_EXPORT_FINDINGS, include_dismissed=False,
+            )
+            cwes = await self._cwes_for_vulnerabilities(
+                {f["vulnerability_id"] for f in findings if isinstance(f.get("vulnerability_id"), str)}
+            )
+            doc = build_cyclonedx_json(scan, target, components, findings=findings, cwes=cwes)
+            filename = f"{safe_name}-sbom-vulnerabilities-{date_str}.cdx.json"
         else:
             doc = build_cyclonedx_json(scan, target, components)
             filename = f"{safe_name}-sbom-{date_str}.cdx.json"
 
         return doc, filename
+
+    async def _cwes_for_vulnerabilities(self, ids: set[str]) -> dict[str, list[str]]:
+        """vulnerability id -> CWE ids from the vulnerability records; empty on any error.
+
+        Indexed ``_id`` lookups with a server-side time limit (the collection is
+        tens of GB); an export without CWEs beats a failed one.
+        """
+        from app.db.mongo import get_database
+
+        if not ids:
+            return {}
+        out: dict[str, list[str]] = {}
+        try:
+            db = await get_database()
+            cursor = db[settings.mongo_vulnerabilities_collection].find(
+                {"_id": {"$in": sorted(ids)}}, {"_id": 1, "cwes": 1},
+            ).max_time_ms(5000)
+            async for doc in cursor:
+                cwes = [c for c in doc.get("cwes") or [] if isinstance(c, str)]
+                if cwes:
+                    out[str(doc["_id"])] = cwes
+        except Exception as exc:  # noqa: BLE001 - fail-soft, see docstring
+            log.warning("scan_service.export_cwe_lookup_failed", error=str(exc))
+        return out
 
     async def export_findings_sonarqube(
         self, scan_id: str, file_path_prefix: str = "",

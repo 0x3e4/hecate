@@ -467,7 +467,7 @@ Vite proxies `/api` to `http://backend:8000` (Docker) or `http://localhost:8000`
 - `GET  /api/v1/scans/{scanId}` — scan details
 - `GET  /api/v1/scans/{scanId}/findings` — findings of a scan
 - `GET  /api/v1/scans/{scanId}/sbom` — SBOM components of a scan
-- `GET  /api/v1/scans/{scanId}/sbom/export` — SBOM export (CycloneDX 1.5 or SPDX 2.3 JSON)
+- `GET  /api/v1/scans/{scanId}/sbom/export` — SBOM export (CycloneDX 1.5 or SPDX 2.3 JSON; `vulnerabilities=true` adds the findings for DefectDojo)
 - `GET  /api/v1/scans/{scanId}/findings/export` — findings export (SonarQube external issues)
 - `GET  /api/v1/scans/{scanId}/layers` — layer analysis (Dive)
 - `POST /api/v1/scans/import-sbom` — import an external SBOM (JSON)

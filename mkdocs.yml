@@ -87,6 +87,7 @@ nav:
       - Package Check: integrations/package-check.md
       - REST API: integrations/api.md
       - Notifications: integrations/notifications.md
+      - DefectDojo: integrations/defectdojo.md
   - Administration:
       - System Settings: admin/system.md
       - Security & Access Control: security-access-control.md

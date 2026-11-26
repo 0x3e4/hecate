@@ -257,12 +257,18 @@ const extractFilename = (disposition?: string): string | undefined => {
   return match ? (decodeURIComponent(match[1] ?? match[2] ?? "").trim() || undefined) : undefined;
 };
 
+/**
+ * SBOM download. `vulnerabilities` (CycloneDX only) adds the scan's findings
+ * with severity, CVSS, CWEs, fix and VEX analysis: the file vulnerability
+ * platforms such as DefectDojo import as a scan report.
+ */
 export const exportScanSbom = async (
   scanId: string,
-  format: "cyclonedx-json" | "spdx-json"
+  format: "cyclonedx-json" | "spdx-json",
+  options: { vulnerabilities?: boolean } = {}
 ): Promise<{ data: Blob; filename?: string }> => {
   const response = await api.get<Blob>(`/v1/scans/${scanId}/sbom/export`, {
-    params: { format },
+    params: options.vulnerabilities ? { format, vulnerabilities: true } : { format },
     responseType: "blob",
   });
   return {
