@@ -480,6 +480,7 @@ class InventoryService:
                         "epssScore": h.get("epss_score"),
                         "exploited": h.get("exploited"),
                         "published": h.get("published"),
+                        "lastChangeAt": h.get("last_change_at"),
                     }
                 )
             )

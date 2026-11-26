@@ -1634,6 +1634,7 @@ async def vulns_for_item(
             "epss_score": 1,
             "exploited": 1,
             "published": 1,
+            "last_change_at": 1,
             "cpe_configurations": 1,
             "cpes": 1,
             "vendor_slugs": 1,

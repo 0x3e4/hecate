@@ -46,7 +46,21 @@ import {
   Stat,
 } from "../ui/primitives";
 import { primaryVendorSlug } from "../utils/catalog";
-import { formatDateTime } from "../utils/dateFormat";
+import { formatDateOnly, formatDateTime } from "../utils/dateFormat";
+import { usePersistentState } from "../hooks/usePersistentState";
+import {
+  DEFAULT_INVENTORY_FILTERS,
+  INVENTORY_SORT_KEYS,
+  hasNewActivity,
+  itemSignals,
+  matchesInventoryFilters,
+  readLastVisit,
+  sortInventoryItems,
+  stampLastVisit,
+  type InventoryFilters,
+  type InventorySortKey,
+  type ItemSignals,
+} from "../utils/inventoryList";
 import { safeHref } from "../utils/safeHref";
 const DEPLOYMENTS: InventoryDeployment[] = ["onprem", "cloud", "hybrid"];
 const DEFAULT_ENVIRONMENT_SUGGESTIONS: string[] = ["prod", "staging", "dev", "test", "dr"];
@@ -256,6 +270,23 @@ const EolDetailBlock = ({ status, t }: { status: EolStatus; t: TranslateFn }) =>
       </dl>
     </div>
   );
+};
+
+const sortLabel = (key: InventorySortKey, t: TranslateFn): string => {
+  switch (key) {
+    case "activity":
+      return t("Newest CVE activity", "Neueste CVE-Aktivität");
+    case "severity":
+      return t("Worst severity", "Höchster Schweregrad");
+    case "cves":
+      return t("Most CVEs", "Meiste CVEs");
+    case "support":
+      return t("Support ends soonest", "Support endet zuerst");
+    case "edited":
+      return t("Recently edited", "Zuletzt bearbeitet");
+    default:
+      return t("Name", "Name");
+  }
 };
 
 const emptyForm = (): InventoryItemCreateInput => ({
@@ -612,6 +643,27 @@ export const InventoryPage = () => {
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
 
   const [search, setSearch] = useState("");
+  // Sort and filters are remembered per browser.
+  const [sortKey, setSortKey] = usePersistentState<InventorySortKey>("hecate.inventory.sort", "activity");
+  const [storedFilters, setFilters] = usePersistentState<InventoryFilters>(
+    "hecate.inventory.filters",
+    DEFAULT_INVENTORY_FILTERS,
+  );
+  // Older stored values may lack a field added later.
+  const filters = useMemo(() => ({ ...DEFAULT_INVENTORY_FILTERS, ...storedFilters }), [storedFilters]);
+  const setFilter = <K extends keyof InventoryFilters>(key: K, value: InventoryFilters[K]) =>
+    setFilters({ ...filters, [key]: value });
+  // CVE changes after the previous visit get a "new" marker; this visit is
+  // recorded when the page is left, so the marker holds while it is open.
+  const [previousVisit] = useState(readLastVisit);
+  useEffect(() => {
+    const stamp = () => stampLastVisit();
+    window.addEventListener("pagehide", stamp);
+    return () => {
+      window.removeEventListener("pagehide", stamp);
+      stamp();
+    };
+  }, []);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [affectedById, setAffectedById] = useState<
     Record<string, AffectedVulnerabilityItem[] | "loading" | { error: string }>
@@ -1025,6 +1077,44 @@ export const InventoryPage = () => {
     });
   }, [items, search]);
 
+  const signalsById = useMemo(() => {
+    const map: Record<string, ItemSignals> = {};
+    for (const item of items) {
+      const affected = affectedById[item.id];
+      const eolEntry = eolEnabled ? eolById[item.id] : undefined;
+      const eol = eolEntry && eolEntry !== "loading" && eolEntry !== "failed" && eolEntry.linked ? eolEntry : null;
+      map[item.id] = itemSignals(Array.isArray(affected) ? affected : null, eol);
+    }
+    return map;
+  }, [items, affectedById, eolById, eolEnabled]);
+
+  const visibleItems = useMemo(
+    () =>
+      sortInventoryItems(
+        filteredItems.filter((item) => matchesInventoryFilters(item, signalsById[item.id], filters)),
+        (item) => signalsById[item.id],
+        sortKey,
+      ),
+    [filteredItems, signalsById, filters, sortKey],
+  );
+  const filtersActive = Object.entries(filters).some(
+    ([key, value]) => value !== DEFAULT_INVENTORY_FILTERS[key as keyof InventoryFilters],
+  );
+
+  const environmentOptions = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const item of items) {
+      const key = item.environment.trim().toLowerCase();
+      if (key && !byKey.has(key)) byKey.set(key, item.environment.trim());
+    }
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+  }, [items]);
+  const deploymentOptions = useMemo(() => [...new Set(items.map((item) => item.deployment))].sort(), [items]);
+  const ownerOptions = useMemo(
+    () => [...new Set(items.map((item) => item.owner || "").filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [items],
+  );
+
   // Aggregated roll-up: every distinct CVE flagged across all configured items,
   // built client-side from the already-eager `affectedById` cache (no extra
   // API). A CVE on multiple items appears once with all affected items listed;
@@ -1245,10 +1335,105 @@ export const InventoryPage = () => {
                 "Name, Hersteller, Produkt, Version, Owner durchsuchen…",
               )}
             />
-            {search && (
+            <label className="inventory-control">
+              <span>{t("Sort", "Sortierung")}</span>
+              <select value={sortKey} onChange={(e) => setSortKey(e.target.value as InventorySortKey)}>
+                {INVENTORY_SORT_KEYS.filter((key) => eolEnabled || key !== "support").map((key) => (
+                  <option key={key} value={key}>
+                    {sortLabel(key, t)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {environmentOptions.length > 1 && (
+              <select
+                aria-label={t("Environment", "Umgebung")}
+                value={filters.environment}
+                onChange={(e) => setFilter("environment", e.target.value)}
+              >
+                <option value="">{t("All environments", "Alle Umgebungen")}</option>
+                {environmentOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {environmentLabel(value, t)}
+                  </option>
+                ))}
+              </select>
+            )}
+            {deploymentOptions.length > 1 && (
+              <select
+                aria-label={t("Deployment", "Betriebsart")}
+                value={filters.deployment}
+                onChange={(e) => setFilter("deployment", e.target.value)}
+              >
+                <option value="">{t("All deployments", "Alle Betriebsarten")}</option>
+                {deploymentOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {deploymentLabel(value, t)}
+                  </option>
+                ))}
+              </select>
+            )}
+            {ownerOptions.length > 0 && (
+              <select
+                aria-label={t("Owner", "Owner")}
+                value={filters.owner}
+                onChange={(e) => setFilter("owner", e.target.value)}
+              >
+                <option value="">{t("All owners", "Alle Owner")}</option>
+                {ownerOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="inventory-flags" role="group" aria-label={t("Show only", "Nur anzeigen")}>
+              <button
+                type="button"
+                className="inventory-flag"
+                aria-pressed={filters.affectedOnly}
+                onClick={() => setFilter("affectedOnly", !filters.affectedOnly)}
+              >
+                {t("With CVEs", "Mit CVEs")}
+              </button>
+              <button
+                type="button"
+                className="inventory-flag"
+                aria-pressed={filters.exploitedOnly}
+                onClick={() => setFilter("exploitedOnly", !filters.exploitedOnly)}
+              >
+                {t("Known exploited", "Bekannt ausgenutzt")}
+              </button>
+              {eolEnabled && (
+                <>
+                  <button
+                    type="button"
+                    className="inventory-flag"
+                    aria-pressed={filters.endOfLifeOnly}
+                    onClick={() => setFilter("endOfLifeOnly", !filters.endOfLifeOnly)}
+                  >
+                    {t("End of life", "End of Life")}
+                  </button>
+                  <button
+                    type="button"
+                    className="inventory-flag"
+                    aria-pressed={filters.updateOnly}
+                    onClick={() => setFilter("updateOnly", !filters.updateOnly)}
+                  >
+                    {t("Update available", "Update verfügbar")}
+                  </button>
+                </>
+              )}
+            </div>
+            {(search || filtersActive) && (
               <span className="inventory-search-count">
-                {filteredItems.length} / {items.length}
+                {visibleItems.length} / {items.length}
               </span>
+            )}
+            {filtersActive && (
+              <button type="button" className="btn btn-secondary" onClick={() => setFilters(DEFAULT_INVENTORY_FILTERS)}>
+                {t("Reset filters", "Filter zurücksetzen")}
+              </button>
             )}
           </div>
         )}
@@ -1265,8 +1450,8 @@ export const InventoryPage = () => {
                   'Nutzen Sie die Schaltfläche „Hinzufügen" oben, um Ihr erstes Produkt + Version anzulegen.',
                 )}
               </EmptyState>
-            ) : filteredItems.length === 0 ? (
-              <EmptyState title={t("No items match your search.", "Keine Einträge passen zur Suche.")} />
+            ) : visibleItems.length === 0 ? (
+              <EmptyState title={t("No items match your search or filters.", "Keine Einträge passen zu Suche oder Filtern.")} />
             ) : (
               <div className="table-scroll">
                 <table className="inventory-table">
@@ -1285,14 +1470,16 @@ export const InventoryPage = () => {
                       </th>
                     </tr>
                   </thead>
-                  {filteredItems.map((item) => {
+                  {visibleItems.map((item) => {
                     const expanded = expandedItemId === item.id;
+                    const signals = signalsById[item.id];
+                    const isNew = hasNewActivity(signals, previousVisit);
                     const affected = affectedById[item.id];
                     const isLoading = affected === "loading";
                     const isError =
                       !!affected && typeof affected === "object" && !Array.isArray(affected) && "error" in affected;
                     const vulns = Array.isArray(affected) ? affected : [];
-                    const worst = vulns.length > 0 ? severityOf(vulns[0]?.severity as string | null) : "unknown";
+                    const worst = severityOf(["critical", "high", "medium", "low"][signals.worst] ?? null);
                     const eolEntry = eolEnabled ? eolById[item.id] : undefined;
                     const itemHistory = historyById[item.id];
                     const eolStatus =
@@ -1342,6 +1529,14 @@ export const InventoryPage = () => {
                                 {isError ? "!" : vulns.length}
                                 <span className="inventory-unit"> {t("CVEs", "CVEs")}</span>
                               </span>
+                            )}
+                            {signals.lastActivity !== null && (
+                              <div className="inventory-cve-activity">
+                                {isNew && <span className="chip inventory-new">{t("new", "neu")}</span>}
+                                <span title={t("Newest change to an affecting CVE", "Letzte Änderung an einem betroffenen CVE")}>
+                                  {t("changed", "geändert")} {formatDateOnly(signals.lastActivity)}
+                                </span>
+                              </div>
                             )}
                           </td>
                           {eolEnabled && (

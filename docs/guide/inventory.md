@@ -92,6 +92,27 @@ The same log is available over the API: `GET /api/v1/inventory/history` returns 
 
 Each row names the severity of its worst current match, so a glance down the list tells you which entries are exposed. The row shows the item name, vendor/product and version, chips for deployment / environment / instance count, the endoflife.date support badge, and a CVE-count pill. **Click the row** to expand an in-line list of the affecting vulnerabilities, sorted by severity and CVSS, each linking straight to its detail page and flagged with a **KEV** chip when CISA lists it as known-exploited. The **DQL** button opens the same set of matches as a pre-built query in the [Vulnerabilities](vulnerabilities.md) list, which is handy when you want to sort, export or filter them with the full search UI. With no current match it opens `vendorSlugs:… AND productSlugs:… AND affectedVersion:"<version>"` instead, which checks the indexed version ranges directly. Edits made in the dialog (including a version bump) refresh the row, its CVEs and the **Flagged CVEs** table immediately — no reload.
 
+### Sorting and filtering the list
+
+Above the list, **Sort** orders the items by:
+
+| Sort | Order |
+| --- | --- |
+| **Newest CVE activity** (default) | Items whose affecting CVEs changed most recently come first: a new advisory, a new score, a new version range, a KEV listing. Items without any CVE go last. |
+| **Worst severity** | Critical first, known-exploited before the rest of a severity, then by number of CVEs. |
+| **Most CVEs** | By the number of affecting CVEs. |
+| **Support ends soonest** | By the end-of-support date from [endoflife.date](#end-of-life-and-support-status); products it doesn't know go last. |
+| **Recently edited** | By your last change to the item. |
+| **Name** | Alphabetically. |
+
+Each row shows when its newest affecting CVE last changed. A **new** tag marks rows where that
+happened since your previous visit to the page.
+
+The filters narrow the list to one environment, deployment or owner (each appears once your items
+use more than one), and the buttons to items **With CVEs**, **Known exploited** CVEs, **End of life**
+or an **Update available** within their release line. Sort and filters are remembered in this
+browser; **Reset filters** clears them.
+
 ### In the Flagged CVEs table
 
 Below the list, the **Flagged CVEs** table is a single roll-up of every distinct CVE affecting *any* of your entries, sorted by severity then CVSS. Each row links to the vulnerability detail page and shows severity, CVSS, EPSS, the publication date, a **KEV** chip for known-exploited issues, and which inventory items it affects (name and version). It's the fastest way to see your whole exposure at once without expanding each card.

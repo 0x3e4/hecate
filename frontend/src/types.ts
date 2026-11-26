@@ -661,6 +661,8 @@ export interface AffectedVulnerabilityItem {
   epssScore?: number | null;
   exploited?: boolean | null;
   published?: string | null;
+  /** When Hecate last saw the record change. */
+  lastChangeAt?: string | null;
 }
 
 export interface AffectedVulnerabilitiesResponse {

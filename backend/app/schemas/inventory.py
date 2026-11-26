@@ -204,6 +204,11 @@ class AffectedVulnerabilityItem(BaseModel):
     )
     exploited: bool | None = None
     published: UtcDatetime | None = None
+    # When Hecate last saw the record change (new version data, score, KEV
+    # listing, ...). Lets the inventory sort items by fresh CVE activity.
+    last_change_at: UtcDatetime | None = Field(
+        default=None, alias="lastChangeAt", serialization_alias="lastChangeAt"
+    )
 
     model_config = {"populate_by_name": True}
 
