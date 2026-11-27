@@ -32,7 +32,8 @@ install.
 - **Kind and exposure.** Mark a target as a host (a server, VM or workstation, whatever its OS),
   Kubernetes node, container or other, and as internet-facing or internal. A vulnerability's **Affected in your scans** block lists internet-facing systems first
   with an *Internet-facing* chip, so "where does the nginx with the RCE run, and is it exposed" is one
-  page.
+  page. Set them with the import (`kind`, `exposure`), on the target page's **System** card, or with
+  `PATCH /api/v1/scans/targets/{id}` (`kind`, `exposure`; `null` clears).
 - **Statuses that stay.** VEX statuses and dismissals set on a system's findings carry over to its next
   push, as they do from scan to scan.
 
@@ -183,6 +184,8 @@ only needs a small job that posts each CycloneDX or SPDX file it exports. Contai
 or pull are better scanned as image targets (**New scan**), which also runs the image-only checks.
 
 ## Where it shows
+
+![Inventory → Systems](../img/hecate-inventory-systems.png)
 
 - **Inventory → Systems**: every system, when it last reported, its worst finding and the products that
   run on it.

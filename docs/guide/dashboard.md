@@ -45,9 +45,12 @@ If the ID is **not** in the local database, a notice below the box offers to fet
 
 ### Fetching a missing ID
 
-When a lookup misses, Hecate doesn't just shrug — it can pull the record on demand. The notice
-explains that the vulnerability hasn't been synchronised yet and offers a **Load from
-NVD/EUVD/GHSA** button (with a **Cancel** alongside).
+When a lookup misses, Hecate can pull the record on demand. A notice opens over the page, says the
+vulnerability hasn't been synchronised yet and offers a **Load from NVD/EUVD/GHSA** button (with a
+**Cancel** alongside). Fetching writes to the database, so the notice says beforehand what it takes:
+with sign-in, the button reads **Sign in and load** and the fetch starts on its own after the sign-in;
+without sign-in but with a system password, you are asked for that password first; a signed-in role
+below editor can't fetch, and the button is disabled.
 
 Clicking it dispatches a one-off refresh for that single identifier against the upstream sources.
 CVE-prefixed IDs are looked up by CVE number; everything else is resolved by its source ID. The
@@ -79,8 +82,9 @@ remediation due date. **KEV listings** opens the catalogue additions in the
 [full overview](cert.md).
 
 Scan findings that only one source named do not get a row: a single round-up can name dozens of kernel
-CVEs that every container image carries, which is routine patching rather than an alarm. They fold
-away at the bottom of the panel, one row per product, and stay in your scan results as usual.
+CVEs that every container image carries, which is routine patching rather than an alarm. They sit at
+the bottom of the panel as *N more in your scans, named by one source*, one row per product, open by
+default; fold them and the browser remembers it. They stay in your scan results as usual.
 
 The panel reloads whenever new data is ingested, and it is not shown when nothing qualifies.
 
@@ -95,7 +99,7 @@ URL and kind, switches them on and off, and starts a run with **Read now**. Chan
 password. A Mastodon account has its feed at `https://<instance>/@<user>.rss`. A feed added here must
 point at a public address: the backend fetches it, and what it reads is shown on a public page, so a
 host that resolves to a private, loopback or link-local address is refused, both when it is saved and
-before every run. Set `CERT_FEEDS_ALLOW_PRIVATE_HOSTS=true` to read a feed on your internal network.
+before every run, and so is a URL with control characters. Set `CERT_FEEDS_ALLOW_PRIVATE_HOSTS=true` to read a feed on your internal network.
 
 **In `.env`.** `CERT_FEEDS_EXTRA` takes comma-separated `Name|URL` or `Name|URL|kind` entries; without a
 kind a feed counts as a CERT:

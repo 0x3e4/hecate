@@ -141,6 +141,13 @@ Tick what it reports:
 **Exposure**, **Groups** (any of them) and **Systems** narrow which systems the rule covers; leave them
 empty for all. Messages use the event keys `system_findings`, `system_stale` and `system_retired`.
 
+Only SBOM and report imports of a system send *New findings*; scans of other targets keep using the scan
+rules. A rule's first stale check only starts the clock (like the [anti-storm bootstrap](#the-anti-storm-bootstrap)
+below), and changing a rule's type starts it again. Through the API the rule is `ruleType: "system"` with
+`eventTypes` (at least one of `system_findings`, `system_stale`, `system_retired`), `systemIds`,
+`systemGroups`, `systemExposure` (`internet` or `internal`) and `scanSeverityThreshold` for the lowest
+severity.
+
 ### The anti-storm bootstrap
 
 The first time a watch rule (or any rule that scans for new matches) is evaluated, it does **not** send

@@ -145,6 +145,25 @@ docker compose pull && docker compose up -d
 Read the [changelog](changelog.md) before you update. A release that changes ports, routing or
 required settings says so at the top of its entry.
 
+!!! note "Upgrading to 2.5.0: the `osv-db` volume"
+    A target with [no external lookups](sca-scanning.md#no-external-lookups) has OSV-Scanner match
+    against a local copy of the OSV database. Without a volume that copy sits on the scanner's `/tmp`
+    tmpfs and is downloaded again after every restart. Like the `grype-db` volume, add to your own
+    `docker-compose.yml`:
+
+    ```yaml
+    services:
+      scanner:
+        environment:
+          OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY: /osv-db
+        volumes:
+          - osv-db:/osv-db
+    volumes:
+      osv-db:
+    ```
+
+    Without it everything else works as before.
+
 !!! warning "Upgrading from 2.3.0-beta.6 or older"
     The frontend listens on **8080** instead of 4173, the backend publishes no port, and the reverse
     proxy sends everything to the frontend. Take `docker-compose.yml.example` over into your

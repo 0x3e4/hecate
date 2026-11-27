@@ -7,6 +7,8 @@ Your personal settings open in a small panel next to whatever opened it:
   then starts with your name, e-mail and role and ends with **Sign out**; there is no separate
   *Preferences* entry. Signed out, it ends with **Sign in to keep these on your account**.
 
+![The preferences panel, signed in: identity, language, time zone, the dashboard switch and Sign out](../img/hecate-preferences.png)
+
 Escape, a click outside or a second click on the same entry closes it. Nobody needs admin rights for
 any of this: it changes only what you see.
 

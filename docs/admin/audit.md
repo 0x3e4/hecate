@@ -27,7 +27,10 @@ data feeds — EUVD, NVD, CISA KEV, CPE, CWE, CAPEC, CIRCL, GHSA and OSV — eac
 regular incremental sync and an "initial sync" variant for the first full bootstrap, plus the Advisory
 Feed, Nuclei Templates and (with a token) VulnCheck KEV syncs. Alongside those
 you will see manual CVE refreshes, saved-search create/update/delete actions, SCA scans, AI analyses
-(single and batch), attack-path narrative generation, the MAL-* deps.dev enrichment backfill, and
+(single and batch), attack-path narrative generation, the MAL-* deps.dev enrichment backfill,
+server-list fetches (`inventory_list_pulled`: manual ones always, scheduled ones when they changed
+something or failed for the first time), changes to the fetched lists
+(`inventory_list_source_added` / `_updated` / `_removed`, the URL masked, never the credential), and
 MCP tool calls and OAuth events. In short, anything that touches data or runs as a tracked job leaves
 a trace.
 

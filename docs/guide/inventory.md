@@ -9,13 +9,15 @@ Once an entry matches, the result surfaces in several places at once: an expanda
 The page has two tabs. **Systems** lists the servers, VMs and nodes you run and whether each one still
 sends its SBOM; **Products** holds the products and versions described below.
 
-![The Environment Inventory page with declared items and their affecting CVEs](../img/hecate-inventory.png)
+![Inventory → Products: declared items with their worst severity, CVE count and end-of-life status](../img/hecate-inventory.png)
 
 ## Systems
 
 A system is a place: a server, a VM, a Kubernetes node, a gateway. What is installed on it arrives as an
 SBOM or scanner report that the system pushes ([Hosts, Nodes & Other Systems](../sca/hosts.md)); the
 system keeps its latest findings and its history from those pushes.
+
+![Inventory → Systems: each system with its last report, worst severity, findings and products](../img/hecate-inventory-systems.png)
 
 Systems get onto the list in three ways:
 

@@ -136,12 +136,18 @@ password) and lands in the
 archives) always use the scanner default. With [no external lookups](#no-external-lookups) on, TruffleHog
 never verifies, whatever this setting says.
 
+Through the API it is `trufflehogVerification` on `PATCH /api/v1/scans/targets/{id}`: `true` (verify), `false`
+(don't) or `null` (scanner default); the target carries the same field, and MCP `list_scan_targets` shows it.
+Update the scanner together with the backend: an older scanner ignores the setting and uses its default.
+
 ## No external lookups
 
 Several scanners ask outside services about what they find in your code: a registry about each package
 name, OSV.dev about the package list, a provider about a secret. For public code that costs nothing.
 For private code it can: internal package and module names, the shape of your dependency tree and found
 credentials leave your network. **No external lookups** keeps all of that in.
+
+![Target page: the VEX sources, System and External lookups cards](img/hecate-target-settings.png)
 
 Turn it on per target: target page → **External lookups** → **No external lookups**. Changing it needs
 the same rights as the target's other settings (admin, editor, or the target's password), lands in the

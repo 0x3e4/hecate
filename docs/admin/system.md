@@ -26,10 +26,10 @@ linked in the last column.
 
 | Tab | What you do here | More detail |
 | --- | --- | --- |
-| **General** | Set the UI language and display timezone, cap the AI batch size, check service health, send a test notification, and back up / restore data. | this page |
+| **General** | Cap the AI batch size, check service health, send a test notification, and back up / restore data. Language and timezone are personal, under **Preferences** in the sidebar. | this page |
 | **Access Control** | Create and revoke API tokens, and set or clear a per-target write password for each scan target. | [Security & Access Control](../security-access-control.md) |
 | **Notifications** | Manage Apprise channels, notification rules, and message templates. | [Notifications](../integrations/notifications.md) |
-| **Data** | Watch the sync status of all ten sources, trigger syncs by hand, re-sync or delete specific vulnerabilities, and manage saved searches. | this page |
+| **Data** | Watch the sync status of every source, trigger syncs by hand, manage advisory feeds and the server lists Hecate fetches, re-sync or delete specific vulnerabilities, and manage saved searches. | this page, [Fetched lists](../guide/inventory.md#fetched-lists) |
 | **Policies** | Define SPDX license policies that are evaluated after every scan, and automatic VEX rules. | [License Compliance](../sca/licenses.md), [VEX rules](#vex-rules) |
 
 ## General
@@ -87,8 +87,8 @@ environment variables involved — lives in [Security & Access Control](../secur
 
 The Notifications tab manages the three building blocks of Hecate's alerting: **channels** (Apprise
 URLs that say *where* a message goes, each carrying a routing tag), **rules** (that say *when* to fire
-— on system events, saved-search matches, vendor/product/DQL matches, scan results, inventory hits, or
-retroactive malware alerts), and **message templates** (that customise the title and body per event
+— on system events, saved-search matches, vendor/product/DQL matches, scan results, inventory hits,
+inventory systems that report new findings, stop reporting or are retired, or retroactive malware alerts), and **message templates** (that customise the title and body per event
 type using `{placeholder}` variables and `{#each}…{/each}` loops).
 
 Channels, rules, and templates each have an add button, an inline editor, and a list with edit/delete
@@ -104,6 +104,13 @@ intelligence feeding the platform is fresh, and gives you the controls to repair
 records when something looks wrong.
 
 ![System page — Data tab](../img/hecate-system-data.png)
+
+**Advisory feeds** and **Server lists** sit on this tab too. Advisory feeds are the CERT, vendor and
+community feeds behind the [Advisories](../guide/cert.md) page (adding one is described in the
+[dashboard guide](../guide/dashboard.md)). Server lists are the lists of servers Hecate fetches on a
+schedule for the inventory's systems: a URL, a format, *Keep* or *Retire*, an interval and an optional
+credential, with **Preview** and **Fetch now**. Both are admin-only; see
+[Fetched lists](../guide/inventory.md#fetched-lists).
 
 ### Sync status
 

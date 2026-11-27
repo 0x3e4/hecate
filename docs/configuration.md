@@ -388,6 +388,7 @@ Lists Hecate fetches for the inventory's systems ([fetched lists](guide/inventor
 | `INVENTORY_LIST_SOURCES_ALLOW_PRIVATE_HOSTS` | `false` | Let server lists point at private, loopback or link-local addresses. Off, such a list is refused when saved and fails before every fetch. |
 | `INVENTORY_LIST_SOURCE_TIMEOUT_SECONDS` | `30` | Timeout of one fetch (5 to 300). |
 | `SCHEDULER_INVENTORY_LIST_SOURCES_CHECK_MINUTES` | `5` | How often the scheduler looks for lists whose own interval has passed. |
+| `INVENTORY_SYSTEM_STALE_DAYS` | `3` | Days without a report after which a system reads *stale* and an *Inventory system* rule reports it as stopped. |
 | `SCHEDULER_INVENTORY_SYSTEM_WATCH_MINUTES` | `60` | How often *Inventory system* notification rules look for systems that stopped reporting (5 to 1440; only with `NOTIFICATIONS_ENABLED`). |
 
 ## Inventory enrichment (endoflife.date)

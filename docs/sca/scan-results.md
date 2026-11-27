@@ -290,8 +290,8 @@ on all scans of the target. **Apply now** fetches them again on demand.
   still applies after the package was updated. Keep sources the vendor maintains, not frozen copies.
 - The card shows per source what the last fetch found (format and number of statements, or why it failed) and
   how many findings were set or removed.
-- A `github.com/…/blob/…` link is turned into its raw file. URLs with credentials, plain http and hosts that
-  resolve to private addresses are refused (see [Security & Access Control](../security-access-control.md)).
+- A `github.com/…/blob/…` link is turned into its raw file. URLs with credentials, plain http, control
+  characters and hosts that resolve to private addresses are refused (see [Security & Access Control](../security-access-control.md)).
 
 Hecate publishes VEX documents for its own images, so a scan of `ghcr.io/0x3e4/hecate-backend` with
 `https://raw.githubusercontent.com/0x3e4/hecate/main/vex/hecate-backend.openvex.json` as its source shows how it

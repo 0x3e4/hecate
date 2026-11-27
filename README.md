@@ -212,8 +212,8 @@ flowchart TB
 | **Provenance verification** | npm, PyPI, Go, Maven, RubyGems, Cargo, NuGet, Docker — Sigstore, PEP 740, Go sumdb, Cosign. |
 | **Attack-path graph** | Per-CVE deterministic Mermaid graph (`entry → asset → package → CVE → CWE → CAPEC → exploit → impact → fix`) with optional AI narrative. |
 | **Cross-CVE attack chain** | Per-scan ATT&CK kill-chain narrative bucketing all findings into Foothold → Credential Access → Privilege Escalation → Lateral Movement → Impact. |
-| **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type, with a change history (each change can carry a note such as a ticket or server), version reports from your deployment pipeline, and a duplicate action for the next server of the same product. |
-| **API tokens** | Named tokens with scopes (`scan:submit`, `inventory:report`) and an optional expiry, managed on System → Access Control. |
+| **Environment inventory** | User-declared products + versions matched against the catalogue for impact callouts and a dedicated notification rule type, with a change history (each change can carry a note such as a ticket or server), version reports from your deployment pipeline, and a duplicate action for the next server of the same product. **Systems** (servers, VMs, nodes) come from SBOM pushes or server lists (CSV, Ansible inventories, also fetched on a schedule) and show which of them report and which went silent. |
+| **API tokens** | Named tokens with scopes (`scan:submit`, `inventory:report`, `sbom:import`, `inventory:sync`) and an optional expiry, managed on System → Access Control. |
 | **Sign-in (OIDC) & audit trail** | Optional web sign-in through any OIDC provider (Keycloak, Authelia, Authentik, Zitadel, Pocket ID, Entra ID) with admin / editor / viewer roles mapped from groups, server-side sessions, an optional login requirement for reads, and every API write recorded with the person or credential behind it. Passwords and tokens keep working alongside. |
 | **MCP server** | 53 tools, OAuth 2.0 with delegated auth (GitHub / Microsoft / OIDC), DCR + PKCE, scope-gated writes. |
 | **Notifications** | Apprise integration with rules, watch queries, message templates, and per-tag channel routing. |
@@ -359,7 +359,7 @@ scanner/
 | Changelog | Recent vulnerability changes with date and job filters. |
 | SCA scans | Targets, scans, consolidated findings, SBOM (sortable, provenance filter), licenses, scanner monitoring. |
 | Scan detail | Findings (multi-select VEX, dismissal toggle), **Attack Chain**, SBOM, history, compare, security alerts, SAST, secrets, best practices, layer analysis, license compliance. |
-| Inventory | User-declared products + versions matched against the catalogue. Compact status rows (click to expand the affecting CVEs), a "Flagged CVEs" roll-up table, a modal add/edit form, and endoflife.date support / end-of-life status per item (with the product page link, support-until date and LTS). |
+| Inventory | Two tabs. **Products**: user-declared products + versions matched against the catalogue, compact status rows (click to expand the affecting CVEs), sort and filters, a "Flagged CVEs" roll-up table, a modal add/edit form, and endoflife.date support / end-of-life status per item. **Systems**: servers, VMs and nodes with their last report, report status and products, imported from server lists. |
 | Malware feed | Overview of all MAL-aliased OSV advisories (~417 k records, server-paginated). |
 | System | 5 tabs: General, Access Control (per-target write passwords), Notifications, Data, Policies. |
 | Support | In-app diagnostics: per-component version check (backend / frontend / scanner) against the latest `main-<sha>` images on GHCR via `GET /api/v1/version`. |

@@ -69,6 +69,8 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `PUT` / `DELETE` | `/api/v1/inventory/systems/sources/{id}` | Change (partial; send `url` only when it changed, `authHeaderValue: ""` removes the credential) or remove one (admin) |
 | `POST` | `/api/v1/inventory/systems/sources/{id}/pull` | Fetch now; `dryRun` reports, `force` passes the half-of-the-list guard; a failed fetch answers `ok: false` (admin) |
 | `GET` / `PUT` / `DELETE` | `/api/v1/inventory/systems/{id}` | One system; change it (partial, `null` clears) or remove it (its findings stay) |
+| `GET` | `/api/v1/scans/targets` | Scan targets; each carries `systemId` when an inventory system holds it, `systems=false` leaves those out |
+| `GET` | `/api/v1/inventory/{id}/affected-vulnerabilities` | The CVEs affecting one inventory item, each with `lastChangeAt` (sorting and the *new* tag); items list the systems they run on as `systemIds` |
 | `GET` | `/api/v1/inventory/{id}/history` | The change log of one inventory item |
 | `GET` | `/api/v1/assets/vendors`, `/api/v1/assets/products` | Catalog search ranked by relevance; the first 25 hits carry `vulnerabilityCount` |
 | `GET` `POST` `DELETE` | `/api/v1/api-tokens` | List, create and revoke API tokens. Always needs `SYSTEM_PASSWORD`, also to read |
