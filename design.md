@@ -47,6 +47,7 @@ The spacing scale, the type scale, the easings and the durations are the scaffol
 - Primary: gold fill, `--color-accent-ink` text, 36px, one per screen.
 - Secondary: outline in `--color-rule-strong`, same radius and height.
 - Fields: `--color-field-edge`, focus ring as an `outline`, never a border change.
+- Multi-line fields grow with what is typed or pasted (`field-sizing: content`, `utils/autoGrow.ts` where it is missing), `rows` is the minimum, 70 % of the window the maximum before the field scrolls. A field that sizes itself carries `data-own-height`.
 - Tabs: underline in gold on the current tab, the count as a muted tabular figure.
 
 ## Motion

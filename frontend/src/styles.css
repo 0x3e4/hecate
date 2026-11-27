@@ -152,6 +152,13 @@ h2, h3 { line-height: 1.25; max-width: none; }
 input, textarea, select { color: var(--color-ink); background: var(--color-paper); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); }
 input:not([type="checkbox"]):not([type="radio"]), select { min-height: var(--control-height); padding-inline: var(--space-sm); }
 textarea { padding: var(--space-xs) var(--space-sm); }
+/* Multi-line fields grow with what is typed or pasted (a server list, VEX URLs, notes), up to 70 % of
+   the window, then scroll. field-sizing ignores rows, so rows is restated as the minimum height.
+   utils/autoGrow.ts does the same where field-sizing is missing. data-own-height: sizes itself. */
+textarea:not([data-own-height]) { field-sizing: content; min-block-size: calc(2lh + 2 * var(--space-xs) + 2 * var(--rule-hair)); max-block-size: 70vh; }
+textarea[rows="3"]:not([data-own-height]) { min-block-size: calc(3lh + 2 * var(--space-xs) + 2 * var(--rule-hair)); }
+textarea[rows="8"]:not([data-own-height]) { min-block-size: calc(8lh + 2 * var(--space-xs) + 2 * var(--rule-hair)); }
+textarea[rows="10"]:not([data-own-height]) { min-block-size: calc(10lh + 2 * var(--space-xs) + 2 * var(--rule-hair)); }
 input::placeholder, textarea::placeholder { color: var(--color-muted); opacity: 1; }
 input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }
 input:disabled, textarea:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }

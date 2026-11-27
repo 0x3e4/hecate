@@ -13,9 +13,11 @@ import { I18nProvider } from "./i18n/context";
 import { TimezoneProvider } from "./timezone/context";
 import { ServerConfigProvider } from "./server-config/context";
 import { AuthProvider } from "./auth/context";
+import { installAutoGrow } from "./utils/autoGrow";
 
 
 document.documentElement.classList.add("js");
+installAutoGrow();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
