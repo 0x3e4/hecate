@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.5.0-beta.1] - 2026-11-27
 
 > **Existing instances: add the `osv-db` volume to the scanner.** A target with *no external lookups* has OSV-Scanner match against a local copy of the OSV database (npm's alone is about 220 MB). Without a volume that copy sits on the scanner's `/tmp` tmpfs and is downloaded again after every restart. Like the `grype-db` volume, add to your own `docker-compose.yml`:
 >
