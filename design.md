@@ -36,6 +36,7 @@ The spacing scale, the type scale, the easings and the durations are the scaffol
 - IBM Plex Sans 400 and 600, self-hosted through `@fontsource`, so an on-prem instance loads nothing from a third party.
 - IBM Plex Mono 400 only for what is code or an identifier: CVE and GHSA IDs, versions, hashes, paths, commands.
 - Labels, table heads, chips and nav links: the body face a step smaller, sentence case, untracked. Figures that compare use tabular numerals.
+- Text takes the width of its section on desktop, like the tables beside it. No `ch` limit on paragraphs, intros, hints, headings or reports: a line that stops at half the section reads as cut off. Width limits stay for inputs, dialogs and table cells.
 
 ## Surfaces
 - Ladder: whitespace, then a hairline, then a tinted well, then a card. Never a card in a card.

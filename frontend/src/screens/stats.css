@@ -83,7 +83,7 @@
 .stats-bar-meta { color: var(--color-muted); font-size: var(--text-xs); }
 
 /* Asset catalogue cards */
-.stats-catalog-lead { margin: 0; color: var(--color-muted); font-size: var(--text-sm); max-width: 70ch; }
+.stats-catalog-lead { margin: 0; color: var(--color-muted); font-size: var(--text-sm); }
 .stats-catalog-link { text-decoration: underline; text-decoration-color: var(--color-rule-strong); }
 .stats-catalog-link:hover { color: var(--color-link); text-decoration-color: currentColor; }
 .stats-catalog-link:active { color: var(--color-focus); }

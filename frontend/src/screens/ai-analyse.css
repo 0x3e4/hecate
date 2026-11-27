@@ -78,9 +78,8 @@
 .ai-analyse-report-rail .ai-analyse-meta { margin-top: var(--space-xs); }
 .ai-analyse-report-main { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 0; }
 .ai-analyse-report-main .ai-analyse-prose { margin-top: var(--space-xs); }
-.ai-analyse-report-title { max-width: 72ch; font-size: var(--text-title); overflow-wrap: anywhere; }
-.ai-analyse-report-detail { max-width: 72ch; color: var(--color-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
-.ai-analyse-report-ids { max-width: 72ch; }
+.ai-analyse-report-title { font-size: var(--text-title); overflow-wrap: anywhere; }
+.ai-analyse-report-detail { color: var(--color-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
 
 .ai-analyse-meta { display: flex; flex-direction: column; gap: var(--space-3xs); margin: 0; font-size: var(--text-xs); }
 .ai-analyse-meta-row { display: flex; align-items: baseline; gap: var(--space-xs); min-width: 0; }
@@ -88,7 +87,7 @@
 .ai-analyse-meta dd { min-width: 0; margin: 0; color: var(--color-ink-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 /* Rendered report body */
-.ai-analyse-prose { max-width: 100ch; overflow-wrap: anywhere; }
+.ai-analyse-prose { overflow-wrap: anywhere; }
 .ai-analyse-prose > :first-child { margin-top: 0; }
 .ai-analyse-prose > :last-child { margin-bottom: 0; }
 .ai-analyse-prose p { max-width: none; margin-block: var(--space-sm); }
@@ -120,8 +119,3 @@
   .ai-analyse-report-rail .ai-analyse-meta { flex-direction: row; flex-wrap: wrap; gap: var(--space-3xs) var(--space-md); }
 }
 
-/* AI reports are long reading: a wider measure than the 65ch base paragraph, still a measure
-   (same steps as the vulnerability summary). The markdown paragraphs carry no class, so the
-   base p:not([class]) cap is lifted inside. */
-@media (min-width: 120rem) { .ai-analyse-prose { max-width: 120ch; } }
-@media (min-width: 160rem) { .ai-analyse-prose { max-width: 140ch; } }

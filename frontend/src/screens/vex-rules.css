@@ -3,7 +3,6 @@
 .vex-rules-presets-title { margin-bottom: var(--space-2xs); color: var(--color-muted); font-size: var(--text-xs); }
 .vex-rules-preset-list { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
 .vex-rules-preset { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); padding-block: var(--space-xs); border-top: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); }
-.vex-rules-preset .system-cell-sub { max-width: 75ch; }
 
 .vex-rules-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm) var(--space-md); padding: var(--space-md); }
 .vex-rules-span { grid-column: 1 / -1; }
@@ -16,7 +15,7 @@
 .vex-rules-checks label, .vex-rules-check { display: inline-flex; align-items: flex-start; gap: var(--space-xs); font-size: var(--text-sm); cursor: pointer; }
 .vex-rules-check input, .vex-rules-checks input { margin-top: 0.2em; }
 .vex-rules-check input:focus-visible, .vex-rules-checks input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-.vex-rules-check .system-cell-sub { display: block; max-width: 75ch; }
+.vex-rules-check .system-cell-sub { display: block; }
 .vex-rules-hint { margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
 
 .vex-rules-justification { display: block; margin-top: var(--space-3xs); color: var(--color-muted); font-size: var(--text-xs); }

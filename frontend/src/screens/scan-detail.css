@@ -108,7 +108,7 @@
 
 /* Expansion rows sit in a well, not a new card */
 .scan-detail-expansion > td { background: var(--color-paper-2); }
-.scan-detail-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2xs) var(--space-md); max-width: 60rem; margin: 0; font-size: var(--text-xs); }
+.scan-detail-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2xs) var(--space-md); margin: 0; font-size: var(--text-xs); }
 .scan-detail-facts dt { color: var(--color-muted); }
 .scan-detail-facts dd { margin: 0; color: var(--color-ink-2); overflow-wrap: anywhere; }
 .scan-detail-expansion-action { margin-top: var(--space-sm); }
@@ -156,7 +156,7 @@
 .scan-detail-item-head h3 { flex: 1 1 18rem; min-width: 0; max-width: none; font-size: var(--text-sm); line-height: 1.4; letter-spacing: 0; text-wrap: pretty; }
 .scan-detail-item-package { display: flex; flex-wrap: wrap; gap: var(--space-3xs) var(--space-xs); max-width: none; margin-top: var(--space-2xs); color: var(--color-ink-2); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .scan-detail .scan-detail-item-path { margin-top: var(--space-2xs); color: var(--color-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
-.scan-detail-item-text { margin-top: var(--space-2xs); max-width: 75ch; color: var(--color-ink-2); font-size: var(--text-sm); white-space: pre-line; overflow-wrap: anywhere; }
+.scan-detail-item-text { margin-top: var(--space-2xs); color: var(--color-ink-2); font-size: var(--text-sm); white-space: pre-line; overflow-wrap: anywhere; }
 .scan-detail-item-row { margin-top: var(--space-xs); }
 .scan-detail-item-list { margin: var(--space-2xs) 0 0; padding-left: var(--space-md); color: var(--color-ink-2); font-size: var(--text-sm); }
 .scan-detail-rule { display: inline-block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -196,7 +196,7 @@
 .scan-detail-ai-form label { color: var(--color-muted); }
 .scan-detail-ai-form textarea { width: 100%; min-height: 5rem; resize: vertical; }
 .scan-detail-ai-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-xs); }
-.scan-detail-ai-text { margin-top: var(--space-sm); max-width: 100ch; color: var(--color-ink-2); font-size: var(--text-sm); line-height: 1.65; }
+.scan-detail-ai-text { margin-top: var(--space-sm); color: var(--color-ink-2); font-size: var(--text-sm); line-height: 1.65; }
 .scan-detail-ai-text :is(p, li) { max-width: none; }
 .scan-detail-ai-byline { margin-top: var(--space-2xs); color: var(--color-muted); font-size: var(--text-xs); }
 .scan-detail-ai-text h1, .scan-detail-ai-text h2, .scan-detail-ai-text h3, .scan-detail-ai-text h4 { margin: var(--space-md) 0 var(--space-2xs); color: var(--color-ink); font-size: var(--text-md); font-weight: 600; line-height: 1.3; }
@@ -278,12 +278,6 @@
   .scan-detail-stack tr.scan-detail-expansion { display: block; padding: 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
   .scan-detail-stack .scan-detail-expansion > td { padding: var(--space-sm); }
 }
-
-/* AI reports are long reading: a wider measure than the 65ch base paragraph, still a measure
-   (same steps as the vulnerability summary). The markdown paragraphs carry no class, so the
-   base p:not([class]) cap is lifted inside. */
-@media (min-width: 120rem) { .scan-detail-ai-text { max-width: 120ch; } }
-@media (min-width: 160rem) { .scan-detail-ai-text { max-width: 140ch; } }
 
 /* Release marker + evidence bundle in the header (components/ScanReleaseActions.tsx) */
 .scan-detail-release { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }

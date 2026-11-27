@@ -6,7 +6,7 @@
 .system-tabs { display: flex; margin-bottom: var(--space-lg); border-bottom: var(--rule-hair) solid var(--color-rule); }
 .system-tabs > button { flex-shrink: 0; white-space: nowrap; }
 
-.system-section-help { max-width: 75ch; margin-bottom: var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
+.system-section-help { margin-bottom: var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
 
 /* Settings: label and help left, control right */
 .system-setting { display: grid; grid-template-columns: var(--system-label-width) minmax(0, 1fr); align-items: start; gap: var(--space-xs) var(--space-lg); padding-block: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
@@ -123,4 +123,4 @@
 .system-gate-title { max-width: none; margin-bottom: var(--space-sm); font-size: var(--text-section); }
 
 /* Signed in below admin: say once that changes will be refused */
-.system-role-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); max-width: 75ch; margin: 0 0 var(--space-md); padding: var(--space-xs) var(--space-sm); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); color: var(--color-ink-2); font-size: var(--text-sm); }
+.system-role-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); margin: 0 0 var(--space-md); padding: var(--space-xs) var(--space-sm); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); color: var(--color-ink-2); font-size: var(--text-sm); }

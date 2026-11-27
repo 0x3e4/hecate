@@ -6,10 +6,9 @@ body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-
 :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.16em; }
 h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: var(--display-weight, 700); font-synthesis: none; letter-spacing: var(--tracking-display); line-height: 1.05; overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
-h1 { max-width: 20ch; font-size: var(--text-display); } h2 { max-width: 30ch; font-size: var(--text-section); } h3 { max-width: 40ch; font-size: var(--text-title); line-height: 1.2; }
-.lead { font-size: var(--text-lead); line-height: 1.45; max-width: 52ch; }
+h1 { font-size: var(--text-display); } h2 { font-size: var(--text-section); } h3 { font-size: var(--text-title); line-height: 1.2; }
+.lead { font-size: var(--text-lead); line-height: 1.45; }
 p { margin: 0; text-wrap: pretty; }
-p:not([class]) { max-width: 65ch; }
 img, video { max-width: 100%; height: auto; display: block; }
 svg { display: block; }
 [hidden] { display: none !important; }

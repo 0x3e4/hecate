@@ -50,7 +50,7 @@
 
 /* SBOM changes */
 .scan-target-diff { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--space-lg) var(--space-xl); }
-.scan-target-diff-group { width: 100%; min-width: 0; max-width: 44rem; }
+.scan-target-diff-group { width: 100%; min-width: 0; }
 .scan-target-diff-group h3 { max-width: none; font-size: var(--text-sm); }
 .scan-target-diff-group--added h3 { color: var(--color-success); }
 .scan-target-diff-group--removed h3 { color: var(--color-error); }
@@ -117,7 +117,7 @@
 }
 
 /* VEX sources card */
-.scan-target-vex-intro { max-width: 80ch; margin: 0 0 var(--space-sm); font-size: var(--text-sm); }
+.scan-target-vex-intro { margin: 0 0 var(--space-sm); font-size: var(--text-sm); }
 .scan-target-vex-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 .scan-target-class-fields { display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); }
 .scan-target-lookups-switch { display: inline-flex; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-sm); font-size: var(--text-sm); }

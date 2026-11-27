@@ -35,8 +35,8 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .app-content { flex: 1; width: 100%; max-width: var(--container); margin-inline: auto; padding: var(--space-lg) var(--space-xl) var(--space-2xl); min-height: 0; }
 
 /* Wide, ultrawide and 4K screens: the content takes the room instead of a 1600px column in the
-   middle. Running text keeps its measure through the ch limits on p, headings and summaries; tables,
-   lists and grids get the width. Past 2560px CSS pixels (4K at 100–125 %, 5K, ultrawide) the type
+   middle. Text, tables, lists and grids all take the section's width; paragraphs carry no ch limit,
+   so an intro never stops at half the section. Past 2560px CSS pixels (4K at 100–125 %, 5K, ultrawide) the type
    grows a step, spacing stays in px. rem in a media query is the browser default, not this font-size. */
 @media (min-width: 120rem) {
   :root { --container: 2560px; }

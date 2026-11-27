@@ -1,5 +1,5 @@
 /* Advisory feeds on System, Data. Tokens only; see design.md. */
-.advisory-feeds-note { max-width: 75ch; margin-bottom: var(--space-md); color: var(--color-ink-2); font-size: var(--text-sm); }
+.advisory-feeds-note { margin-bottom: var(--space-md); color: var(--color-ink-2); font-size: var(--text-sm); }
 
 .advisory-feeds-form { display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); gap: var(--space-md); padding: var(--space-md); }
 .advisory-feeds-field { display: flex; flex-direction: column; gap: var(--space-2xs); min-width: 0; font-size: var(--text-sm); font-weight: 600; }
@@ -11,7 +11,7 @@
 .advisory-feeds-kind input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .advisory-feeds-kind strong { display: block; font-weight: 600; }
 .advisory-feeds-kind-help { display: block; color: var(--color-muted); font-size: var(--text-xs); line-height: 1.4; }
-.advisory-feeds-hint { grid-column: 1 / -1; max-width: 75ch; color: var(--color-muted); font-size: var(--text-xs); }
+.advisory-feeds-hint { grid-column: 1 / -1; color: var(--color-muted); font-size: var(--text-xs); }
 .advisory-feeds-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 
 .advisory-feeds-url { max-width: 28rem; overflow-wrap: anywhere; }

@@ -1,6 +1,6 @@
 /* Inventory: item rows, inline expansion, flagged CVEs, add/edit modal. Tokens only; see design.md. */
 .inventory-stats { margin-bottom: var(--space-lg); }
-.inventory-note { max-width: 75ch; margin-bottom: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }
+.inventory-note { margin-bottom: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }
 .inventory-search { max-width: 30rem; }
 .inventory-search-count { color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .inventory-control { display: inline-flex; align-items: center; gap: var(--space-xs); }
