@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:5b7b1583-591d-5e0c-a172-1f1f014729e7",
-  "version": 4,
+  "serialNumber": "urn:uuid:12c21931-5574-5ba8-b74a-0b0184ba8429",
+  "version": 5,
   "metadata": {
-    "timestamp": "2026-11-26T21:42:44Z",
+    "timestamp": "2026-11-27T06:56:11Z",
     "tools": {
       "components": [
         {
@@ -340,13 +340,6 @@
       "name": "python",
       "version": "3.14.10",
       "purl": "pkg:generic/python@3.14.10"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:pypi/dnspython@2.9.1",
-      "name": "dnspython",
-      "version": "2.9.1",
-      "purl": "pkg:pypi/dnspython@2.9.1"
     }
   ],
   "vulnerabilities": [
@@ -1271,27 +1264,6 @@
         },
         {
           "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-128089",
-      "analysis": {
-        "state": "not_affected",
-        "justification": "code_not_reachable",
-        "detail": "The flaw is in dnspython's zone-file text parser for WKS records. dnspython is only in the backend as pymongo's resolver for mongodb+srv:// connection strings (SRV and TXT lookups in wire format); nothing parses zone-file text."
-      },
-      "affects": [
-        {
-          "ref": "pkg:pypi/dnspython@2.9.1"
-        }
-      ],
-      "references": [
-        {
-          "id": "GHSA-vvf4-9x63-8xvv",
-          "source": {
-            "name": "alias"
-          }
         }
       ]
     },

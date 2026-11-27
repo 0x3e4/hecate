@@ -3,8 +3,8 @@
   "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-frontend.openvex.json",
   "author": "Hecate maintainers",
   "role": "Document Creator",
-  "timestamp": "2026-11-05T17:57:26Z",
-  "version": 1,
+  "timestamp": "2026-11-27T06:56:45Z",
+  "version": 3,
   "tooling": "vex/tools/generate.py",
   "statements": [
     {
@@ -30,6 +30,153 @@
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
       "impact_statement": "The flaw is in busybox wget's request line. Nothing in the image calls wget with outside input; the only call is the compose health check of the docs service, a fixed http://127.0.0.1/."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107493"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-107494"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-121482"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-124709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-35190"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-84786"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-95690"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-frontend?repository_url=ghcr.io/0x3e4/hecate-frontend",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+            },
+            {
+              "@id": "pkg:apk/alpine/libssl3@3.5.9-r1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
     }
   ]
 }

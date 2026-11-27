@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:f70e3430-e2b5-5db6-9da2-f5607f59a3eb",
-  "version": 1,
+  "serialNumber": "urn:uuid:2e309184-8bc9-55a1-ba44-8866ea6b1c4b",
+  "version": 3,
   "metadata": {
-    "timestamp": "2026-11-05T17:57:26Z",
+    "timestamp": "2026-11-27T06:56:45Z",
     "tools": {
       "components": [
         {
@@ -42,6 +42,20 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1",
+      "name": "libcrypto3",
+      "version": "3.5.9-r1",
+      "purl": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:apk/alpine/libssl3@3.5.9-r1",
+      "name": "libssl3",
+      "version": "3.5.9-r1",
+      "purl": "pkg:apk/alpine/libssl3@3.5.9-r1"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:apk/alpine/ssl_client@1.37.0-r31",
       "name": "ssl_client",
       "version": "1.37.0-r31",
@@ -65,6 +79,118 @@
         },
         {
           "ref": "pkg:apk/alpine/ssl_client@1.37.0-r31"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107493",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-107494",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-121482",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-124709",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-35190",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-84786",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-95690",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "The flaw is in OpenSSL code nginx only reaches with TLS configured: a QUIC or DTLS endpoint, a TLS 1.3 server with Suite B flags, a DANE-enabled TLS client, CMS / PKCS#7 verification with CRL checks, or reading PEM certificate chains into an existing stack. nginx in this image serves plain HTTP (listen without ssl or quic) and proxies over plain http (frontend/nginx.conf.template, docs/nginx.conf); it has no ssl_* directives, so it loads no certificate and opens no TLS connection. TLS ends at the reverse proxy in front of it."
+      },
+      "affects": [
+        {
+          "ref": "pkg:apk/alpine/libcrypto3@3.5.9-r1"
+        },
+        {
+          "ref": "pkg:apk/alpine/libssl3@3.5.9-r1"
         }
       ]
     }

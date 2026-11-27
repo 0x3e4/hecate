@@ -3,8 +3,8 @@
   "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-backend.openvex.json",
   "author": "Hecate maintainers",
   "role": "Document Creator",
-  "timestamp": "2026-11-26T21:42:44Z",
-  "version": 4,
+  "timestamp": "2026-11-27T06:56:11Z",
+  "version": 5,
   "tooling": "vex/tools/generate.py",
   "statements": [
     {
@@ -1425,27 +1425,6 @@
       ],
       "status": "under_investigation",
       "status_notes": "glibc is in use: the backend (uvicorn) process loads or runs libc6 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-128089",
-        "aliases": [
-          "GHSA-vvf4-9x63-8xvv"
-        ]
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-backend?repository_url=ghcr.io/0x3e4/hecate-backend",
-          "subcomponents": [
-            {
-              "@id": "pkg:pypi/dnspython@2.9.1"
-            }
-          ]
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "The flaw is in dnspython's zone-file text parser for WKS records. dnspython is only in the backend as pymongo's resolver for mongodb+srv:// connection strings (SRV and TXT lookups in wire format); nothing parses zone-file text."
     },
     {
       "vulnerability": {

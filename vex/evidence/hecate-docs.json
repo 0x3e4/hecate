@@ -1,5 +1,5 @@
 {
-  "image": "hecate-docs@sha256:3f51c7bcbf06643e21749daa29ec0643c4563ab14c21b26c8b24e5f47c7116c8",
+  "image": "ghcr.io/0x3e4/hecate-docs@sha256:94c9cd28cb9df58b7668e53ee1a72c16bafba1cc15b91e64e6be74d7f2f600d9",
   "collectedWith": "vex/tools/collect.sh",
   "loadedPackages": [
     "busybox",
@@ -12,6 +12,6 @@
   ],
   "govulncheck": {},
   "statementBasis": {
-    "assessment": 3
+    "assessment": 17
   }
 }

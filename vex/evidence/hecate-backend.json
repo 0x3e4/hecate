@@ -1,5 +1,5 @@
 {
-  "image": "ghcr.io/0x3e4/hecate-backend@sha256:3975e7a941a9d558d3da78b1612e593803908c64d46100f2b3b31055f6a439dc",
+  "image": "ghcr.io/0x3e4/hecate-backend@sha256:7f4e559828ff62d67e63070623d0af00ebcffeb2321ba1e1970fc9ca6e3e888a",
   "collectedWith": "vex/tools/collect.sh",
   "loadedPackages": [
     "coreutils",
@@ -15,7 +15,7 @@
   ],
   "govulncheck": {},
   "statementBasis": {
-    "assessment": 10,
+    "assessment": 9,
     "runtime-evidence": 222
   }
 }
