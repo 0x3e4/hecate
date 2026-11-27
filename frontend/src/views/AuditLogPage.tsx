@@ -30,6 +30,10 @@ const JOB_LABELS: Record<string, string> = {
   advisory_feed_added: "Advisory feed added",
   advisory_feed_updated: "Advisory feed updated",
   advisory_feed_removed: "Advisory feed removed",
+  inventory_list_pulled: "Server list fetched",
+  inventory_list_source_added: "Server list added",
+  inventory_list_source_updated: "Server list updated",
+  inventory_list_source_removed: "Server list removed",
   ghsa_sync: "GHSA Sync",
   ghsa_initial_sync: "GHSA Initial Sync",
   manual_refresh: "Manual Refresh",
@@ -103,6 +107,14 @@ const AuditLog = () => {
         return t("Advisory feed updated", "Meldungs-Feed geändert");
       case "advisory_feed_removed":
         return t("Advisory feed removed", "Meldungs-Feed entfernt");
+      case "inventory_list_pulled":
+        return t("Server list fetched", "Serverliste abgerufen");
+      case "inventory_list_source_added":
+        return t("Server list added", "Serverliste hinzugefügt");
+      case "inventory_list_source_updated":
+        return t("Server list updated", "Serverliste geändert");
+      case "inventory_list_source_removed":
+        return t("Server list removed", "Serverliste entfernt");
       case "attack_path_analysis":
         return t("Attack Path narrative", "Attack-Path-Szenario");
       case "ai_investigation":
@@ -386,6 +398,10 @@ const AuditLog = () => {
             <option value="advisory_feed_added">{t("Advisory feed added", "Meldungs-Feed hinzugefügt")}</option>
             <option value="advisory_feed_updated">{t("Advisory feed updated", "Meldungs-Feed geändert")}</option>
             <option value="advisory_feed_removed">{t("Advisory feed removed", "Meldungs-Feed entfernt")}</option>
+            <option value="inventory_list_pulled">{t("Server list fetched", "Serverliste abgerufen")}</option>
+            <option value="inventory_list_source_added">{t("Server list added", "Serverliste hinzugefügt")}</option>
+            <option value="inventory_list_source_updated">{t("Server list updated", "Serverliste geändert")}</option>
+            <option value="inventory_list_source_removed">{t("Server list removed", "Serverliste entfernt")}</option>
             <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
             <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
             <option value="sca-scan">SCA Scan</option>
