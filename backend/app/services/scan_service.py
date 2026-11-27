@@ -134,7 +134,8 @@ _EPOCH = datetime.min.replace(tzinfo=UTC)
 class IndexedComponent(NamedTuple):
     name: str
     version: str
-    # allowed_vendor_slugs() of the component, None = any vendor (OS / binary).
+    # allowed_vendor_slugs() of the component: None = any vendor (binary / generic),
+    # ExcludedVendors = any but a bare language registry (distribution packages).
     allowed: frozenset[str] | None
     scan_id: str
 
@@ -913,13 +914,26 @@ class ScanService:
             # scanners first, then Hecate's own database for what they don't own.
             scanner_findings, scanner_names = await self._scan_imported_sbom(sbom_data, scan_id_val, target_id)
             try:
-                findings = await self._match_vulnerabilities_for_components(scan_id_val, target_id, components)
+                # Without a distro-aware scanner, distribution packages are matched by
+                # their source package and upstream version (os_packages.py).
+                from app.services.os_packages import source_packages
+
+                findings = await self._match_vulnerabilities_for_components(
+                    scan_id_val, target_id, components,
+                    distribution_aware=bool(scanner_names),
+                    sources=None if scanner_names else source_packages(sbom_data),
+                )
                 if scanner_names:
                     findings = drop_os_package_matches(findings, components)
                 findings = [*scanner_findings, *findings]
                 if findings:
                     await self.finding_repo.bulk_insert(findings)
                     all_findings = findings
+                    # The passes an image scan's findings get: a CVE for GHSA-only rows,
+                    # fix versions that point below the installed major, severity from the DB.
+                    await self._match_cve_for_unmatched_findings(scan_id_val, findings, components)
+                    await self._fix_downgrade_fix_versions(scan_id_val, findings)
+                    await self._override_severity_from_vuln_db(scan_id_val, findings)
             except Exception:
                 log.warning("scan_service.import_sbom_match_failed", scan_id=scan_id_val, exc_info=True)
             if scanner_names:
@@ -1162,33 +1176,57 @@ class ScanService:
         scan_id: str,
         target_id: str,
         components: list[Any],
+        *,
+        distribution_aware: bool = True,
+        sources: dict[tuple[str, str], tuple[str, str | None]] | None = None,
     ) -> list[ScanFindingDocument]:
         """Findings for the imported components from the local vulnerability DB.
 
         Version- and vendor-checked through :meth:`_local_vulnerability_matches`,
-        one finding per (component, vulnerability).
+        one finding per (component, vulnerability). With ``distribution_aware``
+        (a distro-aware scanner answered for the SBOM) distribution packages are
+        left to it. Without, they are matched as their source package at its
+        upstream version (``os_packages.match_identity``), and the finding says
+        that a backported fix cannot be seen this way.
         """
         if not components:
             return []
+        from app.services.os_packages import match_identity, os_purl_type
 
         def _field(comp: Any, key: str) -> Any:
             return comp.get(key) if isinstance(comp, dict) else getattr(comp, key, None)
 
-        keys = [(_field(c, "name") or "", _field(c, "version") or "", _field(c, "purl")) for c in components]
+        lookups: list[tuple[Any, tuple[str, str, str | None], tuple[str, str, str | None]]] = []
+        for comp in components:
+            own = (_field(comp, "name") or "", _field(comp, "version") or "", _field(comp, "purl"))
+            match_key = own
+            if os_purl_type(own[2]) is not None:
+                if distribution_aware:
+                    continue
+                match_key = match_identity(own[0], own[1], own[2], sources or {}) or own
+            lookups.append((comp, own, match_key))
         try:
-            matches = await self._local_vulnerability_matches(keys)
+            matches = await self._local_vulnerability_matches([key for _, _, key in lookups])
         except Exception:  # noqa: BLE001 - the import keeps its SBOM without matches
             log.warning("scan_service.local_vuln_match_failed", scan_id=scan_id, exc_info=True)
             return []
 
         findings: list[ScanFindingDocument] = []
         seen: set[tuple[str, str, str]] = set()
-        for comp, key in zip(components, keys):
-            name, version, _purl = key
-            for vuln_id in matches.get(key, []):
+        for comp, own, match_key in lookups:
+            name, version, _purl = own
+            by_upstream = match_key != own
+            for vuln_id in matches.get(match_key, []):
                 if (name, version, vuln_id) in seen:
                     continue
                 seen.add((name, version, vuln_id))
+                description = None
+                if by_upstream:
+                    description = (
+                        f"Matched as {match_key[0]} {match_key[1]}, the upstream source of this "
+                        "distribution package. Hecate has no advisories of the distribution: it may "
+                        "have fixed this by backport. A distro-aware scanner (Grype) can tell."
+                    )
                 findings.append(ScanFindingDocument(
                     scan_id=scan_id,
                     target_id=target_id,
@@ -1200,6 +1238,7 @@ class ScanService:
                     package_type=_field(comp, "type") or "",
                     severity="unknown",
                     title=f"Matched from local DB for {name}",
+                    description=description,
                 ))
         return findings
 

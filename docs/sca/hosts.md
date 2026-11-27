@@ -24,7 +24,11 @@ install.
   own version (`nginx 1.22.1-9+deb12u2`), often with security fixes backported into an old upstream
   number. Hecate hands the SBOM to Grype in the scanner, which knows the distributions' advisories, and
   takes its answer for those packages. Language packages (npm, PyPI, Maven, …) are matched by Grype and
-  Hecate's own database together.
+  Hecate's own database together. All findings then go through what an image scan's findings get: a
+  CVE for advisories that only carry a GHSA id, fix versions checked against the installed release
+  line, the severity from Hecate's database, VEX sources and rules. See
+  [Without a distro-aware scanner](#without-a-distro-aware-scanner) for what changes when Grype is not
+  there.
 - **Kind and exposure.** Mark a target as a host (a server, VM or workstation, whatever its OS),
   Kubernetes node, container or other, and as internet-facing or internal. A vulnerability's **Affected in your scans** block lists internet-facing systems first
   with an *Internet-facing* chip, so "where does the nginx with the RCE run, and is it exposed" is one
@@ -194,9 +198,24 @@ or pull are better scanned as image targets (**New scan**), which also runs the 
 
 | Variable | Default | |
 | --- | --- | --- |
-| `SCA_SBOM_IMPORT_SCANNERS` | `grype` | Scanners that also match an imported SBOM: `grype`, `trivy`, or both (`grype,trivy`). Empty leaves only Hecate's own name match, which reads distribution packages less exactly. |
+| `SCA_SBOM_IMPORT_SCANNERS` | `grype` | Scanners that also match an imported SBOM: `grype`, `trivy`, or both (`grype,trivy`). Trivy reads a CycloneDX SBOM's OS packages only with an `operating-system` component and `aquasecurity:trivy:SrcName` properties (Trivy's own output); Grype reads the purl's `distro` and `upstream`. Empty leaves only [Hecate's own match](#without-a-distro-aware-scanner). |
 | `SCA_SBOM_IMPORT_MAX_COMPONENTS` | `25000` | Largest SBOM accepted. |
 | `INVENTORY_SYSTEM_STALE_DAYS` | `3` | A system whose last report is older is listed as *No recent report*. |
 
-Without the scanner sidecar (`SCA_ENABLED=false` or unreachable), an import still works, matched by
-Hecate's own data only.
+### Without a distro-aware scanner
+
+Without the scanner sidecar (`SCA_ENABLED=false` or unreachable), with `SCA_SBOM_IMPORT_SCANNERS` empty,
+or when the scanner fails, an import still works, matched by Hecate's own data only. Hecate has no
+advisories of the distributions, so it matches a distribution package the way the project it was built
+from is known upstream:
+
+- **By its source package.** `libc6` is matched as `glibc`, `libssl3` as `openssl`. The source comes
+  from the purl's `upstream` qualifier (Syft and Grype write it; for RPMs the source RPM's file name) or
+  from Trivy's `aquasecurity:trivy:SrcName` / `SrcVersion` properties. Without either, the package's
+  own name is used.
+- **At its upstream version.** `1:2.36-9+deb12u4` is read as `2.36`: the epoch, the distribution's
+  revision and a repack suffix such as `+dfsg` are cut off.
+- **Never against a language registry's advisory.** A Debian `requests` is not PyPI's `requests`.
+
+A fix the distribution backported into an older upstream version still looks open this way, so these
+findings say so in their description. For exact results keep Grype in the import.

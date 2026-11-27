@@ -12,15 +12,27 @@ from app.services.sbom_ecosystem import allowed_vendor_slugs, vendor_names_compo
         (None, "node"),
         ("", "node"),
         ("pkg:generic/node@22.22.3", "node"),
-        ("pkg:deb/debian/openssl@3.0.15", "openssl"),
-        ("pkg:apk/alpine/busybox@1.36.1", "busybox"),
-        ("pkg:rpm/redhat/curl@8.0", "curl"),
         ("pkg:oci/hecate-backend@sha256%3Aabc", "hecate-backend"),
     ],
 )
-def test_os_binary_and_unknown_packages_take_any_vendor(purl, name):
+def test_binary_and_unknown_packages_take_any_vendor(purl, name):
     assert allowed_vendor_slugs(purl, name) is None
     assert vendor_names_component(None, ["nodejs", "Node.js"])
+
+
+@pytest.mark.parametrize(
+    ("purl", "name", "project_vendor"),
+    [
+        ("pkg:deb/debian/openssl@3.0.15", "openssl", "openssl"),
+        ("pkg:apk/alpine/busybox@1.36.1", "busybox", "busybox"),
+        ("pkg:rpm/redhat/curl@8.0", "curl", "haxx"),
+    ],
+)
+def test_distribution_packages_take_any_vendor_but_a_registry(purl, name, project_vendor):
+    allowed = allowed_vendor_slugs(purl, name)
+    assert allowed is not None
+    assert vendor_names_component(allowed, [project_vendor])
+    assert not vendor_names_component(allowed, ["npm"])
 
 
 def test_npm_console_is_not_citrix_netscaler_console():

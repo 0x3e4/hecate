@@ -41,7 +41,7 @@ from app.services.inventory_matcher import (
     is_marked_not_vulnerable,
     platform_cpe_filter,
 )
-from app.services.sbom_ecosystem import allowed_vendor_slugs, vendor_names_component
+from app.services.sbom_ecosystem import allowed_vendor_slugs, is_vendor_restricted, vendor_names_component
 
 log = structlog.get_logger()
 
@@ -162,7 +162,7 @@ def sbom_component_fits(
         return False
     allowed = allowed_vendor_slugs(purl, name, package_type)
     vendors = products[slug]
-    if allowed is not None and not vendors:
+    if is_vendor_restricted(allowed) and not vendors:
         return False  # a registry package needs the advisory's vendor to fit it
     return vendor_names_component(allowed, vendors)
 

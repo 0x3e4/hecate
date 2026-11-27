@@ -14,7 +14,10 @@ namespace (``@angular`` → ``angular``, ``org.apache.logging.log4j`` →
 packages (``deb``, ``apk``, ``rpm``, ``generic``, …) and components with
 neither a purl nor a registry package type keep the plain name match: there
 NVD's vendors are the projects themselves (``openssl``, ``nodejs``) and no
-registry name exists to compare. A component without a purl takes the
+registry name exists to compare. A distribution package only refuses entries
+whose vendor is nothing but a language registry (``ExcludedVendors``): Debian's
+``python3-requests`` source is ``requests``, and PyPI's ``requests`` advisories
+are about the PyPI package, not about what the distribution ships. A component without a purl takes the
 ecosystem from its scanner package type (``PACKAGE_TYPE_PURL_TYPE``): Trivy
 rows carried no purl, and a ``cargo`` ``console`` row then matched NetScaler.
 """
@@ -46,6 +49,22 @@ LANGUAGE_ECOSYSTEM_VENDORS: dict[str, frozenset[str]] = {
     "github": frozenset({"github-actions"}),
     "githubactions": frozenset({"github-actions"}),
 }
+
+# Distribution package types: their name is the distribution's, their vendor the project's.
+OS_PURL_TYPES = frozenset({"deb", "rpm", "apk", "alpm"})
+
+# Vendor slugs that only ever stand for a language registry, never for a project
+# a distribution packages. Deliberately not "python", "go", "golang", "cargo",
+# "composer", "swift" or "gem": NVD names CPython, the Go toolchain and others so.
+REGISTRY_ONLY_VENDORS = frozenset({
+    "npm", "npmjs", "pypi", "pip", "maven", "crates-io", "nuget", "rubygems", "packagist",
+    "pub", "hex", "cocoapods", "github-actions", "swiftpm", "conda",
+})
+
+
+class ExcludedVendors(frozenset):
+    """For a distribution package: vendors that cannot name it (every other one can)."""
+
 
 # Scanner package types -> purl type, for rows and findings without a purl.
 PACKAGE_TYPE_PURL_TYPE: dict[str, str] = {
@@ -88,13 +107,16 @@ def allowed_vendor_slugs(
     """Vendor slugs an advisory may carry to name this component.
 
     ``None`` means any vendor: the component is no language-registry package
-    (OS / binary / generic, or neither a purl nor a known package type), so the
-    name match stays as it was. Without a purl the scanner's ``package_type``
-    names the ecosystem.
+    (binary / generic, or neither a purl nor a known package type), so the
+    name match stays as it was. A distribution package (deb, rpm, apk, alpm)
+    gets ``ExcludedVendors``: any vendor but a bare language registry. Without
+    a purl the scanner's ``package_type`` names the ecosystem.
     """
     purl_type, namespace = _purl_type_and_namespace(purl)
     if purl_type is None and isinstance(package_type, str):
         purl_type = PACKAGE_TYPE_PURL_TYPE.get(package_type.strip().lower())
+    if purl_type in OS_PURL_TYPES:
+        return ExcludedVendors(REGISTRY_ONLY_VENDORS)
     registry = LANGUAGE_ECOSYSTEM_VENDORS.get(purl_type or "")
     if registry is None:
         return None
@@ -113,16 +135,25 @@ def allowed_vendor_slugs(
     return frozenset(s for s in allowed if s)
 
 
+def is_vendor_restricted(allowed: frozenset[str] | None) -> bool:
+    """Whether ``allowed`` lists the only vendors that fit (a language-registry package)."""
+    return allowed is not None and not isinstance(allowed, ExcludedVendors)
+
+
 def vendor_names_component(allowed: frozenset[str] | None, vendor_values: Iterable[str | None]) -> bool:
     """Whether any of an advisory entry's vendor values fits the component.
 
     An entry without vendor information is not held against the component.
+    For a distribution package (``ExcludedVendors``) every vendor fits except
+    an entry that names only language registries.
     """
     if allowed is None:
         return True
     slugs = {slugify(v) for v in vendor_values if isinstance(v, str) and v.strip()}
     if not slugs:
         return True
+    if isinstance(allowed, ExcludedVendors):
+        return not slugs <= allowed
     return not slugs.isdisjoint(allowed)
 
 
