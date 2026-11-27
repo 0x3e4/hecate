@@ -20,6 +20,19 @@ def mask_url_credentials(value: Any) -> Any:
     return value
 
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def has_control_chars(value: str) -> bool:
+    """A control character (NUL, CR, LF, tab, DEL, ...) anywhere in ``value``.
+
+    URLs a user saves are checked with it: a NUL in a host name makes
+    getaddrinfo look up a shorter name than the one shown, and CR/LF belong in
+    no URL.
+    """
+    return bool(_CONTROL_CHARS.search(value))
+
+
 def slugify(value: str, *, max_length: int = 120) -> str:
     normalized = _SLUG_RE.sub("-", value.lower()).strip("-")
     if not normalized:

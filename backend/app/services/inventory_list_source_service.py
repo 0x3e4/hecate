@@ -44,6 +44,7 @@ from app.services.inventory_system_service import (
     ListTooDestructive,
     get_inventory_system_service,
 )
+from app.utils.strings import has_control_chars
 
 log = structlog.get_logger()
 
@@ -67,6 +68,8 @@ Fetcher = Callable[[str, Header], Awaitable[str]]
 def check_url(url: str, *, with_credential: bool) -> str:
     """The URL's shape: http(s), a host, no ``user:pass@``; a credential needs https. Raises ``ValueError``."""
     url = url.strip()
+    if has_control_chars(url):
+        raise ValueError("The list URL must not contain control characters.")
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ValueError("The list URL must be an http(s) URL with a host.")

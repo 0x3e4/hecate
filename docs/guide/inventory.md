@@ -191,7 +191,7 @@ over https, stored on the server and never shown again; leave the field empty to
 The backend makes these requests, so only admins manage server lists, and the URL is held to the same
 rules as advisory feeds:
 
-- http or https, no `user:password@` in the URL (use the credential field), no redirects (give the
+- http or https, no `user:password@` in the URL (use the credential field), no control characters, no redirects (give the
   final URL), at most 5 MB, UTF-8 text;
 - every address the host resolves to must be public, checked when the list is saved and before every
   fetch. Lists on the internal network, which is where most CMDBs live, need

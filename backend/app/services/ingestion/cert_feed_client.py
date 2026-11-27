@@ -19,6 +19,7 @@ from app.services.http.rate_limiter import AsyncRateLimiter
 from app.services.http.public_host import is_public_url
 from app.services.http.retry import request_with_retry
 from app.services.http.ssl import get_http_verify
+from app.utils.strings import has_control_chars
 
 log = structlog.get_logger()
 
@@ -70,6 +71,8 @@ def safe_url(value: str | None) -> str | None:
     if not value:
         return None
     candidate = value.strip()
+    if has_control_chars(candidate):
+        return None
     try:
         parts = urlsplit(candidate)
     except ValueError:

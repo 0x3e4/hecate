@@ -94,6 +94,8 @@ def _create(**fields: Any) -> InventoryListSourceCreateRequest:
         ("https:///x", False, "http(s)"),
         ("https://user:pw@cmdb.example.com/x", False, "header field"),
         ("file:///etc/passwd", False, "http(s)"),
+        ("https://10.0.0.1\x00.cmdb.example.com/x", False, "control characters"),
+        ("https://cmdb.example.com/x\ty", False, "control characters"),
     ],
 )
 def test_check_url(url: str, credential: bool, error: str | None) -> None:

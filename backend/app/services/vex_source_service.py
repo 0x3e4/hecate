@@ -36,6 +36,7 @@ from app.repositories.scan_target_repository import ScanTargetRepository
 from app.services.http.public_host import is_public_url
 from app.services.http.ssl import get_http_verify
 from app.services.vex_service import CYCLONEDX_STATE_TO_VEX, _vex_text
+from app.utils.strings import has_control_chars
 
 log = structlog.get_logger()
 
@@ -90,6 +91,8 @@ def normalize_vex_source_urls(urls: Any) -> list[str]:
             continue
         if len(url) > MAX_URL_LENGTH:
             raise ValueError("A VEX source URL is too long")
+        if has_control_chars(url):
+            raise ValueError("A VEX source URL must not contain control characters")
         parts = urlsplit(url)
         if parts.scheme != "https" or not parts.hostname:
             raise ValueError(f"Not an https URL: {url[:200]}")

@@ -42,6 +42,8 @@ def test_urls_are_trimmed_deduplicated_and_github_blobs_become_raw() -> None:
         "https://user:token@example.com/vex.json",
         "https:///vex.json",
         "https://example.com/" + "a" * 3000,
+        "https://127.0.0.1\x00.example.com/vex.json",
+        "https://example.com/vex.json\r\nX-Injected: 1",
     ],
 )
 def test_unusable_urls_are_refused(url: str) -> None:

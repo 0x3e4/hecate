@@ -132,7 +132,10 @@ def test_rejects_something_that_is_not_xml():
 
 @pytest.mark.parametrize(
     "link",
-    ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "//cert.example/x", "https://", " ", None],
+    [
+        "javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "//cert.example/x", "https://", " ", None,
+        "https://127.0.0.1\x00.cert.example/x", "https://cert.example/a\nb",
+    ],
 )
 def test_only_http_links_survive(link):
     assert safe_url(link) is None
