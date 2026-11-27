@@ -5,8 +5,9 @@ on:
     branches:
       - main
     tags:
-      # Pre-release tags (2.5.0-beta.1) get only their own image tag: metadata-action
-      # skips {{major}}.{{minor}} / {{major}} for them, and latest stays with main.
+      # A release tag (2.5.0) gets 2.5.0, 2.5, 2 and latest. A pre-release tag
+      # (2.5.0-beta.1) gets only its own tag: metadata-action skips {{major}}.{{minor}}
+      # / {{major}} for it, and latest is enabled for stable tags only (below).
       - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
 
@@ -17,7 +18,7 @@ env:
 jobs:
   # ── Quality gate ──────────────────────────────────────────────────────────
   # These run before the build matrix and BLOCK it (build `needs:` all three),
-  # so a red lint/type/test check stops `latest` / `main-<sha>` from shipping to
+  # so a red lint/type/test check stops `main` / `main-<sha>` / a release from shipping to
   # GHCR. Previously the images built and pushed with zero verification.
   backend-test:
     name: Backend (ruff + pytest)
@@ -151,10 +152,13 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/hecate-${{ matrix.component }}
+          # latest = the newest release, never main (main and main-<sha> carry main).
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-,enable={{is_default_branch}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}

@@ -48,8 +48,9 @@ running the most recent release.
 
 Container images: pin to the explicit semver tag (e.g.
 `ghcr.io/0x3e4/hecate-{backend,frontend,scanner}:1.0.0`) and bump the pin
-when a new release ships. `:latest` tracks `main` and is **not** a supported
-channel for production.
+when a new release ships. `:latest` is the newest release; `:main` and
+`:main-<sha>` track `main` and are **not** a supported channel for production.
+Pre-release tags (`2.5.0-beta.1`) are for testing only.
 
 ## Scope
 

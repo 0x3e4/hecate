@@ -664,7 +664,7 @@ Everything is driven through environment variables — see [`.env.example`](.env
 
 GitHub Actions workflows live in [`.github/workflows/`](.github/workflows/):
 
-- **[`build-images.yml`](.github/workflows/build-images.yml)** — matrix build of the three container images (backend, frontend, scanner) on every push to `main` and on semver tags (`X.Y.Z*`). Pushes to GHCR (`ghcr.io/<owner>/hecate-{backend,frontend,scanner}`) with `latest`, `main-<sha>`, and semver tags; uses GitHub Actions cache (per-component scope). The short commit SHA is injected as the `HECATE_BUILD_SHA` build arg so the running container can report its build identity via `/api/v1/version` (used by the in-app Support page to detect newer `main-<sha>` images).
+- **[`build-images.yml`](.github/workflows/build-images.yml)** — matrix build of the three container images (backend, frontend, scanner) on every push to `main` and on semver tags (`X.Y.Z*`). Pushes to GHCR (`ghcr.io/<owner>/hecate-{backend,frontend,scanner}`) with `main` / `main-<sha>` for pushes to `main` and the version, `X.Y`, `X` and `latest` for releases (a pre-release tag such as `2.5.0-beta.1` gets only its own tag); uses GitHub Actions cache (per-component scope). The short commit SHA is injected as the `HECATE_BUILD_SHA` build arg so the running container can report its build identity via `/api/v1/version` (used by the in-app Support page to detect newer `main-<sha>` images).
 - **[`release.yml`](.github/workflows/release.yml)** — on semver tag push extracts the matching section from [`CHANGELOG.md`](CHANGELOG.md) and creates a GitHub Release; the pre-release flag is set automatically when the tag contains a `-`.
 
 ---

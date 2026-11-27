@@ -21,9 +21,9 @@ The **frontend** container is the only way in. It serves the web app and forward
 `/.well-known/oauth-*` to the backend, so the backend publishes no port. MongoDB and OpenSearch sit on
 an internal `db` network that only the backend joins.
 
-The images are published for every push to `main` (tags `latest` and `main-<sha>`) and for every
-release (the version, e.g. `2.2.1`). Pin a version tag in production, so an update happens when you
-choose it.
+The images are published for every push to `main` (tags `main` and `main-<sha>`) and for every
+release (`2.5.0`, `2.5`, `2` and `latest`). A pre-release such as `2.5.0-beta.1` gets only its own
+tag and never `latest`. Pin a version tag in production, so an update happens when you choose it.
 
 ## Requirements
 

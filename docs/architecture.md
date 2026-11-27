@@ -59,8 +59,9 @@ flowchart TB
 The whole stack is orchestrated with Docker Compose — backend, frontend, scanner, mongo, opensearch
 and apprise, plus the optional docs site. Images are published to GitHub Container Registry at
 `ghcr.io/0x3e4/hecate-{backend,frontend,scanner,docs}` (the namespace the Support page checks is
-configurable via `HECATE_GHCR_OWNER`) and tagged `latest`, `main-<sha>` and the matching semver on
-release. Two GitHub Actions workflows drive CI/CD: `build-images.yml` builds all four images on every push to `main` and
+configurable via `HECATE_GHCR_OWNER`) and tagged `main` / `main-<sha>` on every push to `main`;
+a release tag adds the version, `X.Y`, `X` and `latest`, a pre-release tag (`2.5.0-beta.1`) only its
+own version (and a GitHub pre-release). Two GitHub Actions workflows drive CI/CD: `build-images.yml` builds all four images on every push to `main` and
 on semver tags, while `release.yml` extracts the matching section from `CHANGELOG.md` and cuts a
 GitHub Release whenever a semver tag is pushed.
 
