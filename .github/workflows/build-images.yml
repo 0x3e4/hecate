@@ -5,9 +5,9 @@ on:
     branches:
       - main
     tags:
+      # Pre-release tags (2.5.0-beta.1) get only their own image tag: metadata-action
+      # skips {{major}}.{{minor}} / {{major}} for them, and latest stays with main.
       - '[0-9]+.[0-9]+.[0-9]+*'
-      # No GHCR images for pre-release tags (2.3.0-beta.1).
-      - '!*-*'
   workflow_dispatch:
 
 env:
