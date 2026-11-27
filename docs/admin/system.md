@@ -112,6 +112,8 @@ schedule for the inventory's systems: a URL, a format, *Keep* or *Retire*, an in
 credential, with **Preview** and **Fetch now**. Both are admin-only; see
 [Fetched lists](../guide/inventory.md#fetched-lists).
 
+![System → Data: advisory feeds and server lists](../img/hecate-system-lists.png)
+
 ### Sync status
 
 The **Sync Status** table lists every ingestion job — the regular and initial-sync variants of EUVD,

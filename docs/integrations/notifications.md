@@ -124,6 +124,8 @@ silent. See [Malware Detection & Feed](../sca/malware.md) for how that watcher w
 An *Inventory system* rule watches the servers, VMs and nodes of the [inventory](../guide/inventory.md#systems).
 Tick what it reports:
 
+![An Inventory system rule: what it reports, the lowest severity, exposure, groups and systems](../img/hecate-system-rule.png)
+
 - **New findings in a report**: an SBOM or scanner report a system pushed has findings its previous report
   did not have. The same vulnerability in the same package counts as known, also at a newer version, so a
   host that pushes the same 40 findings every night stays quiet. Dismissed findings and those whose VEX

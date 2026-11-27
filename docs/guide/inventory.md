@@ -170,6 +170,8 @@ Hecate never runs a script itself: the list is produced where the inventory and 
 
 ### Fetched lists
 
+![System → Data: advisory feeds and the server lists Hecate fetches](../img/hecate-system-lists.png)
+
 When the list is already published somewhere (a CMDB export, NetBox, an AWX inventory, a file on an
 internal web server), Hecate can fetch it itself. **System → Data → Server lists** takes a list name,
 a URL, the format (or *Detect*), what happens to systems the list no longer names (*Keep them* or
