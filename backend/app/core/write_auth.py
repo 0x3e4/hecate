@@ -752,6 +752,33 @@ async def require_target_write_body_finding_ids(
     )
 
 
+async def require_source_archive_upload(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),
+    x_target_password: str | None = Header(default=None, alias=_TARGET_HEADER),
+    service: ScanService = Depends(get_scan_service),
+) -> bool:
+    """Authorize a multipart source-archive upload; True when a pipeline key opened it.
+
+    An uploaded archive always runs as a check, which writes into no target, so
+    it takes what a check through ``/scans`` or ``/scans/manual`` takes: the CI
+    key or a ``scan:submit`` token, else an editor or the admin. A sent key that
+    is wrong fails outright instead of falling through to the password gate.
+    """
+    if x_api_key is not None:
+        await verify_sca_api_key(request, x_api_key)
+        return True
+    await _authorize_target(
+        request,
+        None,
+        x_system_password=x_system_password,
+        x_target_password=x_target_password,
+        service=service,
+    )
+    return False
+
+
 async def require_target_write_manual_scan(
     request: Request,
     x_system_password: str | None = Header(default=None, alias=_ADMIN_HEADER),

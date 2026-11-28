@@ -57,9 +57,24 @@ the image-capable scanners against it.
 For a **source repository** set `type` to `source_repo` and pass the repository URL as `target`.
 Hecate clones the repository and runs the source-capable scanners, which additionally include static
 analysis (`semgrep`, `devskim`), secret detection (`trufflehog`) and Go reachability (`govulncheck`). When the repository is private
-or you want to scan local working-tree code that is not yet pushed, attach a base64-encoded ZIP of
-the source as `sourceArchiveBase64` instead of relying on a clone (`.git` is skipped on extraction, so pass `commitSha` yourself); the archive must be a valid ZIP
-and at most 50 MB, with up to 200,000 members and 4 GiB once extracted (`SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES`).
+or you want to scan local working-tree code that is not yet pushed, upload a ZIP of the source to
+`POST /api/v1/scans/upload` instead of relying on a clone. It runs as a [check](#checks-without-a-target).
+`.git` is skipped on extraction, so pass `commitSha` yourself. The archive must be a valid ZIP and at
+most `SCA_SOURCE_ARCHIVE_MAX_BYTES` (50 MiB by default), with up to 200,000 members and 4 GiB once
+extracted (`SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES`).
+
+```bash
+zip -r source.zip . -x "node_modules/*" ".git/*" "dist/*" "build/*"
+
+curl -sS -X POST "${HECATE_URL}/api/v1/scans/upload?scanners=trivy,grype,syft,hecate,semgrep,trufflehog&commitSha=${GIT_SHA}"   -H "X-API-Key: ${API_KEY}"   -F "file=@source.zip"
+```
+
+The file goes in the multipart field `file`; `targetName` (default: the file name without `.zip`),
+`scanners` (comma-separated or repeated), `commitSha`, `branch` and `pipelineUrl` are query parameters.
+The older JSON field `sourceArchiveBase64` on `POST /api/v1/scans` still works, but base64 makes the
+request about a third larger than the archive. That counts against every body limit on the way: the
+frontend gateway's `MAX_UPLOAD_MB`, your reverse proxy, and a CDN such as Cloudflare (100 MB on its
+Free and Pro plans).
 
 A handful of optional metadata fields make the resulting scan traceable back to the build that
 produced it: `commitSha`, `branch`, `pipelineUrl`, and `source` (set this to `ci_cd` so the scan is
@@ -88,8 +103,8 @@ Add `"check": true` to scan something without registering it as a target: the sc
 and on no dashboard, and is deleted after `SCA_CHECK_RETENTION_DAYS` (default 7). The response carries
 `"check": true` and `expiresAt`; poll `GET /api/v1/scans/{scanId}` as usual, read the findings from
 `GET /api/v1/scans/{scanId}/findings`, or open the report at `https://<host>/scans/check/{scanId}`.
-`oneTime` is the older name for the same flag, and a request with `sourceArchiveBase64` always runs as
-a check. See [Checks](../sca-scanning.md#checks).
+`oneTime` is the older name for the same flag, and an uploaded archive (`/scans/upload` or
+`sourceArchiveBase64`) always runs as a check. See [Checks](../sca-scanning.md#checks).
 
 ```bash
 curl -sS -X POST "${HECATE_URL}/api/v1/scans" \

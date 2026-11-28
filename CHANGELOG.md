@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Changed
+
+- SCA: an **uploaded source ZIP** is now sent as a file (`POST /api/v1/scans/upload`, multipart) instead of base64 inside JSON. Base64 made the request about a third larger than the archive, so behind a proxy with a body limit (Cloudflare: 100 MB) a ZIP of about 70 MB was already refused. The new route takes the same credentials as a check (`X-API-Key` with the CI key or a `scan:submit` token, else an editor or the admin), the scanners and `targetName` / `commitSha` / `branch` / `pipelineUrl` as query parameters, and always runs as a check. `sourceArchiveBase64` on `POST /api/v1/scans` and `/scans/manual` still works.
+
 ## [2.5.0-beta.1] - 2026-11-27
 
 > **Existing instances: add the `osv-db` volume to the scanner.** A target with *no external lookups* has OSV-Scanner match against a local copy of the OSV database (npm's alone is about 220 MB). Without a volume that copy sits on the scanner's `/tmp` tmpfs and is downloaded again after every restart. Like the `grype-db` volume, add to your own `docker-compose.yml`:

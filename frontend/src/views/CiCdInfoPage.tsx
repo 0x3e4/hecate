@@ -231,30 +231,20 @@ jobs:
           {t("To scan a source repository, set the type to ", "Um ein Source-Repository zu scannen, setzen Sie den Typ auf ")}
           <code>source_repo</code>
           {t(
-            " and provide the repository URL as the target. Hecate will clone the repository and run the selected scanners. For private repositories or local code, you can upload a base64-encoded ZIP archive:",
-            " und geben Sie die Repository-URL als Target an. Hecate klont das Repository und führt die ausgewählten Scanner aus. Für private Repositories oder lokalen Code können Sie ein Base64-kodiertes ZIP-Archiv hochladen:"
+            " and provide the repository URL as the target. Hecate will clone the repository and run the selected scanners. For private repositories or local code, upload a ZIP archive of the source as a file. It runs as a check:",
+            " und geben Sie die Repository-URL als Target an. Hecate klont das Repository und führt die ausgewählten Scanner aus. Für private Repositories oder lokalen Code laden Sie ein ZIP-Archiv des Quellcodes als Datei hoch. Es läuft als Check:"
           )}
         </p>
         <InfoCodeBlock code={`# Create archive (exclude unnecessary files)
 zip -r source.zip . -x "node_modules/*" ".git/*" "dist/*" "build/*"
 
-# Encode and submit
-BASE64=$(base64 < source.zip | tr -d '\\n')
-
-curl -sS -X POST "\${HECATE_URL}/api/v1/scans" \\
+curl -sS -X POST "\${HECATE_URL}/api/v1/scans/upload?scanners=trivy,grype,syft,hecate,semgrep,trufflehog&commitSha=\${GIT_SHA}" \\
   -H "X-API-Key: \${API_KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "target": "https://github.com/my-org/my-app",
-    "type": "source_repo",
-    "scanners": ["trivy", "grype", "syft", "hecate", "semgrep", "trufflehog"],
-    "sourceArchiveBase64": "'"\${BASE64}"'",
-    "source": "ci_cd"
-  }'`} />
+  -F "file=@source.zip"`} />
         <p className="info-note">
           {t(
-            "Maximum archive size: 50 MB. The archive must be a valid ZIP file.",
-            "Maximale Archivgröße: 50 MB. Das Archiv muss eine gültige ZIP-Datei sein."
+            "Maximum archive size: 50 MB by default. The archive must be a valid ZIP file. The older JSON field sourceArchiveBase64 still works.",
+            "Maximale Archivgröße: standardmäßig 50 MB. Das Archiv muss eine gültige ZIP-Datei sein. Das ältere JSON-Feld sourceArchiveBase64 funktioniert weiterhin."
           )}
         </p>
       </Section>

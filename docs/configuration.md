@@ -458,7 +458,7 @@ the backend, so the backend publishes no port. Its settings are environment vari
 | `TRUSTED_PROXIES` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7` | Addresses or CIDRs allowed to tell the gateway the client IP (`X-Forwarded-For`, right-most hop). Your reverse proxy must be among them; `none` when nothing sits in front. |
 | `BACKEND_UPSTREAM` | `http://backend:8000` | The backend as the gateway reaches it. `docker-compose.yml.example` sets `http://hecate-backend:8000`, the backend's network alias: on a network shared with other projects the name `backend` resolves to their backends too, and requests go to them in turn. |
 | `UPSTREAM_RESOLVER` | `127.0.0.11` | DNS server for the upstream name, looked up per request (Docker's embedded DNS; set your cluster DNS elsewhere). |
-| `MAX_UPLOAD_MB` | `100` | Request body limit for `/api` and `/mcp` (SBOM uploads, base64 source archives, backups). Keep it above `SCA_SOURCE_ARCHIVE_MAX_BYTES` × 1.4. |
+| `MAX_UPLOAD_MB` | `100` | Request body limit for `/api` and `/mcp` (SBOM uploads, source archives, backups). Keep it above `SCA_SOURCE_ARCHIVE_MAX_BYTES`, × 1.4 if pipelines still send `sourceArchiveBase64`. |
 
 Ready-to-adapt nginx / Caddy / Traefik templates that terminate TLS, send every request to the
 gateway, and set a hardened HTTP security-header set live in `deploy/reverse-proxy/`, see

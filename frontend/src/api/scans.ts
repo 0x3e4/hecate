@@ -170,28 +170,17 @@ export const submitManualSourceArchiveScan = async (params: {
   scanners?: string[];
   targetName?: string;
 }): Promise<SubmitScanResponse> => {
-  const sourceArchiveBase64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("Failed to read archive as base64"));
-        return;
-      }
-      const comma = reader.result.indexOf(",");
-      resolve(comma >= 0 ? reader.result.slice(comma + 1) : reader.result);
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read archive"));
-    reader.readAsDataURL(params.archive);
-  });
-
-  const derivedName = params.archive.name.replace(/\.zip$/i, "").trim();
-  const response = await api.post<SubmitScanResponse>("/v1/scans/manual", {
-    target: params.targetName?.trim() || derivedName || "uploaded-source",
-    type: "source_repo",
-    scanners: params.scanners,
-    sourceArchiveBase64,
-    oneTime: true,
-  }, {
+  // Multipart, not base64 in JSON: base64 makes the request a third larger,
+  // and a proxy in front (Cloudflare: 100 MB) limits the request, not the file.
+  const formData = new FormData();
+  formData.append("file", params.archive);
+  const query = new URLSearchParams();
+  const targetName = params.targetName?.trim();
+  if (targetName) query.set("targetName", targetName);
+  if (params.scanners?.length) query.set("scanners", params.scanners.join(","));
+  const response = await api.post<SubmitScanResponse>("/v1/scans/upload", formData, {
+    params: query,
+    headers: { "Content-Type": "multipart/form-data" },
     timeout: 300000,
   });
   return response.data;

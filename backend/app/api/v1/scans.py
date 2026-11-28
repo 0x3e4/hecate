@@ -31,6 +31,7 @@ from app.schemas.scan import (
     ConsolidatedSbomResponse,
     ConsolidatedTargetSchema,
     ImportSbomRequest,
+    normalize_scanners,
     SbomComponentListResponse,
     SbomComponentResponse,
     ScanComparisonChangedSchema,
@@ -80,6 +81,7 @@ from app.core.write_auth import (
     require_admin_write,
     require_ai_target_write_scan,
     require_editor_write,
+    require_source_archive_upload,
     require_target_password_change,
     require_target_write_body_finding_ids,
     require_target_write_body_target,
@@ -208,6 +210,90 @@ async def submit_manual_scan(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    return SubmitScanResponse(
+        scan_id=result["scan_id"],
+        target_id=result["target_id"],
+        status=result["status"],
+        findings_count=result["findings_count"],
+        sbom_component_count=result["sbom_component_count"],
+        summary=ScanSummarySchema(**result["summary"]),
+        error=result.get("error"),
+        check=result.get("check", False),
+        expires_at=result.get("expires_at"),
+    )
+
+
+def _archive_label(target_name: str | None, filename: str | None) -> str:
+    """The check's display name: the given name, else the file name without ``.zip``."""
+    if target_name and target_name.strip():
+        return target_name.strip()[:200]
+    stem = (filename or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if stem.lower().endswith(".zip"):
+        stem = stem[:-4]
+    return stem.strip()[:200] or "uploaded-source"
+
+
+def _scanner_list(values: list[str] | None) -> list[str] | None:
+    """Scanner names from repeated and/or comma-separated query values."""
+    if not values:
+        return None
+    names = [part.strip() for value in values for part in value.split(",") if part.strip()]
+    return names or None
+
+
+@router.post("/upload", response_model=SubmitScanResponse, status_code=201)
+async def submit_source_archive_upload(
+    file: UploadFile = File(..., description="ZIP archive of the source tree"),
+    target_name: str | None = Query(
+        default=None, alias="targetName", description="Display name; defaults to the file name without .zip",
+    ),
+    scanners: list[str] | None = Query(
+        default=None, description="Scanner tools to run (repeat the parameter or separate with commas)",
+    ),
+    commit_sha: str | None = Query(default=None, alias="commitSha"),
+    branch: str | None = Query(default=None),
+    pipeline_url: str | None = Query(default=None, alias="pipelineUrl"),
+    via_api_key: bool = Depends(require_source_archive_upload),
+    service: ScanService = Depends(get_scan_service),
+) -> SubmitScanResponse:
+    """Scan an uploaded ZIP of a source tree, sent as a multipart file.
+
+    Same result as ``sourceArchiveBase64`` on ``POST /scans`` or ``/scans/manual``,
+    but the request is the size of the file instead of a third larger, which is
+    what decides whether it passes a proxy's body limit. Always runs as a check.
+    """
+    if not settings.sca_enabled:
+        raise HTTPException(status_code=503, detail="SCA scanning is disabled")
+    limit = settings.sca_source_archive_max_bytes
+    archive = await file.read(limit + 1)
+    if len(archive) > limit:
+        raise HTTPException(status_code=413, detail=f"Archive too large (max {limit // (1024 * 1024)} MB)")
+    if not archive:
+        raise HTTPException(status_code=400, detail="Uploaded archive is empty")
+    try:
+        names = _scanner_list(scanners)
+        if names is not None:
+            names = normalize_scanners(names)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # The sidecar call stays JSON with base64: it is internal and passes no proxy.
+    encoded = base64.b64encode(archive).decode("ascii")
+    del archive
+    try:
+        result = await service.submit_scan(
+            target=_archive_label(target_name, file.filename),
+            target_type="source_repo",
+            scanners=names,
+            source="ci_cd" if via_api_key else "manual",
+            commit_sha=commit_sha,
+            branch=branch,
+            pipeline_url=pipeline_url,
+            source_archive_base64=encoded,
+            one_time=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return SubmitScanResponse(
         scan_id=result["scan_id"],
         target_id=result["target_id"],
