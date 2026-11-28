@@ -806,7 +806,7 @@ const TodayStats = ({
       {!isToday && (
         <button
           type="button"
-          className="btn"
+          className="btn dashboard-date-today"
           onClick={() => setDayOffset(0)}
           title={t("Back to today", "Zurück zu heute")}
         >

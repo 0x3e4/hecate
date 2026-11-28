@@ -11,12 +11,14 @@
 .prefs-email, .prefs-role { color: var(--color-muted); font-size: var(--text-xs); }
 
 .prefs-rows { display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); }
-.prefs-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: baseline; gap: var(--space-xs); min-width: 0; margin: 0; padding: 0; border: 0; }
-.prefs-label { float: left; padding: 0; color: var(--color-muted); font-size: var(--text-sm); }
+.prefs-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: center; gap: var(--space-2xs) var(--space-xs); min-width: 0; }
+.prefs-label { color: var(--color-muted); font-size: var(--text-sm); }
+.prefs-row-hint { grid-column: 1 / -1; justify-self: start; }
 .prefs-control { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3xs); min-width: 0; }
 
-/* Two equal columns: each language as wide as the longer name. */
-.prefs-segments { display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); overflow: hidden; }
+/* Two equal columns: each language as wide as the longer name, never narrower
+   than its content (minmax(0, …) let Safari collapse them onto each other). */
+.prefs-segments { display: inline-grid; grid-template-columns: repeat(2, 1fr); border: var(--rule-hair) solid var(--color-rule-strong); border-radius: var(--radius-control); overflow: hidden; }
 .prefs-segment { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-xs); min-height: 32px; padding: 0 var(--space-sm); color: var(--color-ink-2); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
 .prefs-segment + .prefs-segment { border-left: var(--rule-hair) solid var(--color-rule-strong); }
 .prefs-segment:hover { background: var(--overlay-2); color: var(--color-ink); }
@@ -57,6 +59,10 @@
    time zone placeholder whole. 4.5rem still fits the longest label, "Dashboard". */
 @media (max-width: 40rem) {
   .prefs-row { grid-template-columns: 4.5rem minmax(0, 1fr); }
+  /* The panel's controls stay compact: 16px text (no iOS zoom), not the 44px
+     page fields, or the time zone field towers over its row. */
+  .prefs-panel .prefs-row input.prefs-input { min-height: 36px; padding-block: var(--space-3xs); }
+  .prefs-segment { min-height: 36px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

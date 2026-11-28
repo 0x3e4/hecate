@@ -71,9 +71,14 @@ export const PreferencesPanel = ({
       )}
 
       <div className="prefs-rows">
-        <fieldset className="prefs-row">
-          <legend className="prefs-label">{t("Language", "Sprache")}</legend>
-          <div className="prefs-segments">
+        {/* A radiogroup rather than fieldset + legend: Safari lays a fieldset out
+            as a block whatever its display, which stacked the label and
+            squeezed the two languages into each other. */}
+        <div className="prefs-row">
+          <span className="prefs-label" id="prefs-language-label">
+            {t("Language", "Sprache")}
+          </span>
+          <div className="prefs-segments" role="radiogroup" aria-labelledby="prefs-language-label">
             {LANGUAGES.map((option, index) => (
               <label key={option.value} className="prefs-segment">
                 <input
@@ -90,7 +95,7 @@ export const PreferencesPanel = ({
               </label>
             ))}
           </div>
-        </fieldset>
+        </div>
 
         <div className="prefs-row">
           <label className="prefs-label" htmlFor="prefs-timezone">
@@ -135,10 +140,11 @@ export const PreferencesPanel = ({
               />
               <span>{t("Only my stack", "Nur mein Stack")}</span>
             </label>
-            <DocsLink path="guide/dashboard/#only-my-stack" className="prefs-hint">
-              {t("Inventory and scan hits", "Treffer aus Inventar und Scans")}
-            </DocsLink>
           </div>
+          {/* Under the whole row, so it reads as the setting's explanation. */}
+          <DocsLink path="guide/dashboard/#only-my-stack" className="prefs-hint prefs-row-hint">
+            {t("Only CVEs from your inventory and scans", "Nur CVEs aus Inventar und Scans")}
+          </DocsLink>
         </div>
       </div>
 

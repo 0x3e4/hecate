@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inventory: a **note on its own** goes into an item's history. Leave **Running version** as it is, write the note and press **Add note**; the entry reads *Note*. MCP `update_inventory_item` with only `change_note` does the same (it used to answer "No fields to update"), and so does `PUT /api/v1/inventory/{id}` with only `changeNote`. Before, a note was only kept together with a version change.
 - SCA: an **uploaded source ZIP** is now sent as a file (`POST /api/v1/scans/upload`, multipart) instead of base64 inside JSON. Base64 made the request about a third larger than the archive, so behind a proxy with a body limit (Cloudflare: 100 MB) a ZIP of about 70 MB was already refused. The new route takes the same credentials as a check (`X-API-Key` with the CI key or a `scan:submit` token, else an editor or the admin), the scanners and `targetName` / `commitSha` / `branch` / `pipelineUrl` as query parameters, and always runs as a check. `sourceArchiveBase64` on `POST /api/v1/scans` and `/scans/manual` still works.
 
+### Fixed
+
+- Phone layout: the dashboard's day controls sit beside the title again, with a narrower date field; a past day puts **Today** and the arrows on their own row. In the preferences panel, the two language buttons no longer run into each other on iPhone (Safari laid the row out as a block), the time zone field is as high as the other controls, and the *Only my stack* explanation spans the whole row under the switch.
+
 ## [2.5.0-beta.1] - 2026-11-27
 
 > **Existing instances: add the `osv-db` volume to the scanner.** A target with *no external lookups* has OSV-Scanner match against a local copy of the OSV database (npm's alone is about 220 MB). Without a volume that copy sits on the scanner's `/tmp` tmpfs and is downloaded again after every restart. Like the `grype-db` volume, add to your own `docker-compose.yml`:
