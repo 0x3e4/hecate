@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
@@ -7,12 +8,14 @@ import { LuArrowRight, LuChevronRight, LuCopy, LuPencil, LuPlus, LuTrash2, LuX }
 import "../screens/inventory.css";
 import {
   createInventoryItem,
+  deleteInventoryHistoryEntry,
   deleteInventoryItem,
   fetchInventoryAffectedVulnerabilities,
   fetchInventoryHistory,
   fetchInventoryItemHistory,
   fetchInventoryItems,
   fetchInventorySystems,
+  updateInventoryHistoryNote,
   updateInventoryItem,
   type InventoryItemCreateInput,
 } from "../api/inventory";
@@ -447,7 +450,7 @@ const VersionUpdateForm = ({
 }: {
   item: InventoryItem;
   suggested: string | null;
-  onSaved: (updated: InventoryItem) => void;
+  onSaved: (updated: InventoryItem, kind: "version" | "note") => void;
   t: TranslateFn;
 }) => {
   const { showToast } = useToastContext();
@@ -460,10 +463,15 @@ const VersionUpdateForm = ({
   const save = async (version: string, from: "form" | "suggestion") => {
     setSavingFrom(from);
     try {
-      const updated = await updateInventoryItem(item.id, { version, changeNote: note.trim() || null });
+      // Same version: the note goes into the history on its own.
+      const noteOnly = version === item.version;
+      const updated = await updateInventoryItem(
+        item.id,
+        noteOnly ? { changeNote: note.trim() } : { version, changeNote: note.trim() || null },
+      );
       setValue(updated.version);
       setNote("");
-      onSaved(updated);
+      onSaved(updated, noteOnly ? "note" : "version");
     } catch (exc: unknown) {
       showToast(exc instanceof Error ? exc.message : String(exc), "error");
     } finally {
@@ -472,12 +480,15 @@ const VersionUpdateForm = ({
   };
 
   const trimmed = value.trim();
+  const versionChanged = trimmed !== "" && trimmed !== item.version;
+  const noteOnly = !versionChanged && note.trim() !== "";
   return (
     <form
       className="inventory-version-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (trimmed && trimmed !== item.version) void save(trimmed, "form");
+        if (versionChanged) void save(trimmed, "form");
+        else if (noteOnly) void save(item.version, "form");
       }}
     >
       <label htmlFor={`inventory-version-${item.id}`}>{t("Running version", "Laufende Version")}</label>
@@ -493,10 +504,12 @@ const VersionUpdateForm = ({
         <button
           type="submit"
           className="btn btn-secondary"
-          disabled={saving || !trimmed || trimmed === item.version}
+          disabled={saving || !(versionChanged || noteOnly)}
           aria-busy={savingFrom === "form" || undefined}
         >
-          <BusyLabel busy={savingFrom === "form"}>{t("Update", "Aktualisieren")}</BusyLabel>
+          <BusyLabel busy={savingFrom === "form"}>
+            {noteOnly ? t("Add note", "Notiz speichern") : t("Update", "Aktualisieren")}
+          </BusyLabel>
         </button>
       </div>
       <input
@@ -504,7 +517,7 @@ const VersionUpdateForm = ({
         value={note}
         onChange={(event) => setNote(event.target.value)}
         maxLength={500}
-        placeholder={t("Note for the history: ticket, server… (optional)", "Notiz für die Historie: Ticket, Server … (optional)")}
+        placeholder={t("Note for the history: ticket, server, check…", "Notiz für den Verlauf: Ticket, Server, Prüfung …")}
         aria-label={t("Note for the history", "Notiz für die Historie")}
         autoComplete="off"
       />
@@ -607,6 +620,9 @@ const HistoryEntrySummary = ({ entry, t }: { entry: InventoryHistoryEntry; t: Tr
       </span>
     );
   }
+  if (entry.action === "noted") {
+    return <span className="inventory-history-change muted">{t("Note", "Notiz")}</span>;
+  }
   return (
     <>
       {entry.changes.map((change) => (
@@ -616,29 +632,165 @@ const HistoryEntrySummary = ({ entry, t }: { entry: InventoryHistoryEntry; t: Tr
   );
 };
 
+const InventoryHistoryRow = ({
+  entry,
+  showItem,
+  onChanged,
+  t,
+}: {
+  entry: InventoryHistoryEntry;
+  showItem: boolean;
+  onChanged?: (entry: InventoryHistoryEntry) => void;
+  t: TranslateFn;
+}) => {
+  const { showToast } = useToastContext();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(entry.note ?? "");
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const saveNote = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateInventoryHistoryNote(entry.id, draft.trim() || null);
+      setEditing(false);
+      onChanged?.(updated);
+      showToast(t("Note saved.", "Notiz gespeichert."), "success");
+    } catch (exc: unknown) {
+      showToast(exc instanceof Error ? exc.message : String(exc), "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    try {
+      await deleteInventoryHistoryEntry(entry.id);
+      setConfirmDelete(false);
+      onChanged?.(entry);
+      showToast(t("History entry removed.", "Verlaufseintrag entfernt."), "success");
+    } catch (exc: unknown) {
+      showToast(exc instanceof Error ? exc.message : String(exc), "error");
+    }
+  };
+
+  const editedTitle = entry.editedAt
+    ? `${t("Note edited", "Notiz bearbeitet")} ${formatDateTime(entry.editedAt)}${entry.editedBy ? ` (${entry.editedBy})` : ""}`
+    : undefined;
+
+  return (
+    <li>
+      <time dateTime={entry.createdAt}>{formatDateTime(entry.createdAt)}</time>
+      <div className="inventory-history-body">
+        {showItem && <span className="inventory-history-item">{entry.itemName}</span>}
+        <HistoryEntrySummary entry={entry} t={t} />
+        {editing ? (
+          <form
+            className="inventory-history-edit"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveNote();
+            }}
+          >
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setDraft(entry.note ?? "");
+                  setEditing(false);
+                }
+              }}
+              maxLength={500}
+              aria-label={t("Note", "Notiz")}
+              placeholder={t("Empty removes the note", "Leer entfernt die Notiz")}
+              autoComplete="off"
+              autoFocus
+            />
+            <button type="submit" className="btn btn-secondary" disabled={saving} aria-busy={saving || undefined}>
+              <BusyLabel busy={saving}>{t("Save", "Speichern")}</BusyLabel>
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={saving}
+              onClick={() => {
+                setDraft(entry.note ?? "");
+                setEditing(false);
+              }}
+            >
+              {t("Cancel", "Abbrechen")}
+            </button>
+          </form>
+        ) : (
+          entry.note && (
+            <span className="inventory-history-note">
+              {entry.note}
+              {editedTitle && (
+                <span className="muted" title={editedTitle}>
+                  {" "}
+                  ({t("edited", "bearbeitet")})
+                </span>
+              )}
+            </span>
+          )
+        )}
+      </div>
+      <span className="inventory-history-source">
+        {historySourceLabel(entry.source, t)}
+        {entry.actor ? `: ${entry.actor}` : ""}
+      </span>
+      {onChanged && !editing && (
+        <span className="inventory-history-actions">
+          <IconButton
+            label={entry.note ? t("Edit note", "Notiz bearbeiten") : t("Add note", "Notiz hinzufügen")}
+            onClick={() => {
+              setDraft(entry.note ?? "");
+              setEditing(true);
+            }}
+          >
+            <LuPencil aria-hidden="true" />
+          </IconButton>
+          <IconButton label={t("Remove entry", "Eintrag entfernen")} onClick={() => setConfirmDelete(true)}>
+            <LuTrash2 aria-hidden="true" />
+          </IconButton>
+        </span>
+      )}
+      {/* In the body: the list dims while it reloads, and the dialog must not. */}
+      {confirmDelete &&
+        createPortal(
+          <ConfirmDialog
+            title={t("Remove history entry?", "Verlaufseintrag entfernen?")}
+            message={t(
+              "The entry disappears from the history. The audit log keeps what it said.",
+              "Der Eintrag verschwindet aus dem Verlauf. Das Audit-Log behält, was darin stand.",
+            )}
+            confirmLabel={t("Remove", "Entfernen")}
+            onConfirm={remove}
+            onCancel={() => setConfirmDelete(false)}
+          />,
+          document.body,
+        )}
+    </li>
+  );
+};
+
 const InventoryHistoryList = ({
   entries,
   showItem = false,
+  onChanged,
   t,
 }: {
   entries: InventoryHistoryEntry[];
   showItem?: boolean;
+  /** Set to offer editing a note and removing an entry. */
+  onChanged?: (entry: InventoryHistoryEntry) => void;
   t: TranslateFn;
 }) => (
   <ol className="inventory-history">
     {entries.map((entry) => (
-      <li key={entry.id}>
-        <time dateTime={entry.createdAt}>{formatDateTime(entry.createdAt)}</time>
-        <div className="inventory-history-body">
-          {showItem && <span className="inventory-history-item">{entry.itemName}</span>}
-          <HistoryEntrySummary entry={entry} t={t} />
-          {entry.note && <span className="inventory-history-note">{entry.note}</span>}
-        </div>
-        <span className="inventory-history-source">
-          {historySourceLabel(entry.source, t)}
-          {entry.actor ? `: ${entry.actor}` : ""}
-        </span>
-      </li>
+      <InventoryHistoryRow key={entry.id} entry={entry} showItem={showItem} onChanged={onChanged} t={t} />
     ))}
   </ol>
 );
@@ -1050,12 +1202,22 @@ export const InventoryPage = () => {
     }
   };
 
-  const handleVersionSaved = (updated: InventoryItem) => {
-    forgetItemDetails(updated.id);
+  const handleVersionSaved = (updated: InventoryItem, kind: "version" | "note") => {
+    if (kind === "version") forgetItemDetails(updated.id);
     setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
     void loadItemHistory(updated.id);
     void loadRecentChanges();
-    showToast(t("Version updated.", "Version aktualisiert."), "success");
+    showToast(
+      kind === "note" ? t("Note added.", "Notiz gespeichert.") : t("Version updated.", "Version aktualisiert."),
+      "success",
+    );
+  };
+
+  // An entry was corrected or removed: the item's history and the recent
+  // changes may both show it.
+  const handleHistoryChanged = (entry: InventoryHistoryEntry) => {
+    if (historyById[entry.itemId] !== undefined) void loadItemHistory(entry.itemId);
+    void loadRecentChanges();
   };
 
   const handleDelete = async (itemId: string) => {
@@ -1724,7 +1886,7 @@ export const InventoryPage = () => {
                                         className={historyReloading[item.id] ? "is-refreshing" : undefined}
                                         aria-busy={historyReloading[item.id] || undefined}
                                       >
-                                        <InventoryHistoryList entries={itemHistory} t={t} />
+                                        <InventoryHistoryList entries={itemHistory} onChanged={handleHistoryChanged} t={t} />
                                       </div>
                                     )}
                                   </div>
@@ -1906,7 +2068,12 @@ export const InventoryPage = () => {
           </EmptyState>
         ) : (
           <div className={recentReloading ? "is-refreshing" : undefined} aria-busy={recentReloading || undefined}>
-            <InventoryHistoryList entries={recentChanges} showItem t={t} />
+            <InventoryHistoryList
+              entries={recentChanges}
+              showItem
+              onChanged={handleHistoryChanged}
+              t={t}
+            />
           </div>
         )}
       </Section>

@@ -260,7 +260,8 @@ def register(mcp: FastMCP) -> None:
         Only the fields you pass are changed. `eol_product`: omit to keep the
         current link (auto re-matches only if the product changed), set a value
         to override, or "" to unlink. `change_note` (a ticket, the server, why)
-        goes into the history entry of this change, not onto the item.
+        goes into the history entry of this change, not onto the item; on its
+        own it records a note-only entry ("still on 8.0.25, checked").
         `systems` replaces the systems the item runs on (ids or names; [] unlinks all).
         """
         started_at = datetime.now(tz=UTC)
@@ -312,7 +313,7 @@ def register(mcp: FastMCP) -> None:
                     )
                     return {"error": unknown}
 
-            if not payload:
+            if not payload and not change_note:
                 return {"error": "No fields to update."}
             if change_note:
                 payload["changeNote"] = change_note

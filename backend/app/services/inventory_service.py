@@ -124,6 +124,8 @@ def _map_history_entry(doc: dict[str, Any]) -> InventoryHistoryEntry:
             "changes": doc.get("changes") or [],
             "note": doc.get("note"),
             "createdAt": doc.get("created_at"),
+            "editedAt": doc.get("edited_at"),
+            "editedBy": doc.get("edited_by"),
         }
     )
 
@@ -319,20 +321,32 @@ class InventoryService:
                 new_product_slug, new_product_name
             )
 
+        note = _clean_note(payload.change_note)
+        changes: list[dict[str, Any]] = []
         if updates:
             changes = diff_tracked_fields(existing, updates)
             await repo.update(item_id, updates)
             _inventory_cache.invalidate()
-            if changes:
-                await self._record_history(
-                    item_id=item_id,
-                    item_name=updates.get("name") or existing.get("name", ""),
-                    action="updated",
-                    source=source,
-                    actor=actor,
-                    changes=changes,
-                    note=_clean_note(payload.change_note),
-                )
+        if changes:
+            await self._record_history(
+                item_id=item_id,
+                item_name=updates.get("name") or existing.get("name", ""),
+                action="updated",
+                source=source,
+                actor=actor,
+                changes=changes,
+                note=note,
+            )
+        elif note:
+            # A note on its own (a check, a ticket, "still on 8.0.25") is history too.
+            await self._record_history(
+                item_id=item_id,
+                item_name=updates.get("name") or existing.get("name", ""),
+                action="noted",
+                source=source,
+                actor=actor,
+                note=note,
+            )
 
         doc = await repo.get(item_id)
         if doc is None:
@@ -363,6 +377,25 @@ class InventoryService:
         history = await self._get_history_repo()
         total, docs = await history.list_entries(item_id=item_id, limit=limit, offset=offset)
         return total, [_map_history_entry(doc) for doc in docs]
+
+    async def get_history_entry(self, entry_id: str) -> InventoryHistoryEntry | None:
+        history = await self._get_history_repo()
+        doc = await history.get(entry_id)
+        return _map_history_entry(doc) if doc else None
+
+    async def edit_history_note(
+        self, entry_id: str, note: str | None, *, actor: str | None = None
+    ) -> InventoryHistoryEntry | None:
+        """Correct the note of a history entry; the changes it records stay."""
+        history = await self._get_history_repo()
+        if await history.get(entry_id) is None:
+            return None
+        doc = await history.update_note(entry_id, note=_clean_note(note), edited_by=actor)
+        return _map_history_entry(doc) if doc else None
+
+    async def delete_history_entry(self, entry_id: str) -> bool:
+        history = await self._get_history_repo()
+        return await history.delete(entry_id)
 
     async def report_versions(
         self, entries: list[InventoryReportEntry], *, reported_by: str | None = None

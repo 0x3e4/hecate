@@ -34,6 +34,8 @@ const JOB_LABELS: Record<string, string> = {
   inventory_list_source_added: "Server list added",
   inventory_list_source_updated: "Server list updated",
   inventory_list_source_removed: "Server list removed",
+  inventory_history_edited: "Inventory history note edited",
+  inventory_history_deleted: "Inventory history entry removed",
   ghsa_sync: "GHSA Sync",
   ghsa_initial_sync: "GHSA Initial Sync",
   manual_refresh: "Manual Refresh",
@@ -115,6 +117,10 @@ const AuditLog = () => {
         return t("Server list updated", "Serverliste geändert");
       case "inventory_list_source_removed":
         return t("Server list removed", "Serverliste entfernt");
+      case "inventory_history_edited":
+        return t("Inventory history note edited", "Inventar-Verlaufsnotiz bearbeitet");
+      case "inventory_history_deleted":
+        return t("Inventory history entry removed", "Inventar-Verlaufseintrag entfernt");
       case "attack_path_analysis":
         return t("Attack Path narrative", "Attack-Path-Szenario");
       case "ai_investigation":
@@ -402,6 +408,8 @@ const AuditLog = () => {
             <option value="inventory_list_source_added">{t("Server list added", "Serverliste hinzugefügt")}</option>
             <option value="inventory_list_source_updated">{t("Server list updated", "Serverliste geändert")}</option>
             <option value="inventory_list_source_removed">{t("Server list removed", "Serverliste entfernt")}</option>
+            <option value="inventory_history_edited">{t("Inventory history note edited", "Inventar-Verlaufsnotiz bearbeitet")}</option>
+            <option value="inventory_history_deleted">{t("Inventory history entry removed", "Inventar-Verlaufseintrag entfernt")}</option>
             <option value="ai_investigation">{t("AI analysis", "AI-Analyse")}</option>
             <option value="ai_batch_investigation">{t("AI batch analysis", "AI Batch-Analyse")}</option>
             <option value="sca-scan">SCA Scan</option>

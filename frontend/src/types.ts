@@ -568,12 +568,16 @@ export interface InventoryHistoryEntry {
   id: string;
   itemId: string;
   itemName: string;
-  action: "created" | "updated" | "deleted";
+  /** "noted": a note on its own, without a change to the item. */
+  action: "created" | "updated" | "deleted" | "noted";
   source: "web" | "report" | "mcp" | "restore";
   actor?: string | null;
   changes: InventoryHistoryChange[];
   note?: string | null;
   createdAt: string;
+  /** Set once the note was corrected afterwards. */
+  editedAt?: string | null;
+  editedBy?: string | null;
 }
 
 export interface InventoryHistoryResponse {

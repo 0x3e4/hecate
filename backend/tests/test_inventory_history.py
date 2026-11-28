@@ -54,8 +54,23 @@ class FakeHistoryRepo:
     async def record(self, **entry: Any) -> dict[str, Any]:
         if self.fail:
             raise RuntimeError("history store down")
+        entry = {"_id": f"h-{len(self.entries)}", "created_at": NOW, **entry}
         self.entries.append(entry)
         return entry
+
+    async def get(self, entry_id: str) -> dict[str, Any] | None:
+        return next((e for e in self.entries if e["_id"] == entry_id), None)
+
+    async def update_note(self, entry_id: str, *, note: str | None, edited_by: str | None) -> dict[str, Any] | None:
+        entry = await self.get(entry_id)
+        if entry is not None:
+            entry.update(note=note, edited_at=NOW, edited_by=edited_by)
+        return entry
+
+    async def delete(self, entry_id: str) -> bool:
+        before = len(self.entries)
+        self.entries = [e for e in self.entries if e["_id"] != entry_id]
+        return len(self.entries) < before
 
 
 def _item(**overrides: Any) -> dict[str, Any]:
@@ -216,10 +231,50 @@ async def test_a_blank_note_is_stored_as_none() -> None:
     assert history.entries[0]["note"] is None
 
 
-async def test_a_note_without_a_change_writes_nothing() -> None:
+async def test_a_note_without_a_change_is_recorded_on_its_own() -> None:
+    service, repo, history = _service(_item())
+    await service.update_item(
+        "id-0", InventoryItemUpdateRequest(version="1.30.0", changeNote="still on 1.30.0, checked"), actor="alice"
+    )
+    (entry,) = history.entries
+    assert (entry["action"], entry.get("changes"), entry["note"], entry["actor"]) == (
+        "noted", None, "still on 1.30.0, checked", "alice",
+    )
+    assert repo.docs["id-0"]["version"] == "1.30.0"
+
+
+async def test_a_note_alone_needs_no_other_field() -> None:
     service, _, history = _service(_item())
-    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.0", changeNote="CHG-1"))
+    await service.update_item("id-0", InventoryItemUpdateRequest(changeNote="CHG-1"))
+    assert [e["action"] for e in history.entries] == ["noted"]
+
+
+async def test_a_blank_note_without_a_change_writes_nothing() -> None:
+    service, _, history = _service(_item())
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.0", changeNote="  "))
     assert history.entries == []
+
+
+async def test_editing_a_note_keeps_the_recorded_changes() -> None:
+    service, _, history = _service(_item())
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.1", changeNote="typo"))
+    entry_id = history.entries[0]["_id"]
+    edited = await service.edit_history_note(entry_id, "  CHG-4711  ", actor="bob")
+    assert edited is not None
+    assert (edited.note, edited.edited_by, edited.edited_at) == ("CHG-4711", "bob", NOW)
+    assert [c.model_dump() for c in edited.changes] == [{"field": "version", "old": "1.30.0", "new": "1.30.1"}]
+    cleared = await service.edit_history_note(entry_id, "", actor="bob")
+    assert cleared is not None and cleared.note is None
+    assert await service.edit_history_note("missing", "x") is None
+
+
+async def test_deleting_a_history_entry() -> None:
+    service, _, history = _service(_item())
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.1"))
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.2"))
+    assert await service.delete_history_entry("h-0") is True
+    assert [e["_id"] for e in history.entries] == ["h-1"]
+    assert await service.delete_history_entry("h-0") is False
 
 
 async def test_a_reported_version_carries_its_note() -> None:
@@ -229,3 +284,51 @@ async def test_a_reported_version_carries_its_note() -> None:
     )
     entry = history.entries[0]
     assert (entry["source"], entry["actor"], entry["note"]) == ("report", "ci", "deploy #812")
+
+
+class FakeAudit:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict[str, Any]]] = []
+
+    async def record_event(self, job_name: str, **kwargs: Any) -> None:
+        self.events.append((job_name, kwargs))
+
+
+def _history_client() -> tuple[Any, InventoryService, FakeHistoryRepo, FakeAudit]:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.v1 import inventory as inventory_api
+    from app.services.audit_service import get_audit_service
+    from app.services.inventory_service import get_inventory_service
+
+    service, _, history = _service(_item())
+    audit = FakeAudit()
+    app = FastAPI()
+    app.include_router(inventory_api.router, prefix="/inventory")
+    app.dependency_overrides[get_inventory_service] = lambda: service
+    app.dependency_overrides[get_audit_service] = lambda: audit
+    return TestClient(app), service, history, audit
+
+
+async def test_history_routes_edit_and_delete_and_audit_what_was_there() -> None:
+    client, service, history, audit = _history_client()
+    await service.update_item("id-0", InventoryItemUpdateRequest(version="1.30.1", changeNote="CHG-1"))
+
+    edited = client.patch("/inventory/history/h-0", json={"note": "CHG-2"})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["note"] == "CHG-2" and edited.json()["editedAt"]
+    name, kwargs = audit.events[0]
+    assert name == "inventory_history_edited"
+    assert (kwargs["result"]["oldNote"], kwargs["result"]["newNote"]) == ("CHG-1", "CHG-2")
+
+    assert client.delete("/inventory/history/h-0").status_code == 204
+    assert history.entries == []
+    name, kwargs = audit.events[1]
+    assert name == "inventory_history_deleted"
+    assert kwargs["result"]["changes"] == [{"field": "version", "old": "1.30.0", "new": "1.30.1"}]
+    assert kwargs["result"]["note"] == "CHG-2"
+
+    assert client.delete("/inventory/history/h-0").status_code == 404
+    assert client.patch("/inventory/history/nope", json={"note": "x"}).status_code == 404
+    assert client.patch("/inventory/history/h-0", json={"note": "x" * 501}).status_code == 422

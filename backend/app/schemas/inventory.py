@@ -326,12 +326,22 @@ class InventoryHistoryEntry(BaseModel):
     id: str
     item_id: str = Field(alias="itemId", serialization_alias="itemId")
     item_name: str = Field(alias="itemName", serialization_alias="itemName")
-    action: Literal["created", "updated", "deleted"]
+    # "noted": a note on its own, without a change to the item.
+    action: Literal["created", "updated", "deleted", "noted"]
     source: Literal["web", "report", "mcp", "restore"]
     actor: str | None = None
     changes: list[InventoryHistoryChange] = Field(default_factory=list)
     note: str | None = None
     created_at: UtcDatetime = Field(alias="createdAt", serialization_alias="createdAt")
+    # Set once the note was corrected afterwards.
+    edited_at: UtcDatetime | None = Field(default=None, alias="editedAt", serialization_alias="editedAt")
+    edited_by: str | None = Field(default=None, alias="editedBy", serialization_alias="editedBy")
+
+
+class InventoryHistoryNoteRequest(BaseModel):
+    """Correct the note of a history entry; empty removes it. The recorded changes stay."""
+
+    note: str | None = Field(default=None, max_length=500)
 
 
 class InventoryHistoryResponse(BaseModel):

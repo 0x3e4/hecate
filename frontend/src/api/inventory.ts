@@ -3,6 +3,7 @@ import type {
   AffectedVulnerabilitiesResponse,
   InventoryDeployment,
   InventoryEnvironment,
+  InventoryHistoryEntry,
   InventoryHistoryResponse,
   InventoryItem,
   InventoryItemListResponse,
@@ -148,6 +149,22 @@ export async function fetchInventoryHistory(limit = 20): Promise<InventoryHistor
     params: { limit },
   });
   return response.data;
+}
+
+/** Correct the note of a history entry ("" removes it); the recorded changes stay. */
+export async function updateInventoryHistoryNote(
+  entryId: string,
+  note: string | null,
+): Promise<InventoryHistoryEntry> {
+  const response = await api.patch<InventoryHistoryEntry>(
+    `/v1/inventory/history/${encodeURIComponent(entryId)}`,
+    { note },
+  );
+  return response.data;
+}
+
+export async function deleteInventoryHistoryEntry(entryId: string): Promise<void> {
+  await api.delete(`/v1/inventory/history/${encodeURIComponent(entryId)}`);
 }
 
 export async function fetchInventoryItemHistory(

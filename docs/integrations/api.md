@@ -63,6 +63,7 @@ The table below covers the endpoints you will use most. It is a curated shortlis
 | `GET` | `/api/v1/scans/{scanId}/sbom/export` | Export the SBOM as CycloneDX or SPDX; `vulnerabilities=true` adds the findings to the CycloneDX file ([DefectDojo](defectdojo.md)) |
 | `POST` | `/api/v1/inventory/report` | Report deployed versions (`inventory:report` token or the admin password) |
 | `GET` | `/api/v1/inventory/history` | Recent inventory changes, deleted items included |
+| `PATCH` / `DELETE` | `/api/v1/inventory/history/{entryId}` | Correct a history entry's note (the recorded changes stay) or remove the entry; both are audited |
 | `GET` / `POST` | `/api/v1/inventory/systems` | Systems (servers, VMs, nodes) with their last report and report status; add one (editor) |
 | `POST` | `/api/v1/inventory/systems/import`, `/api/v1/inventory/systems/import/upload` | Apply a server list (CSV, text, Ansible INI / YAML / `--list` JSON, Hecate JSON); `merge` or `replace` per `source`, `dryRun`, `force`; `inventory:sync` token or an editor |
 | `GET` / `POST` | `/api/v1/inventory/systems/sources` | Server lists Hecate fetches on a schedule: list them with their last fetch, add one (admin; the credential is write-only) |

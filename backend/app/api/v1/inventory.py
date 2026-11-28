@@ -8,6 +8,8 @@ from app.schemas.inventory import (
     AffectedVulnerabilitiesResponse,
     EolProductListResponse,
     EolStatusResponse,
+    InventoryHistoryEntry,
+    InventoryHistoryNoteRequest,
     InventoryHistoryResponse,
     InventoryItemCreateRequest,
     InventoryItemListResponse,
@@ -16,6 +18,7 @@ from app.schemas.inventory import (
     InventoryReportRequest,
     InventoryReportResponse,
 )
+from app.services.audit_service import AuditService, get_audit_service
 from app.services.enrichment.endoflife_service import get_endoflife_service
 from app.services.inventory_service import InventoryService, get_inventory_service
 
@@ -74,6 +77,56 @@ async def list_inventory_history(
     """Recent changes across all items, including deleted ones."""
     total, items = await service.list_history(limit=limit, offset=offset)
     return InventoryHistoryResponse(total=total, items=items)
+
+
+def _history_audit(entry: InventoryHistoryEntry) -> dict:
+    """What the audit log keeps of a history entry: enough to tell what was there."""
+    return {
+        "itemId": entry.item_id,
+        "itemName": entry.item_name,
+        "action": entry.action,
+        "createdAt": entry.created_at.isoformat(),
+        "changes": [change.model_dump() for change in entry.changes],
+    }
+
+
+@router.patch("/history/{entry_id}", response_model=InventoryHistoryEntry)
+async def edit_inventory_history_note(
+    entry_id: str,
+    request: InventoryHistoryNoteRequest,
+    service: InventoryService = Depends(get_inventory_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> InventoryHistoryEntry:
+    """Correct the note of a history entry. The changes it records cannot be edited."""
+    before = await service.get_history_entry(entry_id)
+    if before is None:
+        raise HTTPException(status_code=404, detail="History entry not found")
+    updated = await service.edit_history_note(entry_id, request.note, actor=_web_actor())
+    if updated is None:
+        raise HTTPException(status_code=404, detail="History entry not found")
+    await audit_service.record_event(
+        "inventory_history_edited",
+        metadata={"label": "Inventory history note edited", "entryId": entry_id},
+        result={**_history_audit(updated), "oldNote": before.note, "newNote": updated.note},
+    )
+    return updated
+
+
+@router.delete("/history/{entry_id}", status_code=204)
+async def delete_inventory_history_entry(
+    entry_id: str,
+    service: InventoryService = Depends(get_inventory_service),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> None:
+    """Remove a history entry, e.g. one recorded by mistake. The audit log keeps what it said."""
+    entry = await service.get_history_entry(entry_id)
+    if entry is None or not await service.delete_history_entry(entry_id):
+        raise HTTPException(status_code=404, detail="History entry not found")
+    await audit_service.record_event(
+        "inventory_history_deleted",
+        metadata={"label": "Inventory history entry removed", "entryId": entry_id},
+        result={**_history_audit(entry), "note": entry.note},
+    )
 
 
 @router.post("", response_model=InventoryItemResponse, status_code=201)

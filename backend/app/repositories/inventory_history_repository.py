@@ -44,10 +44,12 @@ def diff_tracked_fields(before: dict[str, Any], after: dict[str, Any]) -> list[d
 
 
 class InventoryHistoryRepository:
-    """Append-only change log of inventory items.
+    """Change log of inventory items.
 
     A collection of its own rather than an array on the item: the history of a
     deleted item stays readable, and a cross-item feed is one indexed sort.
+    The recorded changes are never rewritten; a person can only correct an
+    entry's note or remove the entry (both land in the audit log).
     """
 
     def __init__(self, collection: AsyncIOMotorCollection) -> None:
@@ -98,3 +100,20 @@ class InventoryHistoryRepository:
             .limit(limit)
         )
         return total, await cursor.to_list(length=limit)
+
+    async def get(self, entry_id: str) -> dict[str, Any] | None:
+        return await self.collection.find_one({"_id": entry_id})
+
+    async def update_note(
+        self, entry_id: str, *, note: str | None, edited_by: str | None
+    ) -> dict[str, Any] | None:
+        """Replace an entry's note; the changes it records stay as they were."""
+        await self.collection.update_one(
+            {"_id": entry_id},
+            {"$set": {"note": note, "edited_at": datetime.now(tz=UTC), "edited_by": edited_by}},
+        )
+        return await self.get(entry_id)
+
+    async def delete(self, entry_id: str) -> bool:
+        result = await self.collection.delete_one({"_id": entry_id})
+        return result.deleted_count > 0

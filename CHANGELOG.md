@@ -8,8 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Inventory: **history entries can be corrected and removed**. Hover an entry (always shown on a phone): the pencil corrects its note, which then reads *edited* with who and when; the bin removes the entry after a confirmation. What an entry records (old and new value, source, time) stays as it was. Both take the inventory's editor rights and are written to the audit log with the entry's content (*Inventory history note edited* / *entry removed*), so a removed entry stays on record there. API: `PATCH` / `DELETE /api/v1/inventory/history/{entryId}`.
+
 ### Changed
 
+- Inventory: a **note on its own** goes into an item's history. Leave **Running version** as it is, write the note and press **Add note**; the entry reads *Note*. MCP `update_inventory_item` with only `change_note` does the same (it used to answer "No fields to update"), and so does `PUT /api/v1/inventory/{id}` with only `changeNote`. Before, a note was only kept together with a version change.
 - SCA: an **uploaded source ZIP** is now sent as a file (`POST /api/v1/scans/upload`, multipart) instead of base64 inside JSON. Base64 made the request about a third larger than the archive, so behind a proxy with a body limit (Cloudflare: 100 MB) a ZIP of about 70 MB was already refused. The new route takes the same credentials as a check (`X-API-Key` with the CI key or a `scan:submit` token, else an editor or the admin), the scanners and `targetName` / `commitSha` / `branch` / `pipelineUrl` as query parameters, and always runs as a check. `sourceArchiveBase64` on `POST /api/v1/scans` and `/scans/manual` still works.
 
 ## [2.5.0-beta.1] - 2026-11-27

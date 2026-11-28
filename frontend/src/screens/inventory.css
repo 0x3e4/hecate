@@ -59,7 +59,11 @@
 .inventory-version-suggestion:hover { color: var(--color-link); text-decoration-color: currentColor; }
 .inventory-version-suggestion:disabled { color: var(--color-muted); cursor: not-allowed; }
 .inventory-history { margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
-.inventory-history li { display: grid; grid-template-columns: 11rem minmax(0, 1fr) auto; gap: var(--space-2xs) var(--space-sm); align-items: baseline; padding-block: var(--space-2xs); border-top: var(--rule-hair) solid var(--color-rule); }
+.inventory-history li { display: grid; grid-template-columns: 11rem minmax(0, 1fr) auto 3.75rem; grid-template-areas: "time body source actions"; gap: var(--space-2xs) var(--space-sm); align-items: baseline; padding-block: var(--space-2xs); border-top: var(--rule-hair) solid var(--color-rule); }
+.inventory-history time { grid-area: time; }
+.inventory-history-body { grid-area: body; }
+.inventory-history-source { grid-area: source; }
+.inventory-history-actions { grid-area: actions; justify-self: end; align-self: center; }
 .inventory-history li:first-child { border-top: 0; }
 .inventory-history time { color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .inventory-history-body { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); min-width: 0; }
@@ -67,9 +71,17 @@
 .inventory-history-change { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs); min-width: 0; overflow-wrap: anywhere; }
 .inventory-history-change svg { flex-shrink: 0; color: var(--color-muted); }
 .inventory-history-source { color: var(--color-muted); font-size: var(--text-xs); }
+/* Quiet until the row is hovered or focused; always shown where nothing hovers. */
+.inventory-history-actions { display: inline-flex; gap: var(--space-3xs); opacity: 0; transition: opacity var(--dur-micro) var(--ease-out); }
+.inventory-history li:hover .inventory-history-actions, .inventory-history-actions:focus-within { opacity: 1; }
+@media (hover: none) { .inventory-history-actions { opacity: 1; } }
+.inventory-history-actions .icon-button { width: 28px; height: 28px; }
+.inventory-history-actions .icon-button svg { width: 14px; height: 14px; }
+.inventory-history-edit { display: flex; flex-wrap: wrap; gap: var(--space-2xs); flex-basis: 100%; min-width: 0; }
+.inventory-history-edit input { flex: 1 1 12rem; min-width: 0; font-size: var(--text-sm); }
 .inventory-history-note { flex-basis: 100%; color: var(--color-ink-2); font-size: var(--text-xs); overflow-wrap: anywhere; }
-.inventory-expansion-side .inventory-history li { grid-template-columns: minmax(0, 1fr) auto; }
-.inventory-expansion-side .inventory-history time { grid-column: 1 / -1; }
+/* Narrow column: the date shares its row with the actions, the change takes the next. */
+.inventory-expansion-side .inventory-history li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "time actions" "body source"; }
 .inventory-expansion-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-xs); margin-bottom: var(--space-xs); }
 .inventory-expansion-head h3 { font-size: var(--text-sm); letter-spacing: 0; }
 .inventory-expansion-sub { color: var(--color-muted); font-size: var(--text-xs); }
@@ -134,8 +146,7 @@ textarea.inventory-input { resize: vertical; }
   .inventory-flagged-table th:first-child, .inventory-flagged-table td:first-child { position: sticky; left: 0; z-index: var(--z-base); background: var(--color-paper); }
 }
 @media (max-width: 40rem) {
-  .inventory-history li { grid-template-columns: minmax(0, 1fr) auto; }
-  .inventory-history time { grid-column: 1 / -1; }
+  .inventory-history li, .inventory-expansion-side .inventory-history li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "time actions" "body body" "source source"; }
 }
 
 /* Systems tab: servers and nodes, whether each still reports, what its last report found */

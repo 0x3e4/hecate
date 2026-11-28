@@ -289,7 +289,7 @@ A small number of vendors number releases as an independent build counter per br
 
 A match is only as good as the version it was checked against, so there are three ways to update one, and all of them are recorded in the history below.
 
-**In the row.** Expand an item and change **Running version**. The field below it takes an optional note for the history, such as a ticket number, the server or the change request. When endoflife.date knows a newer release of the same cycle, **Set to** offers it in one click. Hecate never applies that on its own: the inventory states what actually runs, and a version nobody deployed would quietly clear real CVE matches.
+**In the row.** Expand an item and change **Running version**. The field below it takes an optional note for the history, such as a ticket number, the server or the change request. A note also works on its own: leave the version as it is, write the note ("checked on web-01, still 1.22.1") and press **Add note**. When endoflife.date knows a newer release of the same cycle, **Set to** offers it in one click. Hecate never applies that on its own: the inventory states what actually runs, and a version nobody deployed would quietly clear real CVE matches.
 
 **From a pipeline.** After a rollout, `POST /api/v1/inventory/report` records the deployed version. See [CI/CD integration](../integrations/cicd.md#reporting-deployed-versions).
 
@@ -299,9 +299,11 @@ The add/edit dialog has the same **Note for the history** field. The note belong
 
 ## History
 
-Every change is logged with the time, the old and new value, the note if one was given, and how it was made: the web interface, an API report (with the name the pipeline gave), MCP (with the identity), or a backup restore. The expanded row shows the history of that item, and **Recent changes** at the bottom of the page shows all items, including deleted ones. Saving a form without changing anything leaves no entry.
+Every change is logged with the time, the old and new value, the note if one was given, and how it was made: the web interface, an API report (with the name the pipeline gave), MCP (with the identity), or a backup restore. The expanded row shows the history of that item, and **Recent changes** at the bottom of the page shows all items, including deleted ones. Saving a form without changing anything leaves no entry; a note on its own leaves a *Note* entry.
 
-The same log is available over the API: `GET /api/v1/inventory/history` returns recent changes across all items and `GET /api/v1/inventory/{id}/history` one item's log, both with `limit` and `offset`.
+A note can be corrected afterwards: hover an entry (on a phone the buttons are always shown) and use the pencil; the entry is then marked *edited*, with who and when in its tooltip. The changes an entry records (old and new value, source, time) cannot be edited. The bin removes an entry that should not be there, for example a version reported by mistake. Both need the same rights as editing the inventory, and both land in the [audit log](../admin/audit.md) with the entry's content, so a removed entry is still on record there.
+
+The same log is available over the API: `GET /api/v1/inventory/history` returns recent changes across all items and `GET /api/v1/inventory/{id}/history` one item's log, both with `limit` and `offset`. `PATCH /api/v1/inventory/history/{entryId}` with `{"note": "…"}` corrects a note (empty removes it), `DELETE /api/v1/inventory/history/{entryId}` removes an entry.
 
 ## Where matches show up
 
