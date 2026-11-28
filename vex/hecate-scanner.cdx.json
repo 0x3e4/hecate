@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:0e18c8d0-16cf-542d-b8d5-f277c18e6b09",
-  "version": 10,
+  "serialNumber": "urn:uuid:90b0bb14-c52f-558d-8407-5358bc3d1ca4",
+  "version": 11,
   "metadata": {
-    "timestamp": "2026-11-26T21:57:57Z",
+    "timestamp": "2026-11-28T17:11:56Z",
     "tools": {
       "components": [
         {
@@ -350,17 +350,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/libzstd1@1.5.7+dfsg-1",
-      "name": "libzstd1",
-      "version": "1.5.7+dfsg-1",
-      "purl": "pkg:deb/debian/libzstd1@1.5.7+dfsg-1"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:deb/debian/login.defs@4.17.4-2",
+      "bom-ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1",
       "name": "login.defs",
-      "version": "1:4.17.4-2",
-      "purl": "pkg:deb/debian/login.defs@4.17.4-2"
+      "version": "1:4.17.4-2+deb13u1",
+      "purl": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
     },
     {
       "type": "library",
@@ -406,10 +399,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:deb/debian/passwd@4.17.4-2",
+      "bom-ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1",
       "name": "passwd",
-      "version": "1:4.17.4-2",
-      "purl": "pkg:deb/debian/passwd@4.17.4-2"
+      "version": "1:4.17.4-2+deb13u1",
+      "purl": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
     },
     {
       "type": "library",
@@ -638,10 +631,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+          "ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
         }
       ]
     },
@@ -1089,10 +1082,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+          "ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
         }
       ]
     },
@@ -1400,7 +1393,7 @@
       "id": "CVE-2026-107493",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1418,7 +1411,7 @@
       "id": "CVE-2026-107494",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1436,7 +1429,7 @@
       "id": "CVE-2026-107496",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -2074,7 +2067,7 @@
       "id": "CVE-2026-121481",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -2092,7 +2085,7 @@
       "id": "CVE-2026-121482",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -2181,7 +2174,7 @@
       "id": "CVE-2026-124709",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -2192,18 +2185,6 @@
         },
         {
           "ref": "pkg:deb/debian/openssl@3.5.9-1~deb13u1"
-        }
-      ]
-    },
-    {
-      "id": "CVE-2026-124851",
-      "analysis": {
-        "state": "in_triage",
-        "detail": "libzstd is in use: the scanner sidecar and the scanners it runs loads or runs libzstd1 (runtime evidence). Not analysed per CVE yet. Fixed upstream in 1.5.7+dfsg-1+deb13u1. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/libzstd1@1.5.7+dfsg-1"
         }
       ]
     },
@@ -2434,22 +2415,6 @@
       ]
     },
     {
-      "id": "CVE-2026-135901",
-      "analysis": {
-        "state": "not_affected",
-        "justification": "code_not_reachable",
-        "detail": "login.defs is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). passwd is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
-      },
-      "affects": [
-        {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
-        },
-        {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
-        }
-      ]
-    },
-    {
       "id": "CVE-2026-13608",
       "analysis": {
         "state": "not_affected",
@@ -2471,6 +2436,54 @@
       "affects": [
         {
           "ref": "pkg:deb/debian/libp11-kit0@0.25.5-3"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-137898",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libpam-modules is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libpam-modules-bin is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libpam-runtime is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json). libpam0g is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libpam-modules-bin@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam-modules@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam-runtime@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam0g@1.7.0-5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-137951",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-137992",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
         }
       ]
     },
@@ -2724,7 +2737,7 @@
       "id": "CVE-2026-35190",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3297,7 +3310,7 @@
       "id": "CVE-2026-84785",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3315,7 +3328,7 @@
       "id": "CVE-2026-84786",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3487,7 +3500,7 @@
       "id": "CVE-2026-88822",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3505,7 +3518,7 @@
       "id": "CVE-2026-88823",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3769,7 +3782,7 @@
       "id": "CVE-2026-95690",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3787,7 +3800,7 @@
       "id": "CVE-2026-95691",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -3805,7 +3818,7 @@
       "id": "CVE-2026-95692",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -4023,10 +4036,10 @@
       },
       "affects": [
         {
-          "ref": "pkg:deb/debian/login.defs@4.17.4-2"
+          "ref": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
         },
         {
-          "ref": "pkg:deb/debian/passwd@4.17.4-2"
+          "ref": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
         }
       ]
     },

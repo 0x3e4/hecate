@@ -3,8 +3,8 @@
   "@id": "https://github.com/0x3e4/hecate/blob/main/vex/hecate-scanner.openvex.json",
   "author": "Hecate maintainers",
   "role": "Document Creator",
-  "timestamp": "2026-11-26T21:57:57Z",
-  "version": 10,
+  "timestamp": "2026-11-28T17:11:56Z",
+  "version": 11,
   "tooling": "vex/tools/generate.py",
   "statements": [
     {
@@ -34,7 +34,7 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -52,7 +52,7 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+              "@id": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -760,7 +760,7 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -778,7 +778,7 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+              "@id": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -1288,7 +1288,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1311,7 +1311,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -1334,7 +1334,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2154,7 +2154,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2177,7 +2177,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2296,24 +2296,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-124851"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/libzstd1@1.5.7+dfsg-1"
-            }
-          ]
-        }
-      ],
-      "status": "under_investigation",
-      "status_notes": "libzstd is in use: the scanner sidecar and the scanners it runs loads or runs libzstd1 (runtime evidence). Not analysed per CVE yet. Fixed upstream in 1.5.7+dfsg-1+deb13u1. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -2569,42 +2552,6 @@
     },
     {
       "vulnerability": {
-        "name": "CVE-2026-135901"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
-            }
-          ]
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "login.defs is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
-    },
-    {
-      "vulnerability": {
-        "name": "CVE-2026-135901"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
-          "subcomponents": [
-            {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
-            }
-          ]
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "passwd is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
-    },
-    {
-      "vulnerability": {
         "name": "CVE-2026-13608"
       },
       "products": [
@@ -2637,6 +2584,114 @@
       ],
       "status": "under_investigation",
       "status_notes": "p11-kit is in use: the scanner sidecar and the scanners it runs loads or runs libp11-kit0 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-137898"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpam-modules@1.7.0-5"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libpam-modules is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-137898"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpam-modules-bin@1.7.0-5"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libpam-modules-bin is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-137898"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpam-runtime@1.7.0-5"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libpam-runtime is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-137898"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libpam0g@1.7.0-5"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libpam0g is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-137951"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-137992"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
+          "subcomponents": [
+            {
+              "@id": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "libexpat1 is part of the base image, but the scanner sidecar and the scanners it runs never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-scanner.json)."
     },
     {
       "vulnerability": {
@@ -3035,7 +3090,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -3870,7 +3925,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -3893,7 +3948,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -4114,7 +4169,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -4137,7 +4192,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -4541,7 +4596,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -4564,7 +4619,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -4587,7 +4642,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+      "status_notes": "openssl is in use: the scanner sidecar and the scanners it runs loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
     },
     {
       "vulnerability": {
@@ -4818,7 +4873,7 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/login.defs@4.17.4-2"
+              "@id": "pkg:deb/debian/login.defs@4.17.4-2+deb13u1"
             }
           ]
         }
@@ -4836,7 +4891,7 @@
           "@id": "pkg:oci/hecate-scanner?repository_url=ghcr.io/0x3e4/hecate-scanner",
           "subcomponents": [
             {
-              "@id": "pkg:deb/debian/passwd@4.17.4-2"
+              "@id": "pkg:deb/debian/passwd@4.17.4-2+deb13u1"
             }
           ]
         }

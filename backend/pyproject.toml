@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hecate-backend"
-version = "2.5.0-beta.1"
+version = "2.5.0-beta.2"
 description = "FastAPI backend for the Hecate cyber defense platform."
 authors = ["Hecate Team <info@hecate.pw>"]
 readme = "README.md"

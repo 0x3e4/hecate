@@ -1,5 +1,5 @@
 {
-  "image": "ghcr.io/0x3e4/hecate-frontend@sha256:98e1bb30cbca06c757b3c4757e3e313144c8473a1069cb71661f98d83d94398f",
+  "image": "ghcr.io/0x3e4/hecate-frontend@sha256:f54973dd3c0eb377d3a948cf90142d482a23e2a65ad5c7282d4d04d6861f9afa",
   "collectedWith": "vex/tools/collect.sh",
   "loadedPackages": [
     "busybox",

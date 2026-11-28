@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:12c21931-5574-5ba8-b74a-0b0184ba8429",
-  "version": 5,
+  "serialNumber": "urn:uuid:2c3dd273-32ce-5b9b-9f0d-870e0a6541de",
+  "version": 6,
   "metadata": {
-    "timestamp": "2026-11-27T06:56:11Z",
+    "timestamp": "2026-11-28T17:11:55Z",
     "tools": {
       "components": [
         {
@@ -803,7 +803,7 @@
       "id": "CVE-2026-107493",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -821,7 +821,7 @@
       "id": "CVE-2026-107494",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -839,7 +839,7 @@
       "id": "CVE-2026-107496",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1126,7 +1126,7 @@
       "id": "CVE-2026-121481",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1144,7 +1144,7 @@
       "id": "CVE-2026-121482",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1220,7 +1220,7 @@
       "id": "CVE-2026-124709",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1264,6 +1264,28 @@
         },
         {
           "ref": "pkg:deb/debian/libc6@2.41-12+deb13u5"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2026-137898",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "code_not_reachable",
+        "detail": "libpam-modules is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json). libpam-modules-bin is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json). libpam-runtime is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json). libpam0g is part of the base image, but the backend (uvicorn) process never loads or runs it: it is neither mapped by the service's process nor in the ldd closure of any program the service executes (see vex/evidence/hecate-backend.json)."
+      },
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libpam-modules-bin@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam-modules@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam-runtime@1.7.0-5"
+        },
+        {
+          "ref": "pkg:deb/debian/libpam0g@1.7.0-5"
         }
       ]
     },
@@ -1404,7 +1426,7 @@
       "id": "CVE-2026-35190",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1756,7 +1778,7 @@
       "id": "CVE-2026-84785",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1774,7 +1796,7 @@
       "id": "CVE-2026-84786",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1792,7 +1814,7 @@
       "id": "CVE-2026-88822",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1810,7 +1832,7 @@
       "id": "CVE-2026-88823",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1872,7 +1894,7 @@
       "id": "CVE-2026-95690",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1890,7 +1912,7 @@
       "id": "CVE-2026-95691",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
@@ -1908,7 +1930,7 @@
       "id": "CVE-2026-95692",
       "analysis": {
         "state": "in_triage",
-        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: no fixed package has been released yet. The image takes distribution fixes at build time (apk/apt-get upgrade)."
+        "detail": "openssl is in use: the backend (uvicorn) process loads or runs libssl3t64 (runtime evidence). Not analysed per CVE yet. No fix available: the distribution has deferred the fix; the distribution will not fix it in this release (rated minor). The image takes distribution fixes at build time (apk/apt-get upgrade)."
       },
       "affects": [
         {
